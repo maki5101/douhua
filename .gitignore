@@ -1,0 +1,19 @@
+# 密钥：真值只在 .env，模板 .env.example 进 git
+.env
+.env.local
+# 本机私人笔记（地址、设备、路径）和私人扫描规则
+.private/
+# 打包产物
+dist/
+# 常见缓存和编译产物（按项目语言增删）
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+build/
+.DS_Store
+# Android：本地 SDK、编译产物、签名密钥
+.sdk/
+*.apk
+*.keystore
+*.jks

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 豆花支持的语言：系统设置 → 应用 → 豆花 → 语言 里可以单独选，不用改整机语言。和 res/values-* 一一对应。 -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="zh" />
+    <locale android:name="ja" />
+    <locale android:name="ko" />
+    <locale android:name="fr" />
+    <locale android:name="de" />
+    <locale android:name="it" />
+    <locale android:name="es" />
+    <locale android:name="ar" />
+</locale-config>

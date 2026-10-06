@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 豆花界面文字：中文。九种语言的文件条目一一对应，加文字要九个文件都加。 -->
 <resources>
-    <string name="app_name">豆花</string>
+    <string name="app_name">豆花儿</string>
     <string name="cancel">取消</string>
     <string name="ok">确定</string>
     <string name="value_format">%1$s：%2$s</string>
     <string name="notif_channel">接上外接显示器时提醒</string>
-    <string name="notif_title">豆花触控板</string>
+    <string name="notif_title">豆花儿触控板</string>
     <string name="notif_text_named">已连接 %1$s，点这里把手机当触控板</string>
     <string name="notif_text">已连接外接显示器，点这里把手机当触控板</string>
-    <string name="status_connecting">正在连接豆花服务……</string>
-    <string name="status_no_service">没连上豆花服务：在电脑上运行 tools/start-server.sh</string>
-    <string name="status_denied">系统拒绝连接豆花服务（权限）：%1$s</string>
+    <string name="status_connecting">正在连接豆花儿服务……</string>
+    <string name="status_no_service">没连上豆花儿服务：在电脑上运行 tools/start-server.sh</string>
+    <string name="status_denied">系统拒绝连接豆花儿服务（权限）：%1$s</string>
     <string name="status_version">服务版本 %1$d 和 App 版本 %2$d 不一致：在电脑上运行 tools/stop-server.sh 再 tools/start-server.sh</string>
     <string name="status_service_error">服务出错：%1$s</string>
     <string name="status_text_mode">贴字中 · 触控板暂停</string>
@@ -36,10 +36,11 @@
     <string name="text_hint">用手机输入法打字，按发送贴到 DeX</string>
     <string name="text_send">发送</string>
     <string name="text_hide">收起</string>
-    <string name="settings_title">豆花设置</string>
+    <string name="settings_title">豆花儿设置</string>
     <string name="sec_pointer">光标</string>
     <string name="pointer_speed">光标速度</string>
     <string name="acceleration">加速（快速划动时额外放大）</string>
+    <string name="precision">精细移动（慢慢挪时光标更慢，方便微调）</string>
     <string name="sec_tap">点按</string>
     <string name="tap_drag">轻点后马上按住移动 = 拖动</string>
     <string name="drag_window">拖动等待时间（毫秒，越长越容易触发拖动，但单击会更迟钝）</string>
@@ -56,6 +57,7 @@
     <string name="ticks_off">关</string>
     <string name="ticks_edge">只在边缘滚动时</string>
     <string name="ticks_all">所有滚动（包括双指）</string>
+    <string name="tick_strength">「咔嗒」强度</string>
     <string name="sec_haptics">震动</string>
     <string name="haptic_off">关</string>
     <string name="haptic_low">小</string>
@@ -93,9 +95,9 @@
     <string name="act_phone_text_s">贴字</string>
     <string name="act_numpad">数字键盘</string>
     <string name="act_numpad_s">数字</string>
-    <string name="act_settings">豆花设置</string>
+    <string name="act_settings">豆花儿设置</string>
     <string name="act_settings_s">设置</string>
-    <string name="act_exit">退出豆花</string>
+    <string name="act_exit">退出豆花儿</string>
     <string name="act_exit_s">退出</string>
     <string name="act_rotate">横竖屏切换</string>
     <string name="act_rotate_s">旋转</string>

@@ -21,6 +21,7 @@ import android.widget.TextView;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.function.IntConsumer;
 
 /** 设置页。改动即时保存，回到触控板时生效。 */
 public final class SettingsActivity extends Activity {
@@ -55,6 +56,8 @@ public final class SettingsActivity extends Activity {
         header(R.string.sec_pointer);
         slider(R.string.pointer_speed, "speed", def.pointerSpeed, 0.5f, 6f, 0.1f, "%.1f");
         slider(R.string.acceleration, "accel", def.acceleration, 0f, 3f, 0.1f, "%.1f");
+        list.addView(text(getString(R.string.precision), 16, 0xFFE8E8E8));
+        levels(Prefs.HAPTIC_LABELS, prefs.getInt("precision", 2), level -> prefs.putInt("precision", level));
 
         header(R.string.sec_tap);
         toggle(R.string.tap_drag, "tap_drag", def.tapToDrag);
@@ -71,6 +74,14 @@ public final class SettingsActivity extends Activity {
         sliderInt(R.string.edge_width, "edge_width_i", Math.round(def.edgeWidthDp), 12, 64, 2);
         choice(R.string.ticks, "ticks", def.scrollTicks,
                 new int[]{R.string.ticks_off, R.string.ticks_edge, R.string.ticks_all});
+        list.addView(text(getString(R.string.tick_strength), 16, 0xFFE8E8E8));
+        levels(Prefs.TICK_STRENGTH_LABELS, prefs.tickStrength(), strength -> {
+            prefs.setTickStrength(strength);
+            Haptics h = new Haptics(this);   // 选了就连震几下，像滚了几格
+            h.setLevel(prefs.haptic());
+            h.setTickStrength(strength);
+            for (int i = 0; i < 4; i++) list.postDelayed(() -> h.play(GestureEngine.HAPTIC_TICK), i * 70L);
+        });
 
         header(R.string.sec_haptics);
         hapticChoice();
@@ -208,24 +219,28 @@ public final class SettingsActivity extends Activity {
     }
 
     private void hapticChoice() {
+        levels(Prefs.HAPTIC_LABELS, prefs.haptic(), level -> {
+            prefs.setHaptic(level);
+            Haptics h = new Haptics(this);   // 选了就震一下，直接感受强度
+            h.setLevel(level);
+            h.play(GestureEngine.HAPTIC_CLICK);
+        });
+    }
+
+    /** 横排的几档（关 / 小 / 中 / 大 这类），选中时回调下标。 */
+    private void levels(int[] labels, int current, IntConsumer onPick) {
         RadioGroup g = new RadioGroup(this);
         g.setOrientation(RadioGroup.HORIZONTAL);
-        int current = prefs.haptic();
-        for (int i = 0; i < Prefs.HAPTIC_LABELS.length; i++) {
+        for (int i = 0; i < labels.length; i++) {
             RadioButton b = new RadioButton(this);
-            b.setText(Prefs.HAPTIC_LABELS[i]);
+            b.setText(labels[i]);
             b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
             b.setId(View.generateViewId());
             g.addView(b, new RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
             if (i == current) b.setChecked(true);
-            final int level = i;
+            final int value = i;
             b.setOnCheckedChangeListener((btn, checked) -> {
-                if (checked) {
-                    prefs.setHaptic(level);
-                    Haptics h = new Haptics(this);   // 选了就震一下，直接感受强度
-                    h.setLevel(level);
-                    h.play(GestureEngine.HAPTIC_CLICK);
-                }
+                if (checked) onPick.accept(value);
             });
         }
         list.addView(g);

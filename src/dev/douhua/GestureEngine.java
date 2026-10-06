@@ -69,6 +69,11 @@ public final class GestureEngine {
         public float pointerSpeed = 2.0f;
         /** 加速度：手指每毫秒移动 1dp 时，速度放大 (1 + acceleration) 倍。0 = 不加速。 */
         public float acceleration = 1.0f;
+        /**
+         * 精细移动：慢慢挪时光标速度再乘上这个（1 = 不放慢），挪得越快越接近 1，
+         * 到 PRECISION_FULL_SPEED 完全恢复。学 Mac 触控板：慢的时候能精确落到小目标上，快的时候照样一甩就过去。
+         */
+        public float slowFactor = 0.55f;
         /** 双指移动多少 dp 滚一格。 */
         public float scrollStepDp = 20f;
         /** 自然滚动：内容跟着手指走（Mac 默认）。 */
@@ -84,6 +89,8 @@ public final class GestureEngine {
         /** 单指按住不动 longPressMs 毫秒 = 按下左键（之后移动就是拖动）。 */
         public boolean longPressDrag = true;
         public int longPressMs = 450;
+        /** 长按要手指基本不动：离按下点超过这么远就不算长按。比轻点的容差小——微调光标时手指也只挪一点点，不能被当成长按。 */
+        public float longPressSlopDp = 2.5f;
         /** 双指开合 = 缩放。关掉的话双指只滚动。 */
         public boolean pinchZoom = true;
         /** 两指间距变化多少 dp 缩放一格。 */
@@ -103,6 +110,10 @@ public final class GestureEngine {
     private static final int MAX_POINTERS = 16;
     /** 计算加速度时速度的上限（dp/ms），防止一次抖动把光标甩飞。 */
     private static final float MAX_VELOCITY = 3f;
+    /** 速度到这里（dp/ms，约 5 厘米/秒）精细移动的放慢完全消失。 */
+    private static final float PRECISION_FULL_SPEED = 0.3f;
+    /** 平滑速度的时间常数（ms）：按单帧算的速度忽大忽小，倍率跟着抖，光标会发飘。 */
+    private static final float VELOCITY_SMOOTH_MS = 30f;
     /** 两指间距变化超过这么多、且比两指整体移动多，才判成开合（否则是滚动）。 */
     private static final float PINCH_DECIDE_DP = 16f;
     /**
@@ -144,6 +155,8 @@ public final class GestureEngine {
     private int maxFingers;
     private boolean moved;
     private float remX, remY;
+    /** 平滑后的手指速度（dp/ms），-1 = 本次手势还没算过。 */
+    private float velocity;
     private float scrollAccX, scrollAccY;
     private float swipeAccX, swipeAccY;
     private boolean swipeFired;
@@ -239,6 +252,11 @@ public final class GestureEngine {
             sumDy += curY[i] - lastY[i];
             lastX[i] = curX[i];
             lastY[i] = curY[i];
+            if (timerAction == TIMER_LONG_PRESS
+                    && Math.hypot(curX[i] - downX[i], curY[i] - downY[i]) > cfg.longPressSlopDp) {
+                out.cancelSchedule();   // 手指挪了一点点（比如在微调光标）：不是长按
+                timerAction = TIMER_NONE;
+            }
             if (!moved && Math.hypot(curX[i] - downX[i], curY[i] - downY[i]) > slop) {
                 moved = true;
                 if (timerAction == TIMER_LONG_PRESS) {   // 动了：不是长按
@@ -338,6 +356,7 @@ public final class GestureEngine {
         maxFingers = 0;
         moved = false;
         remX = remY = 0;
+        velocity = -1;
         scrollAccX = scrollAccY = 0;
         swipeAccX = swipeAccY = 0;
         swipeFired = false;
@@ -432,7 +451,9 @@ public final class GestureEngine {
 
     private void pointer(float dx, float dy, long dt) {
         float v = Math.min((float) Math.hypot(dx, dy) / dt, MAX_VELOCITY);
-        float gain = cfg.pointerSpeed * (1 + cfg.acceleration * v);
+        velocity = velocity < 0 ? v : velocity + dt / (VELOCITY_SMOOTH_MS + dt) * (v - velocity);
+        float slow = cfg.slowFactor + (1 - cfg.slowFactor) * Math.min(1f, velocity / PRECISION_FULL_SPEED);
+        float gain = cfg.pointerSpeed * (1 + cfg.acceleration * velocity) * slow;
         float fx = dx * gain + remX;
         float fy = dy * gain + remY;
         int ix = (int) fx;   // 向零取整，余数留到下一帧，慢慢挪也不会丢

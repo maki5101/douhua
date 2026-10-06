@@ -40,6 +40,7 @@
     <string name="sec_pointer">ポインター</string>
     <string name="pointer_speed">ポインターの速度</string>
     <string name="acceleration">加速（速く動かすとさらに速く）</string>
+    <string name="precision">精密移動（ゆっくり動かすとポインターも遅くなり、微調整しやすい）</string>
     <string name="sec_tap">タップ</string>
     <string name="tap_drag">タップ直後に押して動かす = ドラッグ</string>
     <string name="drag_window">ドラッグ待ち時間（ミリ秒。長いほどドラッグしやすく、クリックは遅くなる）</string>
@@ -56,6 +57,7 @@
     <string name="ticks_off">オフ</string>
     <string name="ticks_edge">端のスクロールのみ</string>
     <string name="ticks_all">すべてのスクロール（2本指も）</string>
+    <string name="tick_strength">「カチッ」の強さ</string>
     <string name="sec_haptics">振動</string>
     <string name="haptic_off">オフ</string>
     <string name="haptic_low">弱</string>

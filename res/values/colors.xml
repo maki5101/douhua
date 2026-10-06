@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 图标背景兜底色：原图的平均色 -->
+    <color name="ic_launcher_bg">#FFEBE1EE</color>
+</resources>

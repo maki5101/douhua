@@ -233,6 +233,7 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
         c.tapToDrag = in.readUnsignedByte() == 1;
         c.dragWindowMs = in.readInt();
         float d = in.readFloat();
+        c.slowFactor = in.readFloat();
         synchronized (lock) {
             if (engine != null) engine.cancel();
             engine = new GestureEngine(this, c);

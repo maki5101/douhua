@@ -40,6 +40,7 @@
     <string name="sec_pointer">Puntatore</string>
     <string name="pointer_speed">Velocità del puntatore</string>
     <string name="acceleration">Accelerazione (spinta extra per gesti veloci)</string>
+    <string name="precision">Precisione (i movimenti lenti spostano meno il puntatore, per mirare con precisione)</string>
     <string name="sec_tap">Tocco</string>
     <string name="tap_drag">Tocca, poi tieni premuto e muovi = trascina</string>
     <string name="drag_window">Attesa per trascinare (ms; più lunga = trascinare più facile, clic più lenti)</string>
@@ -56,6 +57,7 @@
     <string name="ticks_off">Disattivata</string>
     <string name="ticks_edge">Solo scorrimento dai bordi</string>
     <string name="ticks_all">Ogni scorrimento (anche a due dita)</string>
+    <string name="tick_strength">Intensità degli «scatti»</string>
     <string name="sec_haptics">Vibrazione</string>
     <string name="haptic_off">Off</string>
     <string name="haptic_low">Bassa</string>

@@ -43,6 +43,7 @@ public final class TestClient {
             out.writeByte(1);   // 轻点拖动
             out.writeInt(220);
             out.writeFloat(2.625f);
+            out.writeFloat(0.55f);   // 精细移动
             out.writeByte(Proto.CMD_LAYOUT);
             out.writeByte(1);
             out.writeInt(displayId);

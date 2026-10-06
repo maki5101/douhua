@@ -35,6 +35,7 @@
 | `src/dev/douhua/TrackpadView.java` | 只画边框和状态字 |
 | `src/dev/douhua/Actions.java` | 统一的动作清单（按钮条 / 角上按钮 / 手势 / 键盘最下面一排共用；加动作只加一行；自定义组合键 id 形如 `combo:键id:标签`） |
 | `res/values*/strings.xml` | 九种语言的界面文字 |
+| `art/icon.webp` → `tools/make_icon.py` | App 图标原图；脚本生成自适应图标的前景层 `res/drawable-nodpi/ic_launcher_fg.webp`（换图后重跑，要 Pillow） |
 | `src/dev/douhua/Combos.java` | 自定义组合键：可选的键、拼 id、起名字、迁移上一版键盘快捷行的存储格式 |
 | `src/dev/douhua/KeyboardSnap.java` | 调整键盘时的轻微吸附，纯 Java（离线测） |
 | `src/dev/douhua/Prefs.java` | 设置键名和默认值 |
@@ -71,6 +72,8 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 
 ## 多语言
 
+- 对外的名字：中文"豆花儿"（app_name 和中文界面、README），日文"豆花"，其它语言音译 Douhua / 더우화 / دوهوا。
+  包名 dev.douhua、项目目录、代码和服务日志里仍叫"豆花"——包名一改就成了另一个 App，没法覆盖安装。
 - 界面文字全在 `res/values*/strings.xml`：values（英文，默认）、values-zh、ja、ko、fr、de、it、es、ar，九个文件条目一一对应，
   **加一条文字要九个文件都加**，带 `%1$s` 这类占位符的各语言要一致。`res/xml/locales_config.xml` 声明支持的语言（系统里可单独给豆花选语言）。
 - 服务读不到 App 的资源，所以服务给 App 的状态只发原因代码（Proto.GRAB_*）和细节，文字由 App 拼；服务日志写给开发者看，保留中文。
@@ -91,7 +94,10 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - 鼠标报文里的 buttons 是当前状态不是增量；释放触摸屏或断开时引擎 cancel，按住的键自然松开。
 - 一次手势里出现过多根手指，就按多指处理到全部抬起。
 - 按键一律带显式 displayId 注入到 DeX 屏。
-- 主窗口平时 `FLAG_NOT_FOCUSABLE`（不抢 DeX 的焦点），只在打字面板打开时去掉。
+- 主窗口平时 `FLAG_NOT_FOCUSABLE`（不抢 DeX 的焦点），打字面板打开时、没有外接屏时去掉（MainActivity.updateFocusable）。
+  没有外接屏时虚拟键盘的键只能发到手机屏，豆花是那块屏的当前应用、窗口却不收焦点，系统等 5 秒没人接就弹"豆花没有响应"
+  （0.1.0 的 bug，日志里是 `Input dispatching timed out (Application does not have a focused window)`）；
+  这时豆花收下自己虚拟键盘（厂商号 Proto.HID_VENDOR）的键并吞掉，免得 Esc 被系统当返回键。
 - 服务只接受豆花 App 的 uid、shell(2000)、root(0) 的连接；shell 本来就能注入输入，放行它不增加权限。
 
 ## 决策记录
@@ -126,6 +132,17 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   就把 edge 标记传给引擎）；引擎里边缘手势单指只滚竖向、不动光标，轻点照常单击；轻点后马上去边缘滑，先完成单击、不当拖动。
 - **横向边缘滚动 + 咔嗒**：边缘标记是 EDGE_VERTICAL / EDGE_HORIZONTAL 的组合，角上两种都有，第一次滑过阈值时按主方向定。
   滚动每发一次滚轮报文就发一个 HAPTIC_TICK（PRIMITIVE_TICK），模拟滚轮的段落感。
+  咔嗒强度单独可调（用户反馈太弱）：小 = TICK×1、中 = CLICK×0.8（默认）、大 = 系统的 HEAVY_CLICK；
+  总强度为"关"时照样不响。键盘调整时的吸附提示也是 HAPTIC_TICK，跟着这个强度。
+- **震动整体强一档**（0.1.0 之后，用户反馈太弱）：小 = CLICK×0.65、中 = CLICK×1、大 = HEAVY_CLICK。
+  用调试版设置页的"试手感"区实测：拿在手里时 HEAVY_CLICK 最强也清脆；按"媒体"类发的 CLICK 比按"硬件反馈"类的稍强，
+  说明系统"触摸交互"震动强度（用户设的 3/5）在打折，但没改用途：媒体类震动在省电模式下会被系统静音。
+  外屏触摸屏没有压力轴（只有 ABS_MT_TOUCH_MAJOR/MINOR）；用户在试验板上实测，用力按和轻碰的接触面大小差不多，
+  所以学不了苹果触控板的"按压点击"。"试手感"区用完已删。
+- **精细移动 + 长按要手指基本不动**（用户反馈微调光标不好控制、微调时被当成长按变成拖动）：
+  原来的加速只在快时放大、慢时不缩小，手指挪 1 毫米光标走十几个像素；现在慢速时再乘 slowFactor（默认 0.55），
+  速度到 0.3 dp/ms 恢复，速度用 30ms 时间常数平滑（单帧速度抖，倍率跟着抖）。
+  长按原来用轻点的容差（6dp，约 1 毫米），微调光标恰好在这范围内慢慢挪就被当成长按；现在长按单独用 2.5dp。
 - **贴边**：触摸由服务独占后，系统的边缘手势碰不到，不再给系统栏 / 刘海留边（只给贴字面板的输入法让位），
   窗口 layoutInDisplayCutoutMode = ALWAYS。
 - **动作清单统一**（用户要求"能选的类型都通用"）：键盘快捷键并入 Actions，新增 Kind.HID（虚拟键盘按组合键）；

@@ -40,6 +40,7 @@
     <string name="sec_pointer">Pointer</string>
     <string name="pointer_speed">Pointer speed</string>
     <string name="acceleration">Acceleration (extra boost for fast swipes)</string>
+    <string name="precision">Fine control (slow movements move the pointer less, for precise aiming)</string>
     <string name="sec_tap">Tapping</string>
     <string name="tap_drag">Tap, then touch and move = drag</string>
     <string name="drag_window">Drag wait time (ms; longer makes dragging easier but clicks slower)</string>
@@ -56,6 +57,7 @@
     <string name="ticks_off">Off</string>
     <string name="ticks_edge">Edge scrolling only</string>
     <string name="ticks_all">All scrolling (including two fingers)</string>
+    <string name="tick_strength">Scroll \"click\" strength</string>
     <string name="sec_haptics">Vibration</string>
     <string name="haptic_off">Off</string>
     <string name="haptic_low">Low</string>

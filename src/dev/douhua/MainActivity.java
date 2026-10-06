@@ -18,6 +18,7 @@ import android.os.Looper;
 import android.os.PersistableBundle;
 import android.text.InputType;
 import android.view.Display;
+import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.OrientationEventListener;
@@ -47,7 +48,8 @@ import java.util.List;
  * 再把按钮事件、震动、三指四指手势发回来，这里负责画面和执行动作。键盘键由服务直接发给虚拟 USB 键盘。
  * 服务没接管时（"贴字"面板打开、服务没连上），按钮和键按普通方式响应触摸。
  *
- * 窗口平时设成"不可获得焦点"，DeX 里的窗口不会因为碰了手机屏而变成未激活。"贴字"面板打开时才临时允许（输入法需要）。
+ * 窗口平时设成"不可获得焦点"，DeX 里的窗口不会因为碰了手机屏而变成未激活。"贴字"面板打开时、没有外接屏时允许，
+ * 见 {@link #updateFocusable}。
  */
 public final class MainActivity extends Activity
         implements Link.Listener, KeyboardPanel.Listener, KeyboardScreen.Listener, DisplayManager.DisplayListener {
@@ -194,6 +196,7 @@ public final class MainActivity extends Activity
     /** 设置页改完回来：按新设置更新按钮和震动强度，参数发给服务。 */
     private void applyPrefs() {
         haptics.setLevel(prefs.haptic());
+        haptics.setTickStrength(prefs.tickStrength());
         applyStripHidden(prefs.stripHidden());
         GestureEngine.Config cfg = prefs.engineConfig();
         float edge = cfg.edgeWidthDp * density;
@@ -441,6 +444,29 @@ public final class MainActivity extends Activity
             case PHONE_TEXT: return textBar.getVisibility() == View.VISIBLE;
             default: return false;
         }
+    }
+
+    /**
+     * 窗口能不能获得焦点。平时不能（不抢 DeX 的焦点）；两种情况要能：
+     * - "贴字"面板开着：输入法要焦点；
+     * - 没有外接屏：虚拟键盘的按键只能发到手机屏上，豆花是这块屏的当前应用，窗口却不收焦点，
+     *   系统等 5 秒没人接，就弹"豆花没有响应"。
+     */
+    private void updateFocusable() {
+        boolean focusable = textBar.getVisibility() == View.VISIBLE || targetDisplay == Display.INVALID_DISPLAY;
+        if (focusable) {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
+        } else {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
+        }
+    }
+
+    /** 没有外接屏时，豆花虚拟键盘的键会送到这里：吞掉，免得 Esc 被系统当返回键把豆花关了。 */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        InputDevice dev = e.getDevice();
+        if (textBar.getVisibility() != View.VISIBLE && dev != null && dev.getVendorId() == Proto.HID_VENDOR) return true;
+        return super.dispatchKeyEvent(e);
     }
 
     private void hideSystemBars() {
@@ -766,8 +792,7 @@ public final class MainActivity extends Activity
         textBar.setVisibility(View.VISIBLE);
         updateActiveButtons();
         pushLayout();   // 先让服务释放触摸屏，输入法要靠触摸
-        // 输入法要求窗口能获得焦点；收起时再改回去
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
+        updateFocusable();   // 输入法要求窗口能获得焦点；收起时再改回去
         input.requestFocus();
         input.post(() -> {
             WindowInsetsController c = getWindow().getInsetsController();
@@ -781,7 +806,7 @@ public final class MainActivity extends Activity
         if (c != null) c.hide(WindowInsets.Type.ime());
         input.clearFocus();
         textBar.setVisibility(View.GONE);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
+        updateFocusable();
         updateActiveButtons();
         pushLayout();
     }
@@ -873,6 +898,7 @@ public final class MainActivity extends Activity
         Display d = DexDisplay.find(displays, own != null ? own.getDisplayId() : Display.DEFAULT_DISPLAY);
         targetDisplay = d != null ? d.getDisplayId() : Display.INVALID_DISPLAY;
         targetName = d != null ? d.getName() : "";
+        updateFocusable();
         updateStatus();
     }
 

@@ -77,13 +77,13 @@ final class Link {
     }
 
     void config(GestureEngine.Config c, float density) {
-        offer(ByteBuffer.allocate(36).put((byte) Proto.CMD_CONFIG)
+        offer(ByteBuffer.allocate(40).put((byte) Proto.CMD_CONFIG)
                 .putFloat(c.pointerSpeed).putFloat(c.acceleration).putFloat(c.scrollStepDp)
                 .put((byte) (c.naturalScroll ? 1 : 0)).put((byte) (c.pinchZoom ? 1 : 0)).put((byte) (c.edgeScroll ? 1 : 0))
                 .put((byte) (c.edgeScrollHorizontal ? 1 : 0)).putFloat(c.edgeWidthDp).put((byte) c.scrollTicks)
                 .put((byte) (c.longPressDrag ? 1 : 0)).putInt(c.longPressMs)
                 .put((byte) (c.tapToDrag ? 1 : 0))
-                .putInt(c.dragWindowMs).putFloat(density));
+                .putInt(c.dragWindowMs).putFloat(density).putFloat(c.slowFactor));
     }
 
     /** regions 每项是 {type, id, left, top, right, bottom}，屏幕像素。 */

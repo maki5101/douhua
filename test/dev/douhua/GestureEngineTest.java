@@ -104,6 +104,9 @@ public final class GestureEngineTest {
         moveCancelsLongPress();
         longPressDisabled();
         secondFingerEndsLongDrag();
+        fineMoveIsNotLongPress();
+        jitterStillLongPress();
+        slowMovesLessThanFast();
 
         System.err.println(checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
@@ -273,6 +276,7 @@ public final class GestureEngineTest {
         GestureEngine.Config c = new GestureEngine.Config();
         c.pointerSpeed = 1.5f;
         c.acceleration = 0;
+        c.slowFactor = 1;   // 只测倍率和余数，不要精细移动
         GestureEngine e = new GestureEngine(r, c);
         e.down(0, 0, 0, 1000);
         int total = 0;
@@ -568,6 +572,63 @@ public final class GestureEngineTest {
         int n = 0;
         for (String s : r.log) if (s.contains(" w=")) n++;
         return n;
+    }
+
+    static void fineMoveIsNotLongPress() {
+        Rec r = new Rec();
+        GestureEngine e = engine(r);
+        e.down(0, 50, 50, 1000);
+        for (int i = 1; i <= 25; i++) {   // 400ms 慢慢挪 4dp：还在轻点容差（6dp）以内，但这是在微调光标
+            e.move(0, 50 + i * 0.16f, 50);
+            e.endFrame(1000 + i * 16);
+        }
+        check(r.has("c"), "微调光标挪过长按容差：取消长按");
+        e.onTimer(1450);
+        eq(r.buttons(), list(), "微调光标时不会变成拖动");
+    }
+
+    static void jitterStillLongPress() {
+        Rec r = new Rec();
+        GestureEngine e = engine(r);
+        e.down(0, 50, 50, 1000);
+        for (int i = 1; i <= 25; i++) {   // 按住不动时触摸点的轻微抖动（±1dp）
+            e.move(0, 50 + (i % 2 == 0 ? 1f : -1f), 50);
+            e.endFrame(1000 + i * 16);
+        }
+        e.onTimer(1450);
+        eq(r.buttons(), list("m1"), "手指基本不动（轻微抖动）照样算长按");
+    }
+
+    static void slowMovesLessThanFast() {
+        GestureEngine.Config c = new GestureEngine.Config();
+        c.pointerSpeed = 1;
+        c.acceleration = 0;
+        Rec slow = new Rec();
+        GestureEngine e1 = new GestureEngine(slow, c);
+        e1.down(0, 0, 0, 1000);
+        for (int i = 1; i <= 40; i++) {   // 每帧 0.5dp（约 5 毫米/秒），共 20dp
+            e1.move(0, i * 0.5f, 0);
+            e1.endFrame(1000 + i * 16);
+        }
+        Rec fast = new Rec();
+        GestureEngine e2 = new GestureEngine(fast, c);
+        e2.down(0, 0, 0, 1000);
+        for (int i = 1; i <= 2; i++) {    // 每帧 10dp（约 10 厘米/秒），共 20dp
+            e2.move(0, i * 10f, 0);
+            e2.endFrame(1000 + i * 16);
+        }
+        int s = sumDx(slow);
+        int f = sumDx(fast);
+        check(s < 14 && s > 8, "慢慢挪 20dp：光标放慢（得到 " + s + "，应在 8–14 之间）");
+        eq(f, 20, "快速划 20dp：不放慢");
+    }
+
+    static int sumDx(Rec r) {
+        int total = 0;
+        for (String s : r.log) {
+            if (s.startsWith("m0 d=")) total += Integer.parseInt(s.substring(5, s.indexOf(',')));
+        }
+        return total;
     }
 
     // ═══════════ 工具 ═══════════

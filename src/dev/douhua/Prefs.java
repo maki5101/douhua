@@ -28,6 +28,9 @@ final class Prefs {
     };
 
     static final int[] HAPTIC_LABELS = {R.string.haptic_off, R.string.haptic_low, R.string.haptic_medium, R.string.haptic_high};
+    /** 精细移动各档（关 / 小 / 中 / 大）慢速时的倍率，见 GestureEngine.Config.slowFactor。 */
+    static final float[] SLOW_FACTORS = {1f, 0.75f, 0.55f, 0.4f};
+    static final int[] TICK_STRENGTH_LABELS = {R.string.haptic_low, R.string.haptic_medium, R.string.haptic_high};
 
     private final SharedPreferences sp;
 
@@ -69,6 +72,15 @@ final class Prefs {
         sp.edit().putInt("haptic", level).apply();
     }
 
+    /** 滚动"咔嗒"的强度：0 小、1 中、2 大，见 Haptics.setTickStrength。 */
+    int tickStrength() {
+        return sp.getInt("tick_strength", 1);
+    }
+
+    void setTickStrength(int strength) {
+        sp.edit().putInt("tick_strength", strength).apply();
+    }
+
     float getFloat(String key, float def) {
         return sp.getFloat(key, def);
     }
@@ -98,6 +110,7 @@ final class Prefs {
         GestureEngine.Config c = new GestureEngine.Config();
         c.pointerSpeed = getFloat("speed", c.pointerSpeed);
         c.acceleration = getFloat("accel", c.acceleration);
+        c.slowFactor = SLOW_FACTORS[Math.max(0, Math.min(SLOW_FACTORS.length - 1, getInt("precision", 2)))];
         c.scrollStepDp = getFloat("scroll_step", c.scrollStepDp);
         c.naturalScroll = getBool("natural", c.naturalScroll);
         c.pinchZoom = getBool("pinch", c.pinchZoom);

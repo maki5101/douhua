@@ -16,7 +16,9 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 9;
+    public static final int VERSION = 10;
+    /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
+    public static final int HID_VENDOR = 0x1209;
 
     // ═══════════ 客户端 → 服务 ═══════════
 
@@ -27,7 +29,7 @@ public final class Proto {
     /**
      * 手势参数：pointerSpeed:f32, acceleration:f32, scrollStepDp:f32, naturalScroll:u8, pinchZoom:u8, edgeScroll:u8,
      * edgeScrollHorizontal:u8, edgeWidthDp:f32, scrollTicks:u8, longPressDrag:u8, longPressMs:i32,
-     * tapToDrag:u8, dragWindowMs:i32, density:f32（每 dp 多少像素）。
+     * tapToDrag:u8, dragWindowMs:i32, density:f32（每 dp 多少像素）, slowFactor:f32。
      */
     public static final int CMD_CONFIG = 4;
     /**

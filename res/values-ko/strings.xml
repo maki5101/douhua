@@ -40,6 +40,7 @@
     <string name="sec_pointer">포인터</string>
     <string name="pointer_speed">포인터 속도</string>
     <string name="acceleration">가속 (빠르게 밀면 더 멀리)</string>
+    <string name="precision">정밀 이동 (천천히 움직이면 포인터도 느려져 미세 조정이 쉬움)</string>
     <string name="sec_tap">탭</string>
     <string name="tap_drag">탭 후 바로 눌러 움직이기 = 드래그</string>
     <string name="drag_window">드래그 대기 시간 (ms, 길수록 드래그가 쉽지만 클릭이 느려짐)</string>
@@ -56,6 +57,7 @@
     <string name="ticks_off">끄기</string>
     <string name="ticks_edge">가장자리 스크롤만</string>
     <string name="ticks_all">모든 스크롤 (두 손가락 포함)</string>
+    <string name="tick_strength">\'딸깍\' 세기</string>
     <string name="sec_haptics">진동</string>
     <string name="haptic_off">끄기</string>
     <string name="haptic_low">약</string>

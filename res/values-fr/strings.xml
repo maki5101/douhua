@@ -40,6 +40,7 @@
     <string name="sec_pointer">Pointeur</string>
     <string name="pointer_speed">Vitesse du pointeur</string>
     <string name="acceleration">Accélération (gain en plus pour les gestes rapides)</string>
+    <string name="precision">Précision (les mouvements lents déplacent moins le pointeur, pour viser finement)</string>
     <string name="sec_tap">Toucher</string>
     <string name="tap_drag">Toucher puis toucher-glisser = faire glisser</string>
     <string name="drag_window">Délai de glisser (ms ; plus long = glisser plus facile, clic plus lent)</string>
@@ -56,6 +57,7 @@
     <string name="ticks_off">Désactivé</string>
     <string name="ticks_edge">Défilement par les bords seulement</string>
     <string name="ticks_all">Tout défilement (y compris à deux doigts)</string>
+    <string name="tick_strength">Force du « clic »</string>
     <string name="sec_haptics">Vibration</string>
     <string name="haptic_off">Désact.</string>
     <string name="haptic_low">Faible</string>

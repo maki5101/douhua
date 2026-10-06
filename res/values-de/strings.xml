@@ -40,6 +40,7 @@
     <string name="sec_pointer">Zeiger</string>
     <string name="pointer_speed">Zeigergeschwindigkeit</string>
     <string name="acceleration">Beschleunigung (schnelle Wischer gehen weiter)</string>
+    <string name="precision">Feinsteuerung (langsame Bewegungen bewegen den Zeiger weniger – für präzises Zielen)</string>
     <string name="sec_tap">Tippen</string>
     <string name="tap_drag">Tippen, dann gedrückt bewegen = Ziehen</string>
     <string name="drag_window">Wartezeit fürs Ziehen (ms; länger = leichter ziehen, Klicks träger)</string>
@@ -56,6 +57,7 @@
     <string name="ticks_off">Aus</string>
     <string name="ticks_edge">Nur beim Randscrollen</string>
     <string name="ticks_all">Jedes Scrollen (auch mit zwei Fingern)</string>
+    <string name="tick_strength">Stärke des „Klick\"</string>
     <string name="sec_haptics">Vibration</string>
     <string name="haptic_off">Aus</string>
     <string name="haptic_low">Leicht</string>

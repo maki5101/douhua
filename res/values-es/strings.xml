@@ -40,6 +40,7 @@
     <string name="sec_pointer">Puntero</string>
     <string name="pointer_speed">Velocidad del puntero</string>
     <string name="acceleration">Aceleración (impulso extra en gestos rápidos)</string>
+    <string name="precision">Precisión (los movimientos lentos mueven menos el puntero, para apuntar con precisión)</string>
     <string name="sec_tap">Toques</string>
     <string name="tap_drag">Toca y luego mantén y mueve = arrastrar</string>
     <string name="drag_window">Espera para arrastrar (ms; más larga = arrastrar más fácil, clics más lentos)</string>
@@ -56,6 +57,7 @@
     <string name="ticks_off">Desactivada</string>
     <string name="ticks_edge">Solo al desplazar por los bordes</string>
     <string name="ticks_all">Todo desplazamiento (también con dos dedos)</string>
+    <string name="tick_strength">Intensidad del «clic»</string>
     <string name="sec_haptics">Vibración</string>
     <string name="haptic_off">No</string>
     <string name="haptic_low">Baja</string>

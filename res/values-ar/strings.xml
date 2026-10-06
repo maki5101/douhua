@@ -40,6 +40,7 @@
     <string name="sec_pointer">المؤشر</string>
     <string name="pointer_speed">سرعة المؤشر</string>
     <string name="acceleration">التسارع (دفعة إضافية عند التمرير السريع)</string>
+    <string name="precision">تحكم دقيق (الحركة البطيئة تحرّك المؤشر أقل، لضبط أدق)</string>
     <string name="sec_tap">النقر</string>
     <string name="tap_drag">انقر ثم المس وحرّك = سحب</string>
     <string name="drag_window">مهلة السحب (ملّي ثانية؛ أطول = سحب أسهل ونقر أبطأ)</string>
@@ -56,6 +57,7 @@
     <string name="ticks_off">إيقاف</string>
     <string name="ticks_edge">تمرير الحواف فقط</string>
     <string name="ticks_all">كل أنواع التمرير (بما فيها بإصبعين)</string>
+    <string name="tick_strength">شدة «الطقطقة»</string>
     <string name="sec_haptics">الاهتزاز</string>
     <string name="haptic_off">إيقاف</string>
     <string name="haptic_low">خفيف</string>

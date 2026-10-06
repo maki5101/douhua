@@ -20,8 +20,7 @@ final class Uhid implements Closeable {
     private static final int UHID_CREATE2 = 11;
     private static final int UHID_INPUT2 = 12;
     private static final short BUS_USB = 0x03;
-    /** pid.codes 的开源项目厂商号。 */
-    private static final int VENDOR = 0x1209;
+    private static final int VENDOR = dev.douhua.Proto.HID_VENDOR;
 
     private final FileDescriptor fd;
     private final ByteBuffer input;

@@ -231,8 +231,8 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 
 ## 进行中（交接；做完删掉这一节）
 
-- **两次存档提交（版本号没改，仍是 0.1.1）**：2026-10-14 蓝牙 HID + TouchRouter 重构 + DexFocus 等；2026-10-15 蓝牙模式由服务独占触摸屏。
-  用户定的是"挡系统手势做完再定版本号"，现在做完了，版本号等用户定。
+- **版本号 0.2.0**（2026-10-15 用户定，单独一个提交）：包括 2026-10-14 蓝牙 HID + TouchRouter 重构 + DexFocus 等、
+  2026-10-15 蓝牙模式由服务独占触摸屏两次提交。正式包（tools/package.sh）还没打，打包、打标签、推送都由人来。
 - **主力机上装的就是最新提交的内容**（`.private/deploy-phone.sh` 装整个工作区，最近一次 2026-10-15 00:06）。装之前那个不带蓝牙的包
   备份在 `.private/main-phone-before-bt.apk`，`bash .private/deploy-phone.sh --rollback` 装回。旧的按段打补丁脚本
   `.private/deploy-phone-nobt.sh` 已经用不上，可以删。

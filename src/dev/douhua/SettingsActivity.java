@@ -616,7 +616,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(24), dp(8), dp(24), 0);
         LinearLayout mods = new LinearLayout(this);
-        String[] modNames = {"Ctrl", "Shift", "Alt", "Win"};
+        String[] modNames = {"Ctrl", "Shift", "Alt", "Super"};
         CheckBox[] checks = new CheckBox[4];
         for (int i = 0; i < 4; i++) {
             checks[i] = new CheckBox(this);

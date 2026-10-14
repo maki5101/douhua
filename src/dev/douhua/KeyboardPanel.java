@@ -15,7 +15,7 @@ import java.util.List;
  * 按下后由豆花服务通过虚拟 USB 键盘发给 DeX——DeX 看到的就是一块真键盘。
  *
  * 字母区照 Gboard 排（手机打字的习惯最重要）；修饰键、数字、快捷键各占一排，不往字母区里硬塞：
- *   功能行   Esc Tab Shift Ctrl Alt Win Caps Fn Del
+ *   功能行   Esc Tab Shift Ctrl Alt Super Caps Fn Del
  *   数字行   1–0（锁定 Shift 时显示 !@#…）
  *   字母三行 q–p / a–l / ⇧ z–m ⌫
  *   底行     符 ，空格 。↵
@@ -117,7 +117,7 @@ final class KeyboardPanel extends LinearLayout {
      * 用户要在任何一层都能锁 Shift（Shift+方向键、Shift+F 键、Ctrl+Shift 组合）。
      */
     private static final Key[] TOP = {
-            k(0x29, "Esc"), k(0x2B, "Tab"), k(0xE1, "Shift"), k(0xE0, "Ctrl"), k(0xE2, "Alt"), k(0xE3, "Win"),
+            k(0x29, "Esc"), k(0x2B, "Tab"), k(0xE1, "Shift"), k(0xE0, "Ctrl"), k(0xE2, "Alt"), k(0xE3, "Super"),
             k(0x39, "Caps"), new Key(FN_BUTTON_ID, "Fn", null, 1, true), k(0x4C, "Del"),
     };
 
@@ -233,6 +233,16 @@ final class KeyboardPanel extends LinearLayout {
 
     // ═══════════ 内部 ═══════════
 
+    /** GUI 键（Windows 上的 Win 键）：一律叫 Super，连着苹果设备时叫 ⌘（它在苹果上就是 Command）。 */
+    private static final int GUI_USAGE = 0xE3;
+    private String guiLabel = "Super";
+
+    void setGuiLabel(String label) {
+        if (label.equals(guiLabel)) return;
+        guiLabel = label;
+        refreshLabels();
+    }
+
     private void rebuild() {
         removeAllViews();
         keys.clear();
@@ -272,6 +282,7 @@ final class KeyboardPanel extends LinearLayout {
             if (shift && key.shifted != null) label = key.shifted;
             // 跟着系统语言的键名
             if (key.id == 0x2C) label = getContext().getString(R.string.key_space);
+            if (key.id == GUI_USAGE) label = guiLabel;
             if (key.id == SYMBOLS_BUTTON_ID) {
                 label = layer == LAYER_SYMBOLS ? "ABC" : getContext().getString(R.string.key_symbols);
             }

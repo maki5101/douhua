@@ -123,7 +123,7 @@
     <string name="act_switch_next_s">Switch</string>
     <string name="act_switch_prev">Switch apps backwards (Alt+Shift+Tab)</string>
     <string name="act_switch_prev_s">◀Switch</string>
-    <string name="act_desktop">Show desktop (Win+D)</string>
+    <string name="act_desktop">Show desktop (Super+D)</string>
     <string name="act_desktop_s">Desktop</string>
     <string name="act_close_window">Close window (Alt+F4)</string>
     <string name="act_close_window_s">Close</string>

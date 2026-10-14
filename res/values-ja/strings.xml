@@ -123,7 +123,7 @@
     <string name="act_switch_next_s">切替</string>
     <string name="act_switch_prev">アプリ逆順切り替え（Alt+Shift+Tab）</string>
     <string name="act_switch_prev_s">逆切替</string>
-    <string name="act_desktop">デスクトップを表示（Win+D）</string>
+    <string name="act_desktop">デスクトップを表示（Super+D）</string>
     <string name="act_desktop_s">デスク</string>
     <string name="act_close_window">ウィンドウを閉じる（Alt+F4）</string>
     <string name="act_close_window_s">閉じる</string>

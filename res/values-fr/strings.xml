@@ -123,7 +123,7 @@
     <string name="act_switch_next_s">Changer</string>
     <string name="act_switch_prev">Changer d\'appli en arrière (Alt+Maj+Tab)</string>
     <string name="act_switch_prev_s">◀Changer</string>
-    <string name="act_desktop">Afficher le bureau (Win+D)</string>
+    <string name="act_desktop">Afficher le bureau (Super+D)</string>
     <string name="act_desktop_s">Bureau</string>
     <string name="act_close_window">Fermer la fenêtre (Alt+F4)</string>
     <string name="act_close_window_s">Fermer</string>

@@ -123,7 +123,7 @@
     <string name="act_switch_next_s">Cambiar</string>
     <string name="act_switch_prev">Cambiar de app hacia atrás (Alt+Mayús+Tab)</string>
     <string name="act_switch_prev_s">◀Cambiar</string>
-    <string name="act_desktop">Mostrar escritorio (Win+D)</string>
+    <string name="act_desktop">Mostrar escritorio (Super+D)</string>
     <string name="act_desktop_s">Escritorio</string>
     <string name="act_close_window">Cerrar ventana (Alt+F4)</string>
     <string name="act_close_window_s">Cerrar</string>

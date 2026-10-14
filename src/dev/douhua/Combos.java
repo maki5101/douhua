@@ -59,7 +59,7 @@ final class Combos {
         if ((mods & CTRL) != 0) s.append("Ctrl+");
         if ((mods & SHIFT) != 0) s.append("Shift+");
         if ((mods & ALT) != 0) s.append("Alt+");
-        if ((mods & WIN) != 0) s.append("Win+");
+        if ((mods & WIN) != 0) s.append("Super+");
         String name = "?";
         for (int i = 0; i < KEY_USAGES.length; i++) {
             if (KEY_USAGES[i] == usage) {

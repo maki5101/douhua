@@ -15,6 +15,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelUuid;
 import android.util.Log;
 import android.view.KeyEvent;
 
@@ -368,6 +369,22 @@ final class BtHid {
         if (address.isEmpty()) return null;
         for (BluetoothDevice d : bondedDevices()) if (d.getAddress().equals(address)) return d;
         return null;
+    }
+
+    /** 苹果设备的服务列表里带这个苹果专用标识（iPad 实测有；AirPods 也有，但它们当不了主机）。 */
+    private static final ParcelUuid APPLE_SERVICE = ParcelUuid.fromString("00000000-deca-fade-deca-deafdecacafe");
+
+    /** 是不是苹果设备（键盘上的 GUI 键在苹果上是 ⌘）。认不出来（没权限、没查过服务）就当不是。 */
+    static boolean isApple(BluetoothDevice d) {
+        if (d == null) return false;
+        try {
+            ParcelUuid[] uuids = d.getUuids();
+            if (uuids == null) return false;
+            for (ParcelUuid u : uuids) if (APPLE_SERVICE.equals(u)) return true;
+        } catch (SecurityException ignored) {
+            // 没权限：当不是
+        }
+        return false;
     }
 
     static String deviceName(BluetoothDevice d) {

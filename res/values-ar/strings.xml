@@ -123,7 +123,7 @@
     <string name="act_switch_next_s">تبديل</string>
     <string name="act_switch_prev">تبديل التطبيقات عكسيًا (Alt+Shift+Tab)</string>
     <string name="act_switch_prev_s">تبديل◀</string>
-    <string name="act_desktop">إظهار سطح المكتب (Win+D)</string>
+    <string name="act_desktop">إظهار سطح المكتب (Super+D)</string>
     <string name="act_desktop_s">سطح المكتب</string>
     <string name="act_close_window">إغلاق النافذة (Alt+F4)</string>
     <string name="act_close_window_s">إغلاق</string>

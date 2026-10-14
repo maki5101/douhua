@@ -241,6 +241,7 @@ public final class MainActivity extends Activity
     /** 设置页改完回来：按新设置更新按钮和震动强度，参数发给服务（蓝牙模式下给本地分流）。 */
     private void applyPrefs() {
         btMode = prefs.btMode();
+        updateGuiLabel();
         local.setConfig(prefs.engineConfig(), density);
         applyBackSwallow();
         if (!btMode) requestOrientationSelf(-1);   // 蓝牙模式下等连服务的结果再定，见 onLinkStatus
@@ -1175,7 +1176,14 @@ public final class MainActivity extends Activity
         btState = state;
         btDevice = deviceName;
         if (state != BtHid.STATE_CONNECTED) local.releaseAll();   // 断了：别让对方那头留着按住的键
+        updateGuiLabel();
         updateStatus();
+    }
+
+    /** 键盘上 GUI 键的名字：蓝牙连着苹果设备时叫 ⌘，其余（DeX、别的主机）一律叫 Super。 */
+    private void updateGuiLabel() {
+        boolean apple = btMode && btState == BtHid.STATE_CONNECTED && BtHid.isApple(bt.connectedDevice());
+        keyboard.setGuiLabel(apple ? "⌘" : "Super");
     }
 
     private String btStatusText() {

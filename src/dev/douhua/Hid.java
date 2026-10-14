@@ -124,15 +124,19 @@ public final class Hid {
         return 1 << (usage - 0xE0);
     }
 
-    /** 蓝牙用：键盘 + 鼠标 + 媒体键合成一个描述符，各自带报文编号。 */
+    /**
+     * 蓝牙用：鼠标 + 键盘 + 媒体键合成一个描述符，各自带报文编号。
+     * 鼠标排第一是 2026-10-15 排查 iPad 点击无效时改的，后来发现那是 iPadOS 自己的毛病（别的鼠标当时也点不了），
+     * 不是顺序的问题；这个顺序在 iPad、Linux 上都验过，就留着。顺序不影响报文编号和格式，换顺序不用重新配对。
+     */
     public static byte[] combinedDescriptor() {
-        byte[] k = withReportId(KEYBOARD_DESC, REPORT_KEYBOARD);
         byte[] m = withReportId(MOUSE_DESC, REPORT_MOUSE);
+        byte[] k = withReportId(KEYBOARD_DESC, REPORT_KEYBOARD);
         byte[] c = withReportId(CONSUMER_DESC, REPORT_CONSUMER);
-        byte[] all = new byte[k.length + m.length + c.length];
-        System.arraycopy(k, 0, all, 0, k.length);
-        System.arraycopy(m, 0, all, k.length, m.length);
-        System.arraycopy(c, 0, all, k.length + m.length, c.length);
+        byte[] all = new byte[m.length + k.length + c.length];
+        System.arraycopy(m, 0, all, 0, m.length);
+        System.arraycopy(k, 0, all, m.length, k.length);
+        System.arraycopy(c, 0, all, m.length + k.length, c.length);
         return all;
     }
 

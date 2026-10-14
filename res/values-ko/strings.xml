@@ -123,7 +123,7 @@
     <string name="act_switch_next_s">전환</string>
     <string name="act_switch_prev">앱 역순 전환 (Alt+Shift+Tab)</string>
     <string name="act_switch_prev_s">역전환</string>
-    <string name="act_desktop">바탕화면 보기 (Win+D)</string>
+    <string name="act_desktop">바탕화면 보기 (Super+D)</string>
     <string name="act_desktop_s">바탕화면</string>
     <string name="act_close_window">창 닫기 (Alt+F4)</string>
     <string name="act_close_window_s">창 닫기</string>

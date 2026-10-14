@@ -176,6 +176,7 @@
     <string name="act_volume_down_s">صوت−</string>
     <string name="act_mute">كتم الصوت</string>
     <string name="act_mute_s">كتم</string>
+    <string name="act_lang_switch">تبديل لغة الإدخال (🌐)</string>
     <string name="sec_connection">طريقة الاتصال</string>
     <string name="conn_dex">DeX: التحكم في الشاشة الخارجية لهذا الهاتف (يلزم تشغيل الخدمة من حاسوب)</string>
     <string name="conn_bt">بلوتوث: لوحة مفاتيح وفأرة بلوتوث لحاسوب أو جهاز لوحي أو تلفاز (بدون خدمة)</string>

@@ -637,7 +637,7 @@ public final class MainActivity extends Activity
             }
             return;
         }
-        if (id == KeyboardPanel.SYMBOLS_BUTTON_ID || id == KeyboardPanel.FN_BUTTON_ID
+        if (id == KeyboardPanel.SYMBOLS_BUTTON_ID || id == KeyboardPanel.FN_BUTTON_ID || id == KeyboardPanel.GLOBE_BUTTON_ID
                 || (id >= KeyboardPanel.ROW_ACTION_BASE_ID && id < KeyboardPanel.ROW_ACTION_BASE_ID + keyboardRow.size())) {
             if (down) onKeyHaptic();
             keyboard.showPressed(id, down);
@@ -687,11 +687,13 @@ public final class MainActivity extends Activity
         else link.hidKey(key, down);
     }
 
-    /** 键盘上的"符" / "Fn"，和快捷行里不是键盘组合键的动作。 */
+    /** 键盘上的"符" / "Fn" / 🌐，和快捷行里不是键盘组合键的动作。 */
     @Override
     public void onSpecialKey(int id) {
         if (id == KeyboardPanel.SYMBOLS_BUTTON_ID || id == KeyboardPanel.FN_BUTTON_ID) {
             keyboard.onLayerButton(id);
+        } else if (id == KeyboardPanel.GLOBE_BUTTON_ID) {
+            run(Actions.get("lang_switch"));
         } else if (id >= KeyboardPanel.ROW_ACTION_BASE_ID) {
             int i = id - KeyboardPanel.ROW_ACTION_BASE_ID;
             if (i < keyboardRow.size()) run(keyboardRow.get(i));

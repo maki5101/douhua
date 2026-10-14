@@ -176,6 +176,7 @@
     <string name="act_volume_down_s">Leise−</string>
     <string name="act_mute">Stumm</string>
     <string name="act_mute_s">Stumm</string>
+    <string name="act_lang_switch">Eingabesprache wechseln (🌐)</string>
     <string name="sec_connection">Verbindung</string>
     <string name="conn_dex">DeX: externen Bildschirm dieses Handys steuern (Dienst muss vom Computer gestartet werden)</string>
     <string name="conn_bt">Bluetooth: als Bluetooth-Tastatur und -Maus für Computer, Tablet oder TV (kein Dienst nötig)</string>

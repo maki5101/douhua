@@ -176,6 +176,7 @@
     <string name="act_volume_down_s">Vol−</string>
     <string name="act_mute">Silenciar</string>
     <string name="act_mute_s">Silencio</string>
+    <string name="act_lang_switch">Cambiar idioma de entrada (🌐)</string>
     <string name="sec_connection">Conexión</string>
     <string name="conn_dex">DeX: controlar la pantalla externa de este teléfono (hay que iniciar el servicio desde un ordenador)</string>
     <string name="conn_bt">Bluetooth: teclado y ratón Bluetooth para un ordenador, tableta o TV (sin servicio)</string>

@@ -176,6 +176,7 @@
     <string name="act_volume_down_s">音量−</string>
     <string name="act_mute">ミュート</string>
     <string name="act_mute_s">消音</string>
+    <string name="act_lang_switch">入力言語を切り替え（🌐）</string>
     <string name="sec_connection">接続方法</string>
     <string name="conn_dex">DeX：このスマホにつないだ外部ディスプレイを操作（PC からサービスの起動が必要）</string>
     <string name="conn_bt">Bluetooth：Bluetooth キーボード・マウスとして PC、タブレット、テレビを操作（サービス不要）</string>

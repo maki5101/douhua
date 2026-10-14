@@ -176,6 +176,7 @@
     <string name="act_volume_down_s">音量−</string>
     <string name="act_mute">静音</string>
     <string name="act_mute_s">静音</string>
+    <string name="act_lang_switch">切换输入法（🌐）</string>
     <string name="sec_connection">连接方式</string>
     <string name="conn_dex">DeX：控制这台手机接的外接屏（要电脑启动服务）</string>
     <string name="conn_bt">蓝牙：当成蓝牙键盘鼠标，控制电脑、平板、电视（不用电脑启动服务）</string>

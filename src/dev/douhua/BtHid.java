@@ -440,6 +440,7 @@ final class BtHid {
             case KeyEvent.KEYCODE_VOLUME_UP: return 0x00E9;
             case KeyEvent.KEYCODE_VOLUME_DOWN: return 0x00EA;
             case KeyEvent.KEYCODE_VOLUME_MUTE: return 0x00E2;
+            case KeyEvent.KEYCODE_LANGUAGE_SWITCH: return 0x029D;   // AC Next Keyboard Layout Select（🌐）
             default: return 0;
         }
     }

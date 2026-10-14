@@ -157,6 +157,8 @@ final class Actions {
         key("volume_up", R.string.act_volume_up, null, R.string.act_volume_up_s, null, KeyEvent.KEYCODE_VOLUME_UP);
         key("volume_down", R.string.act_volume_down, null, R.string.act_volume_down_s, null, KeyEvent.KEYCODE_VOLUME_DOWN);
         key("mute", R.string.act_mute, null, R.string.act_mute_s, null, KeyEvent.KEYCODE_VOLUME_MUTE);
+        // 苹果键盘上 🌐 那个键：蓝牙发标准的"下一个键盘布局"媒体键，DeX 注入安卓的切换输入法键
+        key("lang_switch", R.string.act_lang_switch, null, 0, "🌐", KeyEvent.KEYCODE_LANGUAGE_SWITCH);
     }
 
     private Actions() {}

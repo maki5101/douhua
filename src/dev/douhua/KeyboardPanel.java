@@ -47,6 +47,8 @@ final class KeyboardPanel extends LinearLayout {
     /** "符"和"Fn"切换键的按钮编号（不是 HID 键，由 App 自己处理）。 */
     static final int SYMBOLS_BUTTON_ID = 300;
     static final int FN_BUTTON_ID = 301;
+    /** 🌐：切换输入法（动作 lang_switch），由 App 执行。 */
+    static final int GLOBE_BUTTON_ID = 302;
     /** 快捷行里不是键盘组合键的动作（返回、键盘界面……）：按钮编号 = 这个 + 位置。 */
     static final int ROW_ACTION_BASE_ID = 600;
 
@@ -148,7 +150,8 @@ final class KeyboardPanel extends LinearLayout {
     };
 
     private static final Key[] BOTTOM = {
-            new Key(SYMBOLS_BUTTON_ID, "?123", null, 1.5f, true), k(0x36, ","), wide(0x2C, "Space", 5),
+            new Key(SYMBOLS_BUTTON_ID, "?123", null, 1.5f, true), new Key(GLOBE_BUTTON_ID, "🌐", null, 1, true),
+            k(0x36, ","), wide(0x2C, "Space", 4),
             k(0x37, "."), wide(0x28, "↵", 1.5f),
     };
 
@@ -258,7 +261,9 @@ final class KeyboardPanel extends LinearLayout {
     private void addRow(Key[] row) {
         LinearLayout line = new LinearLayout(getContext());
         for (Key key : row) {
-            TextView v = Style.button(getContext(), key.label.length() > 1 && !key.label.equals("⌫") ? 13 : 18);
+            // 一个字（含 🌐 这种占两个 char 的）用大字，多个字的键名用小字
+            boolean oneChar = key.label.codePointCount(0, key.label.length()) <= 1;
+            TextView v = Style.button(getContext(), oneChar ? 18 : 13);
             int index = views.size();
             keys.add(key);
             views.add(v);

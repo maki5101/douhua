@@ -176,6 +176,7 @@
     <string name="act_volume_down_s">볼륨−</string>
     <string name="act_mute">음소거</string>
     <string name="act_mute_s">음소거</string>
+    <string name="act_lang_switch">입력 언어 전환 (🌐)</string>
     <string name="sec_connection">연결 방식</string>
     <string name="conn_dex">DeX: 이 폰에 연결된 외부 디스플레이 조작 (컴퓨터에서 서비스 시작 필요)</string>
     <string name="conn_bt">블루투스: 블루투스 키보드·마우스로 컴퓨터, 태블릿, TV 조작 (서비스 불필요)</string>

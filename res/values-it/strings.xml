@@ -176,4 +176,23 @@
     <string name="act_volume_down_s">Vol−</string>
     <string name="act_mute">Muto</string>
     <string name="act_mute_s">Muto</string>
+    <string name="sec_connection">Connessione</string>
+    <string name="conn_dex">DeX: controlla lo schermo esterno di questo telefono (serve avviare il servizio da un computer)</string>
+    <string name="conn_bt">Bluetooth: tastiera e mouse Bluetooth per computer, tablet o TV (nessun servizio)</string>
+    <string name="bt_host">Dispositivo da collegare (associato)</string>
+    <string name="bt_no_bonded">Ancora nessun dispositivo associato</string>
+    <string name="bt_pair">+ Associa un nuovo dispositivo (rendi visibile questo telefono)</string>
+    <string name="bt_pair_hint">Tocca la riga sopra, poi aggiungi un dispositivo nelle impostazioni Bluetooth del computer / tablet / TV e scegli questo telefono; tieni Douhua aperto durante l\'associazione. Se erano già stati associati, rimuovi prima l\'associazione da entrambe le parti, altrimenti l\'altro dispositivo non vedrà tastiera e mouse. Dopo l\'associazione, se si è collegato anche all\'audio chiamate o multimediale del telefono, disattivali nelle impostazioni Bluetooth di sistema, altrimenti tastiera e mouse andranno a scatti.</string>
+    <string name="bt_audio_warning">%1$s è collegato anche all\'audio chiamate / multimediale di questo telefono: il Bluetooth risparmia energia come con una cuffia e tastiera e mouse vanno a scatti (il cursore continua a muoversi dopo che ti fermi). Tocca qui per aprire le impostazioni Bluetooth di sistema e disattiva l\'audio chiamate e multimediale per questo dispositivo (dopo il sistema potrebbe mostrarlo come disconnesso; Douhua funziona comunque).</string>
+    <string name="bt_state_starting">Avvio del Bluetooth…</string>
+    <string name="bt_state_no_permission">Manca il permesso «Dispositivi nelle vicinanze»: concedilo in Impostazioni → Connessione</string>
+    <string name="bt_state_disabled">Il Bluetooth è spento; Douhua riprende appena lo accendi</string>
+    <string name="bt_state_unsupported">Questo telefono non può fare da tastiera e mouse Bluetooth</string>
+    <string name="bt_state_waiting">In attesa: collegati a questo telefono dalle impostazioni Bluetooth dell\'altro dispositivo, o scegline uno nelle Impostazioni</string>
+    <string name="bt_state_connecting">Connessione a %1$s…</string>
+    <string name="bt_state_connected">Bluetooth: %1$s</string>
+    <string name="bt_state_failed">Il Bluetooth non si è avviato: forse un\'altra app fa già da tastiera Bluetooth; chiudila e riapri Douhua</string>
+    <string name="bt_no_phone_text">Incollare testo non è possibile via Bluetooth: gli appunti restano sul telefono</string>
+    <string name="bt_no_such_key">Questo tasto non è disponibile via Bluetooth</string>
+    <string name="drag_hum">Leggera vibrazione continua durante il trascinamento (ricorda che il tasto sinistro è premuto)</string>
 </resources>

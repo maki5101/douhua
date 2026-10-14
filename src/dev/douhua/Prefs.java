@@ -81,6 +81,15 @@ final class Prefs {
         sp.edit().putInt("tick_strength", strength).apply();
     }
 
+    /** 拖动时的持续轻震：0 关、1 小、2 中、3 大，见 Haptics.setDragHum。 */
+    int dragHum() {
+        return sp.getInt("drag_hum", 1);
+    }
+
+    void setDragHum(int level) {
+        sp.edit().putInt("drag_hum", level).apply();
+    }
+
     float getFloat(String key, float def) {
         return sp.getFloat(key, def);
     }
@@ -123,6 +132,26 @@ final class Prefs {
         c.tapToDrag = getBool("tap_drag", c.tapToDrag);
         c.dragWindowMs = getInt("drag_ms", c.dragWindowMs);
         return c;
+    }
+
+    // ═══════════ 连接方式 ═══════════
+
+    /** 连接方式：false = DeX（这台手机的外接屏，靠服务），true = 蓝牙（手机当蓝牙键盘鼠标，连电脑、平板、电视）。 */
+    boolean btMode() {
+        return sp.getBoolean("bt_mode", false);
+    }
+
+    void setBtMode(boolean on) {
+        sp.edit().putBoolean("bt_mode", on).apply();
+    }
+
+    /** 蓝牙模式下上次连的那台（地址），打开时自动连它；空 = 还没连过。 */
+    String btHost() {
+        return sp.getString("bt_host", "");
+    }
+
+    void setBtHost(String address) {
+        sp.edit().putString("bt_host", address).apply();
     }
 
     /** 旋转按钮选的屏幕方向（Surface.ROTATION_*）；-1 = 没按过，不动系统方向。 */

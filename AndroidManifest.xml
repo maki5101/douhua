@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 接上外接显示器时弹"点这里把手机当触控板"的通知 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 蓝牙模式：手机当蓝牙键盘鼠标（连已配对的设备）；配对新设备时让别的设备搜到这台手机 -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
 
     <application
         android:allowBackup="false"

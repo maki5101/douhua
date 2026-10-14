@@ -176,4 +176,23 @@
     <string name="act_volume_down_s">音量−</string>
     <string name="act_mute">静音</string>
     <string name="act_mute_s">静音</string>
+    <string name="sec_connection">连接方式</string>
+    <string name="conn_dex">DeX：控制这台手机接的外接屏（要电脑启动服务）</string>
+    <string name="conn_bt">蓝牙：当成蓝牙键盘鼠标，控制电脑、平板、电视（不用电脑启动服务）</string>
+    <string name="bt_host">连哪台设备（配对过的）</string>
+    <string name="bt_no_bonded">还没有配对过的设备</string>
+    <string name="bt_pair">＋ 配对新设备（让别的设备能搜到这台手机）</string>
+    <string name="bt_pair_hint">点上面那行，再在电脑 / 平板 / 电视的蓝牙设置里添加设备、选这台手机，配对时豆花儿要开着。以前配对过的设备，要先在两边都删掉再重新配对，否则对方认不出它是键盘鼠标。配对后要是它也连上了手机的通话或媒体音频，到系统蓝牙设置里关掉，否则键盘鼠标会卡。</string>
+    <string name="bt_audio_warning">%1$s 还连着这台手机的通话 / 媒体音频，蓝牙会按耳机来省电，键盘鼠标会一卡一卡、停手后光标还在走。点这里打开系统蓝牙设置，把它的通话和媒体音频关掉（之后系统那一页可能显示已断开，豆花儿照常能用）。</string>
+    <string name="bt_state_starting">正在准备蓝牙……</string>
+    <string name="bt_state_no_permission">没有「附近的设备」权限：在设置 → 连接方式里打开</string>
+    <string name="bt_state_disabled">手机蓝牙关着，打开后自动继续</string>
+    <string name="bt_state_unsupported">这台手机不支持当蓝牙键盘鼠标</string>
+    <string name="bt_state_waiting">等待连接：在电脑 / 平板的蓝牙设置里连这台手机，或在设置里选一台</string>
+    <string name="bt_state_connecting">正在连接 %1$s……</string>
+    <string name="bt_state_connected">蓝牙：%1$s</string>
+    <string name="bt_state_failed">蓝牙没启动成功：可能有别的应用正在当蓝牙键盘，关掉它再打开豆花儿</string>
+    <string name="bt_no_phone_text">蓝牙模式下不能贴字：剪贴板在手机上，到不了对方</string>
+    <string name="bt_no_such_key">蓝牙模式下没有这个键</string>
+    <string name="drag_hum">拖动时持续轻震（提醒你正按着左键）</string>
 </resources>

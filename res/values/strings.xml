@@ -176,4 +176,23 @@
     <string name="act_volume_down_s">Vol−</string>
     <string name="act_mute">Mute</string>
     <string name="act_mute_s">Mute</string>
+    <string name="sec_connection">Connection</string>
+    <string name="conn_dex">DeX: control this phone\'s external display (needs the service started from a computer)</string>
+    <string name="conn_bt">Bluetooth: act as a Bluetooth keyboard and mouse for a computer, tablet or TV (no service needed)</string>
+    <string name="bt_host">Device to connect to (paired)</string>
+    <string name="bt_no_bonded">No paired devices yet</string>
+    <string name="bt_pair">+ Pair a new device (make this phone discoverable)</string>
+    <string name="bt_pair_hint">Tap the line above, then add a device in the computer / tablet / TV Bluetooth settings and pick this phone; keep Douhua open while pairing. If they were paired before, remove the pairing on both sides first, or the other device won\'t see the keyboard and mouse. After pairing, if it also connected to the phone\'s call or media audio, turn those off in the system Bluetooth settings, or the keyboard and mouse will stutter.</string>
+    <string name="bt_audio_warning">%1$s is also connected to this phone\'s call / media audio, so Bluetooth saves power like a headset and the keyboard and mouse stutter (the cursor keeps moving after you stop). Tap here to open the system Bluetooth settings and turn off call and media audio for it (the system may then show it as disconnected; Douhua still works).</string>
+    <string name="bt_state_starting">Starting Bluetooth…</string>
+    <string name="bt_state_no_permission">No \"Nearby devices\" permission: allow it under Settings → Connection</string>
+    <string name="bt_state_disabled">Bluetooth is off; Douhua will continue when you turn it on</string>
+    <string name="bt_state_unsupported">This phone can\'t act as a Bluetooth keyboard and mouse</string>
+    <string name="bt_state_waiting">Waiting: connect to this phone from the other device\'s Bluetooth settings, or pick one in Settings</string>
+    <string name="bt_state_connecting">Connecting to %1$s…</string>
+    <string name="bt_state_connected">Bluetooth: %1$s</string>
+    <string name="bt_state_failed">Bluetooth didn\'t start: another app may be acting as a Bluetooth keyboard; close it and reopen Douhua</string>
+    <string name="bt_no_phone_text">Text pasting isn\'t available over Bluetooth: the clipboard stays on the phone</string>
+    <string name="bt_no_such_key">This key isn\'t available over Bluetooth</string>
+    <string name="drag_hum">Gentle hum while dragging (reminds you the left button is held)</string>
 </resources>

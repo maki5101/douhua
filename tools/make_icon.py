@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""从 art/icon.webp 生成 App 图标的前景层 res/drawable-nodpi/ic_launcher_fg.webp。
+"""从 art/icon.webp 生成 App 图标的前景层 res/drawable-nodpi/ic_launcher_fg.webp，
+和设置页彩蛋（连点版本号蹦出来的大图）res/drawable-nodpi/egg.webp。
 
 换图标：替换 art/icon.webp（正方形），运行 python3 tools/make_icon.py，再 tools/build.sh。
 需要 Pillow（pip install --user pillow），只有生成图标时要，平时构建不用。
@@ -19,6 +20,8 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "art" / "icon.webp"
 OUT = ROOT / "res" / "drawable-nodpi" / "ic_launcher_fg.webp"
+EGG = ROOT / "res" / "drawable-nodpi" / "egg.webp"
+EGG_SIZE = 1024      # 手机屏宽 1080 左右，够清楚；这张图色块柔和，压出来约 30 KB
 
 LAYER = 432          # 108dp × 4（xxxhdpi），系统按屏幕密度缩小
 VISIBLE = 288        # 中间露出来的 72dp × 4
@@ -42,6 +45,8 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     layer.save(OUT, "WEBP", quality=92, method=6)   # 不带原图的元数据
     print(f"已生成 {OUT.relative_to(ROOT)}（{OUT.stat().st_size // 1024} KB）", file=sys.stderr)
+    img.resize((EGG_SIZE, EGG_SIZE), Image.LANCZOS).save(EGG, "WEBP", quality=90, method=6)
+    print(f"已生成 {EGG.relative_to(ROOT)}（{EGG.stat().st_size // 1024} KB）", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.Manifest;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
@@ -16,6 +17,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PersistableBundle;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.view.Display;
 import android.view.InputDevice;
@@ -34,6 +36,9 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,15 +49,19 @@ import java.util.List;
  * - 键盘屏：整屏是外接键盘（大小位置可调），键盘上方空出来的地方是小触控板。
  * 整个界面纯黑，只有按钮和触控板的暗灰边框。
  *
- * 触摸由豆花服务处理：豆花在前台时，服务独占这块屏的触摸屏，按这里报上去的区域位置识别手势、判断按到了哪个按钮 / 键，
- * 再把按钮事件、震动、三指四指手势发回来，这里负责画面和执行动作。键盘键由服务直接发给虚拟 USB 键盘。
- * 服务没接管时（"贴字"面板打开、服务没连上），按钮和键按普通方式响应触摸。
+ * 两种连接方式，界面、手势、动作都一样，区别只在触摸谁来收、键盘鼠标发到哪：
+ * - DeX：豆花在前台时，服务独占这块屏的触摸屏，按这里报上去的区域位置分流（{@link TouchRouter}），
+ *   鼠标键盘发给虚拟 USB 设备，再把按钮事件、震动、三指四指手势发回来，这里负责画面和执行动作。
+ *   服务没接管时（"贴字"面板打开、服务没连上），按钮和键按普通方式响应触摸。
+ * - 蓝牙：不用服务。这里自己收触摸（{@link #dispatchTouchEvent}），交给同一个 TouchRouter 分流，
+ *   鼠标键盘经 {@link BtHid} 发给配对的电脑 / 平板 / 电视。服务要是开着，只借它转屏，不让它接管触摸。
  *
  * 窗口平时设成"不可获得焦点"，DeX 里的窗口不会因为碰了手机屏而变成未激活。"贴字"面板打开时、没有外接屏时允许，
  * 见 {@link #updateFocusable}。
  */
 public final class MainActivity extends Activity
-        implements Link.Listener, KeyboardPanel.Listener, KeyboardScreen.Listener, DisplayManager.DisplayListener {
+        implements Link.Listener, KeyboardPanel.Listener, KeyboardScreen.Listener, DisplayManager.DisplayListener,
+        BtHid.Listener {
 
     /** 按钮条收起后，触控板四角的小按钮（左上、右上、右下可自定义；左下 ☰ 固定，是回到按钮条和设置的入口）。 */
     private static final int CORNER_BASE_ID = 500;
@@ -118,9 +127,28 @@ public final class MainActivity extends Activity
     private int targetDisplay = Display.INVALID_DISPLAY;
     private String targetName = "";
     private boolean linkOk;
+    /** 这次回到前台后连上过服务没有：一次都没连上才算"没有服务"，蓝牙模式下改由 App 自己请求方向。 */
+    private boolean linkSeen;
+    /** App 自己向系统请求的方向（Surface.ROTATION_*，-1 = 没请求），见 {@link #requestOrientationSelf}。 */
+    private int requestedRotation = -1;
     private String linkMessage = "";
     private boolean grabbed;
     private String grabMessage = "";
+    // ── 蓝牙模式 ──
+    private boolean btMode;
+    private BtHid bt;
+    private boolean btAcquired;
+    private int btState = BtHid.STATE_OFF;
+    private String btDevice = "";
+    /** 蓝牙模式下的触摸分流（DeX 模式下这件事在服务里做）。 */
+    private final TouchRouter local = new TouchRouter(new LocalOutput());
+    private final Runnable localTimer = () -> local.onTimer(SystemClock.uptimeMillis());
+    /** 这次手势由 local 分流（按下时定，一直到全部抬起）。 */
+    private boolean localGesture;
+    /** 蓝牙模式下拦住系统的返回手势：从屏幕边缘横划移光标时不能把豆花关掉（要走有"退出"按钮）。 */
+    private final OnBackInvokedCallback swallowBack = () -> { };
+    private boolean backSwallowed;
+
     /** 手机实际朝向（度），转屏时决定横屏朝哪边。-1 = 不知道（平放）。 */
     private int tilt = OrientationEventListener.ORIENTATION_UNKNOWN;
     private OrientationEventListener tiltListener;
@@ -133,6 +161,7 @@ public final class MainActivity extends Activity
         prefs = new Prefs(this);
         haptics = new Haptics(this);
         displays = getSystemService(DisplayManager.class);
+        bt = BtHid.get(this);
         density = getResources().getDisplayMetrics().density;
         linkMessage = getString(R.string.status_connecting);
         tiltListener = new OrientationEventListener(this) {
@@ -158,10 +187,18 @@ public final class MainActivity extends Activity
     @Override
     protected void onStart() {
         super.onStart();
+        linkSeen = false;
         applyPrefs();
         refreshDisplay();
         displays.registerDisplayListener(this, main);
         link.start();
+        if (btMode) {
+            bt.acquire(this);
+            btAcquired = true;
+            // 通知权限的对话框还没答完时先不问（同一时刻只能问一组），答完在 onRequestPermissionsResult 里接着问
+            boolean notifPending = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED;
+            if (!BtHid.hasPermission(this) && !notifPending) requestBtPermissions();
+        }
     }
 
     @Override
@@ -179,7 +216,10 @@ public final class MainActivity extends Activity
         // 先让服务释放触摸屏：别的界面（设置页、来电）需要触摸
         resumed = false;
         tiltListener.disable();
+        haptics.stopHum();
         main.removeCallbacks(heartbeat);
+        local.releaseAll();   // 蓝牙模式：按着的键、鼠标键都松开（DeX 模式下 local 本来就闲着）
+        localGesture = false;
         pushLayout();
         super.onPause();
     }
@@ -189,14 +229,23 @@ public final class MainActivity extends Activity
         closeTextBar();
         link.stop();
         grabbed = false;
+        if (btAcquired) {
+            bt.release(this);
+            btAcquired = false;
+        }
         displays.unregisterDisplayListener(this);
         super.onStop();
     }
 
-    /** 设置页改完回来：按新设置更新按钮和震动强度，参数发给服务。 */
+    /** 设置页改完回来：按新设置更新按钮和震动强度，参数发给服务（蓝牙模式下给本地分流）。 */
     private void applyPrefs() {
+        btMode = prefs.btMode();
+        local.setConfig(prefs.engineConfig(), density);
+        applyBackSwallow();
+        if (!btMode) requestOrientationSelf(-1);   // 蓝牙模式下等连服务的结果再定，见 onLinkStatus
         haptics.setLevel(prefs.haptic());
         haptics.setTickStrength(prefs.tickStrength());
+        haptics.setDragHum(prefs.dragHum());
         applyStripHidden(prefs.stripHidden());
         GestureEngine.Config cfg = prefs.engineConfig();
         float edge = cfg.edgeWidthDp * density;
@@ -478,12 +527,36 @@ public final class MainActivity extends Activity
 
     // ═══════════ 告诉服务各区域在哪 ═══════════
 
-    /** 服务独占触摸屏的条件之一：豆花在前台、"贴字"面板没开、键盘不在调整模式（拖动要 App 自己收触摸）。 */
+    /**
+     * 把各区域的位置交给分流的一方：DeX 模式发给服务，蓝牙模式给本地的 TouchRouter。
+     * 服务独占触摸屏的条件之一是 active：豆花在前台、"贴字"面板没开、键盘不在调整模式（拖动要 App 自己收触摸）；
+     * 蓝牙模式下永远报 inactive，服务（要是开着）不接管触摸。
+     */
     private void pushLayout() {
-        if (!link.isConnected() || pad == null) return;
+        if (pad == null) return;
         boolean keyboardShown = keyboardScreen.getVisibility() == View.VISIBLE;
         if (keyboardShown ? keyboardScreen.getWidth() == 0 : pad.getWidth() == 0) return;
-        boolean active = resumed && textBar.getVisibility() != View.VISIBLE && !keyboardScreen.isAdjusting();
+        List<int[]> regions = collectRegions(keyboardShown);
+        if (btMode) {
+            TouchRouter.Region[] rs = new TouchRouter.Region[regions.size()];
+            for (int i = 0; i < rs.length; i++) {
+                int[] r = regions.get(i);
+                rs[i] = new TouchRouter.Region(r[0], r[1], r[2], r[3], r[4], r[5]);
+            }
+            local.setRegions(rs);
+        }
+        updateGestureExclusion();
+        if (link.isConnected()) sendLayout(localActive() && !btMode, regions);
+        updateStatus();
+    }
+
+    /** 豆花在前台、"贴字"面板没开、键盘不在调整模式：触摸由分流处理（否则按普通方式交给各个按钮）。 */
+    private boolean localActive() {
+        return resumed && textBar.getVisibility() != View.VISIBLE && !keyboardScreen.isAdjusting();
+    }
+
+    /** 区域列表，每项 {type, id, left, top, right, bottom}（屏幕像素）；叠在上面的排在前面。 */
+    private List<int[]> collectRegions(boolean keyboardShown) {
         List<int[]> regions = new ArrayList<>();
         if (keyboardShown) {
             for (int i = 0; i < kbToolbar.size(); i++) {
@@ -493,8 +566,7 @@ public final class MainActivity extends Activity
             }
             keyboard.collectRegions(regions);
             if (keyboardScreen.isPadUsable()) addRegion(regions, miniPad, Proto.REGION_PAD, 0);
-            sendLayout(active, regions);
-            return;
+            return regions;
         }
         // 四角的小按钮叠在触控板上，要排在触控板前面（服务按顺序找第一个命中的区域）
         for (int i = 0; i < cornerButtons.size(); i++) {
@@ -514,7 +586,7 @@ public final class MainActivity extends Activity
                 addRegion(regions, numpadButtons.get(i), Proto.REGION_KEY, numpadUsages.get(i));
             }
         }
-        sendLayout(active, regions);
+        return regions;
     }
 
     private void sendLayout(boolean active, List<int[]> regions) {
@@ -522,7 +594,6 @@ public final class MainActivity extends Activity
         Rect bounds = getWindowManager().getCurrentWindowMetrics().getBounds();
         link.layout(active, d != null ? d.getDisplayId() : Display.DEFAULT_DISPLAY, d != null ? d.getRotation() : 0,
                 bounds.width(), bounds.height(), regions);
-        updateStatus();
     }
 
     private static void addRegion(List<int[]> regions, View v, int type, int id) {
@@ -595,7 +666,10 @@ public final class MainActivity extends Activity
         boolean hold = a.kind == Actions.Kind.HOLD_LEFT;   // 左键的按住 / 松开由服务直接处理，这里只管画面和震动
         Style.look(b, isActive(b), down);
         if (down) {
-            if (hold) haptics.play(GestureEngine.HAPTIC_CLICK);
+            if (hold) {
+                haptics.play(GestureEngine.HAPTIC_CLICK);
+                haptics.startHum();   // 按着"左键"按钮 = 拖动中
+            }
         } else if (hold) {
             haptics.play(GestureEngine.HAPTIC_DRAG_END);
         } else if (action == Proto.BUTTON_TAP) {
@@ -606,7 +680,8 @@ public final class MainActivity extends Activity
 
     @Override
     public void onLocalKey(int key, boolean down) {
-        link.hidKey(key, down);
+        if (btMode) local.key(key, down);
+        else link.hidKey(key, down);
     }
 
     /** 键盘上的"符" / "Fn"，和快捷行里不是键盘组合键的动作。 */
@@ -712,17 +787,17 @@ public final class MainActivity extends Activity
     private void run(Actions.Action a) {
         switch (a.kind) {
             case HID:   // 虚拟键盘按一下这个组合键
-                link.hidKey(a.code, true);
-                link.hidKey(a.code, false);
+                onLocalKey(a.code, true);
+                onLocalKey(a.code, false);
                 break;
             case KEY:
                 key(a.code, a.meta);
                 break;
             case CLICK:
-                link.click(a.code);
+                click(a.code);
                 break;
             case HOLD_LEFT:
-                link.click(Proto.BUTTON_LEFT);   // 分给手势时就是单击
+                click(Proto.BUTTON_LEFT);   // 分给手势时就是单击
                 break;
             case KEYBOARD:
                 setKeyboardScreen(keyboardScreen.getVisibility() != View.VISIBLE);
@@ -732,8 +807,13 @@ public final class MainActivity extends Activity
                 showPanel(numpad.getVisibility() == View.VISIBLE ? null : numpad);
                 break;
             case PHONE_TEXT:
-                if (textBar.getVisibility() == View.VISIBLE) closeTextBar();
-                else openTextBar();
+                if (btMode) {   // 打的字经手机剪贴板贴过去，剪贴板到不了蓝牙那头
+                    toast(R.string.bt_no_phone_text);
+                } else if (textBar.getVisibility() == View.VISIBLE) {
+                    closeTextBar();
+                } else {
+                    openTextBar();
+                }
                 break;
             case SETTINGS:
                 startActivity(new Intent(this, SettingsActivity.class));
@@ -755,8 +835,24 @@ public final class MainActivity extends Activity
         }
     }
 
+    /** 键盘上没有的系统键：DeX 模式注入到 DeX 屏，蓝牙模式发对应的媒体键（没有通用媒体键的提示一下）。 */
     private void key(int keyCode, int meta) {
-        link.key(targetDisplay, keyCode, meta);
+        if (!btMode) {
+            link.key(targetDisplay, keyCode, meta);
+            return;
+        }
+        int usage = BtHid.consumerUsage(keyCode);
+        if (usage != 0) bt.pressConsumer(usage);
+        else toast(R.string.bt_no_such_key);
+    }
+
+    private void click(int button) {
+        if (btMode) local.click(button);
+        else link.click(button);
+    }
+
+    private void toast(int res) {
+        Toast.makeText(this, res, Toast.LENGTH_SHORT).show();
     }
 
     /** 数字键盘开 / 关（panel = null 表示关）。 */
@@ -783,7 +879,32 @@ public final class MainActivity extends Activity
             target = Surface.ROTATION_0;
         }
         prefs.setRotation(target);
-        link.rotate(d.getDisplayId(), target);
+        if (link.isConnected()) {
+            link.rotate(d.getDisplayId(), target);
+        } else if (btMode) {
+            // 没有服务：只能请求系统转。一般手机管用；三星外屏这类"忽略 App 方向请求"的屏转不了
+            requestOrientationSelf(target);
+        }
+    }
+
+    /**
+     * App 自己向系统请求方向（-1 = 不请求），同一个方向不重复请求。只在蓝牙模式下没有服务时用：
+     * 有服务时由服务锁定整块屏，App 不能先请求——三星外屏忽略 App 的方向请求，系统会把豆花塞进竖屏中间的横框，
+     * 服务紧接着转屏后窗口和触摸恢复了，画面却留在横框的位置，要再转一次屏才好（2026-10-14 主力机日志）。
+     */
+    private void requestOrientationSelf(int rotation) {
+        if (rotation == requestedRotation) return;
+        requestedRotation = rotation;
+        setRequestedOrientation(rotation < 0 ? ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : orientationFor(rotation));
+    }
+
+    private static int orientationFor(int rotation) {
+        switch (rotation) {
+            case Surface.ROTATION_90: return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+            case Surface.ROTATION_180: return ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT;
+            case Surface.ROTATION_270: return ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+            default: return ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+        }
     }
 
     private void openTextBar() {
@@ -847,13 +968,18 @@ public final class MainActivity extends Activity
         linkOk = connected;
         linkMessage = message;
         if (connected) {
+            linkSeen = true;
+            requestOrientationSelf(-1);   // 方向交给服务
             link.config(prefs.engineConfig(), density);
             Display d = getDisplay();
             if (prefs.rotation() >= 0 && d != null) link.rotate(d.getDisplayId(), prefs.rotation());
             pushLayout();
         } else {
+            // 蓝牙模式下这次一直没连上服务：没有服务，自己请求方向。连上过又断的不请求，免得服务重启时被塞进横框
+            if (btAcquired && !linkSeen && prefs.rotation() >= 0) requestOrientationSelf(prefs.rotation());
             grabbed = false;
             keyboard.setModifiers(0);
+            haptics.stopHum();   // 断了就收不到"拖动结束"了
         }
         updateStatus();
     }
@@ -861,6 +987,7 @@ public final class MainActivity extends Activity
     @Override
     public void onGrab(boolean isGrabbed, int reason, String detail) {
         grabbed = isGrabbed;
+        if (!isGrabbed) haptics.stopHum();
         grabMessage = grabText(reason, detail);
         updateStatus();
     }
@@ -906,7 +1033,10 @@ public final class MainActivity extends Activity
         if (pad == null) return;
         String s;
         boolean ok;
-        if (!linkOk) {
+        if (btMode) {
+            s = btStatusText();
+            ok = btState == BtHid.STATE_CONNECTED;
+        } else if (!linkOk) {
             s = linkMessage;
             ok = false;
         } else if (textBar.getVisibility() == View.VISIBLE) {
@@ -925,6 +1055,160 @@ public final class MainActivity extends Activity
         }
         pad.setStatus(s, ok);
         miniPad.setStatus(s, ok);
+    }
+
+    // ═══════════ 蓝牙模式 ═══════════
+
+    /** 蓝牙模式下自己收触摸，整次手势（按下到全部抬起）交给本地分流；其余情况照常分给各个按钮。 */
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent e) {
+        int action = e.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) localGesture = btMode && localActive() && local.ready();
+        if (!localGesture) return super.dispatchTouchEvent(e);
+        routeLocal(e);
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) localGesture = false;
+        return true;
+    }
+
+    /**
+     * MotionEvent → TouchRouter。区域是屏幕坐标（getLocationOnScreen），触摸也换成屏幕坐标；
+     * 系统把一帧帧的触摸攒成一批（历史点），逐帧喂进去，手势引擎看到的和服务读触摸屏时一样细。
+     */
+    private void routeLocal(MotionEvent e) {
+        float offX = e.getRawX() - e.getX();
+        float offY = e.getRawY() - e.getY();
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN: {
+                int i = e.getActionIndex();
+                local.down(e.getPointerId(i), e.getX(i) + offX, e.getY(i) + offY, e.getEventTime());
+                local.frame(e.getEventTime());
+                break;
+            }
+            case MotionEvent.ACTION_MOVE:
+                for (int h = 0; h < e.getHistorySize(); h++) {
+                    for (int i = 0; i < e.getPointerCount(); i++) {
+                        local.move(e.getPointerId(i), e.getHistoricalX(i, h) + offX, e.getHistoricalY(i, h) + offY);
+                    }
+                    local.frame(e.getHistoricalEventTime(h));
+                }
+                for (int i = 0; i < e.getPointerCount(); i++) {
+                    local.move(e.getPointerId(i), e.getX(i) + offX, e.getY(i) + offY);
+                }
+                local.frame(e.getEventTime());
+                break;
+            case MotionEvent.ACTION_POINTER_UP:
+            case MotionEvent.ACTION_UP:
+                local.up(e.getPointerId(e.getActionIndex()), e.getEventTime());
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                local.releaseAll();
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** 本地分流的结果：鼠标键盘发蓝牙，其余和服务发来的消息走同一套处理。 */
+    private final class LocalOutput implements TouchRouter.Output {
+        @Override
+        public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
+            bt.sendMouse(buttons, dx, dy, wheel, pan);
+        }
+
+        @Override
+        public void keyboard(byte[] report) {
+            bt.sendKeyboard(report);
+        }
+
+        @Override
+        public void haptic(int kind) {
+            onHaptic(kind);
+        }
+
+        @Override
+        public void gesture(int fingers, int kind) {
+            onGesture(fingers, kind);
+        }
+
+        @Override
+        public void button(int id, int action) {
+            onButton(id, action);
+        }
+
+        @Override
+        public void modifiers(int latched) {
+            onModifiers(latched);
+        }
+
+        @Override
+        public void schedule(long delayMs) {
+            main.removeCallbacks(localTimer);
+            main.postDelayed(localTimer, delayMs);
+        }
+
+        @Override
+        public void cancelSchedule() {
+            main.removeCallbacks(localTimer);
+        }
+    }
+
+    @Override
+    public void onBtState(int state, String deviceName) {
+        btState = state;
+        btDevice = deviceName;
+        if (state != BtHid.STATE_CONNECTED) local.releaseAll();   // 断了：别让对方那头留着按住的键
+        updateStatus();
+    }
+
+    private String btStatusText() {
+        switch (btState) {
+            case BtHid.STATE_NO_PERMISSION: return getString(R.string.bt_state_no_permission);
+            case BtHid.STATE_BT_DISABLED: return getString(R.string.bt_state_disabled);
+            case BtHid.STATE_UNSUPPORTED: return getString(R.string.bt_state_unsupported);
+            case BtHid.STATE_WAITING: return getString(R.string.bt_state_waiting);
+            case BtHid.STATE_CONNECTING: return getString(R.string.bt_state_connecting, btDevice);
+            case BtHid.STATE_CONNECTED: return getString(R.string.bt_state_connected, btDevice);
+            case BtHid.STATE_FAILED: return getString(R.string.bt_state_failed);
+            default: return getString(R.string.bt_state_starting);
+        }
+    }
+
+    private void requestBtPermissions() {
+        requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE}, 2);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == 2) bt.retry();
+        else if (requestCode == 1 && btMode && !BtHid.hasPermission(this)) requestBtPermissions();
+    }
+
+    /**
+     * 蓝牙模式下系统的边缘返回手势还在（DeX 模式下触摸被服务独占，系统碰不到）：从左右边缘往里横划移光标会被当成返回。
+     * 请系统别在左右两条边上认返回手势；导航栏是"划出才显示"的隐藏状态，系统不限制这块的高度。
+     */
+    private void updateGestureExclusion() {
+        View root = getWindow().getDecorView();
+        List<Rect> rects = new ArrayList<>();
+        if (btMode) {
+            int w = dp(32);
+            rects.add(new Rect(0, 0, w, root.getHeight()));
+            rects.add(new Rect(root.getWidth() - w, 0, root.getWidth(), root.getHeight()));
+        }
+        root.setSystemGestureExclusionRects(rects);
+    }
+
+    /** 排除区以外的地方还是可能触发返回：蓝牙模式下吞掉返回，豆花不会被意外关掉。 */
+    private void applyBackSwallow() {
+        if (btMode == backSwallowed) return;
+        if (btMode) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, swallowBack);
+        } else {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(swallowBack);
+        }
+        backSwallowed = btMode;
     }
 
     private int dp(float v) {

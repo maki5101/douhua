@@ -176,4 +176,23 @@
     <string name="act_volume_down_s">볼륨−</string>
     <string name="act_mute">음소거</string>
     <string name="act_mute_s">음소거</string>
+    <string name="sec_connection">연결 방식</string>
+    <string name="conn_dex">DeX: 이 폰에 연결된 외부 디스플레이 조작 (컴퓨터에서 서비스 시작 필요)</string>
+    <string name="conn_bt">블루투스: 블루투스 키보드·마우스로 컴퓨터, 태블릿, TV 조작 (서비스 불필요)</string>
+    <string name="bt_host">연결할 기기 (페어링됨)</string>
+    <string name="bt_no_bonded">페어링된 기기가 아직 없습니다</string>
+    <string name="bt_pair">+ 새 기기 페어링 (이 폰을 검색 가능하게)</string>
+    <string name="bt_pair_hint">위 줄을 누른 뒤 컴퓨터 / 태블릿 / TV의 블루투스 설정에서 기기를 추가하고 이 폰을 선택하세요. 페어링하는 동안 더우화를 켜 두세요. 예전에 페어링한 적이 있다면 양쪽에서 모두 삭제한 뒤 다시 페어링해야 키보드·마우스로 인식됩니다. 페어링 후 통화나 미디어 오디오에도 연결되면 시스템 블루투스 설정에서 꺼 주세요. 그대로 두면 키보드·마우스가 끊깁니다.</string>
+    <string name="bt_audio_warning">%1$s이(가) 이 폰의 통화 / 미디어 오디오에도 연결되어 있어 블루투스가 헤드셋처럼 절전하므로 키보드·마우스가 끊기고 손을 뗀 뒤에도 커서가 계속 움직입니다. 여기를 눌러 시스템 블루투스 설정을 열고 이 기기의 통화와 미디어 오디오를 끄세요 (그 뒤 시스템 화면에는 연결 끊김으로 보일 수 있지만 더우화는 그대로 쓸 수 있습니다).</string>
+    <string name="bt_state_starting">블루투스 준비 중…</string>
+    <string name="bt_state_no_permission">\'근처 기기\' 권한이 없습니다: 설정 → 연결 방식에서 허용하세요</string>
+    <string name="bt_state_disabled">블루투스가 꺼져 있습니다. 켜면 자동으로 계속합니다</string>
+    <string name="bt_state_unsupported">이 폰은 블루투스 키보드·마우스로 쓸 수 없습니다</string>
+    <string name="bt_state_waiting">연결 대기 중: 상대 기기의 블루투스 설정에서 이 폰에 연결하거나 설정에서 기기를 고르세요</string>
+    <string name="bt_state_connecting">%1$s에 연결 중…</string>
+    <string name="bt_state_connected">블루투스: %1$s</string>
+    <string name="bt_state_failed">블루투스를 시작하지 못했습니다: 다른 앱이 블루투스 키보드로 동작 중일 수 있습니다. 그 앱을 닫고 더우화를 다시 여세요</string>
+    <string name="bt_no_phone_text">블루투스에서는 글자 붙여넣기를 쓸 수 없습니다 (클립보드는 폰에 있습니다)</string>
+    <string name="bt_no_such_key">블루투스에서는 이 키를 쓸 수 없습니다</string>
+    <string name="drag_hum">드래그 중 약한 연속 진동 (왼쪽 버튼을 누르고 있음을 알림)</string>
 </resources>

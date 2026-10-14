@@ -6,7 +6,7 @@
 
 ## 架构
 
-两个进程，代码在同一个 APK 里：
+两种连接方式（设置里选，Prefs.btMode）。DeX 模式两个进程，代码在同一个 APK 里：
 
 ```
 外屏触摸屏 /dev/input/eventN ──(服务独占)──┐
@@ -25,7 +25,10 @@
 | 文件 | 职责 |
 |---|---|
 | `src/dev/douhua/Proto.java` | 协议常量，两边共用 |
-| `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java，跑在服务里（`tools/test.sh` 离线测） |
+| `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测） |
+| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；DeX 模式跑在服务的 Session 里，蓝牙模式跑在 App 里 |
+| `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号 |
+| `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停 |
 | `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务 |
 | `src/dev/douhua/KeyboardPanel.java` | 外接键盘键位（Gboard 式字母区 + 功能行 / 数字行 / 快捷行，符号层、Fn 层），键 id = 用法码 \| 自带修饰键 << 8 |
 | `src/dev/douhua/KeyboardScreen.java` | 键盘界面：工具栏 + 可调大小位置的键盘 + 键盘上方的小触控板；调整模式由 App 自己收触摸 |
@@ -35,7 +38,8 @@
 | `src/dev/douhua/TrackpadView.java` | 只画边框和状态字 |
 | `src/dev/douhua/Actions.java` | 统一的动作清单（按钮条 / 角上按钮 / 手势 / 键盘最下面一排共用；加动作只加一行；自定义组合键 id 形如 `combo:键id:标签`） |
 | `res/values*/strings.xml` | 九种语言的界面文字 |
-| `art/icon.webp` → `tools/make_icon.py` | App 图标原图；脚本生成自适应图标的前景层 `res/drawable-nodpi/ic_launcher_fg.webp`（换图后重跑，要 Pillow） |
+| `art/icon.webp` → `tools/make_icon.py` | App 图标原图（不带元数据）；脚本生成自适应图标的前景层 `ic_launcher_fg.webp` 和彩蛋大图 `egg.webp`（都在 `res/drawable-nodpi/`，换图后重跑，要 Pillow） |
+| 彩蛋 | 设置页最下面的版本号快速连点 5 下（每下间隔 ≤ 0.6 秒），弹出 egg.webp；SettingsActivity.version / showEgg。README 里不写 |
 | `src/dev/douhua/Combos.java` | 自定义组合键：可选的键、拼 id、起名字、迁移上一版键盘快捷行的存储格式 |
 | `src/dev/douhua/KeyboardSnap.java` | 调整键盘时的轻微吸附，纯 Java（离线测） |
 | `src/dev/douhua/Prefs.java` | 设置键名和默认值 |
@@ -43,17 +47,21 @@
 | `src/dev/douhua/DexDisplay.java` | 找 DeX 所在的屏（按键注入目标） |
 | `src/dev/douhua/DisplayReceiver.java` | 服务叫醒它：接上外接屏弹通知（点开在手机屏上打开豆花），拔掉收回 |
 | `src/dev/douhua/server/Server.java` | 服务入口；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒 |
-| `src/dev/douhua/server/Session.java` | 一次 App 连接：独占时机、触摸分流、引擎输出 |
+| `src/dev/douhua/server/Session.java` | 一次 App 连接：独占时机、转屏、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App |
 | `src/dev/douhua/server/TouchReader.java` | 独占并读触摸屏，poll 100ms 检查是否该释放 |
 | `src/dev/douhua/server/MtDecoder.java` | 多点触控协议 B 解码，纯 Java（离线测） |
 | `src/dev/douhua/server/TouchDevice.java` | 从 `dumpsys input` 找屏幕对应的触摸屏和 RawToDisplay 矩阵，解析部分纯 Java（离线测） |
 | `src/dev/douhua/server/ScreenRotation.java` | 物理屏坐标 → 当前方向坐标，纯 Java（离线测；方向 1 的公式取自真机） |
 | `src/dev/douhua/server/Evdev.java` | 打开 / 独占输入设备（EVIOCGRAB，经 libcore 的 ioctlInt） |
 | `src/dev/douhua/server/Uhid.java` | /dev/uhid 造 USB HID 设备的公共部分 |
-| `src/dev/douhua/server/UhidMouse.java` / `UhidKeyboard.java` | 虚拟鼠标 / 虚拟键盘（boot 键盘描述符，6 键无冲） |
+| `src/dev/douhua/server/UhidMouse.java` / `UhidKeyboard.java` | 虚拟 USB 鼠标 / 键盘，只管发报文（描述符在 Hid，按键状态在 TouchRouter） |
 | `src/dev/douhua/server/PeerUid.java` | 查 /proc/net/tcp 确认连进来的是谁 |
 | `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放 |
 | `src/dev/douhua/server/DisplayWatcher.java` | 每 1.5 秒查屏幕列表，外接屏接上 / 拔掉时 am broadcast 给 DisplayReceiver |
+
+蓝牙模式只有 App 一个进程：MainActivity 自己收触摸（dispatchTouchEvent）→ 同一个 TouchRouter →
+BtHid（系统的 BluetoothHidDevice，键盘 + 鼠标 + 媒体键合成一个描述符）→ 配对的电脑 / 平板 / 电视。
+服务要是开着，App 照样连它，但只报 inactive 布局（不让它接管触摸），只借它转屏。
 
 构建不用 Gradle：`tools/build.sh` 直接 javac（Java 8 语法）→ d8 → aapt2 → zipalign → apksigner。
 SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
@@ -143,6 +151,14 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   原来的加速只在快时放大、慢时不缩小，手指挪 1 毫米光标走十几个像素；现在慢速时再乘 slowFactor（默认 0.55），
   速度到 0.3 dp/ms 恢复，速度用 30ms 时间常数平滑（单帧速度抖，倍率跟着抖）。
   长按原来用轻点的容差（6dp，约 1 毫米），微调光标恰好在这范围内慢慢挪就被当成长按；现在长按单独用 2.5dp。
+- **拖动时持续轻震**（用户要的）：DRAG_START 后、按着"左键"按钮时，低幅度 one-shot 一直嗡（幅度 18 / 40 / 80；最初 45 / 90 / 150，用户嫌"小"都有点强），
+  DRAG_END 时停；别的震动打断它后 80ms 接着嗡。漏收 DRAG_END（连接断了）有兜底：60 秒自停，onPause / 断开 / 触摸被释放时停。
+  马达不能调幅度时退成每 100ms 一下 12ms 的轻点。只改 App，服务端不变。
+- **接管触摸屏时把键盘输入切到 DeX 屏**（DexFocus，2026-10-13）：在手机屏上打开豆花，系统就把键盘输入的目标切到手机屏；
+  豆花窗口在接着 DeX 时故意不收按键，外接键盘（或豆花自己的虚拟键盘）打的字送到手机屏没人收，系统输入队列卡在这个键上
+  干等十来秒（期间光标、点击全排队，看起来豆花的输入全没反应），然后 am_anr "Application does not have a focused window"。
+  修法：Session 接管成功时对第一块外接屏调 IActivityTaskManager.focusTopTask（shell 有 MANAGE_ACTIVITY_TASKS），只切一次；
+  不让豆花窗口收键——收了字就留在手机上，进不了 DeX。`Server focus <屏>` 可单独验证。
 - **贴边**：触摸由服务独占后，系统的边缘手势碰不到，不再给系统栏 / 刘海留边（只给贴字面板的输入法让位），
   窗口 layoutInDisplayCutoutMode = ALWAYS。
 - **动作清单统一**（用户要求"能选的类型都通用"）：键盘快捷键并入 Actions，新增 Kind.HID（虚拟键盘按组合键）；
@@ -165,7 +181,34 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **轻点拖动**：轻点后先按下左键，等 `dragWindowMs`；期间再按下并移动 = 拖动，再轻点 = 双击，超时 = 松开。
 - **服务目前要靠电脑 adb 拉起**（`tools/start-server.sh`），手机重启后要重跑。Shizuku 方案还没做。
 
+- **蓝牙 HID**（用户要"任何设备通用的外接 HID"、"装上就能用"）：系统的 BluetoothHidDevice（Android 9 起），不需要服务、
+  不需要电脑。为了不维护两份分流逻辑，先把 Session 里的分流和修饰键搬进纯 Java 的 TouchRouter，两种模式共用。
+  蓝牙下 App 自己收触摸：dispatchTouchEvent 在按下时决定整次手势归本地分流还是归普通按钮（贴字面板、键盘调整模式下归按钮）；
+  历史点逐帧喂，引擎看到的和服务读触摸屏一样细。系统的边缘返回手势还在：左右边缘设排除区（导航栏粘性隐藏时没有 200dp 限制），
+  再吞掉返回，免得横划移光标时豆花被关。KEY 类动作改发 Consumer 媒体键（返回 0x224、主屏 0x223、播放、音量），
+  最近任务 / 所有应用 / 通知栏没有通用用法码，提示不可用。贴字靠手机剪贴板，蓝牙下不可用。
+  配对：对方配对时要能读到 HID 的 SDP 记录，所以豆花要开着（注册着）；以前配对过的要删掉重配。
+- **蓝牙卡顿的根因：对方顺带连了手机的音频**（2026-10-14 主力机 → 无头 Linux 实测）。电脑配对时把自己当耳机，
+  连上了手机的通话（HFP）和媒体音频（A2DP），链路按音频的深度省电走：sniff 子速率最长 0.75 秒，电脑上鼠标报文每 734ms
+  才到一阵、每阵约 8 个（一秒约 11 个），手机每秒 120 个触摸帧各发一个 → 排队，停手后光标还要走很久。
+  手机蓝牙日志里每发一个报文都申请切 active，但一直挂起切不过去。在手机蓝牙设置里关掉该设备的"通话"和"音频"后
+  立刻切成 active，用户反馈正常（三星那一页随后显示"已断开"，是因为它只看音频；豆花的键鼠连接还在）。
+  测试机索尼没连音频，同一台电脑上报文每 11–22ms 到一组。多数电脑（带音频接收的）配对后都会这样。
+  App 没法只声明自己是键鼠：手机的设备类型（"手机"）和通话、媒体音频这些服务记录归系统蓝牙管，改要系统权限；
+  而且手机自己的策略也会主动连：电脑连上索尼的媒体音频时，索尼当场自己把通话音频也连上了。
+  App 也没权限替用户断开这两项，所以设置页里提醒（SettingsActivity.refreshAudioWarning）：连着的那台（没连上就看上次那台）
+  连着手机的通话或媒体音频时，在设备列表下面显示一段琥珀色提示，点一下打开系统蓝牙设置；配对说明末尾也加了一句。
+  手机端按设备记住"不连音频"，关一次以后都不连。
+  量法：电脑上 `evtest`（不独占）看鼠标节点的到达间隔，手机 `dumpsys bluetooth_manager` 看 Power mode change / Sniff subrating。
+- **蓝牙模式下的方向：先等服务**（2026-10-14）。原来一回前台就 setRequestedOrientation，等连上服务再让服务锁定整块屏；
+  三星外屏忽略 App 的方向请求，系统先把豆花塞进竖屏中间的横框（窗口 [0,591]–[1248,1381]），80ms 后服务转屏，
+  窗口和触摸恢复了全屏，画面却留在横框的偏移上，要再转一次屏才好。现在蓝牙模式下：连上服务就交给服务（并清掉自己的请求），
+  这次回前台后一次都没连上服务才自己请求（MainActivity.requestOrientationSelf / linkSeen）；连上过又断的不请求。
+
 ## 测试
+
+- **测试设备**：用 USB 连的测试机（序列号见 `.private/NOTES.md`），命令里显式 `adb -s`。用户的主力机禁止拿来测试。
+  测试机不是三星、没有 DeX，DeX 模式只能交给用户在主力机上试；`tools/build.sh --install` 等脚本走 ANDROID_SERIAL，测试时别用。
 
 - `tools/test.sh`：GestureEngine、MtDecoder、TouchDevice 解析的离线测试。
 - 服务安全链路（真机）：`adb shell CLASSPATH=<apk 路径> app_process / dev.douhua.server.TestClient 0 2`
@@ -176,6 +219,24 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   adb shell am start --display <新虚拟屏 id> -n dev.douhua/.MainActivity
   ```
 - 触摸手感、按钮、三指四指、震动只能真人在真机上试；服务用 `tools/start-server.sh --debug` 起，日志里有每秒的鼠标包统计。
+
+## 进行中（交接；做完删掉这一节）
+
+- **2026-10-14 存档提交（版本号没改，仍是 0.1.1）**：蓝牙 HID + TouchRouter 重构 + DexFocus、拖动轻震、彩蛋、功能行 Shift 等。
+  用户定的：等"蓝牙模式挡系统手势"做完再定版本号。
+- **主力机上装的就是这次提交的内容**（`.private/deploy-phone.sh` 装整个工作区，2026-10-14 23:46）。装之前那个不带蓝牙的包
+  备份在 `.private/main-phone-before-bt.apk`，`bash .private/deploy-phone.sh --rollback` 装回。旧的按段打补丁脚本
+  `.private/deploy-phone-nobt.sh` 已经用不上，可以删。
+  **DeX 模式在 TouchRouter 重构后还没人完整试过**（只看到服务能接管、点按钮能认），用户还没在 DeX 下用过这一版。
+- **蓝牙已验证**：Linux 电脑上用户实测各种操作都对（关掉电脑连着的通话 / 媒体音频之后）；测试机上用 evtest 核对过报文
+  （滑动、轻点、字母、Shift 锁定、自带 Ctrl 的"复制"、⌫ ↵、边缘滚轮、返回）。量法：电脑上 `sudo setfacl -m u:$USER:r /dev/input/eventN`
+  后 `evtest`（不独占）；独占前按名字和 uniq（手机蓝牙地址）核对节点，编号会变，手机断开再连节点会重建、权限要重给。
+- **iPad 只认光标移动**（用户 2026-10-14 试）：点击和其它操作都不响应，原因还没查。
+- **下一步：蓝牙模式下服务开着就由服务独占触摸屏**（用户要的：和 DeX 一样挡住系统的下拉通知栏 / 上滑回桌面 / 侧滑返回）。
+  服务照 DeX 读原始触摸、TouchRouter 分流，鼠标键盘报文不写 uhid、发回 App 由 BtHid 发出；没服务时退回 App 自己收触摸。
+  独占条件和心跳不变。风险：原始触摸可能比每秒 120 帧更密，蓝牙送不送得过来要量，不行就在 BtHid 里攒报文。
+- **测试现场没收拾**：电脑蓝牙是测试时打开的（原来关着），测试机蓝牙 2026-10-14 打开的（原来关着），测试机和电脑的配对还在；
+  测试机"插 USB 保持亮屏"改成了 usb（原来 0），插回来要 `adb -s <测试机> shell svc power stayon false`。
 
 ## 已知技术债 / 没验证的
 

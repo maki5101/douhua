@@ -22,6 +22,7 @@ import dev.douhua.Proto;
  * 用法：app_process / dev.douhua.server.Server uid=<豆花 App 的 uid> [debug]
  *      debug：每秒记一行发出的鼠标包统计（包数、最长间隔、位移），查卡顿用
  *      app_process / dev.douhua.server.Server probe [秒数]   只造鼠标画个方块，不点击，用来验证这条路通不通
+ *      app_process / dev.douhua.server.Server focus <屏幕编号>   只把键盘输入切到那块屏（验证 DexFocus 用）
  */
 public final class Server {
     private static final int UID_ROOT = 0;
@@ -38,6 +39,10 @@ public final class Server {
         }
         if (args.length > 1 && args[0].equals("grabtest")) {
             grabTest(args[1]);
+            return;
+        }
+        if (args.length > 1 && args[0].equals("focus")) {
+            log(DexFocus.moveTo(Integer.parseInt(args[1])) ? "已请求把键盘输入切到屏幕 " + args[1] : "切换失败，见上一行");
             return;
         }
         int appUid = -1;

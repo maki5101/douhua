@@ -176,4 +176,23 @@
     <string name="act_volume_down_s">Leise−</string>
     <string name="act_mute">Stumm</string>
     <string name="act_mute_s">Stumm</string>
+    <string name="sec_connection">Verbindung</string>
+    <string name="conn_dex">DeX: externen Bildschirm dieses Handys steuern (Dienst muss vom Computer gestartet werden)</string>
+    <string name="conn_bt">Bluetooth: als Bluetooth-Tastatur und -Maus für Computer, Tablet oder TV (kein Dienst nötig)</string>
+    <string name="bt_host">Zu verbindendes Gerät (gekoppelt)</string>
+    <string name="bt_no_bonded">Noch keine gekoppelten Geräte</string>
+    <string name="bt_pair">+ Neues Gerät koppeln (dieses Handy sichtbar machen)</string>
+    <string name="bt_pair_hint">Tippe auf die Zeile oben, füge dann in den Bluetooth-Einstellungen von Computer / Tablet / TV ein Gerät hinzu und wähle dieses Handy; lass Douhua beim Koppeln geöffnet. Waren die Geräte schon einmal gekoppelt, entferne die Kopplung zuerst auf beiden Seiten, sonst erkennt das andere Gerät Tastatur und Maus nicht. Hat sich das Gerät nach dem Koppeln auch mit Anruf- oder Medien-Audio verbunden, schalte das in den Bluetooth-Einstellungen des Systems aus, sonst ruckeln Tastatur und Maus.</string>
+    <string name="bt_audio_warning">%1$s ist auch mit dem Anruf- / Medien-Audio dieses Handys verbunden. Bluetooth spart dann Strom wie bei einem Headset, und Tastatur und Maus ruckeln (der Zeiger bewegt sich nach dem Loslassen weiter). Tippe hier, um die Bluetooth-Einstellungen des Systems zu öffnen, und schalte Anruf- und Medien-Audio für dieses Gerät aus (danach zeigt das System es eventuell als getrennt an; Douhua funktioniert weiter).</string>
+    <string name="bt_state_starting">Bluetooth wird vorbereitet…</string>
+    <string name="bt_state_no_permission">Keine Berechtigung „Geräte in der Nähe“: unter Einstellungen → Verbindung erlauben</string>
+    <string name="bt_state_disabled">Bluetooth ist aus; Douhua macht weiter, sobald es eingeschaltet ist</string>
+    <string name="bt_state_unsupported">Dieses Handy kann nicht als Bluetooth-Tastatur und -Maus dienen</string>
+    <string name="bt_state_waiting">Warte auf Verbindung: in den Bluetooth-Einstellungen des anderen Geräts mit diesem Handy verbinden oder in den Einstellungen eines auswählen</string>
+    <string name="bt_state_connecting">Verbinde mit %1$s…</string>
+    <string name="bt_state_connected">Bluetooth: %1$s</string>
+    <string name="bt_state_failed">Bluetooth konnte nicht starten: Vielleicht dient schon eine andere App als Bluetooth-Tastatur; schließe sie und öffne Douhua erneut</string>
+    <string name="bt_no_phone_text">Text einfügen geht über Bluetooth nicht: Die Zwischenablage bleibt auf dem Handy</string>
+    <string name="bt_no_such_key">Diese Taste gibt es über Bluetooth nicht</string>
+    <string name="drag_hum">Leichtes Dauervibrieren beim Ziehen (erinnert daran, dass die linke Taste gedrückt ist)</string>
 </resources>

@@ -15,7 +15,7 @@ import java.util.List;
  * 按下后由豆花服务通过虚拟 USB 键盘发给 DeX——DeX 看到的就是一块真键盘。
  *
  * 字母区照 Gboard 排（手机打字的习惯最重要）；修饰键、数字、快捷键各占一排，不往字母区里硬塞：
- *   功能行   Esc Tab Ctrl Alt Win Caps Fn Del
+ *   功能行   Esc Tab Shift Ctrl Alt Win Caps Fn Del
  *   数字行   1–0（锁定 Shift 时显示 !@#…）
  *   字母三行 q–p / a–l / ⇧ z–m ⌫
  *   底行     符 ，空格 。↵
@@ -34,6 +34,14 @@ final class KeyboardPanel extends LinearLayout {
 
         /** 服务没接管时，非 HID 的特殊键（符 / Fn / 快捷行里的非键盘动作）被点了。 */
         void onSpecialKey(int id);
+    }
+
+    /** 按下字符键时的放大提示，由外面的容器画在键盘上方（键盘自己画不出自己的边界）。 */
+    interface PreviewHost {
+        void showKeyPreview(View key, String label);
+
+        /** 只在 key 正是当前放大的那个键时收起（同时按着几个键，显示最后按下的）。 */
+        void hideKeyPreview(View key);
     }
 
     /** "符"和"Fn"切换键的按钮编号（不是 HID 键，由 App 自己处理）。 */
@@ -104,9 +112,13 @@ final class KeyboardPanel extends LinearLayout {
         return all.toArray(new Key[0]);
     }
 
+    /**
+     * 功能行。Shift 和字母区的 ⇧ 是同一个键（左 Shift，一起高亮）：符号层、Fn 层没有 ⇧，
+     * 用户要在任何一层都能锁 Shift（Shift+方向键、Shift+F 键、Ctrl+Shift 组合）。
+     */
     private static final Key[] TOP = {
-            k(0x29, "Esc"), k(0x2B, "Tab"), k(0xE0, "Ctrl"), k(0xE2, "Alt"), k(0xE3, "Win"), k(0x39, "Caps"),
-            new Key(FN_BUTTON_ID, "Fn", null, 1, true), k(0x4C, "Del"),
+            k(0x29, "Esc"), k(0x2B, "Tab"), k(0xE1, "Shift"), k(0xE0, "Ctrl"), k(0xE2, "Alt"), k(0xE3, "Win"),
+            k(0x39, "Caps"), new Key(FN_BUTTON_ID, "Fn", null, 1, true), k(0x4C, "Del"),
     };
 
     private static final Key[][] LETTERS = {
@@ -144,6 +156,7 @@ final class KeyboardPanel extends LinearLayout {
     static final int ROWS = 7;
 
     private final Listener listener;
+    private PreviewHost previewHost;
     private final int gap;
     /** 快捷行（设置里可改）。 */
     private Key[] shortcuts = new Key[0];
@@ -159,6 +172,10 @@ final class KeyboardPanel extends LinearLayout {
         this.gap = Style.dp(context, 2);
         setOrientation(VERTICAL);
         rebuild();
+    }
+
+    void setPreviewHost(PreviewHost host) {
+        previewHost = host;
     }
 
     /**
@@ -207,7 +224,10 @@ final class KeyboardPanel extends LinearLayout {
     /** 画按下的样子。id 同 Key.id。 */
     void showPressed(int id, boolean pressed) {
         for (int i = 0; i < views.size(); i++) {
-            if (keys.get(i).id == id) look(i, pressed);
+            if (keys.get(i).id == id) {
+                look(i, pressed);
+                preview(i, pressed);
+            }
         }
     }
 
@@ -260,6 +280,23 @@ final class KeyboardPanel extends LinearLayout {
         }
     }
 
+    /** 字符键按下时放大显示（看清按到了哪个），松开收起。 */
+    private void preview(int i, boolean pressed) {
+        if (previewHost == null) return;
+        TextView v = views.get(i);
+        if (!pressed) previewHost.hideKeyPreview(v);
+        else if (isCharKey(i)) previewHost.showKeyPreview(v, v.getText().toString());
+    }
+
+    /** 字符键：键帽只有一个字的字母、数字、符号。修饰键、⇧ ⌫ ↵、空格、F 键、快捷行不放大。 */
+    private boolean isCharKey(int i) {
+        Key key = keys.get(i);
+        if (key.special || key.id == Key.SPACER) return false;
+        for (Key s : shortcuts) if (s == key) return false;
+        String t = views.get(i).getText().toString();
+        return t.length() == 1 && "⇧⌫↵".indexOf(t) < 0;
+    }
+
     private void look(int i, boolean pressed) {
         Key key = keys.get(i);
         boolean active = (key.id == SYMBOLS_BUTTON_ID && layer == LAYER_SYMBOLS)
@@ -275,12 +312,14 @@ final class KeyboardPanel extends LinearLayout {
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 look(index, true);
+                preview(index, true);
                 listener.onKeyHaptic();
                 if (!key.special) listener.onLocalKey(key.id, true);
                 return true;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 look(index, false);
+                preview(index, false);
                 if (!key.special) {
                     listener.onLocalKey(key.id, false);
                 } else if (e.getActionMasked() == MotionEvent.ACTION_UP) {

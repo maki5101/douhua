@@ -176,4 +176,23 @@
     <string name="act_volume_down_s">Vol−</string>
     <string name="act_mute">Muet</string>
     <string name="act_mute_s">Muet</string>
+    <string name="sec_connection">Connexion</string>
+    <string name="conn_dex">DeX : contrôler l\'écran externe de ce téléphone (service à lancer depuis un ordinateur)</string>
+    <string name="conn_bt">Bluetooth : clavier et souris Bluetooth pour un ordinateur, une tablette ou une TV (sans service)</string>
+    <string name="bt_host">Appareil à connecter (associé)</string>
+    <string name="bt_no_bonded">Aucun appareil associé pour l\'instant</string>
+    <string name="bt_pair">+ Associer un nouvel appareil (rendre ce téléphone visible)</string>
+    <string name="bt_pair_hint">Touchez la ligne ci-dessus, puis ajoutez un appareil dans les réglages Bluetooth de l\'ordinateur / de la tablette / de la TV et choisissez ce téléphone ; laissez Douhua ouvert pendant l\'association. S\'ils ont déjà été associés, supprimez d\'abord l\'association des deux côtés, sinon l\'autre appareil ne verra pas le clavier et la souris. Après l\'association, si l\'appareil s\'est aussi connecté à l\'audio d\'appel ou multimédia du téléphone, désactivez-les dans les réglages Bluetooth du système, sinon le clavier et la souris saccaderont.</string>
+    <string name="bt_audio_warning">%1$s est aussi connecté à l\'audio d\'appel / multimédia de ce téléphone : le Bluetooth économise alors l\'énergie comme pour un casque, et le clavier et la souris saccadent (le curseur continue de bouger après l\'arrêt). Touchez ici pour ouvrir les réglages Bluetooth du système et désactivez l\'audio d\'appel et multimédia pour cet appareil (le système peut ensuite l\'afficher comme déconnecté ; Douhua fonctionne toujours).</string>
+    <string name="bt_state_starting">Démarrage du Bluetooth…</string>
+    <string name="bt_state_no_permission">Pas d\'autorisation « Appareils à proximité » : autorisez-la dans Réglages → Connexion</string>
+    <string name="bt_state_disabled">Le Bluetooth est désactivé ; Douhua reprendra dès qu\'il sera activé</string>
+    <string name="bt_state_unsupported">Ce téléphone ne peut pas servir de clavier et souris Bluetooth</string>
+    <string name="bt_state_waiting">En attente : connectez-vous à ce téléphone depuis les réglages Bluetooth de l\'autre appareil, ou choisissez-en un dans les Réglages</string>
+    <string name="bt_state_connecting">Connexion à %1$s…</string>
+    <string name="bt_state_connected">Bluetooth : %1$s</string>
+    <string name="bt_state_failed">Le Bluetooth n\'a pas démarré : une autre app sert peut-être déjà de clavier Bluetooth ; fermez-la et rouvrez Douhua</string>
+    <string name="bt_no_phone_text">Coller du texte n\'est pas possible en Bluetooth : le presse-papiers reste sur le téléphone</string>
+    <string name="bt_no_such_key">Cette touche n\'existe pas en Bluetooth</string>
+    <string name="drag_hum">Légère vibration continue pendant le glisser (rappelle que le bouton gauche est enfoncé)</string>
 </resources>

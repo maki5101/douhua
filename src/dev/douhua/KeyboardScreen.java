@@ -22,7 +22,7 @@ import android.view.ViewGroup;
  * - 吸附只作用于"显示的位置"，手指的位置照常累计，继续拖就能拖过吸附点；吸附范围 SNAP_DP。
  * - 挪位置 / 改宽度时，居中优先于贴边：缩一点宽度不会被拽回两边贴边。吸上时轻震一下。
  */
-final class KeyboardScreen extends ViewGroup {
+final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHost {
     interface Listener {
         /** 调整完一次（手指抬起），存起来。rect 是键盘在可用区域里的位置，0–1。 */
         void onKeyboardRectChanged(boolean landscape, float[] rect);
@@ -81,6 +81,21 @@ final class KeyboardScreen extends ViewGroup {
     private final Paint hint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF tmp = new RectF();
 
+    // ── 按键放大提示 ──
+    /** 松开后再留这么久才收起：打得快也来得及看清。 */
+    private static final long PREVIEW_LINGER_MS = 90;
+    private final Paint previewFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint previewBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint previewText = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF previewRect = new RectF();
+    private String previewLabel;
+    private View previewKey;
+    private final Runnable hidePreview = () -> {
+        previewLabel = null;
+        previewKey = null;
+        invalidate();
+    };
+
     KeyboardScreen(Context context, View toolbar, TrackpadView miniPad, KeyboardPanel keyboard, Listener listener) {
         super(context);
         this.toolbar = toolbar;
@@ -104,6 +119,41 @@ final class KeyboardScreen extends ViewGroup {
         hint.setColor(0xFFDDDDDD);
         hint.setTextAlign(Paint.Align.CENTER);
         hint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 15, getResources().getDisplayMetrics()));
+        previewFill.setColor(0xFF2E2E2E);
+        previewBorder.setStyle(Paint.Style.STROKE);
+        previewBorder.setStrokeWidth(Style.dp(context, 1.5f));
+        previewBorder.setColor(0xFF8A8A8A);
+        previewText.setColor(0xFFF2F2F2);
+        previewText.setTextAlign(Paint.Align.CENTER);
+        keyboard.setPreviewHost(this);
+    }
+
+    // ═══════════ 按键放大提示 ═══════════
+
+    /** 在按下的键正上方浮出放大的字（不挡住按着的键）；上面没地方时贴着本容器的上边。 */
+    @Override
+    public void showKeyPreview(View key, String label) {
+        removeCallbacks(hidePreview);
+        int[] me = new int[2];
+        int[] k = new int[2];
+        getLocationInWindow(me);
+        key.getLocationInWindow(k);
+        float kx = k[0] - me[0];
+        float ky = k[1] - me[1];
+        float h = Math.max(key.getHeight() * 1.7f, Style.dp(getContext(), 52));
+        float w = Math.max(key.getWidth() * 1.5f, h * 0.8f);
+        float left = Math.max(0, Math.min(getWidth() - w, kx + key.getWidth() / 2f - w / 2));
+        float top = Math.max(0, ky - h - Style.dp(getContext(), 2));
+        previewRect.set(left, top, left + w, top + h);
+        previewText.setTextSize(h * 0.55f);
+        previewLabel = label;
+        previewKey = key;
+        invalidate();
+    }
+
+    @Override
+    public void hideKeyPreview(View key) {
+        if (key == previewKey) postDelayed(hidePreview, PREVIEW_LINGER_MS);
     }
 
     void setRect(float[] r) {
@@ -181,6 +231,14 @@ final class KeyboardScreen extends ViewGroup {
     @Override
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
+        if (previewLabel != null && !adjusting) {
+            float r = Style.dp(getContext(), 10);
+            canvas.drawRoundRect(previewRect, r, r, previewFill);
+            canvas.drawRoundRect(previewRect, r, r, previewBorder);
+            Paint.FontMetrics fm = previewText.getFontMetrics();
+            float baseline = previewRect.centerY() - (fm.ascent + fm.descent) / 2;
+            canvas.drawText(previewLabel, previewRect.centerX(), baseline, previewText);
+        }
         if (!adjusting) return;
         RectF k = keyboardRect();
         canvas.drawRect(k, shade);

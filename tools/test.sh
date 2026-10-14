@@ -18,13 +18,15 @@ fi
 
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
-# 只编译不依赖 Android 的部分：手势识别、多点触控解码、触摸屏查找
+# 只编译不依赖 Android 的部分：手势识别、触摸分流、HID 报文、多点触控解码、触摸屏查找
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \
     src/dev/douhua/Proto.java src/dev/douhua/GestureEngine.java \
+    src/dev/douhua/Hid.java src/dev/douhua/TouchRouter.java \
     src/dev/douhua/server/MtDecoder.java src/dev/douhua/server/TouchDevice.java \
     src/dev/douhua/server/ScreenRotation.java src/dev/douhua/KeyboardSnap.java \
     test/dev/douhua/GestureEngineTest.java test/dev/douhua/server/ServerPartsTest.java \
-    test/dev/douhua/KeyboardSnapTest.java
+    test/dev/douhua/KeyboardSnapTest.java test/dev/douhua/TouchRouterTest.java
 "$JDK/bin/java" -cp "$OUT" dev.douhua.GestureEngineTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.server.ServerPartsTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyboardSnapTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.TouchRouterTest

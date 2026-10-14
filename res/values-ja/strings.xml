@@ -176,4 +176,23 @@
     <string name="act_volume_down_s">音量−</string>
     <string name="act_mute">ミュート</string>
     <string name="act_mute_s">消音</string>
+    <string name="sec_connection">接続方法</string>
+    <string name="conn_dex">DeX：このスマホにつないだ外部ディスプレイを操作（PC からサービスの起動が必要）</string>
+    <string name="conn_bt">Bluetooth：Bluetooth キーボード・マウスとして PC、タブレット、テレビを操作（サービス不要）</string>
+    <string name="bt_host">接続する機器（ペアリング済み）</string>
+    <string name="bt_no_bonded">ペアリング済みの機器はまだありません</string>
+    <string name="bt_pair">＋ 新しい機器とペアリング（このスマホを検出可能にする）</string>
+    <string name="bt_pair_hint">上の行をタップしてから、PC / タブレット / テレビの Bluetooth 設定で機器を追加し、このスマホを選びます。ペアリング中は豆花を開いたままにしてください。以前ペアリングしたことがある場合は、両方で削除してからペアリングし直してください（そうしないとキーボード・マウスとして認識されません）。ペアリング後に通話やメディア音声にも接続された場合は、システムの Bluetooth 設定でオフにしてください（オンのままだとカクつきます）。</string>
+    <string name="bt_audio_warning">%1$s がこのスマホの通話 / メディア音声にも接続しているため、Bluetooth がヘッドセット並みに省電力になり、キーボード・マウスがカクつきます（止めた後もカーソルが動き続けます）。ここをタップしてシステムの Bluetooth 設定を開き、この機器の通話とメディア音声をオフにしてください（その後システム側では切断と表示されることがありますが、豆花はそのまま使えます）。</string>
+    <string name="bt_state_starting">Bluetooth を準備中…</string>
+    <string name="bt_state_no_permission">「付近のデバイス」の権限がありません：設定 → 接続方法 で許可してください</string>
+    <string name="bt_state_disabled">Bluetooth がオフです。オンにすると自動で続行します</string>
+    <string name="bt_state_unsupported">このスマホは Bluetooth キーボード・マウスになれません</string>
+    <string name="bt_state_waiting">接続待ち：相手の Bluetooth 設定からこのスマホに接続するか、設定で機器を選んでください</string>
+    <string name="bt_state_connecting">%1$s に接続中…</string>
+    <string name="bt_state_connected">Bluetooth：%1$s</string>
+    <string name="bt_state_failed">Bluetooth を開始できませんでした：別のアプリが Bluetooth キーボードとして動いている可能性があります。それを閉じて豆花を開き直してください</string>
+    <string name="bt_no_phone_text">Bluetooth では文字の貼り付けは使えません（クリップボードはスマホ側にあります）</string>
+    <string name="bt_no_such_key">このキーは Bluetooth では使えません</string>
+    <string name="drag_hum">ドラッグ中の弱い連続振動（左ボタンを押したままだとわかる）</string>
 </resources>

@@ -176,4 +176,23 @@
     <string name="act_volume_down_s">Vol−</string>
     <string name="act_mute">Silenciar</string>
     <string name="act_mute_s">Silencio</string>
+    <string name="sec_connection">Conexión</string>
+    <string name="conn_dex">DeX: controlar la pantalla externa de este teléfono (hay que iniciar el servicio desde un ordenador)</string>
+    <string name="conn_bt">Bluetooth: teclado y ratón Bluetooth para un ordenador, tableta o TV (sin servicio)</string>
+    <string name="bt_host">Dispositivo al que conectarse (vinculado)</string>
+    <string name="bt_no_bonded">Aún no hay dispositivos vinculados</string>
+    <string name="bt_pair">+ Vincular un dispositivo nuevo (hacer visible este teléfono)</string>
+    <string name="bt_pair_hint">Toca la línea de arriba y luego añade un dispositivo en los ajustes Bluetooth del ordenador / tableta / TV y elige este teléfono; deja Douhua abierto mientras se vinculan. Si ya estaban vinculados, quita primero la vinculación en ambos lados; si no, el otro dispositivo no verá el teclado y el ratón. Tras vincularlos, si también se conectó al audio de llamadas o multimedia del teléfono, desactívalo en los ajustes Bluetooth del sistema; si no, el teclado y el ratón irán a saltos.</string>
+    <string name="bt_audio_warning">%1$s también está conectado al audio de llamadas / multimedia de este teléfono, así que el Bluetooth ahorra energía como con unos auriculares y el teclado y el ratón van a saltos (el cursor sigue moviéndose después de parar). Toca aquí para abrir los ajustes Bluetooth del sistema y desactiva el audio de llamadas y multimedia de ese dispositivo (después el sistema puede mostrarlo como desconectado; Douhua sigue funcionando).</string>
+    <string name="bt_state_starting">Preparando Bluetooth…</string>
+    <string name="bt_state_no_permission">Falta el permiso «Dispositivos cercanos»: actívalo en Ajustes → Conexión</string>
+    <string name="bt_state_disabled">El Bluetooth está desactivado; Douhua seguirá en cuanto lo actives</string>
+    <string name="bt_state_unsupported">Este teléfono no puede hacer de teclado y ratón Bluetooth</string>
+    <string name="bt_state_waiting">Esperando conexión: conéctate a este teléfono desde los ajustes Bluetooth del otro dispositivo, o elige uno en Ajustes</string>
+    <string name="bt_state_connecting">Conectando con %1$s…</string>
+    <string name="bt_state_connected">Bluetooth: %1$s</string>
+    <string name="bt_state_failed">El Bluetooth no se inició: puede que otra app ya esté haciendo de teclado Bluetooth; ciérrala y vuelve a abrir Douhua</string>
+    <string name="bt_no_phone_text">No se puede pegar texto por Bluetooth: el portapapeles se queda en el teléfono</string>
+    <string name="bt_no_such_key">Esta tecla no está disponible por Bluetooth</string>
+    <string name="drag_hum">Vibración suave continua al arrastrar (recuerda que el botón izquierdo está pulsado)</string>
 </resources>

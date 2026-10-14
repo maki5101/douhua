@@ -1,6 +1,8 @@
 package dev.douhua;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
@@ -18,6 +20,19 @@ final class Haptics {
     private final boolean primitives;
     private int level;
     private int tickStrength = 1;
+
+    // ── 拖动时的持续轻震 ──
+    /** 各档（关 / 小 / 中 / 大）的幅度（1–255）。用户试过原来的"小"（45）嫌有点强，整体往下挪：现在的"中"≈ 原来的"小"。 */
+    private static final int[] HUM_AMPLITUDES = {0, 18, 40, 80};
+    /** 万一漏了"拖动结束"（比如和服务的连接断了），最多震这么久就停。 */
+    private static final long HUM_MAX_MS = 60_000;
+    /** 让前面那下"咔"先震完再接着嗡。 */
+    private static final long HUM_AFTER_MS = 80;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private int humLevel = 1;
+    private boolean humming;
+    private final Runnable humStart = this::vibrateHum;
+    private final Runnable humWatchdog = this::stopHum;
 
     Haptics(Context context) {
         vibrator = context.getSystemService(VibratorManager.class).getDefaultVibrator();
@@ -38,6 +53,40 @@ final class Haptics {
         this.tickStrength = strength;
     }
 
+    /** 拖动时持续轻震的强度：0 关、1 小、2 中、3 大。总强度为"关"时也不震。 */
+    void setDragHum(int level) {
+        humLevel = level;
+        if (level <= 0) stopHum();
+    }
+
+    /** 进入拖动：开始持续轻震（按左侧"左键"按钮时也调）。 */
+    void startHum() {
+        if (humLevel <= 0 || level <= 0 || !vibrator.hasVibrator()) return;
+        humming = true;
+        main.removeCallbacks(humStart);
+        main.postDelayed(humStart, HUM_AFTER_MS);
+        main.removeCallbacks(humWatchdog);
+        main.postDelayed(humWatchdog, HUM_MAX_MS);
+    }
+
+    /** 拖动结束、豆花退到后台、连接断开、触摸被释放：停。 */
+    void stopHum() {
+        main.removeCallbacks(humStart);
+        main.removeCallbacks(humWatchdog);
+        if (!humming) return;
+        humming = false;
+        vibrator.cancel();
+    }
+
+    /** 低幅度一直嗡；马达不能调幅度时退成一下一下的轻点。 */
+    private void vibrateHum() {
+        if (!humming) return;
+        VibrationEffect e = vibrator.hasAmplitudeControl()
+                ? VibrationEffect.createOneShot(HUM_MAX_MS, HUM_AMPLITUDES[Math.min(humLevel, HUM_AMPLITUDES.length - 1)])
+                : VibrationEffect.createWaveform(new long[]{0, 12, 88}, 0);
+        vibrator.vibrate(e, ATTRS);
+    }
+
     /**
      * kind 是 GestureEngine.HAPTIC_*。
      * 各档比 0.1.0 整体强一档（用户反馈太弱）：小 = 点击 × 0.65、中 = 点击开满、大 = 系统的"重击"
@@ -45,6 +94,7 @@ final class Haptics {
      * 两下一组的（开始拖动、三指四指手势）没法和"重击"拼在一起，大档仍用点击开满。
      */
     void play(int kind) {
+        if (kind == GestureEngine.HAPTIC_DRAG_END) stopHum();   // 先停持续轻震，再"嗒"一下
         if (level <= 0 || !vibrator.hasVibrator()) return;
         boolean heavy = kind == GestureEngine.HAPTIC_TICK ? tickStrength >= 2
                 : kind == GestureEngine.HAPTIC_CLICK && level >= 3;
@@ -100,5 +150,11 @@ final class Haptics {
             effect = VibrationEffect.createPredefined(id);
         }
         vibrator.vibrate(effect, ATTRS);
+        if (kind == GestureEngine.HAPTIC_DRAG_START) {
+            startHum();
+        } else if (humming) {   // 拖动中来了别的震动（比如按键），它会打断持续轻震：震完接着嗡
+            main.removeCallbacks(humStart);
+            main.postDelayed(humStart, HUM_AFTER_MS);
+        }
     }
 }

@@ -13,67 +13,35 @@ import java.util.concurrent.TimeUnit;
 
 import dev.douhua.GestureEngine;
 import dev.douhua.Proto;
+import dev.douhua.TouchRouter;
 
 /**
  * 一次 App 连接。把这些串起来：App 发来的布局 / 参数 / 心跳 → 何时独占触摸屏；
- * 触摸 → 落在触控板的交给手势引擎、落在键盘键上的直接按虚拟键盘、落在按钮上的报告给 App；
- * 引擎输出 → 虚拟鼠标、Ctrl + 滚轮缩放、震动、三指四指手势。
- *
- * 键盘修饰键（Ctrl / Shift / Alt / Win）点一下锁定、立即按下，打完下一个普通键自动解开，再点一下也能解开；
- * 锁定期间点触控板就是 Ctrl + 点击之类。
+ * 触摸 → {@link TouchRouter} 分流（触控板 → 手势引擎、键盘键 → 虚拟键盘、按钮 → 报告给 App）；
+ * 分流结果 → 虚拟 USB 鼠标 / 键盘、发给 App 的震动、三指四指手势、按钮事件。
  *
  * 独占的条件：App 说 active、参数已到、心跳没超时（{@link Proto#HEARTBEAT_TIMEOUT_MS}）。
  * 任何一条不满足，100ms 内释放。连接断开时一切释放、虚拟鼠标移除。
  *
  * 线程：命令线程读 App 的消息；监管线程负责独占和读触摸；定时器线程跑轻点拖动的等待。
- * 手势引擎和按钮状态都只在持有 lock 时访问。
+ * router 只在持有 lock 时访问。
  */
-final class Session implements GestureEngine.Output, TouchReader.Listener {
-    private static final int SLOTS = MtDecoder.SLOTS;
-    private static final int KIND_NONE = 0;
-    private static final int KIND_PAD = 1;
-    private static final int KIND_BUTTON = 2;
-    private static final int KIND_HOLD = 3;
-    private static final int KIND_KEY = 4;
-
-    /** 屏幕上的一块区域（像素）。 */
-    static final class Region {
-        final int type, id, left, top, right, bottom;
-
-        Region(int type, int id, int left, int top, int right, int bottom) {
-            this.type = type;
-            this.id = id;
-            this.left = left;
-            this.top = top;
-            this.right = right;
-            this.bottom = bottom;
-        }
-
-        boolean contains(float x, float y) {
-            return x >= left && x < right && y >= top && y < bottom;
-        }
-    }
-
+final class Session implements TouchRouter.Output, TouchReader.Listener {
     /** App 发来的布局，整体替换、不改内部。 */
     static final class Layout {
-        static final Layout INACTIVE = new Layout(false, -1, 0, 0, 0, new Region[0]);
+        static final Layout INACTIVE = new Layout(false, -1, 0, 0, 0, new TouchRouter.Region[0]);
 
         final boolean active;
         final int displayId, rotation, width, height;
-        final Region[] regions;
+        final TouchRouter.Region[] regions;
 
-        Layout(boolean active, int displayId, int rotation, int width, int height, Region[] regions) {
+        Layout(boolean active, int displayId, int rotation, int width, int height, TouchRouter.Region[] regions) {
             this.active = active;
             this.displayId = displayId;
             this.rotation = rotation;
             this.width = width;
             this.height = height;
             this.regions = regions;
-        }
-
-        Region hit(float x, float y) {
-            for (Region r : regions) if (r.contains(x, y)) return r;
-            return null;
         }
 
         /** 屏幕、方向、尺寸都没变（变了就要重新取换算矩阵）。 */
@@ -90,21 +58,7 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
     private final boolean debug;
 
     private final Object lock = new Object();
-    private GestureEngine engine;
-    private float density = 1;
-    private final int[] slotKind = new int[SLOTS];
-    private final Region[] slotRegion = new Region[SLOTS];
-    private final float[] lastX = new float[SLOTS];
-    private final float[] lastY = new float[SLOTS];
-    private int holds;
-    /** 点一下锁定的修饰键。 */
-    private int latched;
-    /** 开合缩放期间按住的 Ctrl。 */
-    private boolean zoomCtrl;
-    /** 正按着的"自带修饰键"的键（"@"、"复制"之类），它们的修饰键要一起按着。 */
-    private final java.util.List<Integer> chordKeys = new java.util.ArrayList<>();
-    /** 引擎最近一次报给鼠标的按键状态（缩放时发滚轮要带上）。 */
-    private int lastButtons;
+    private final TouchRouter router = new TouchRouter(this);
 
     private volatile Layout layout = Layout.INACTIVE;
     /** 正在用的触摸屏和接管时的布局：触摸坐标按它们换算到当前方向。 */
@@ -153,7 +107,7 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
                 Thread.currentThread().interrupt();
             }
             synchronized (lock) {
-                releaseContacts();
+                router.releaseAll();
             }
             timer.shutdownNow();
             restoreRotation();
@@ -182,17 +136,22 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
                 case Proto.CMD_CLICK: {
                     int button = in.readUnsignedByte();
                     synchronized (lock) {
-                        if (engine != null) engine.click(button);
+                        router.click(button);
                     }
                     break;
                 }
                 case Proto.CMD_CONFIG:
                     readConfig();
                     break;
-                case Proto.CMD_LAYOUT:
-                    layout = readLayout();
+                case Proto.CMD_LAYOUT: {
+                    Layout l = readLayout();
+                    synchronized (lock) {
+                        router.setRegions(l.regions);
+                    }
+                    layout = l;
                     lastHeartbeat = SystemClock.uptimeMillis();
                     break;
+                }
                 case Proto.CMD_HEARTBEAT:
                     lastHeartbeat = SystemClock.uptimeMillis();
                     break;
@@ -206,8 +165,7 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
                     int usage = in.readUnsignedShort();
                     boolean down = in.readUnsignedByte() == 1;
                     synchronized (lock) {
-                        if (down) keyDown(usage);
-                        else keyUp(usage);
+                        router.key(usage, down);
                     }
                     break;
                 }
@@ -235,10 +193,7 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
         float d = in.readFloat();
         c.slowFactor = in.readFloat();
         synchronized (lock) {
-            if (engine != null) engine.cancel();
-            engine = new GestureEngine(this, c);
-            density = d > 0 ? d : 1;
-            clearSlots();
+            router.setConfig(c, d);
         }
     }
 
@@ -249,9 +204,9 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
         int width = in.readInt();
         int height = in.readInt();
         int count = in.readUnsignedShort();
-        Region[] regions = new Region[count];
+        TouchRouter.Region[] regions = new TouchRouter.Region[count];
         for (int i = 0; i < count; i++) {
-            regions[i] = new Region(in.readUnsignedByte(), in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt());
+            regions[i] = new TouchRouter.Region(in.readUnsignedByte(), in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt());
         }
         return new Layout(active, displayId, rotation, width, height, regions);
     }
@@ -310,7 +265,7 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
     private boolean wanted(Layout l) {
         boolean ready;
         synchronized (lock) {
-            ready = engine != null;
+            ready = router.ready();
         }
         return alive && l.active && ready
                 && SystemClock.uptimeMillis() - lastHeartbeat < Proto.HEARTBEAT_TIMEOUT_MS;
@@ -344,6 +299,7 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
                             grabbed = true;
                             Server.log("已接管触摸屏：" + dev);
                             sendGrab(true, Proto.GRAB_OK, "");
+                            focusExternal(l.displayId);
                         });
             } catch (IOException e) {
                 Server.log("接管触摸屏失败：" + e.getMessage());
@@ -351,7 +307,7 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
                 waitForChange(l);
             } finally {
                 synchronized (lock) {
-                    releaseContacts();
+                    router.releaseAll();
                 }
             }
             if (grabbed) {
@@ -360,6 +316,18 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
                 Server.log("已释放触摸屏（原因 " + why + "）");
                 sendGrab(false, why, "");
             }
+        }
+    }
+
+    /**
+     * 接管触摸屏时，把键盘输入的目标切到外接屏（DeX），不然在手机屏上打开豆花后打的字会送到手机屏、
+     * 卡住整个输入队列，见 {@link DexFocus}。没接外接屏就不动。
+     */
+    private void focusExternal(int appDisplay) {
+        for (int id : DisplayWatcher.externals()) {
+            if (id == appDisplay) continue;
+            if (DexFocus.moveTo(id)) Server.log("键盘输入切到外接屏 " + id);
+            return;
         }
     }
 
@@ -397,188 +365,43 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
     @Override
     public void onDown(int slot, float rawX, float rawY, long t) {
         float[] p = toScreen(rawX, rawY);
-        float x = p[0];
-        float y = p[1];
-        Region r = layout.hit(x, y);
-        if (debug) {
-            Server.log(String.format(Locale.ROOT, "按下 #%d (%.0f,%.0f) 方向 %d → %s", slot, x, y, grabLayout.rotation,
-                    r == null ? "空白处" : "区域 type=" + r.type + " id=" + r.id));
-        }
+        TouchRouter.Region r;
         synchronized (lock) {
-            lastX[slot] = x;
-            lastY[slot] = y;
-            slotRegion[slot] = r;
-            if (r == null || engine == null) {
-                slotKind[slot] = KIND_NONE;
-                return;
-            }
-            switch (r.type) {
-                case Proto.REGION_PAD: {
-                    slotKind[slot] = KIND_PAD;
-                    // 按在触控板边缘带里：左右两条单指上下滑 = 竖向滚动，上下两条单指左右滑 = 横向滚动
-                    float edge = engine.config().edgeWidthDp * density;
-                    int flags = 0;
-                    if (x - r.left < edge || r.right - x < edge) flags |= GestureEngine.EDGE_VERTICAL;
-                    if (y - r.top < edge || r.bottom - y < edge) flags |= GestureEngine.EDGE_HORIZONTAL;
-                    engine.down(slot, x / density, y / density, t, flags);
-                    break;
-                }
-                case Proto.REGION_HOLD_LEFT:
-                    slotKind[slot] = KIND_HOLD;
-                    if (holds++ == 0) engine.setExternalButtons(Proto.BUTTON_LEFT);
-                    sendButton(r.id, Proto.BUTTON_DOWN);
-                    break;
-                case Proto.REGION_KEY:
-                    slotKind[slot] = KIND_KEY;
-                    keyDown(r.id);
-                    sendButton(Proto.KEY_ID_BASE + r.id, Proto.BUTTON_DOWN);
-                    break;
-                default:
-                    slotKind[slot] = KIND_BUTTON;
-                    sendButton(r.id, Proto.BUTTON_DOWN);
-                    break;
-            }
+            r = router.down(slot, p[0], p[1], t);
+        }
+        if (debug) {
+            Server.log(String.format(Locale.ROOT, "按下 #%d (%.0f,%.0f) 方向 %d → %s", slot, p[0], p[1], grabLayout.rotation,
+                    r == null ? "空白处" : r.toString()));
         }
     }
 
     @Override
     public void onMove(int slot, float rawX, float rawY) {
         float[] p = toScreen(rawX, rawY);
-        float x = p[0];
-        float y = p[1];
         synchronized (lock) {
-            lastX[slot] = x;
-            lastY[slot] = y;
-            if (slotKind[slot] == KIND_PAD && engine != null) engine.move(slot, x / density, y / density);
+            router.move(slot, p[0], p[1]);
         }
     }
 
     @Override
     public void onFrame(long t) {
         synchronized (lock) {
-            if (engine != null) engine.endFrame(t);
+            router.frame(t);
         }
     }
 
     @Override
     public void onUp(int slot, long t) {
         synchronized (lock) {
-            int kind = slotKind[slot];
-            Region r = slotRegion[slot];
-            slotKind[slot] = KIND_NONE;
-            slotRegion[slot] = null;
-            if (engine == null) return;
-            switch (kind) {
-                case KIND_PAD:
-                    engine.up(slot, t);
-                    break;
-                case KIND_HOLD:
-                    if (--holds <= 0) {
-                        holds = 0;
-                        engine.setExternalButtons(0);
-                    }
-                    sendButton(r.id, Proto.BUTTON_UP);
-                    break;
-                case KIND_BUTTON:
-                    sendButton(r.id, r.contains(lastX[slot], lastY[slot]) ? Proto.BUTTON_TAP : Proto.BUTTON_UP);
-                    break;
-                case KIND_KEY:
-                    keyUp(r.id);
-                    sendButton(Proto.KEY_ID_BASE + r.id, Proto.BUTTON_UP);
-                    break;
-                default:
-                    break;
-            }
+            router.up(slot, t);
         }
     }
 
-    // ═══════════ 虚拟键盘（调用方持有 lock） ═══════════
-
-    /** key = HID 用法码 | (自带修饰键 << 8)，见 Proto.REGION_KEY。 */
-    private void keyDown(int key) {
-        int usage = key & 0xFF;
-        int chord = (key >> 8) & 0xFF;
-        try {
-            if (chord == 0 && UhidKeyboard.isModifier(usage)) {
-                latched ^= UhidKeyboard.modifierBit(usage);
-                applyModifiers();
-                sendModifiers();
-                return;
-            }
-            if (chord != 0) {
-                chordKeys.add(key);
-                applyModifiers();   // 先按下修饰键，再按键
-            }
-            keyboard.press(usage);
-        } catch (IOException e) {
-            Server.log("写虚拟键盘失败：" + e.getMessage());
-        }
-    }
-
-    private void keyUp(int key) {
-        int usage = key & 0xFF;
-        int chord = (key >> 8) & 0xFF;
-        if (chord == 0 && UhidKeyboard.isModifier(usage)) return;   // 修饰键是点一下锁定，松手不算
-        try {
-            keyboard.release(usage);   // 先松开键，再松开它自带的修饰键
-            chordKeys.remove(Integer.valueOf(key));
-            boolean hadLatched = latched != 0;
-            latched = 0;               // 打完一个键，锁定的修饰键自动解开
-            applyModifiers();
-            if (hadLatched) sendModifiers();
-        } catch (IOException e) {
-            Server.log("写虚拟键盘失败：" + e.getMessage());
-        }
-    }
-
-    private void applyModifiers() throws IOException {
-        int chords = 0;
-        for (int k : chordKeys) chords |= (k >> 8) & 0xFF;
-        keyboard.setModifiers(latched | chords | (zoomCtrl ? UhidKeyboard.MOD_CTRL : 0));
-    }
-
-    private void sendModifiers() {
-        send(new byte[]{(byte) Proto.MSG_MODIFIERS, (byte) latched});
-    }
-
-    /** 释放触摸屏时：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开。调用方持有 lock。 */
-    private void releaseContacts() {
-        if (engine != null) engine.cancel();
-        for (int s = 0; s < SLOTS; s++) {
-            if (slotRegion[s] == null) continue;
-            if (slotKind[s] == KIND_BUTTON || slotKind[s] == KIND_HOLD) {
-                sendButton(slotRegion[s].id, Proto.BUTTON_UP);
-            } else if (slotKind[s] == KIND_KEY) {
-                sendButton(Proto.KEY_ID_BASE + slotRegion[s].id, Proto.BUTTON_UP);
-            }
-        }
-        clearSlots();
-        boolean hadLatched = latched != 0;
-        latched = 0;
-        zoomCtrl = false;
-        chordKeys.clear();
-        try {
-            keyboard.releaseAll();
-        } catch (IOException e) {
-            Server.log("写虚拟键盘失败：" + e.getMessage());
-        }
-        if (hadLatched) sendModifiers();
-    }
-
-    private void clearSlots() {
-        for (int s = 0; s < SLOTS; s++) {
-            slotKind[s] = KIND_NONE;
-            slotRegion[s] = null;
-        }
-        holds = 0;
-    }
-
-    // ═══════════ 手势引擎输出 ═══════════
+    // ═══════════ 分流结果（调用方持有 lock） ═══════════
 
     @Override
     public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
         if (stats != null) stats.add(dx, dy);
-        lastButtons = buttons;
         try {
             mouse.send(buttons, dx, dy, wheel, pan);
         } catch (IOException e) {
@@ -586,26 +409,10 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
         }
     }
 
-    /** 缩放 = 按住 Ctrl 滚滚轮（浏览器、DeX 里的通用缩放方式）。 */
     @Override
-    public void zoom(int steps) {
+    public void keyboard(byte[] report) {
         try {
-            if (!zoomCtrl) {
-                zoomCtrl = true;
-                applyModifiers();
-            }
-            mouse.send(lastButtons, 0, 0, steps, 0);
-        } catch (IOException e) {
-            Server.log("缩放失败：" + e.getMessage());
-        }
-    }
-
-    @Override
-    public void zoomEnd() {
-        if (!zoomCtrl) return;
-        zoomCtrl = false;
-        try {
-            applyModifiers();
+            keyboard.send(report);
         } catch (IOException e) {
             Server.log("写虚拟键盘失败：" + e.getMessage());
         }
@@ -622,11 +429,22 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
     }
 
     @Override
+    public void button(int id, int action) {
+        send(new byte[]{(byte) Proto.MSG_BUTTON, (byte) (id >> 24), (byte) (id >> 16), (byte) (id >> 8), (byte) id,
+                (byte) action});
+    }
+
+    @Override
+    public void modifiers(int latched) {
+        send(new byte[]{(byte) Proto.MSG_MODIFIERS, (byte) latched});
+    }
+
+    @Override
     public void schedule(long delayMs) {
         cancelSchedule();
         pendingTimer = timer.schedule(() -> {
             synchronized (lock) {
-                if (engine != null) engine.onTimer(SystemClock.uptimeMillis());
+                router.onTimer(SystemClock.uptimeMillis());
             }
         }, delayMs, TimeUnit.MILLISECONDS);
     }
@@ -638,11 +456,6 @@ final class Session implements GestureEngine.Output, TouchReader.Listener {
     }
 
     // ═══════════ 发给 App ═══════════
-
-    private void sendButton(int id, int action) {
-        send(new byte[]{(byte) Proto.MSG_BUTTON, (byte) (id >> 24), (byte) (id >> 16), (byte) (id >> 8), (byte) id,
-                (byte) action});
-    }
 
     private void sendGrab(boolean isGrabbed, int reason, String detail) {
         synchronized (out) {

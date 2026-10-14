@@ -16,7 +16,7 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 10;
+    public static final int VERSION = 11;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
 
@@ -33,9 +33,10 @@ public final class Proto {
      */
     public static final int CMD_CONFIG = 4;
     /**
-     * 界面布局：active:u8, displayId:i32, rotation:u8, width:i32, height:i32, count:u16,
+     * 界面布局：active:u8, relay:u8, displayId:i32, rotation:u8, width:i32, height:i32, count:u16,
      * 然后 count 个区域 {type:u8, id:i32, left:i32, top:i32, right:i32, bottom:i32}，坐标是屏幕像素。
-     * active=1 时服务接管这块屏的触摸屏。
+     * active=1 时服务接管这块屏的触摸屏。relay=1（蓝牙模式）时分流出的鼠标、键盘报文不写手机自己的虚拟设备，
+     * 发回 App（{@link #MSG_MOUSE} / {@link #MSG_KEYBOARD}），由 App 从蓝牙发出去。
      */
     public static final int CMD_LAYOUT = 5;
     /** 心跳：App 主线程每秒一次。服务超过 HEARTBEAT_TIMEOUT_MS 收不到就释放触摸屏。 */
@@ -92,6 +93,10 @@ public final class Proto {
     public static final int GRAB_RELEASED = 7;
     /** 锁定中的修饰键：mask:u8（HID 修饰键位：1 Ctrl、2 Shift、4 Alt、8 Win）。点一下修饰键锁定，打完下一个键自动解开。 */
     public static final int MSG_MODIFIERS = 0x85;
+    /** 转发的鼠标报文（relay 模式）：buttons:u8, dx:i16, dy:i16, wheel:i8, pan:i8。 */
+    public static final int MSG_MOUSE = 0x86;
+    /** 转发的键盘报文（relay 模式）：HID 键盘报文原样 8 字节（修饰键位、保留、6 个键）。 */
+    public static final int MSG_KEYBOARD = 0x87;
 
     public static final int BUTTON_DOWN = 0;
     /** 松开但不算点击（手指滑出了按钮，或被取消）。 */

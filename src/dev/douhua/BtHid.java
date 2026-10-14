@@ -247,9 +247,19 @@ final class BtHid {
             }
         }
 
+        /**
+         * 对方切协议：0 = 简化的 boot 协议，1 = 正常的报文协议。现在只记日志：iPad 上只认光标移动、点击无效，
+         * 怀疑和它有关（boot 协议下鼠标报文只有 3 字节，对方会按另一种格式读），先看清对方到底发没发。
+         */
+        @Override
+        public void onSetProtocol(BluetoothDevice device, byte protocol) {
+            Log.i(TAG, "蓝牙主机 " + deviceName(device) + " 切协议：" + (protocol == 0 ? "boot" : "report") + "（" + protocol + "）");
+        }
+
         /** 对方来要当前报文（有的系统在连上时问一次）：回一帧全零的。 */
         @Override
         public void onGetReport(BluetoothDevice device, byte type, byte id, int bufferSize) {
+            Log.i(TAG, "蓝牙主机 " + deviceName(device) + " 要报文：type=" + type + " id=" + id + " size=" + bufferSize);
             int size = id == Hid.REPORT_KEYBOARD ? Hid.KEYBOARD_REPORT_SIZE
                     : id == Hid.REPORT_MOUSE ? Hid.MOUSE_REPORT_SIZE
                     : id == Hid.REPORT_CONSUMER ? Hid.CONSUMER_REPORT_SIZE : 0;
@@ -264,6 +274,7 @@ final class BtHid {
         /** 对方设置报文（键盘指示灯之类）：照单全收。 */
         @Override
         public void onSetReport(BluetoothDevice device, byte type, byte id, byte[] data) {
+            Log.i(TAG, "蓝牙主机 " + deviceName(device) + " 设报文：type=" + type + " id=" + id + " 长度=" + (data == null ? 0 : data.length));
             try {
                 hid.reportError(device, BluetoothHidDevice.ERROR_RSP_SUCCESS);
             } catch (SecurityException ignored) {

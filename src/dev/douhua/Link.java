@@ -31,6 +31,12 @@ final class Link {
         void onGrab(boolean grabbed, int reason, String detail);
 
         void onModifiers(int mask);
+
+        /** 蓝牙模式下服务接管触摸屏时，分流出的鼠标报文（见 Proto.MSG_MOUSE）。 */
+        void onRelayMouse(int buttons, int dx, int dy, int wheel, int pan);
+
+        /** 同上，键盘报文（8 字节）。 */
+        void onRelayKeyboard(byte[] report);
     }
 
     /** 队列里的"连接已断"信号。 */
@@ -86,10 +92,11 @@ final class Link {
                 .putInt(c.dragWindowMs).putFloat(density).putFloat(c.slowFactor));
     }
 
-    /** regions 每项是 {type, id, left, top, right, bottom}，屏幕像素。 */
-    void layout(boolean active, int displayId, int rotation, int width, int height, List<int[]> regions) {
-        ByteBuffer b = ByteBuffer.allocate(17 + regions.size() * 21);
-        b.put((byte) Proto.CMD_LAYOUT).put((byte) (active ? 1 : 0)).putInt(displayId).put((byte) rotation)
+    /** regions 每项是 {type, id, left, top, right, bottom}，屏幕像素。relay = 蓝牙模式，报文发回来由 App 发出去。 */
+    void layout(boolean active, boolean relay, int displayId, int rotation, int width, int height, List<int[]> regions) {
+        ByteBuffer b = ByteBuffer.allocate(18 + regions.size() * 21);
+        b.put((byte) Proto.CMD_LAYOUT).put((byte) (active ? 1 : 0)).put((byte) (relay ? 1 : 0))
+                .putInt(displayId).put((byte) rotation)
                 .putInt(width).putInt(height).putShort((short) regions.size());
         for (int[] r : regions) {
             b.put((byte) r[0]).putInt(r[1]).putInt(r[2]).putInt(r[3]).putInt(r[4]).putInt(r[5]);
@@ -192,6 +199,21 @@ final class Link {
                         case Proto.MSG_MODIFIERS: {
                             int mask = in.readUnsignedByte();
                             main.post(() -> listener.onModifiers(mask));
+                            break;
+                        }
+                        case Proto.MSG_MOUSE: {
+                            int buttons = in.readUnsignedByte();
+                            int dx = in.readShort();
+                            int dy = in.readShort();
+                            int wheel = in.readByte();
+                            int pan = in.readByte();
+                            main.post(() -> listener.onRelayMouse(buttons, dx, dy, wheel, pan));
+                            break;
+                        }
+                        case Proto.MSG_KEYBOARD: {
+                            byte[] report = new byte[Hid.KEYBOARD_REPORT_SIZE];
+                            in.readFully(report);
+                            main.post(() -> listener.onRelayKeyboard(report));
                             break;
                         }
                         case Proto.MSG_GRAB: {

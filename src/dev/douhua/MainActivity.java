@@ -53,8 +53,9 @@ import java.util.List;
  * - DeX：豆花在前台时，服务独占这块屏的触摸屏，按这里报上去的区域位置分流（{@link TouchRouter}），
  *   鼠标键盘发给虚拟 USB 设备，再把按钮事件、震动、三指四指手势发回来，这里负责画面和执行动作。
  *   服务没接管时（"贴字"面板打开、服务没连上），按钮和键按普通方式响应触摸。
- * - 蓝牙：不用服务。这里自己收触摸（{@link #dispatchTouchEvent}），交给同一个 TouchRouter 分流，
- *   鼠标键盘经 {@link BtHid} 发给配对的电脑 / 平板 / 电视。服务要是开着，只借它转屏，不让它接管触摸。
+ * - 蓝牙：鼠标键盘经 {@link BtHid} 发给配对的电脑 / 平板 / 电视。服务开着时和 DeX 一样由服务独占触摸屏、分流
+ *   （系统的下拉通知栏、上滑回桌面、侧滑返回都碰不到），只是报文发回这里（relay），由这里从蓝牙发出去；
+ *   服务没开或没接管时，这里自己收触摸（{@link #dispatchTouchEvent}），交给同一个 TouchRouter 分流。
  *
  * 窗口平时设成"不可获得焦点"，DeX 里的窗口不会因为碰了手机屏而变成未激活。"贴字"面板打开时、没有外接屏时允许，
  * 见 {@link #updateFocusable}。
@@ -529,8 +530,9 @@ public final class MainActivity extends Activity
 
     /**
      * 把各区域的位置交给分流的一方：DeX 模式发给服务，蓝牙模式给本地的 TouchRouter。
-     * 服务独占触摸屏的条件之一是 active：豆花在前台、"贴字"面板没开、键盘不在调整模式（拖动要 App 自己收触摸）；
-     * 蓝牙模式下永远报 inactive，服务（要是开着）不接管触摸。
+     * 服务独占触摸屏的条件之一是 active：豆花在前台、"贴字"面板没开、键盘不在调整模式（拖动要 App 自己收触摸）。
+     * 蓝牙模式下也一样报，带上 relay：服务接管后把报文发回来（{@link #onRelayMouse}）；本地的 TouchRouter 同时备着，
+     * 服务没开、没接管时用。
      */
     private void pushLayout() {
         if (pad == null) return;
@@ -546,7 +548,7 @@ public final class MainActivity extends Activity
             local.setRegions(rs);
         }
         updateGestureExclusion();
-        if (link.isConnected()) sendLayout(localActive() && !btMode, regions);
+        if (link.isConnected()) sendLayout(localActive(), regions);
         updateStatus();
     }
 
@@ -592,7 +594,7 @@ public final class MainActivity extends Activity
     private void sendLayout(boolean active, List<int[]> regions) {
         Display d = getDisplay();
         Rect bounds = getWindowManager().getCurrentWindowMetrics().getBounds();
-        link.layout(active, d != null ? d.getDisplayId() : Display.DEFAULT_DISPLAY, d != null ? d.getRotation() : 0,
+        link.layout(active, btMode, d != null ? d.getDisplayId() : Display.DEFAULT_DISPLAY, d != null ? d.getRotation() : 0,
                 bounds.width(), bounds.height(), regions);
     }
 
@@ -775,6 +777,16 @@ public final class MainActivity extends Activity
     @Override
     public void onKeyHaptic() {
         haptics.play(GestureEngine.HAPTIC_CLICK);
+    }
+
+    @Override
+    public void onRelayMouse(int buttons, int dx, int dy, int wheel, int pan) {
+        if (btMode) bt.sendMouse(buttons, dx, dy, wheel, pan);
+    }
+
+    @Override
+    public void onRelayKeyboard(byte[] report) {
+        if (btMode) bt.sendKeyboard(report);
     }
 
     @Override
@@ -988,6 +1000,11 @@ public final class MainActivity extends Activity
     public void onGrab(boolean isGrabbed, int reason, String detail) {
         grabbed = isGrabbed;
         if (!isGrabbed) haptics.stopHum();
+        if (isGrabbed && btMode) {
+            // 服务接管后系统收不到触摸，本地分流里正按着的手指等不到抬起：先收尾，按着的键松开
+            local.releaseAll();
+            localGesture = false;
+        }
         grabMessage = grabText(reason, detail);
         updateStatus();
     }

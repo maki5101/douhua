@@ -29,14 +29,18 @@ import dev.douhua.TouchRouter;
 final class Session implements TouchRouter.Output, TouchReader.Listener {
     /** App 发来的布局，整体替换、不改内部。 */
     static final class Layout {
-        static final Layout INACTIVE = new Layout(false, -1, 0, 0, 0, new TouchRouter.Region[0]);
+        static final Layout INACTIVE = new Layout(false, false, -1, 0, 0, 0, new TouchRouter.Region[0]);
 
         final boolean active;
+        /** 蓝牙模式：鼠标键盘报文发回 App，不写虚拟设备（见 Proto.CMD_LAYOUT）。 */
+        final boolean relay;
         final int displayId, rotation, width, height;
         final TouchRouter.Region[] regions;
 
-        Layout(boolean active, int displayId, int rotation, int width, int height, TouchRouter.Region[] regions) {
+        Layout(boolean active, boolean relay, int displayId, int rotation, int width, int height,
+               TouchRouter.Region[] regions) {
             this.active = active;
+            this.relay = relay;
             this.displayId = displayId;
             this.rotation = rotation;
             this.width = width;
@@ -199,6 +203,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
 
     private Layout readLayout() throws IOException {
         boolean active = in.readUnsignedByte() == 1;
+        boolean relay = in.readUnsignedByte() == 1;
         int displayId = in.readInt();
         int rotation = in.readUnsignedByte();
         int width = in.readInt();
@@ -208,7 +213,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         for (int i = 0; i < count; i++) {
             regions[i] = new TouchRouter.Region(in.readUnsignedByte(), in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt());
         }
-        return new Layout(active, displayId, rotation, width, height, regions);
+        return new Layout(active, relay, displayId, rotation, width, height, regions);
     }
 
     // ═══════════ 转屏 ═══════════
@@ -293,13 +298,14 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
             grabDevice = dev;
             grabLayout = l;
             try {
+                // 切了模式（DeX ↔ 蓝牙）也重新接管：按着的键在原来那一路上松开，不会一半写虚拟设备、一半发回 App
                 TouchReader.run(dev, this,
-                        () -> wanted(layout) && layout.sameScreen(l),
+                        () -> wanted(layout) && layout.sameScreen(l) && layout.relay == l.relay,
                         () -> {
                             grabbed = true;
-                            Server.log("已接管触摸屏：" + dev);
+                            Server.log("已接管触摸屏：" + dev + (l.relay ? "（蓝牙模式，报文发回 App）" : ""));
                             sendGrab(true, Proto.GRAB_OK, "");
-                            focusExternal(l.displayId);
+                            if (!l.relay) focusExternal(l.displayId);
                         });
             } catch (IOException e) {
                 Server.log("接管触摸屏失败：" + e.getMessage());
@@ -398,10 +404,18 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     }
 
     // ═══════════ 分流结果（调用方持有 lock） ═══════════
+    // 去哪一路按最近一次接管时的布局：DeX 模式写虚拟设备，蓝牙模式发回 App。接管结束后的松开（releaseAll）也走同一路。
 
     @Override
     public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
         if (stats != null) stats.add(dx, dy);
+        if (grabLayout.relay) {
+            short x = (short) Math.max(Short.MIN_VALUE + 1, Math.min(Short.MAX_VALUE, dx));
+            short y = (short) Math.max(Short.MIN_VALUE + 1, Math.min(Short.MAX_VALUE, dy));
+            send(new byte[]{(byte) Proto.MSG_MOUSE, (byte) buttons, (byte) (x >> 8), (byte) x, (byte) (y >> 8), (byte) y,
+                    (byte) Math.max(-127, Math.min(127, wheel)), (byte) Math.max(-127, Math.min(127, pan))});
+            return;
+        }
         try {
             mouse.send(buttons, dx, dy, wheel, pan);
         } catch (IOException e) {
@@ -411,6 +425,13 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
 
     @Override
     public void keyboard(byte[] report) {
+        if (grabLayout.relay) {
+            byte[] packet = new byte[1 + report.length];
+            packet[0] = (byte) Proto.MSG_KEYBOARD;
+            System.arraycopy(report, 0, packet, 1, report.length);
+            send(packet);
+            return;
+        }
         try {
             keyboard.send(report);
         } catch (IOException e) {

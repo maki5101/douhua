@@ -10,9 +10,11 @@ import dev.douhua.Proto;
 
 /**
  * 服务自测：冒充 App 连上服务，要求接管某块屏的触摸屏若干秒，然后停发心跳，看服务会不会自己释放。
- * 只验证"接管 / 释放"这条安全链路，不发鼠标位移、不点击。测试期间那块屏摸不动。
+ * 只验证"接管 / 释放"这条安全链路，自己不发鼠标位移、不点击。测试期间那块屏摸不动。
+ * 第三个参数写 relay 就按蓝牙模式接管：服务把分流出的鼠标、键盘报文发回来，这里打印出来
+ * （配合往触摸屏节点 sendevent 模拟触摸，不用真人去摸也能验证转发）。
  *
- * 用法：app_process / dev.douhua.server.TestClient [displayId] [接管秒数]
+ * 用法：app_process / dev.douhua.server.TestClient [displayId] [接管秒数] [relay]
  */
 public final class TestClient {
     private TestClient() {}
@@ -20,6 +22,7 @@ public final class TestClient {
     public static void main(String[] args) throws Exception {
         int displayId = args.length > 0 ? Integer.parseInt(args[0]) : 0;
         int seconds = args.length > 1 ? Integer.parseInt(args[1]) : 2;
+        boolean relay = args.length > 2 && args[2].equals("relay");
         try (Socket s = new Socket()) {
             s.connect(new InetSocketAddress(Proto.HOST, Proto.PORT), 1000);
             DataInputStream in = new DataInputStream(s.getInputStream());
@@ -46,6 +49,7 @@ public final class TestClient {
             out.writeFloat(0.55f);   // 精细移动
             out.writeByte(Proto.CMD_LAYOUT);
             out.writeByte(1);
+            out.writeByte(relay ? 1 : 0);
             out.writeInt(displayId);
             out.writeByte(0);
             out.writeInt(1248);
@@ -94,6 +98,18 @@ public final class TestClient {
                     case Proto.MSG_BUTTON:
                         Server.log("自测收到 按钮 " + in.readInt() + " " + in.readUnsignedByte());
                         break;
+                    case Proto.MSG_MOUSE:
+                        Server.log("自测收到 鼠标 键=" + in.readUnsignedByte() + " 位移=(" + in.readShort() + "," + in.readShort()
+                                + ") 滚轮=" + in.readByte() + " 横滚=" + in.readByte());
+                        break;
+                    case Proto.MSG_KEYBOARD: {
+                        byte[] r = new byte[8];
+                        in.readFully(r);
+                        StringBuilder b = new StringBuilder();
+                        for (byte x : r) b.append(String.format("%02x ", x));
+                        Server.log("自测收到 键盘 " + b.toString().trim());
+                        break;
+                    }
                     default:
                         Server.log("自测收到未知消息 " + type);
                         return;

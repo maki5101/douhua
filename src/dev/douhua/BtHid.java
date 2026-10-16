@@ -47,9 +47,17 @@ final class BtHid {
     static final int STATE_CONNECTED = 7;
     /** 注册失败：多半是别的 App 正在当蓝牙键盘（系统同一时刻只允许一个）。 */
     static final int STATE_FAILED = 8;
+    /** 注册了系统一直不回话：系统蓝牙卡住了，App 解不开，要重启手机（见 onRegisterTimeout）。 */
+    static final int STATE_STUCK = 9;
 
     private static final String TAG = "douhua";
     private static final long GRACE_MS = 60_000;
+    /** 有人在用、又没连上时，每隔这么久重新连一次上次那台（对方刚才没准备好、刚打开蓝牙，都能自己连上）。 */
+    private static final long RETRY_MS = 5_000;
+    /** 注册正常几毫秒就有回话，等这么久还没有就当系统卡住了。 */
+    private static final long REGISTER_TIMEOUT_MS = 5_000;
+    /** 连接正常 1–2 秒有结果，对方不在时约 5 秒报断开；过了这么久还没结果就当系统卡在"连接中"了。 */
+    private static final long CONNECT_TIMEOUT_MS = 12_000;
     private static BtHid instance;
 
     private final Context context;
@@ -57,12 +65,31 @@ final class BtHid {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<Listener> listeners = new ArrayList<>();
     private final byte[] mouseReport = new byte[Hid.MOUSE_REPORT_SIZE];
+    private final byte[] absReport = new byte[Hid.ABS_REPORT_SIZE];
+    /** 注册好了（描述符里一直带绝对坐标指针，回正中用）。 */
+    private boolean absRegistered;
+    /** 上一次发的绝对坐标（同样的值内核会吞掉，见 sendAbsolute）。 */
+    private int lastAbsX = -1, lastAbsY = -1;
+    /** 最近一帧鼠标报文里的按键（绝对报文的第一个字节照抄，见 Hid.ABS_POINTER_DESC）。 */
+    private int mouseButtons;
     private final Runnable stopLater = this::stop;
+    private final Runnable retryLater = this::retryConnect;
+    private final Runnable registerTimeout = this::onRegisterTimeout;
+    private final Runnable connectTimeout = this::onConnectTimeout;
 
     private int users;
     private boolean started;
     private BluetoothAdapter adapter;
+    /**
+     * 系统给的代理，整个启动期间只要一个：蓝牙关开时它不失效，系统蓝牙起来后会再回调 onServiceConnected。
+     * 以前蓝牙一关就丢掉它、打开时再要一个，两个代理各注册一次，第二次被系统拒掉，状态就成了"注册失败"。
+     */
+    private BluetoothHidDevice proxy;
+    private boolean proxyRequested;
+    /** 代理当前连着系统服务时 = proxy，否则 null。 */
     private BluetoothHidDevice hid;
+    /** 已经调了 registerApp、还在等系统回话。 */
+    private boolean registering;
     private boolean registered;
     private BluetoothDevice connected;
     private BluetoothDevice connecting;
@@ -90,6 +117,11 @@ final class BtHid {
         users++;
         main.removeCallbacks(stopLater);
         if (!started || state == STATE_NO_PERMISSION || state == STATE_FAILED) start();
+        // 宽限期里回来：排着的重连在没人用时已经作罢（retryConnect 看到 users == 0 就不再排），这里接上
+        if (state == STATE_WAITING) {
+            main.removeCallbacks(retryLater);
+            main.postDelayed(retryLater, RETRY_MS);
+        }
         l.onBtState(state, deviceName(connected != null ? connected : connecting));
     }
 
@@ -140,11 +172,14 @@ final class BtHid {
             return;
         }
         if (hid != null) {
-            if (!registered) register();
+            if (!registered && !registering) register();
             return;
         }
         setState(STATE_REGISTERING);
+        if (proxyRequested) return;   // 代理已经要过了：系统服务连上后 onServiceConnected 接着注册
+        proxyRequested = true;
         if (!adapter.getProfileProxy(context, proxyListener, BluetoothProfile.HID_DEVICE)) {
+            proxyRequested = false;
             setState(STATE_UNSUPPORTED);
         }
     }
@@ -155,50 +190,86 @@ final class BtHid {
             context.unregisterReceiver(stateReceiver);
             receiverOn = false;
         }
-        if (hid != null) {
+        main.removeCallbacks(registerTimeout);
+        main.removeCallbacks(connectTimeout);
+        if (proxy != null) {
             try {
-                if (registered) hid.unregisterApp();   // 对方那边会看到键盘鼠标断开
-                adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, hid);
+                // 对方那边会看到键盘鼠标断开；卡在注册里的也撤掉，免得系统一直当它占着
+                if (hid != null && (registered || registering)) hid.unregisterApp();
+                adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, proxy);
             } catch (SecurityException e) {
                 Log.w(TAG, "停止蓝牙 HID 时没有权限：" + e.getMessage());
             }
         }
+        proxy = null;
+        proxyRequested = false;
         hid = null;
+        registering = false;
         registered = false;
         connected = null;
         connecting = null;
+        absRegistered = false;
         setState(STATE_OFF);
     }
 
     private final BluetoothProfile.ServiceListener proxyListener = new BluetoothProfile.ServiceListener() {
         @Override
-        public void onServiceConnected(int profile, BluetoothProfile proxy) {
-            if (!started) {
-                adapter.closeProfileProxy(profile, proxy);
+        public void onServiceConnected(int profile, BluetoothProfile p) {
+            // 停了以后才回来的、或者多出来的代理：关掉，只留一个
+            if (!started || (proxy != null && proxy != p)) {
+                adapter.closeProfileProxy(profile, p);
                 return;
             }
-            hid = (BluetoothHidDevice) proxy;
-            register();
+            proxy = (BluetoothHidDevice) p;
+            hid = proxy;
+            if (!registered && !registering) register();
         }
 
+        /** 蓝牙关掉时也会走这里（系统服务停了）；代理留着，蓝牙打开后会再回调 onServiceConnected。 */
         @Override
         public void onServiceDisconnected(int profile) {
             hid = null;
+            registering = false;
             registered = false;
             connected = null;
-            if (started) setState(STATE_FAILED);
+            connecting = null;
+            main.removeCallbacks(registerTimeout);
+            main.removeCallbacks(connectTimeout);
+            if (started) setState(adapter != null && adapter.isEnabled() ? STATE_FAILED : STATE_BT_DISABLED);
         }
     };
 
     private void register() {
         BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
                 "Douhua", "Douhua touchpad & keyboard", "Douhua",
-                BluetoothHidDevice.SUBCLASS1_COMBO, Hid.combinedDescriptor());
+                BluetoothHidDevice.SUBCLASS1_COMBO, Hid.combinedDescriptor(true));
+        absRegistered = true;
+        registering = true;
+        setState(STATE_REGISTERING);
         try {
-            if (!hid.registerApp(sdp, null, null, context.getMainExecutor(), callback)) setState(STATE_FAILED);
+            if (hid.registerApp(sdp, null, null, context.getMainExecutor(), callback)) {
+                main.removeCallbacks(registerTimeout);
+                main.postDelayed(registerTimeout, REGISTER_TIMEOUT_MS);
+            } else {
+                registering = false;
+                setState(STATE_FAILED);
+            }
         } catch (SecurityException e) {
+            registering = false;
             setState(STATE_NO_PERMISSION);
         }
+    }
+
+    /**
+     * 注册了 5 秒系统还没回话（正常几毫秒）。三星主力机实测（2026-10-15）：豆花注册着的时候关开一次蓝牙，
+     * 系统蓝牙再起来后"手机连外接键鼠"那部分没启动，而三星注册蓝牙键盘前要先把它停掉、等它停好，于是永远等不到，
+     * 之后谁来注册都一样，重启手机才好（日志：BTA_HH_REG_HD_STATE NOT_READY 之后再没有 BTA_HD_REGISTER_APP_EVT）。
+     * App 解不开，也没法在系统关蓝牙之前抢先注销（三星一开始关就先停了键鼠服务），只能说清楚。
+     */
+    private void onRegisterTimeout() {
+        if (!started || !registering || registered) return;
+        Log.w(TAG, "注册蓝牙 HID " + REGISTER_TIMEOUT_MS / 1000 + " 秒没有回话：系统蓝牙卡住了，要重启手机");
+        setState(STATE_STUCK);
     }
 
     private final BroadcastReceiver stateReceiver = new BroadcastReceiver() {
@@ -208,7 +279,10 @@ final class BtHid {
             if (s == BluetoothAdapter.STATE_ON && started && state == STATE_BT_DISABLED) {
                 start();
             } else if (s == BluetoothAdapter.STATE_OFF && started) {
+                main.removeCallbacks(registerTimeout);
+                main.removeCallbacks(connectTimeout);
                 hid = null;
+                registering = false;
                 registered = false;
                 connected = null;
                 connecting = null;
@@ -220,6 +294,8 @@ final class BtHid {
     private final BluetoothHidDevice.Callback callback = new BluetoothHidDevice.Callback() {
         @Override
         public void onAppStatusChanged(BluetoothDevice plugged, boolean isRegistered) {
+            main.removeCallbacks(registerTimeout);
+            registering = false;
             registered = isRegistered;
             if (!isRegistered) {
                 connected = null;
@@ -233,17 +309,25 @@ final class BtHid {
 
         @Override
         public void onConnectionStateChanged(BluetoothDevice device, int s) {
+            Log.i(TAG, "蓝牙主机 " + deviceName(device) + " 连接状态：" + s + "（0 断开 1 连接中 2 已连接 3 断开中）");
             if (s == BluetoothProfile.STATE_CONNECTED) {
+                main.removeCallbacks(connectTimeout);
+                mouseButtons = 0;   // 新连上的主机那边什么键都没按着
                 connected = device;
                 connecting = null;
                 prefs.setBtHost(device.getAddress());
                 setState(STATE_CONNECTED);
             } else if (s == BluetoothProfile.STATE_CONNECTING) {
                 connecting = device;
+                main.removeCallbacks(connectTimeout);   // 对方主动来连的也一样看着
+                main.postDelayed(connectTimeout, CONNECT_TIMEOUT_MS);
                 setState(STATE_CONNECTING);
             } else if (s == BluetoothProfile.STATE_DISCONNECTED) {
                 if (device.equals(connected)) connected = null;
-                if (device.equals(connecting)) connecting = null;
+                if (device.equals(connecting)) {
+                    connecting = null;
+                    main.removeCallbacks(connectTimeout);
+                }
                 if (connected == null && registered) setState(STATE_WAITING);
             }
         }
@@ -263,10 +347,16 @@ final class BtHid {
             Log.i(TAG, "蓝牙主机 " + deviceName(device) + " 要报文：type=" + type + " id=" + id + " size=" + bufferSize);
             int size = id == Hid.REPORT_KEYBOARD ? Hid.KEYBOARD_REPORT_SIZE
                     : id == Hid.REPORT_MOUSE ? Hid.MOUSE_REPORT_SIZE
-                    : id == Hid.REPORT_CONSUMER ? Hid.CONSUMER_REPORT_SIZE : 0;
+                    : id == Hid.REPORT_CONSUMER ? Hid.CONSUMER_REPORT_SIZE
+                    : id == Hid.REPORT_ABS && absRegistered ? Hid.ABS_REPORT_SIZE : 0;
             try {
-                if (size == 0) hid.reportError(device, BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID);
-                else hid.replyReport(device, type, id, new byte[size]);
+                if (size == 0) {
+                    hid.reportError(device, BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID);
+                } else if (id == Hid.REPORT_ABS) {
+                    hid.replyReport(device, type, id, absReport);   // 上一次发的坐标
+                } else {
+                    hid.replyReport(device, type, id, new byte[size]);
+                }
             } catch (SecurityException ignored) {
                 // 权限被收回，下次 acquire 会重新检查
             }
@@ -348,12 +438,20 @@ final class BtHid {
     void connect(BluetoothDevice device) {
         prefs.setBtHost(device.getAddress());
         if (hid == null || !registered) return;   // 注册好了会自动连
+        if (device.equals(connecting)) return;   // 正在连它：结果会回来，卡住了 onConnectTimeout 会处理
         try {
             if (connected != null && !connected.equals(device)) hid.disconnect(connected);
+            // 正在连另一台：先放弃它，不然系统只回"已经在连了"
+            if (connecting != null && !connecting.equals(device)) hid.disconnect(connecting);
             if (!device.equals(connected)) {
                 connecting = device;
                 setState(STATE_CONNECTING);
-                if (!hid.connect(device)) {
+                Log.i(TAG, "向 " + deviceName(device) + " 发起连接");
+                if (hid.connect(device)) {
+                    main.removeCallbacks(connectTimeout);
+                    main.postDelayed(connectTimeout, CONNECT_TIMEOUT_MS);
+                } else {
+                    Log.i(TAG, "向 " + deviceName(device) + " 发起连接被系统拒绝");
                     connecting = null;
                     setState(STATE_WAITING);   // 对方不在附近、或还没配对成键盘：等对方来连
                 }
@@ -405,8 +503,31 @@ final class BtHid {
 
     void sendMouse(int buttons, int dx, int dy, int wheel, int pan) {
         if (!isConnected()) return;
+        mouseButtons = buttons;
         Hid.mouseReport(mouseReport, buttons, dx, dy, wheel, pan);
         send(Hid.REPORT_MOUSE, mouseReport);
+    }
+
+    /** 描述符里有绝对坐标指针（实验开关打开后注册的）。对方要重新配对过才认得。 */
+    boolean absoluteAvailable() {
+        return absRegistered;
+    }
+
+    /**
+     * 绝对坐标（0..32767；点击照样走普通鼠标那一路，按键字节只是照抄，见 Hid.ABS_POINTER_DESC）。回正中、空中鼠标页里的激光笔式移动用。
+     * 和上一次发的一样时差 1 再发（32767 分之一，看不出来）：Linux 内核只转发变了的绝对坐标，中间光标被相对移动挪走过的话，
+     * 同样的值第二次就被吞掉（KDE 电脑实测：第一次跳到正中，之后都不动）。
+     */
+    void sendAbsolute(int x, int y) {
+        if (!isConnected() || !absRegistered) return;
+        if (x == lastAbsX && y == lastAbsY) {
+            x = x > 0 ? x - 1 : x + 1;
+            y = y > 0 ? y - 1 : y + 1;
+        }
+        lastAbsX = x;
+        lastAbsY = y;
+        Hid.absReport(absReport, mouseButtons, x, y);
+        send(Hid.REPORT_ABS, absReport);
     }
 
     void sendKeyboard(byte[] report) {
@@ -422,7 +543,7 @@ final class BtHid {
 
     private void send(int id, byte[] report) {
         try {
-            hid.sendReport(connected, id, report);
+            if (!hid.sendReport(connected, id, report)) Log.w(TAG, "报文 " + id + " 没发出去（系统蓝牙拒收，可能是链路忙）");
         } catch (SecurityException e) {
             setState(STATE_NO_PERMISSION);
         }
@@ -445,8 +566,36 @@ final class BtHid {
         }
     }
 
+    /** 还在等、还有人在用：再连一次上次那台。结果由 onConnectionStateChanged 回来，没连上会再排下一次。 */
+    private void retryConnect() {
+        if (state != STATE_WAITING || users == 0 || hid == null || !registered) return;
+        BluetoothDevice host = preferredHost();
+        if (host != null) connect(host);
+    }
+
+    /**
+     * 连接 12 秒还没结果：系统卡在"连接中"了。主力机实测（2026-10-15）：从 iPad 换到电脑时撞上电脑同时来连，
+     * 之后系统一直不报结果，再连只回"已经在连了"，要关开蓝牙才解开（而关开蓝牙会触发 onRegisterTimeout 那个毛病）。
+     * 断开它（系统对还在连的会直接放弃、清掉"连接中"），回到等待，5 秒后照常重连。
+     */
+    private void onConnectTimeout() {
+        BluetoothDevice d = connecting;
+        if (hid == null || connected != null || d == null) return;
+        Log.w(TAG, "向 " + deviceName(d) + " 连接 " + CONNECT_TIMEOUT_MS / 1000 + " 秒没有结果，先断开再重连");
+        try {
+            hid.disconnect(d);
+        } catch (SecurityException e) {
+            setState(STATE_NO_PERMISSION);
+            return;
+        }
+        connecting = null;
+        if (registered) setState(STATE_WAITING);
+    }
+
     private void setState(int s) {
         state = s;
+        main.removeCallbacks(retryLater);
+        if (s == STATE_WAITING && users > 0) main.postDelayed(retryLater, RETRY_MS);
         String name = deviceName(connected != null ? connected : connecting);
         for (Listener l : new ArrayList<>(listeners)) l.onBtState(s, name);
     }

@@ -82,14 +82,18 @@ final class Link {
         offer(ByteBuffer.allocate(2).put((byte) Proto.CMD_CLICK).put((byte) button));
     }
 
+    void wheel(int n) {
+        offer(ByteBuffer.allocate(2).put((byte) Proto.CMD_WHEEL).put((byte) n));
+    }
+
     void config(GestureEngine.Config c, float density) {
-        offer(ByteBuffer.allocate(40).put((byte) Proto.CMD_CONFIG)
+        offer(ByteBuffer.allocate(41).put((byte) Proto.CMD_CONFIG)
                 .putFloat(c.pointerSpeed).putFloat(c.acceleration).putFloat(c.scrollStepDp)
                 .put((byte) (c.naturalScroll ? 1 : 0)).put((byte) (c.pinchZoom ? 1 : 0)).put((byte) (c.edgeScroll ? 1 : 0))
                 .put((byte) (c.edgeScrollHorizontal ? 1 : 0)).putFloat(c.edgeWidthDp).put((byte) c.scrollTicks)
                 .put((byte) (c.longPressDrag ? 1 : 0)).putInt(c.longPressMs)
                 .put((byte) (c.tapToDrag ? 1 : 0))
-                .putInt(c.dragWindowMs).putFloat(density).putFloat(c.slowFactor));
+                .putInt(c.dragWindowMs).putFloat(density).putFloat(c.slowFactor).put((byte) (c.texture ? 1 : 0)));
     }
 
     /** regions 每项是 {type, id, left, top, right, bottom}，屏幕像素。relay = 蓝牙模式，报文发回来由 App 发出去。 */

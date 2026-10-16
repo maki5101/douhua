@@ -47,6 +47,7 @@ public final class TestClient {
             out.writeInt(220);
             out.writeFloat(2.625f);
             out.writeFloat(0.55f);   // 精细移动
+            out.writeByte(0);        // 颗粒震动：关
             out.writeByte(Proto.CMD_LAYOUT);
             out.writeByte(1);
             out.writeByte(relay ? 1 : 0);

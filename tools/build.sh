@@ -4,7 +4,7 @@
 # 用法：tools/build.sh             调试版，产物 build/douhua.apk（可调试，调试签名）
 #      tools/build.sh --install   调试版，编译后装到手机，并重启豆花服务
 #      tools/build.sh --release   正式版（不可调试，正式签名）；一般由 tools/package.sh 调用
-# 手机用环境变量 ANDROID_SERIAL 指定（adb 自己认这个变量）。
+# --install 装到哪台：看 ANDROID_SERIAL，只连着一台就用它，连着多台会列出来让你选（见 tools/adb-device.sh）。
 # 正式签名：密钥库 DOUHUA_KEYSTORE（默认 .private/release.keystore），口令 DOUHUA_KEYSTORE_PASS（放 .env，见 .env.example）。
 set -euo pipefail
 
@@ -115,7 +115,9 @@ echo "编译完成：build/douhua.apk（$VERSION_NAME，$([ "$RELEASE" = 1 ] && 
 # ═══════════ 安装 ═══════════
 
 if [ "$INSTALL" = 1 ]; then
-    echo "安装到手机 ${ANDROID_SERIAL:-（adb 默认设备）}…" >&2
+    . "$ROOT/tools/adb-device.sh"
+    pick_device || exit 1   # 选定后导出 ANDROID_SERIAL，下面停 / 起服务不会再问
+    echo "安装到手机 $ANDROID_SERIAL…" >&2
     adb install -r build/douhua.apk >&2
     "$ROOT/tools/stop-server.sh"
     "$ROOT/tools/start-server.sh"

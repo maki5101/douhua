@@ -21,9 +21,13 @@ final class Prefs {
             "all_apps", "none", "none", "none", "none",
     };
 
-    /** 左侧按钮条从上到下的可配置位置（最上面固定是"退出""旋转""设置"，不在这里）。 */
-    static final int SLOT_COUNT = 7;
+    /** 左侧按钮条里可增减的按钮（最上面固定"退出""设置"、最下面固定"收起"，不在这里），最多这么多个。 */
+    static final int MAX_SLOTS = 12;
     private static final String[] SLOT_DEFAULTS = {
+            "rotate", "keyboard", "numpad", "back", "copy", "paste", "undo", "hold_left",
+    };
+    /** 0.2.0 以前：固定"退出""旋转""设置"，后面 7 个可配置位置。 */
+    private static final String[] OLD_SLOT_DEFAULTS = {
             "keyboard", "numpad", "back", "copy", "paste", "undo", "hold_left",
     };
 
@@ -36,6 +40,28 @@ final class Prefs {
 
     Prefs(Context context) {
         sp = context.getSharedPreferences("douhua", Context.MODE_PRIVATE);
+        migrateSlots();
+    }
+
+    /**
+     * 以前按钮条是固定"旋转" + 7 个位置；现在"旋转"也成了可删的普通按钮、个数可增减。
+     * 老设置原样保留、前面补上"旋转"，原来设成"无"的空位去掉。新装 / 恢复默认的直接用新默认。
+     */
+    private void migrateSlots() {
+        if (sp.contains("slot_count")) return;
+        boolean old = false;
+        for (int i = 0; i < OLD_SLOT_DEFAULTS.length; i++) old |= sp.contains("slot" + i);
+        if (!old) return;
+        java.util.List<String> slots = new java.util.ArrayList<>();
+        slots.add("rotate");
+        for (int i = 0; i < OLD_SLOT_DEFAULTS.length; i++) {
+            String id = sp.getString("slot" + i, OLD_SLOT_DEFAULTS[i]);
+            if (!"none".equals(id)) slots.add(id);
+        }
+        SharedPreferences.Editor e = sp.edit();
+        for (int i = 0; i < OLD_SLOT_DEFAULTS.length; i++) e.remove("slot" + i);
+        for (int i = 0; i < slots.size(); i++) e.putString("slot" + i, slots.get(i));
+        e.putInt("slot_count", slots.size()).apply();
     }
 
     // ═══════════ 手势和按钮 ═══════════
@@ -53,12 +79,34 @@ final class Prefs {
         return gesture((fingers == 3 ? 0 : 5) + kind);
     }
 
+    int slotCount() {
+        return Math.max(0, Math.min(MAX_SLOTS, sp.getInt("slot_count", SLOT_DEFAULTS.length)));
+    }
+
     String slot(int index) {
-        return sp.getString("slot" + index, SLOT_DEFAULTS[index]);
+        return sp.getString("slot" + index, index < SLOT_DEFAULTS.length ? SLOT_DEFAULTS[index] : "none");
     }
 
     void setSlot(int index, String actionId) {
-        sp.edit().putString("slot" + index, actionId).apply();
+        sp.edit().putString("slot" + index, actionId).putInt("slot_count", slotCount()).apply();
+    }
+
+    /** 在最后加一个按钮（满了就不加）。 */
+    void addSlot(String actionId) {
+        int n = slotCount();
+        if (n >= MAX_SLOTS) return;
+        SharedPreferences.Editor e = sp.edit();
+        for (int i = 0; i < n; i++) e.putString("slot" + i, slot(i));   // 把默认值也写实，免得后面错位
+        e.putString("slot" + n, actionId).putInt("slot_count", n + 1).apply();
+    }
+
+    /** 删掉第 index 个，后面的往前挪。 */
+    void removeSlot(int index) {
+        int n = slotCount();
+        if (index < 0 || index >= n) return;
+        SharedPreferences.Editor e = sp.edit();
+        for (int i = 0; i < n - 1; i++) e.putString("slot" + i, slot(i < index ? i : i + 1));
+        e.remove("slot" + (n - 1)).putInt("slot_count", n - 1).apply();
     }
 
     // ═══════════ 手感 ═══════════
@@ -126,11 +174,12 @@ final class Prefs {
         c.edgeScroll = getBool("edge", c.edgeScroll);
         c.edgeScrollHorizontal = getBool("edge_h", c.edgeScrollHorizontal);
         c.edgeWidthDp = getInt("edge_width_i", Math.round(c.edgeWidthDp));
-        c.scrollTicks = getInt("ticks", c.scrollTicks);
+        c.scrollTicks = scrollTicks() ? GestureEngine.TICKS_ALL : GestureEngine.TICKS_OFF;
         c.longPressDrag = getBool("long_press", c.longPressDrag);
         c.longPressMs = getInt("long_press_ms", c.longPressMs);
         c.tapToDrag = getBool("tap_drag", c.tapToDrag);
         c.dragWindowMs = getInt("drag_ms", c.dragWindowMs);
+        c.texture = getBool("texture", c.texture);
         return c;
     }
 
@@ -152,6 +201,27 @@ final class Prefs {
 
     void setBtHost(String address) {
         sp.edit().putString("bt_host", address).apply();
+    }
+
+    /**
+     * 这台主机的屏幕宽高比（激光笔式里竖向每度走多少按它算，横竖才一样灵敏）；0 = 自动（苹果 4:3，其它 16:9）。
+     * 蓝牙键鼠拿不到对方屏幕多大，只能让人选（描红测试那台电脑是 1126×776，按 16:9 猜上下就比左右灵敏 23%）。
+     */
+    float hostAspect(String address) {
+        return address == null || address.isEmpty() ? 0f : getFloat("aspect_" + address, 0f);
+    }
+
+    void setHostAspect(String address, float aspect) {
+        sp.edit().putFloat("aspect_" + address, aspect).putString("aspect_wh_" + address, "").apply();
+    }
+
+    /** 按分辨率填的屏幕比例："宽x高"；没填过是空的。 */
+    String hostAspectWh(String address) {
+        return address == null ? "" : sp.getString("aspect_wh_" + address, "");
+    }
+
+    void setHostAspectWh(String address, String wh) {
+        sp.edit().putString("aspect_wh_" + address, wh).apply();
     }
 
     /** 旋转按钮选的屏幕方向（Surface.ROTATION_*）；-1 = 没按过，不动系统方向。 */
@@ -227,6 +297,110 @@ final class Prefs {
     void resetKeyboardRect(boolean landscape) {
         String p = landscape ? "kb_land_" : "kb_port_";
         sp.edit().remove(p + "l").remove(p + "t").remove(p + "r").remove(p + "b").apply();
+    }
+
+    /** 滚动"咔嗒"开没开。以前是三选一（"ticks"：关 / 只在边缘 / 所有），没改过的照旧值：不是"关"就是开。 */
+    boolean scrollTicks() {
+        return getBool("scroll_ticks", getInt("ticks", GestureEngine.TICKS_ALL) != GestureEngine.TICKS_OFF);
+    }
+
+    // ═══════════ 空中鼠标 ═══════════
+
+    /**
+     * 空中鼠标页：2 列 × airRows() 行可设定的大按钮（"无"就空着、位置留着），再加一个固定的圆钮
+     * （点一下回正中、按住移动），放在第 airRoundAt()、airRoundAt()+1 行之间的交叉点上。
+     * 回正中、按住移动归圆钮了，默认的格子里不再放它们。
+     */
+    static final int AIR_ROWS_MIN = 2, AIR_ROWS_MAX = 6;
+    private static final String[] AIR_SLOT_DEFAULTS = {"hold_left", "right_click", "air_drag", "back", "copy", "paste"};
+
+    String airSlot(int index) {
+        return sp.getString("air_slot" + index, index < AIR_SLOT_DEFAULTS.length ? AIR_SLOT_DEFAULTS[index] : "none");
+    }
+
+    void setAirSlot(int index, String actionId) {
+        sp.edit().putString("air_slot" + index, actionId).apply();
+    }
+
+    int airRows() {
+        return Math.max(AIR_ROWS_MIN, Math.min(AIR_ROWS_MAX, getInt("air_rows", 3)));
+    }
+
+    /** 加一行（两个"无"，再点它们选动作）。 */
+    void addAirRow() {
+        int n = airRows();
+        if (n >= AIR_ROWS_MAX) return;
+        sp.edit().putString("air_slot" + (n * 2), "none").putString("air_slot" + (n * 2 + 1), "none")
+                .putInt("air_rows", n + 1).apply();
+    }
+
+    /** 删掉第 row 行（0 起），后面的往上挪。 */
+    void removeAirRow(int row) {
+        int n = airRows();
+        if (n <= AIR_ROWS_MIN || row < 0 || row >= n) return;
+        SharedPreferences.Editor e = sp.edit();
+        for (int i = row * 2; i < (n - 1) * 2; i++) e.putString("air_slot" + i, airSlot(i + 2));
+        e.putInt("air_rows", n - 1).apply();
+    }
+
+    /** 圆钮在第 k 行和第 k+1 行之间（1 起）。 */
+    int airRoundAt() {
+        return Math.max(1, Math.min(airRows() - 1, getInt("air_round", 1)));
+    }
+
+    void setAirRoundAt(int k) {
+        putInt("air_round", k);
+    }
+
+    /** 实体按键（HardKeys.VOL_UP / VOL_DOWN）"点一下" / "按住"做什么；默认"无" = 照常调音量。 */
+    String hardKey(int key, boolean hold) {
+        return sp.getString(hardKeyName(key, hold), "none");
+    }
+
+    void setHardKey(int key, boolean hold, String actionId) {
+        sp.edit().putString(hardKeyName(key, hold), actionId).apply();
+    }
+
+    private static String hardKeyName(int key, boolean hold) {
+        return "hk_" + (key == HardKeys.VOL_UP ? "up" : "down") + (hold ? "_hold" : "_tap");
+    }
+
+    /** 空中鼠标灵敏度档位 1–10（AirPointer.countsPerDegree）。 */
+    int airSensitivity() {
+        return getInt("air_sens", 6);
+    }
+
+    /** 空中鼠标消抖参数的键（设置页四个滑块，默认值见 AirPointer.Config）。 */
+    static final String AIR_MIN_CUTOFF = "air_min_cutoff", AIR_BETA = "air_beta",
+            AIR_SPEED_CUTOFF = "air_speed_cutoff", AIR_DEADZONE = "air_deadzone",
+            AIR_PATH = "air_path_ms", AIR_STRING = "air_string", AIR_SPACE = "air_space";
+
+    /** 把设置里的消抖参数填进 c（没设过的保持 c 里的默认值）。 */
+    void airFilter(AirPointer.Config c) {
+        c.minCutoffHz = getFloat(AIR_MIN_CUTOFF, c.minCutoffHz);
+        c.beta = getFloat(AIR_BETA, c.beta);
+        c.speedCutoffHz = getFloat(AIR_SPEED_CUTOFF, c.speedCutoffHz);
+        c.tightenDps = getFloat(AIR_DEADZONE, c.tightenDps);
+        c.pathSmoothMs = getFloat(AIR_PATH, c.pathSmoothMs);
+        c.stringDeg = getFloat(AIR_STRING, c.stringDeg);
+        c.space = getInt(AIR_SPACE, c.space);
+        // 角度校正按换算分开存（各换算的歪法不一样），没设过用 AirPointer.defaultFix
+        float[] fix = AirPointer.defaultFix(c.space);
+        c.fixVDeg = getFloat(airFixKey(c.space, true), fix[0]);
+        c.fixHDeg = getFloat(airFixKey(c.space, false), fix[1]);
+    }
+
+    /** 角度校正的键：每种换算各一套。 */
+    static String airFixKey(int space, boolean vertical) {
+        return "air_fix_" + (vertical ? "v_" : "h_") + space;
+    }
+
+    /** 消抖参数恢复默认。 */
+    void resetAirFilter() {
+        SharedPreferences.Editor e = sp.edit().remove(AIR_MIN_CUTOFF).remove(AIR_BETA).remove(AIR_SPEED_CUTOFF).remove(AIR_DEADZONE)
+                .remove(AIR_PATH).remove(AIR_STRING).remove(AIR_SPACE);
+        for (int s = 0; s < 3; s++) e.remove(airFixKey(s, true)).remove(airFixKey(s, false));
+        e.apply();
     }
 
     void resetAll() {

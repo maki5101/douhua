@@ -129,6 +129,8 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         list.addView(text(getString(R.string.settings_title), 22, 0xFFE8E8E8));
         header(R.string.sec_connection);
         connection();
+        airSection();
+        hardKeysSection();
         header(R.string.sec_pointer);
         slider(R.string.pointer_speed, "speed", def.pointerSpeed, 0.5f, 6f, 0.1f, "%.1f");
         slider(R.string.acceleration, "accel", def.acceleration, 0f, 3f, 0.1f, "%.1f");
@@ -148,8 +150,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         toggle(R.string.edge_v, "edge", def.edgeScroll);
         toggle(R.string.edge_h, "edge_h", def.edgeScrollHorizontal);
         sliderInt(R.string.edge_width, "edge_width_i", Math.round(def.edgeWidthDp), 12, 64, 2);
-        choice(R.string.ticks, "ticks", def.scrollTicks,
-                new int[]{R.string.ticks_off, R.string.ticks_edge, R.string.ticks_all});
+        toggle(R.string.ticks, "scroll_ticks", prefs.scrollTicks());
         list.addView(text(getString(R.string.tick_strength), 16, 0xFFE8E8E8));
         levels(Prefs.TICK_STRENGTH_LABELS, prefs.tickStrength(), strength -> {
             prefs.setTickStrength(strength);
@@ -170,6 +171,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             h.startHum();
             list.postDelayed(h::stopHum, 600);
         });
+        toggle(R.string.texture, "texture", def.texture);
 
         header(R.string.sec_gestures);
         for (int i = 0; i < Prefs.GESTURE_KEYS.length; i++) {
@@ -179,9 +181,26 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
 
         header(R.string.sec_strip);
         toggle(R.string.strip_hidden, "strip_hidden", false);
-        for (int i = 0; i < Prefs.SLOT_COUNT; i++) {
+        int slots = prefs.slotCount();
+        for (int i = 0; i < slots; i++) {
             final int index = i;
-            actionRow(getString(R.string.nth, i + 1), () -> prefs.slot(index), id -> prefs.setSlot(index, id));
+            LinearLayout row = actionRow(getString(R.string.nth, i + 1), () -> prefs.slot(index), id -> prefs.setSlot(index, id));
+            TextView remove = text("✕", 18, 0xFF9A9A9A);
+            remove.setPadding(dp(16), 0, dp(4), 0);
+            remove.setOnClickListener(v -> {
+                prefs.removeSlot(index);
+                list.post(this::build);
+            });
+            row.addView(remove);
+        }
+        if (slots < Prefs.MAX_SLOTS) {
+            TextView add = text(getString(R.string.strip_add, Prefs.MAX_SLOTS), 16, 0xFF8AB4F8);
+            add.setPadding(0, dp(12), 0, dp(12));
+            add.setOnClickListener(v -> {
+                prefs.addSlot("none");   // 加一行"无"，再点它选动作
+                list.post(this::build);
+            });
+            list.addView(add);
         }
 
         header(R.string.sec_corners);
@@ -203,6 +222,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 .setMessage(R.string.reset_confirm)
                 .setPositiveButton(R.string.reset, (d, w) -> {
                     prefs.resetAll();
+                    updateBtUse();   // 恢复默认就是 DeX 模式：蓝牙键鼠立刻停
                     build();
                 })
                 .setNegativeButton(R.string.cancel, null)
@@ -454,10 +474,201 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             case BtHid.STATE_CONNECTING: res = R.string.bt_state_connecting; break;
             case BtHid.STATE_CONNECTED: res = R.string.bt_state_connected; break;
             case BtHid.STATE_FAILED: res = R.string.bt_state_failed; break;
+            case BtHid.STATE_STUCK: res = R.string.bt_state_stuck; break;
             default: res = R.string.bt_state_starting; break;
         }
         btStatus.setText(getString(res, deviceName));
         if (state == BtHid.STATE_CONNECTED || state == BtHid.STATE_WAITING) refreshBtDevices();
+    }
+
+    // ═══════════ 空中鼠标 ═══════════
+
+    /** 只在蓝牙模式：灵敏度、消抖参数、回正中说明、空中鼠标页的按钮。 */
+    private void airSection() {
+        if (!prefs.btMode()) return;
+        header(R.string.sec_air);
+        sliderInt(R.string.air_sensitivity, "air_sens", 6, 1, 10, 1);
+        // 消抖（AirPointer 的 1€ 滤波 + 软死区），用户自己调；范围比默认值两边都放得很宽
+        AirPointer.Config def = new AirPointer.Config();
+        airSpace(def.space);
+        int space = prefs.getInt(Prefs.AIR_SPACE, def.space);
+        float[] fix = AirPointer.defaultFix(space);
+        slider(R.string.air_fix_v, Prefs.airFixKey(space, true), fix[0], -20f, 20f, 0.5f, "%+.1f°");
+        slider(R.string.air_fix_h, Prefs.airFixKey(space, false), fix[1], -20f, 20f, 0.5f, "%+.1f°");
+        slider(R.string.air_min_cutoff, Prefs.AIR_MIN_CUTOFF, def.minCutoffHz, 0.1f, 5f, 0.1f, "%.1f Hz");
+        slider(R.string.air_beta, Prefs.AIR_BETA, def.beta, 0f, 5f, 0.1f, "%.1f");
+        slider(R.string.air_speed_cutoff, Prefs.AIR_SPEED_CUTOFF, def.speedCutoffHz, 0.2f, 5f, 0.1f, "%.1f Hz");
+        slider(R.string.air_deadzone, Prefs.AIR_DEADZONE, def.tightenDps, 0f, 15f, 0.5f, "%.1f °/s");
+        slider(R.string.air_path, Prefs.AIR_PATH, def.pathSmoothMs, 0f, 400f, 10f, "%.0f ms");
+        slider(R.string.air_string, Prefs.AIR_STRING, def.stringDeg, 0f, 1.5f, 0.05f, "%.2f°");
+        TextView resetFilter = text(getString(R.string.air_filter_reset), 16, 0xFF8AB4F8);
+        resetFilter.setPadding(0, dp(12), 0, dp(12));
+        resetFilter.setOnClickListener(v -> {
+            prefs.resetAirFilter();
+            list.post(this::build);
+        });
+        list.addView(resetFilter);
+        hostAspect();
+        TextView note = text(getString(R.string.air_abs_note), 14, 0xFF9AA0A6);
+        note.setPadding(0, dp(6), 0, dp(6));
+        list.addView(note);
+        airButtons();
+    }
+
+    /** 方向换算：手机怎么转算左右、怎么转算上下（AirPointer.SPACE_*），凭手感选。 */
+    private void airSpace(int def) {
+        list.addView(text(getString(R.string.air_space), 16, 0xFFE8E8E8));
+        int[] values = {AirPointer.SPACE_PLAYER, AirPointer.SPACE_OBLIQUE, AirPointer.SPACE_WORLD};
+        int[] labels = {R.string.air_space_player, R.string.air_space_oblique, R.string.air_space_world};
+        int now = prefs.getInt(Prefs.AIR_SPACE, def);
+        RadioGroup g = new RadioGroup(this);
+        g.setOrientation(RadioGroup.VERTICAL);
+        for (int i = 0; i < values.length; i++) {
+            RadioButton b = new RadioButton(this);
+            b.setText(labels[i]);
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            b.setId(View.generateViewId());
+            g.addView(b);
+            if (values[i] == now) b.setChecked(true);
+            final int v = values[i];
+            b.setOnCheckedChangeListener((btn, checked) -> {
+                if (!checked) return;
+                prefs.putInt(Prefs.AIR_SPACE, v);
+                list.post(this::build);   // 下面的角度校正按换算分开存：换了换算要重画
+            });
+        }
+        list.addView(g);
+    }
+
+    /** 连着的这台（没连就上次那台）的屏幕比例：激光笔式里上下走多快按它算。没连过任何主机就不显示。 */
+    private void hostAspect() {
+        BluetoothDevice host = bt.connectedDevice();
+        if (host == null) host = bt.preferredHost();
+        if (host == null) return;
+        final String address = host.getAddress();
+        list.addView(text(getString(R.string.air_aspect, BtHid.deviceName(host)), 16, 0xFFE8E8E8));
+        String[] labels = {getString(R.string.air_aspect_auto), "16:9", "16:10", "3:2", "4:3", "21:9"};
+        float[] values = {0f, 16f / 9, 16f / 10, 3f / 2, 4f / 3, 21f / 9};
+        float now = prefs.hostAspect(address);
+        RadioGroup g = new RadioGroup(this);
+        g.setOrientation(RadioGroup.VERTICAL);
+        for (int i = 0; i < labels.length; i++) {
+            RadioButton b = new RadioButton(this);
+            b.setText(labels[i]);
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            b.setId(View.generateViewId());
+            g.addView(b);
+            if (Math.abs(values[i] - now) < 1e-3) b.setChecked(true);
+            final float v = values[i];
+            b.setOnCheckedChangeListener((btn, checked) -> {
+                if (checked) prefs.setHostAspect(address, v);
+            });
+        }
+        list.addView(g);
+        // 按分辨率填（宽 × 高）：比例对不上常见档位的屏（比如串流时切成 2816×1940）
+        list.addView(text(getString(R.string.air_aspect_custom), 15, 0xFF9AA0A6));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        String[] wh = prefs.hostAspectWh(address).split("x");
+        EditText w = numberField(wh.length == 2 ? wh[0] : ""), h = numberField(wh.length == 2 ? wh[1] : "");
+        TextView times = text("×", 18, 0xFFE8E8E8);
+        times.setPadding(dp(12), 0, dp(12), 0);
+        row.addView(w);
+        row.addView(times);
+        row.addView(h);
+        list.addView(row);
+        android.text.TextWatcher watcher = new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                int ww = parsePositive(w.getText().toString()), hh = parsePositive(h.getText().toString());
+                if (ww <= 0 || hh <= 0) return;
+                g.clearCheck();   // 填了分辨率：档位一个都不选
+                prefs.setHostAspect(address, ww / (float) hh);
+                prefs.setHostAspectWh(address, ww + "x" + hh);
+            }
+        };
+        w.addTextChangedListener(watcher);
+        h.addTextChangedListener(watcher);
+    }
+
+    private EditText numberField(String value) {
+        EditText e = new EditText(this);
+        e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        e.setText(value);
+        e.setMinEms(4);
+        e.setTextColor(0xFFE8E8E8);
+        return e;
+    }
+
+    private static int parsePositive(String s) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** 空中鼠标页的按钮：每行两个，加减整行；圆钮固定，只选放在哪四个格子中间（按格子编号说，和页面上一样从上往下数）。 */
+    private void airButtons() {
+        list.addView(text(getString(R.string.air_buttons), 16, 0xFFE8E8E8));
+        int rows = prefs.airRows();
+        for (int i = 0; i < rows * 2; i++) {
+            final int index = i;
+            LinearLayout row = actionRow(getString(R.string.nth, i + 1), () -> prefs.airSlot(index), id -> prefs.setAirSlot(index, id));
+            if (i % 2 == 1 && rows > Prefs.AIR_ROWS_MIN) {   // 每行第二个后面放 ✕：删掉这一行
+                TextView remove = text("✕", 18, 0xFF9A9A9A);
+                remove.setPadding(dp(16), 0, dp(4), 0);
+                final int r = i / 2;
+                remove.setOnClickListener(v -> {
+                    prefs.removeAirRow(r);
+                    list.post(this::build);
+                });
+                row.addView(remove);
+            }
+        }
+        if (rows < Prefs.AIR_ROWS_MAX) {
+            TextView add = text(getString(R.string.air_row_add, Prefs.AIR_ROWS_MAX), 16, 0xFF8AB4F8);
+            add.setPadding(0, dp(12), 0, dp(12));
+            add.setOnClickListener(v -> {
+                prefs.addAirRow();
+                list.post(this::build);
+            });
+            list.addView(add);
+        }
+        list.addView(text(getString(R.string.air_round_at), 16, 0xFFE8E8E8));
+        RadioGroup g = new RadioGroup(this);
+        g.setOrientation(RadioGroup.VERTICAL);
+        int at = prefs.airRoundAt();
+        for (int k = 1; k < rows; k++) {
+            RadioButton b = new RadioButton(this);
+            b.setText(getString(R.string.air_round_between, 2 * k - 1, 2 * k, 2 * k + 1, 2 * k + 2));
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            b.setId(View.generateViewId());
+            g.addView(b);
+            if (k == at) b.setChecked(true);
+            final int pos = k;
+            b.setOnCheckedChangeListener((btn, checked) -> {
+                if (checked) prefs.setAirRoundAt(pos);
+            });
+        }
+        list.addView(g);
+    }
+
+    /** 音量键（只在蓝牙模式）：点一下 / 按住各选一个动作，"无"照常调音量。 */
+    private void hardKeysSection() {
+        if (!prefs.btMode()) return;
+        header(R.string.sec_hard_keys);
+        list.addView(text(getString(R.string.hard_keys_hint), 14, 0xFF9AA0A6));
+        int[][] labels = {{R.string.hk_up_tap, R.string.hk_up_hold}, {R.string.hk_down_tap, R.string.hk_down_hold}};
+        for (int k = 0; k < 2; k++) {
+            for (int h = 0; h < 2; h++) {
+                final int key = k;
+                final boolean hold = h == 1;
+                actionRow(getString(labels[k][h]), () -> prefs.hardKey(key, hold), id -> prefs.setHardKey(key, hold, id));
+            }
+        }
     }
 
     // ═══════════ 对方还连着手机的音频 ═══════════
@@ -573,7 +784,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
      * 选一个动作。所有能自定义的位置（按钮条、角上按钮、三指四指手势、键盘最下面一排）都用这一份清单，
      * 最后一项是"自定义组合键"。
      */
-    private void actionRow(String label, Getter getter, Setter setter) {
+    private LinearLayout actionRow(String label, Getter getter, Setter setter) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(12), 0, dp(12));
@@ -608,6 +819,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                     .show();
         });
         list.addView(row);
+        return row;
     }
 
     /** 自己勾修饰键、挑一个键；按钮上显示的字不填就用 "Ctrl+Shift+T" 这样的名字。 */

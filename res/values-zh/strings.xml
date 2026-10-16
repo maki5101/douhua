@@ -54,9 +54,6 @@
     <string name="edge_h">上下边缘单指左右滑 = 横向滚动</string>
     <string name="edge_width">边缘带宽度（dp）</string>
     <string name="ticks">滚动时「咔嗒」震动（像转滚轮）</string>
-    <string name="ticks_off">关</string>
-    <string name="ticks_edge">只在边缘滚动时</string>
-    <string name="ticks_all">所有滚动（包括双指）</string>
     <string name="tick_strength">「咔嗒」强度</string>
     <string name="sec_haptics">震动</string>
     <string name="haptic_off">关</string>
@@ -74,8 +71,9 @@
     <string name="g4_down">四指下滑</string>
     <string name="g4_left">四指左滑</string>
     <string name="g4_right">四指右滑</string>
-    <string name="sec_strip">左侧按钮（从上到下，最上面的「退出」「旋转」「设置」和最下面的「收起」固定）</string>
+    <string name="sec_strip">左侧按钮（从上到下；最上面的「退出」「设置」和最下面的「收起」固定）</string>
     <string name="strip_hidden">收起左侧按钮条（触控板角上放小按钮）</string>
+    <string name="strip_add">＋ 添加按钮（最多 %1$d 个）</string>
     <string name="nth">第 %1$d 个</string>
     <string name="sec_corners">触控板角上的小按钮（按钮条收起时；左下角的 ☰ 固定）</string>
     <string name="corner_tl">左上角</string>
@@ -109,6 +107,10 @@
     <string name="act_right_click_s">右键</string>
     <string name="act_middle_click">中键（浏览器里在新标签打开链接）</string>
     <string name="act_middle_click_s">中键</string>
+    <string name="act_wheel_up">滚轮向上（按住一直滚）</string>
+    <string name="act_wheel_up_s">滚轮↑</string>
+    <string name="act_wheel_down">滚轮向下（按住一直滚）</string>
+    <string name="act_wheel_down_s">滚轮↓</string>
     <string name="act_back">返回</string>
     <string name="act_back_s">返回</string>
     <string name="act_home">主屏幕</string>
@@ -193,7 +195,53 @@
     <string name="bt_state_connecting">正在连接 %1$s……</string>
     <string name="bt_state_connected">蓝牙：%1$s</string>
     <string name="bt_state_failed">蓝牙没启动成功：可能有别的应用正在当蓝牙键盘，关掉它再打开豆花儿</string>
+    <string name="bt_state_stuck">系统蓝牙卡住了，一直不回应（开着豆花儿时关开过蓝牙会这样）。重启手机就好</string>
     <string name="bt_no_phone_text">蓝牙模式下不能贴字：剪贴板在手机上，到不了对方</string>
     <string name="bt_no_such_key">蓝牙模式下没有这个键</string>
     <string name="drag_hum">拖动时持续轻震（提醒你正按着左键）</string>
+    <string name="texture">移动光标时的颗粒感（极轻的震动，像摸着不太光滑的表面）</string>
+    <string name="act_air_mouse">空中鼠标页（大按钮：按住移动、左键、右键……；只限蓝牙模式）</string>
+    <string name="act_air_mouse_s">空中</string>
+    <string name="act_air_move">按住移动（按着时光标跟着手机转动走；只限蓝牙模式）</string>
+    <string name="act_air_move_s">按住移动</string>
+    <string name="act_air_drag">按住拖动（按着时左键按下、光标跟着手机走；只限蓝牙模式）</string>
+    <string name="act_air_drag_s">按住拖动</string>
+    <string name="act_air_center">回正中（光标一下到屏幕正中）</string>
+    <string name="act_air_center_s">回正中</string>
+    <string name="air_bt_only">空中鼠标只在蓝牙模式下能用</string>
+    <string name="air_no_gyro">这台手机没有陀螺仪，用不了空中鼠标</string>
+    <string name="air_following">跟随中</string>
+    <string name="air_dragging">拖动中（左键按着）</string>
+    <string name="air_waiting">蓝牙没连上</string>
+    <string name="air_exit">按住退出空中鼠标</string>
+    <string name="sec_air">空中鼠标</string>
+    <string name="air_sensitivity">空中鼠标灵敏度（转同样的角度，光标走多远）</string>
+    <string name="air_space">方向换算：手机怎么转算左右、怎么转算上下</string>
+    <string name="air_space_player">玩家空间（默认）：上下 = 手机自己点头，左右 = 绕竖直方向转（GyroWiki / JoyShockMapper）</string>
+    <string name="air_space_oblique">斜基：左右 = 绕竖直方向转，上下 = 手机自己点头，扣掉歪着拿的影响</string>
+    <string name="air_space_world">世界空间：左右 = 绕竖直方向转，上下 = 绕水平轴点头</string>
+    <string name="air_min_cutoff">消抖：静止时的截止频率（越小越稳，也越拖）</string>
+    <string name="air_beta">消抖：快动时放开多少 β（越大越跟手，也越容易抖）</string>
+    <string name="air_speed_cutoff">消抖：判断\"在动\"的快慢（越小手抖越不容易被当成在动，起步也越慢）</string>
+    <string name="air_deadzone">软死区：比这个慢的按比例缩小（越大停住越稳，微调越难）</string>
+    <string name="air_path">轨迹平滑：路线上横着晃出去的部分单独平滑，往前走不拖（越大路线越直越顺，拐角越圆；0 = 关）</string>
+    <string name="air_string">防抖半径：手在这个角度里晃光标不动（越大停住越稳，掉头要多转一点；0 = 关）</string>
+    <string name="air_filter_reset">消抖参数恢复默认</string>
+    <string name="air_abs_note">回正中直接跳到屏幕正中（绝对坐标）。这个版本之前配对过的设备，要在对方的蓝牙设置里删掉这台手机、重新配对一次。</string>
+    <string name="air_aspect">%1$s 的屏幕比例（空中鼠标页里上下走多快靠它，选错了上下会比左右灵敏或迟钝）</string>
+    <string name="air_aspect_auto">自动（苹果 4:3，其它 16:9）</string>
+    <string name="air_fix_v">竖线角度校正（画竖线时上头往右倒，就往 + 调）</string>
+    <string name="air_fix_h">横线角度校正（画横线时右边往下沉，就往 + 调）</string>
+    <string name="air_aspect_custom">或者直接填它的分辨率（宽 × 高）：</string>
+    <string name="air_buttons">空中鼠标页上的按钮（从上往下、每行两个；中间的圆钮固定：按住移动，点一下锁定移动、再点一下解锁）</string>
+    <string name="air_row_add">＋ 添加一行（最多 %1$d 行）</string>
+    <string name="air_round_at">圆钮放在哪四个按钮中间</string>
+    <string name="air_round_between">%1$d、%2$d、%3$d、%4$d 中间</string>
+    <string name="sec_hard_keys">音量键</string>
+    <string name="hard_keys_hint">选「无」照常调音量。「按住移动」放在「点一下」上：点一下开始，再点一下停。</string>
+    <string name="hk_up_tap">音量 + 点一下</string>
+    <string name="hk_up_hold">音量 + 按住</string>
+    <string name="hk_down_tap">音量 − 点一下</string>
+    <string name="hk_down_hold">音量 − 按住</string>
+    <string name="air_center_btn">回正中</string>
 </resources>

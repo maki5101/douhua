@@ -54,9 +54,6 @@
     <string name="edge_h">Am oberen/unteren Rand wischen = horizontal scrollen</string>
     <string name="edge_width">Breite des Randbereichs (dp)</string>
     <string name="ticks">„Klick\"-Vibration beim Scrollen (wie ein Mausrad)</string>
-    <string name="ticks_off">Aus</string>
-    <string name="ticks_edge">Nur beim Randscrollen</string>
-    <string name="ticks_all">Jedes Scrollen (auch mit zwei Fingern)</string>
     <string name="tick_strength">Stärke des „Klick\"</string>
     <string name="sec_haptics">Vibration</string>
     <string name="haptic_off">Aus</string>
@@ -74,8 +71,9 @@
     <string name="g4_down">Mit vier Fingern nach unten wischen</string>
     <string name="g4_left">Mit vier Fingern nach links wischen</string>
     <string name="g4_right">Mit vier Fingern nach rechts wischen</string>
-    <string name="sec_strip">Seitentasten (von oben nach unten; Beenden, Drehen, Einstellungen oben und Ausblenden unten sind fest)</string>
+    <string name="sec_strip">Seitentasten (von oben nach unten; Beenden und Einstellungen oben und Ausblenden unten sind fest)</string>
     <string name="strip_hidden">Seitentasten ausblenden (kleine Tasten in den Touchpad-Ecken)</string>
+    <string name="strip_add">＋ Taste hinzufügen (bis zu %1$d)</string>
     <string name="nth">Nr. %1$d</string>
     <string name="sec_corners">Touchpad-Ecktasten (bei ausgeblendeten Seitentasten; ☰ unten links ist fest)</string>
     <string name="corner_tl">Oben links</string>
@@ -109,6 +107,10 @@
     <string name="act_right_click_s">Rechts</string>
     <string name="act_middle_click">Mittelklick (öffnet Links in neuem Tab)</string>
     <string name="act_middle_click_s">Mitte</string>
+    <string name="act_wheel_up">Mausrad hoch (halten = weiter scrollen)</string>
+    <string name="act_wheel_up_s">Rad ↑</string>
+    <string name="act_wheel_down">Mausrad runter (halten = weiter scrollen)</string>
+    <string name="act_wheel_down_s">Rad ↓</string>
     <string name="act_back">Zurück</string>
     <string name="act_back_s">Zurück</string>
     <string name="act_home">Startbildschirm</string>
@@ -193,7 +195,53 @@
     <string name="bt_state_connecting">Verbinde mit %1$s…</string>
     <string name="bt_state_connected">Bluetooth: %1$s</string>
     <string name="bt_state_failed">Bluetooth konnte nicht starten: Vielleicht dient schon eine andere App als Bluetooth-Tastatur; schließe sie und öffne Douhua erneut</string>
+    <string name="bt_state_stuck">Das System-Bluetooth reagiert nicht (passiert, wenn Bluetooth aus- und wieder eingeschaltet wird, während Douhua offen ist). Starte das Telefon neu, dann geht es wieder</string>
     <string name="bt_no_phone_text">Text einfügen geht über Bluetooth nicht: Die Zwischenablage bleibt auf dem Handy</string>
     <string name="bt_no_such_key">Diese Taste gibt es über Bluetooth nicht</string>
     <string name="drag_hum">Leichtes Dauervibrieren beim Ziehen (erinnert daran, dass die linke Taste gedrückt ist)</string>
+    <string name="texture">Körniges Gefühl beim Bewegen des Zeigers (sehr schwache Vibration, wie eine leicht raue Oberfläche)</string>
+    <string name="act_air_mouse">Luftmaus-Seite (große Tasten: halten zum Bewegen, links, rechts…; nur im Bluetooth-Modus)</string>
+    <string name="act_air_mouse_s">Luft</string>
+    <string name="act_air_move">Halten zum Bewegen (Zeiger folgt dem Handy, solange gehalten; nur im Bluetooth-Modus)</string>
+    <string name="act_air_move_s">Halten</string>
+    <string name="act_air_drag">Halten zum Ziehen (linke Taste gedrückt, Zeiger folgt dem Handy; nur im Bluetooth-Modus)</string>
+    <string name="act_air_drag_s">Ziehen</string>
+    <string name="act_air_center">Mitte (Zeiger mit einem Sprung in die Bildschirmmitte)</string>
+    <string name="act_air_center_s">Mitte</string>
+    <string name="air_bt_only">Die Luftmaus funktioniert nur im Bluetooth-Modus</string>
+    <string name="air_no_gyro">Dieses Handy hat kein Gyroskop, die Luftmaus ist daher nicht verfügbar</string>
+    <string name="air_following">Folgt</string>
+    <string name="air_dragging">Ziehen (linke Taste gedrückt)</string>
+    <string name="air_waiting">Bluetooth nicht verbunden</string>
+    <string name="air_exit">Halten, um die Luftmaus zu beenden</string>
+    <string name="sec_air">Luftmaus</string>
+    <string name="air_sensitivity">Luftmaus-Empfindlichkeit (wie weit sich der Zeiger bei gleicher Drehung bewegt)</string>
+    <string name="air_space">Richtungsumrechnung: wie das Drehen des Handys links/rechts und oben/unten ergibt</string>
+    <string name="air_space_player">Spielerraum (Standard): oben/unten = Nicken des Handys selbst, links/rechts = Drehen um die Senkrechte (GyroWiki / JoyShockMapper)</string>
+    <string name="air_space_oblique">Gemischt: links/rechts = Drehen um die Senkrechte, oben/unten = Nicken des Handys selbst, Schräghalten ausgeglichen</string>
+    <string name="air_space_world">Weltraum: links/rechts = Drehen um die Senkrechte, oben/unten = Nicken um die waagerechte Achse</string>
+    <string name="air_min_cutoff">Glättung im Stillstand: Grenzfrequenz (niedriger = ruhiger, aber träger)</string>
+    <string name="air_beta">Mitgehen bei schneller Bewegung: β (höher = folgt besser, aber zittriger)</string>
+    <string name="air_speed_cutoff">Wie schnell „Bewegung“ erkannt wird (niedriger = Zittern zählt seltener als Bewegung, aber langsamerer Start)</string>
+    <string name="air_deadzone">Weiche Totzone: Langsameres wird verkleinert (höher = ruhiger beim Stillhalten, Feinjustieren schwerer)</string>
+    <string name="air_path">Bahnglättung: seitliches Wackeln entlang der Bahn wird geglättet, die Vorwärtsbewegung nicht verzögert (höher = gerader und runder, Ecken weicher; 0 = aus)</string>
+    <string name="air_string">Ruheradius: Wackeln innerhalb dieses Winkels bewegt den Zeiger nicht (höher = ruhiger beim Stillhalten, Umkehren braucht etwas mehr Drehung; 0 = aus)</string>
+    <string name="air_filter_reset">Glättung auf Standard zurücksetzen</string>
+    <string name="air_abs_note">„Mitte“ springt direkt in die Bildschirmmitte (absolute Position). Geräte, die vor dieser Version gekoppelt wurden, müssen dieses Handy in ihren Bluetooth-Einstellungen entfernen und einmal neu koppeln.</string>
+    <string name="air_aspect">Bildschirmformat von %1$s (auf der Luftmaus-Seite hängt die Geschwindigkeit nach oben/unten davon ab; falsch gewählt wirkt oben/unten schneller oder langsamer als links/rechts)</string>
+    <string name="air_aspect_auto">Automatisch (Apple 4:3, sonst 16:9)</string>
+    <string name="air_fix_v">Winkelkorrektur senkrechter Linien (kippt das obere Ende nach rechts, erhöhen)</string>
+    <string name="air_fix_h">Winkelkorrektur waagerechter Linien (sinkt die rechte Seite, erhöhen)</string>
+    <string name="air_aspect_custom">Oder Auflösung eingeben (Breite × Höhe):</string>
+    <string name="air_buttons">Tasten der Luftmaus-Seite (von oben, zwei pro Reihe; der runde Knopf in der Mitte ist fest: halten = bewegen, tippen = Bewegen sperren, nochmal tippen = lösen)</string>
+    <string name="air_row_add">＋ Reihe hinzufügen (bis zu %1$d)</string>
+    <string name="air_round_at">Wo der runde Knopf sitzt</string>
+    <string name="air_round_between">Zwischen %1$d, %2$d, %3$d und %4$d</string>
+    <string name="sec_hard_keys">Lautstärketasten</string>
+    <string name="hard_keys_hint">„Keine“ = Lautstärke wie gewohnt. „Halten zum Bewegen“ auf Tippen: einmal tippen startet, nochmal stoppt.</string>
+    <string name="hk_up_tap">Lauter tippen</string>
+    <string name="hk_up_hold">Lauter halten</string>
+    <string name="hk_down_tap">Leiser tippen</string>
+    <string name="hk_down_hold">Leiser halten</string>
+    <string name="air_center_btn">Mitte</string>
 </resources>

@@ -159,6 +159,13 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                 case Proto.CMD_HEARTBEAT:
                     lastHeartbeat = SystemClock.uptimeMillis();
                     break;
+                case Proto.CMD_WHEEL: {
+                    int n = in.readByte();
+                    synchronized (lock) {
+                        router.wheel(n);
+                    }
+                    break;
+                }
                 case Proto.CMD_ROTATE: {
                     int displayId = in.readInt();
                     int rotation = in.readUnsignedByte();
@@ -196,6 +203,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         c.dragWindowMs = in.readInt();
         float d = in.readFloat();
         c.slowFactor = in.readFloat();
+        c.texture = in.readUnsignedByte() == 1;
         synchronized (lock) {
             router.setConfig(c, d);
         }

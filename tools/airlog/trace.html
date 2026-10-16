@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>空中鼠标描红</title>
+<style>
+  :root { --bg: #121212; --fg: #e8e8e8; --dim: #8a8f94; --target: #3d434a; --chev: #6b737c; --trace: #ff6b5a; --start: #4cd964; --ok: #4cd964; --btn: #2a2f35; --accent: #8ab4f8; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 18px/1.5 system-ui, sans-serif; overflow: hidden; cursor: default; user-select: none; -webkit-user-select: none; }
+  canvas { position: fixed; inset: 0; touch-action: none; }
+  #bar { position: fixed; top: 0; left: 0; height: 4px; background: var(--accent); width: 0; transition: width .3s; }
+  #top { position: fixed; top: 12px; left: 16px; right: 16px; display: flex; gap: 16px; align-items: baseline; pointer-events: none; }
+  #where { color: var(--dim); white-space: nowrap; }
+  #pill { white-space: nowrap; border-radius: 999px; padding: 2px 12px; font-size: 16px; border: 1px solid #444; color: var(--dim); }
+  #pill.rec { color: #fff; background: #c0392b; border-color: #c0392b; }
+  #pill.ok { color: #121212; background: var(--ok); border-color: var(--ok); }
+  #tip { flex: 1; }
+  #review { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); display: flex; gap: 14px; align-items: center; background: #1d2126; border: 1px solid #333; border-radius: 12px; padding: 12px 18px; }
+  #review .big { font-size: 22px; color: var(--ok); }
+  button { background: var(--btn); color: var(--fg); border: 1px solid #444; border-radius: 8px; padding: 10px 20px; font-size: 18px; cursor: pointer; }
+  button:hover { border-color: #888; }
+  button.primary { border-color: var(--accent); }
+  #card { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center; padding: 16px; background: var(--bg); }
+  #card h1 { font-size: 30px; font-weight: 600; margin: 0; }
+  #card .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  #card .dim { color: var(--dim); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="bar"></div>
+<div id="top" class="hidden"><div id="pill"></div><div id="where"></div><div id="tip"></div></div>
+<div id="review" class="hidden"><span class="big" id="rmsg"></span><span id="rcount" class="dim"></span><button id="redo">重画</button><button id="next" class="primary">下一个</button></div>
+<div id="card"></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const cv = $("c"), cx = cv.getContext("2d");
+let W = 0, H = 0, dpr = 1;
+let plan = null, round = 0, shapeIdx = 0, target = null;
+let state = "card";   // card | ready | drawing | review
+let points = [], redo = 0, reviewTimer = 0, countdown = 0;
+const results = [];
+const TOTAL = () => plan.rounds.length * plan.shapes.length;
+const now = () => performance.timeOrigin + performance.now();
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  cv.style.width = W + "px"; cv.style.height = H + "px";
+  if (plan && state !== "card") target = shapePath(plan.shapes[shapeIdx]);
+  draw();
+}
+window.addEventListener("resize", resize);
+
+// 图形折线（屏幕坐标，y 向下），从起点按描的方向排
+function shapePath(name) {
+  const m = Math.min(W, H), cxp = W / 2, cyp = H / 2, pts = [];
+  if (name === "横线") pts.push([W * 0.15, cyp], [W * 0.85, cyp]);
+  else if (name === "竖线") pts.push([cxp, H * 0.15], [cxp, H * 0.85]);
+  else if (name === "圆") {
+    const r = m * 0.32;
+    for (let i = 0; i <= 120; i++) { const a = -Math.PI / 2 + i / 120 * 2 * Math.PI; pts.push([cxp + r * Math.cos(a), cyp + r * Math.sin(a)]); }
+  } else if (name === "方") {
+    const s = m * 0.3;
+    pts.push([cxp - s, cyp - s], [cxp + s, cyp - s], [cxp + s, cyp + s], [cxp - s, cyp + s], [cxp - s, cyp - s]);
+  } else if (name === "三角") {
+    const r = m * 0.36;
+    for (let i = 0; i <= 3; i++) { const a = -Math.PI / 2 + i / 3 * 2 * Math.PI; pts.push([cxp + r * Math.cos(a), cyp + r * Math.sin(a)]); }
+  }
+  return pts;
+}
+
+function pathLength(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return L; }
+
+// 点到折线的最短距离
+function distToPath(x, y, pts) {
+  let best = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / L2)) : 0;
+    best = Math.min(best, Math.hypot(x - (x0 + t * dx), y - (y0 + t * dy)));
+  }
+  return best;
+}
+
+// ── 流程 ──
+function showCard(html) {
+  state = "card"; target = null; draw();
+  $("top").classList.add("hidden"); $("review").classList.add("hidden");
+  $("card").innerHTML = html; $("card").classList.remove("hidden");
+}
+
+function updateTop() {
+  const done = round * plan.shapes.length + shapeIdx;
+  $("bar").style.width = (done / TOTAL() * 100) + "%";
+  $("where").textContent = `第 ${round + 1}/${plan.rounds.length} 轮 · ${plan.shapes[shapeIdx]}（${shapeIdx + 1}/${plan.shapes.length}）`;
+  $("tip").textContent = state === "drawing" ? "描完松开左键" : "把光标移到绿色\"起点\"，按住左键沿灰线描一遍，描完松开";
+  setPill();
+}
+
+// 一直显示现在在干什么：等你开始 / 记录中 / 已记下
+function setPill() {
+  const p = $("pill");
+  p.className = state === "drawing" ? "rec" : state === "review" ? "ok" : "";
+  p.textContent = state === "drawing" ? "● 记录中" : state === "review" ? "✓ 已记下" : "等你按住左键开始";
+}
+
+function startShape() {
+  $("card").classList.add("hidden"); $("review").classList.add("hidden"); $("top").classList.remove("hidden");
+  target = shapePath(plan.shapes[shapeIdx]);
+  points = []; state = "ready";
+  updateTop(); draw();
+}
+
+window.addEventListener("pointerdown", e => {
+  if (state !== "ready" || e.button !== 0 || e.target !== cv) return;
+  e.preventDefault();
+  state = "drawing";
+  points = [[performance.timeOrigin + e.timeStamp, e.clientX, e.clientY]];
+  updateTop(); draw();
+});
+
+window.addEventListener("pointermove", e => {
+  if (state !== "drawing") return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  for (const ev of (evs.length ? evs : [e])) points.push([performance.timeOrigin + ev.timeStamp, ev.clientX, ev.clientY]);
+  draw();
+});
+
+window.addEventListener("pointerup", e => {
+  if (state !== "drawing" || e.button !== 0) return;
+  points.push([performance.timeOrigin + e.timeStamp, e.clientX, e.clientY]);
+  review();
+});
+window.addEventListener("dragstart", e => e.preventDefault());
+
+// 松开以后：太短就让重画；否则显示偏了多少，3 秒后自动下一个
+function review() {
+  const tl = pathLength(target), pl = pathLength(points.map(p => [p[1], p[2]]));
+  if (pl < tl * 0.4) {
+    state = "ready"; points = []; setPill();
+    $("tip").textContent = "这一笔太短了（不到图形的四成），从起点再描一次";
+    draw(); return;
+  }
+  const d = points.map(p => distToPath(p[1], p[2], target));
+  const mean = d.reduce((a, b) => a + b, 0) / d.length, max = Math.max(...d);
+  state = "review"; setPill();
+  $("rmsg").textContent = `✓ 记下了：平均偏 ${mean.toFixed(1)} 像素，最远 ${max.toFixed(0)}`;
+  $("review").classList.remove("hidden");
+  $("tip").textContent = "看看轨迹；要重画点\"重画\"";
+  countdown = 3; tick();
+  draw();
+  results.push({ round, label: plan.rounds[round].label, shape: plan.shapes[shapeIdx], redo, viewport: [W, H], dpr, target,
+    startT: points[0][0], endT: points[points.length - 1][0], meanErr: mean, maxErr: max, points });
+  fetch("/progress", { method: "POST", body: JSON.stringify({ round, shape: plan.shapes[shapeIdx], mean, max, redo }) }).catch(() => {});
+}
+
+function tick() {
+  clearTimeout(reviewTimer);
+  $("rcount").textContent = `${countdown} 秒后下一个`;
+  if (countdown <= 0) return next();
+  reviewTimer = setTimeout(() => { countdown--; tick(); }, 1000);
+}
+
+$("redo").onclick = () => { clearTimeout(reviewTimer); results.pop(); redo++; startShape(); };
+$("next").onclick = () => next();
+
+function next() {
+  clearTimeout(reviewTimer);
+  if (state !== "review") return;
+  redo = 0;
+  if (shapeIdx + 1 < plan.shapes.length) { shapeIdx++; startShape(); return; }
+  round++; shapeIdx = 0;
+  $("bar").style.width = (round * plan.shapes.length / TOTAL() * 100) + "%";
+  if (round < plan.rounds.length) beginRound(); else askBest();
+}
+
+async function beginRound() {
+  showCard(`<h1>${round ? `第 ${round} 轮完成 ✓` : "准备"}</h1><div>正在换第 ${round + 1} 轮的参数……</div>`);
+  try { await fetch("/round", { method: "POST", body: JSON.stringify({ round, t: now() }) }); }
+  catch (e) { showCard(`<h1>换参数失败</h1><div>${e}</div><div class="dim">看看终端里的描红服务还在不在</div>`); return; }
+  showCard(`<h1>第 ${round + 1} 轮（共 ${plan.rounds.length} 轮）</h1>
+    <div>参数换好了。横线、竖线、圆、方、三角各描一次。</div>
+    <div class="row"><button class="primary" id="go">开始第 ${round + 1} 轮</button></div>`);
+  $("go").onclick = startShape;
+}
+
+function askBest() {
+  const btns = plan.rounds.map((r, i) => `<button data-i="${i}">第 ${i + 1} 轮</button>`).join("") + `<button data-i="-1">说不上来</button>`;
+  showCard(`<h1>全部 ${TOTAL()} 个描完了 ✓</h1><div>哪一轮用起来最顺手？</div><div class="row">${btns}</div>`);
+  $("card").querySelectorAll("button").forEach(b => b.onclick = () => save(+b.dataset.i));
+}
+
+async function save(best) {
+  showCard(`<h1>保存中……</h1>`);
+  const body = JSON.stringify({ plan, best, results, userAgent: navigator.userAgent, savedAt: now() });
+  try {
+    const r = await fetch("/result", { method: "POST", body });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    $("bar").style.width = "100%";
+    showCard(`<h1>测试结束 ✓ 已保存</h1><div>可以关掉这个页面了，终端那边也已经自动结束。</div>`);
+  } catch (e) {
+    showCard(`<h1>保存失败</h1><div>${e}</div><div class="row"><button id="retry">再试一次</button></div>`);
+    $("retry").onclick = () => save(best);
+  }
+}
+
+// ── 画 ──
+function draw() {
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx.clearRect(0, 0, W, H);
+  if (!target) return;
+  const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
+  cx.lineCap = cx.lineJoin = "round";
+  cx.strokeStyle = v("--target"); cx.lineWidth = 16;
+  cx.beginPath(); target.forEach(([x, y], i) => i ? cx.lineTo(x, y) : cx.moveTo(x, y)); cx.stroke();
+  // 沿线每 90 像素一个小箭头，标出描的方向
+  cx.strokeStyle = v("--chev"); cx.lineWidth = 2.5;
+  let acc = 45;
+  for (let i = 1; i < target.length; i++) {
+    const [x0, y0] = target[i - 1], [x1, y1] = target[i], L = Math.hypot(x1 - x0, y1 - y0), a = Math.atan2(y1 - y0, x1 - x0);
+    for (; acc < L; acc += 90) {
+      const px = x0 + (x1 - x0) * acc / L, py = y0 + (y1 - y0) * acc / L;
+      cx.beginPath();
+      cx.moveTo(px - 6 * Math.cos(a - 0.6), py - 6 * Math.sin(a - 0.6)); cx.lineTo(px, py); cx.lineTo(px - 6 * Math.cos(a + 0.6), py - 6 * Math.sin(a + 0.6));
+      cx.stroke();
+    }
+    acc -= L;
+  }
+  // 起点：一个小圈 + "起点"两个字
+  const [sx, sy] = target[0];
+  cx.strokeStyle = v("--start"); cx.lineWidth = 3;
+  cx.beginPath(); cx.arc(sx, sy, 7, 0, 2 * Math.PI); cx.stroke();
+  cx.fillStyle = v("--start"); cx.font = "16px system-ui, sans-serif"; cx.textAlign = "center";
+  cx.fillText("起点", sx, sy - 16);
+  // 描的轨迹
+  if (points.length > 1) {
+    cx.strokeStyle = v("--trace"); cx.lineWidth = 2.5;
+    cx.beginPath(); points.forEach(([, x, y], i) => i ? cx.lineTo(x, y) : cx.moveTo(x, y)); cx.stroke();
+  }
+}
+
+// ── 开头 ──
+showCard(`<h1>空中鼠标描红</h1>
+  <div>手机打开空中鼠标页，先点一下"回正中"。<br>
+  每个图形：把光标移到绿色"起点"，<b>按住左键</b>沿着灰线（顺着小箭头）描一遍，<b>描完松开左键</b>。<br>
+  松开后会显示这一笔偏了多少，3 秒后自动下一个；描坏了点"重画"。</div>
+  <div class="dim">一共三轮，每轮的消抖参数不一样（不告诉你是哪组），最后选哪一轮最顺手。大约 5 分钟。</div>
+  <div class="row"><button id="fs">全屏</button><button class="primary" id="start">开始</button></div>`);
+$("fs").onclick = () => document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+$("start").onclick = async () => {
+  try { plan = await (await fetch("/plan")).json(); }
+  catch (e) { showCard(`<h1>连不上描红服务</h1><div>${e}</div><div class="dim">在终端里重跑 tools/air-log.sh --trace</div>`); return; }
+  resize();
+  round = 0; shapeIdx = 0;
+  beginRound();
+};
+resize();
+</script>
+</body>
+</html>

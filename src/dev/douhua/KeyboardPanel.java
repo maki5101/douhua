@@ -2,6 +2,8 @@ package dev.douhua;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -30,7 +32,7 @@ final class KeyboardPanel extends LinearLayout {
         /** 服务没接管时，键被按下 / 松开。key 同 Proto.REGION_KEY 的 id。 */
         void onLocalKey(int key, boolean down);
 
-        void onKeyHaptic();
+        void onKeyHaptic(int id, boolean special);
 
         /** 服务没接管时，非 HID 的特殊键（符 / Fn / 快捷行里的非键盘动作）被点了。 */
         void onSpecialKey(int id);
@@ -149,7 +151,27 @@ final class KeyboardPanel extends LinearLayout {
             {k(0x49, "Ins"), k(0x4C, "Del"), k(0x46, "PrtSc"), wide(0x2A, "⌫", 1.5f)},
     };
 
+    /** 把彩色 emoji 画成灰的：去掉饱和度，再压暗到和普通键名差不多。 */
+    private static final ColorMatrixColorFilter GRAY_EMOJI;
+
+    static {
+        ColorMatrix m = new ColorMatrix();
+        m.setSaturation(0);
+        ColorMatrix dim = new ColorMatrix();
+        dim.setScale(0.75f, 0.75f, 0.75f, 1);
+        m.postConcat(dim);
+        GRAY_EMOJI = new ColorMatrixColorFilter(m);
+    }
+
     private static final Key[] BOTTOM = {
+            new Key(SYMBOLS_BUTTON_ID, "?123", null, 1.5f, true), k(0x36, ","), wide(0x2C, "Space", 5),
+            k(0x37, "."), wide(0x28, "↵", 1.5f),
+    };
+
+    /**
+     * 连着苹果设备时多一个 🌐（切换输入法，iPad 上实测管用；Linux 等主机默认没绑这个键，不显示），空格让出一份。
+     */
+    private static final Key[] BOTTOM_APPLE = {
             new Key(SYMBOLS_BUTTON_ID, "?123", null, 1.5f, true), new Key(GLOBE_BUTTON_ID, "🌐", null, 1, true),
             k(0x36, ","), wide(0x2C, "Space", 4),
             k(0x37, "."), wide(0x28, "↵", 1.5f),
@@ -186,12 +208,13 @@ final class KeyboardPanel extends LinearLayout {
      * 按钮编号 ROW_ACTION_BASE_ID + 位置，由宿主执行。
      */
     void setShortcuts(List<Actions.Action> list) {
+        shortcutActions = new ArrayList<>(list);
         List<Key> row = new ArrayList<>();
         for (int i = 0; i < list.size(); i++) {
             Actions.Action a = list.get(i);
             if (a.kind == Actions.Kind.NONE) continue;
             String label = a.shortLabel(getContext());
-            if (a.kind == Actions.Kind.HID) row.add(new Key(a.code, label, null, 1, false));
+            if (a.kind == Actions.Kind.HID) row.add(new Key(a.hidCode(apple), label, null, 1, false));
             else row.add(new Key(ROW_ACTION_BASE_ID + i, label, null, 1, true));
         }
         shortcuts = row.toArray(new Key[0]);
@@ -236,14 +259,17 @@ final class KeyboardPanel extends LinearLayout {
 
     // ═══════════ 内部 ═══════════
 
-    /** GUI 键（Windows 上的 Win 键）：一律叫 Super，连着苹果设备时叫 ⌘（它在苹果上就是 Command）。 */
-    private static final int GUI_USAGE = 0xE3;
-    private String guiLabel = "Super";
+    /**
+     * 连着苹果设备：修饰键按苹果的写法标（Ctrl ⌃、Alt ⌥、GUI ⌘，GUI 键平时叫 Super），
+     * 快捷行里的内置快捷键按苹果的习惯发（复制 = ⌘C……，见 Actions.Action.hidCode）。
+     */
+    private boolean apple;
+    private List<Actions.Action> shortcutActions = new ArrayList<>();
 
-    void setGuiLabel(String label) {
-        if (label.equals(guiLabel)) return;
-        guiLabel = label;
-        refreshLabels();
+    void setAppleHost(boolean apple) {
+        if (apple == this.apple) return;
+        this.apple = apple;
+        setShortcuts(shortcutActions);   // 重建（键的编号跟着变），区域会随重新布局报上去
     }
 
     private void rebuild() {
@@ -253,7 +279,7 @@ final class KeyboardPanel extends LinearLayout {
         addRow(TOP);
         Key[][] middle = layer == LAYER_SYMBOLS ? SYMBOLS : layer == LAYER_FN ? FN : LETTERS;
         for (Key[] row : middle) addRow(row);
-        addRow(BOTTOM);
+        addRow(apple ? BOTTOM_APPLE : BOTTOM);
         if (shortcuts.length > 0) addRow(shortcuts);
         refreshLabels();
     }
@@ -264,6 +290,7 @@ final class KeyboardPanel extends LinearLayout {
             // 一个字（含 🌐 这种占两个 char 的）用大字，多个字的键名用小字
             boolean oneChar = key.label.codePointCount(0, key.label.length()) <= 1;
             TextView v = Style.button(getContext(), oneChar ? 18 : 13);
+            if (key.id == GLOBE_BUTTON_ID) v.getPaint().setColorFilter(GRAY_EMOJI);   // 🌐 是彩色 emoji，去色调暗，和别的键一个色调
             int index = views.size();
             keys.add(key);
             views.add(v);
@@ -287,7 +314,9 @@ final class KeyboardPanel extends LinearLayout {
             if (shift && key.shifted != null) label = key.shifted;
             // 跟着系统语言的键名
             if (key.id == 0x2C) label = getContext().getString(R.string.key_space);
-            if (key.id == GUI_USAGE) label = guiLabel;
+            if (key.id == 0xE0) label = apple ? "⌃" : "Ctrl";
+            if (key.id == 0xE2) label = apple ? "⌥" : "Alt";
+            if (key.id == 0xE3) label = apple ? "⌘" : "Super";
             if (key.id == SYMBOLS_BUTTON_ID) {
                 label = layer == LAYER_SYMBOLS ? "ABC" : getContext().getString(R.string.key_symbols);
             }
@@ -329,7 +358,7 @@ final class KeyboardPanel extends LinearLayout {
             case MotionEvent.ACTION_DOWN:
                 look(index, true);
                 preview(index, true);
-                listener.onKeyHaptic();
+                listener.onKeyHaptic(key.id, key.special);
                 if (!key.special) listener.onLocalKey(key.id, true);
                 return true;
             case MotionEvent.ACTION_UP:

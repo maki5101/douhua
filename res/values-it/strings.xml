@@ -54,9 +54,6 @@
     <string name="edge_h">Scorri lungo il bordo superiore/inferiore = scorrimento orizzontale</string>
     <string name="edge_width">Larghezza della fascia di bordo (dp)</string>
     <string name="ticks">Vibrazione a «scatti» nello scorrimento (come una rotella)</string>
-    <string name="ticks_off">Disattivata</string>
-    <string name="ticks_edge">Solo scorrimento dai bordi</string>
-    <string name="ticks_all">Ogni scorrimento (anche a due dita)</string>
     <string name="tick_strength">Intensità degli «scatti»</string>
     <string name="sec_haptics">Vibrazione</string>
     <string name="haptic_off">Off</string>
@@ -74,8 +71,9 @@
     <string name="g4_down">Scorri in basso con quattro dita</string>
     <string name="g4_left">Scorri a sinistra con quattro dita</string>
     <string name="g4_right">Scorri a destra con quattro dita</string>
-    <string name="sec_strip">Pulsanti laterali (dall\'alto in basso; Esci, Ruota, Impostazioni in alto e Nascondi in basso sono fissi)</string>
+    <string name="sec_strip">Pulsanti laterali (dall\'alto in basso; Esci e Impostazioni in alto e Nascondi in basso sono fissi)</string>
     <string name="strip_hidden">Nascondi i pulsanti laterali (piccoli pulsanti negli angoli del touchpad)</string>
+    <string name="strip_add">＋ Aggiungi pulsante (fino a %1$d)</string>
     <string name="nth">N. %1$d</string>
     <string name="sec_corners">Pulsanti negli angoli (con i laterali nascosti; ☰ in basso a sinistra è fisso)</string>
     <string name="corner_tl">In alto a sinistra</string>
@@ -109,6 +107,10 @@
     <string name="act_right_click_s">Destro</string>
     <string name="act_middle_click">Clic centrale (apre i link in una nuova scheda)</string>
     <string name="act_middle_click_s">Centrale</string>
+    <string name="act_wheel_up">Rotellina su (tieni premuto per continuare)</string>
+    <string name="act_wheel_up_s">Rotella ↑</string>
+    <string name="act_wheel_down">Rotellina giù (tieni premuto per continuare)</string>
+    <string name="act_wheel_down_s">Rotella ↓</string>
     <string name="act_back">Indietro</string>
     <string name="act_back_s">Indietro</string>
     <string name="act_home">Schermata Home</string>
@@ -193,7 +195,53 @@
     <string name="bt_state_connecting">Connessione a %1$s…</string>
     <string name="bt_state_connected">Bluetooth: %1$s</string>
     <string name="bt_state_failed">Il Bluetooth non si è avviato: forse un\'altra app fa già da tastiera Bluetooth; chiudila e riapri Douhua</string>
+    <string name="bt_state_stuck">Il Bluetooth di sistema non risponde (può succedere spegnendo e riaccendendo il Bluetooth con Douhua aperto). Riavvia il telefono per risolvere</string>
     <string name="bt_no_phone_text">Incollare testo non è possibile via Bluetooth: gli appunti restano sul telefono</string>
     <string name="bt_no_such_key">Questo tasto non è disponibile via Bluetooth</string>
     <string name="drag_hum">Leggera vibrazione continua durante il trascinamento (ricorda che il tasto sinistro è premuto)</string>
+    <string name="texture">Sensazione granulosa muovendo il puntatore (vibrazione leggerissima, come una superficie un po\' ruvida)</string>
+    <string name="act_air_mouse">Pagina mouse aereo (pulsanti grandi: tieni per muovere, sinistro, destro…; solo modalità Bluetooth)</string>
+    <string name="act_air_mouse_s">Aereo</string>
+    <string name="act_air_move">Tieni per muovere (il puntatore segue il telefono finché tieni premuto; solo modalità Bluetooth)</string>
+    <string name="act_air_move_s">Tieni e muovi</string>
+    <string name="act_air_drag">Tieni per trascinare (tasto sinistro premuto, il puntatore segue il telefono; solo modalità Bluetooth)</string>
+    <string name="act_air_drag_s">Trascina</string>
+    <string name="act_air_center">Centro (puntatore al centro dello schermo in un colpo)</string>
+    <string name="act_air_center_s">Centro</string>
+    <string name="air_bt_only">Il mouse aereo funziona solo in modalità Bluetooth</string>
+    <string name="air_no_gyro">Questo telefono non ha il giroscopio, quindi il mouse aereo non è disponibile</string>
+    <string name="air_following">In movimento</string>
+    <string name="air_dragging">Trascinamento (tasto sinistro premuto)</string>
+    <string name="air_waiting">Bluetooth non connesso</string>
+    <string name="air_exit">Tieni premuto per uscire dal mouse aereo</string>
+    <string name="sec_air">Mouse aereo</string>
+    <string name="air_sensitivity">Sensibilità del mouse aereo (quanto si sposta il puntatore per la stessa rotazione)</string>
+    <string name="air_space">Conversione della direzione: come la rotazione del telefono diventa sinistra/destra e su/giù</string>
+    <string name="air_space_player">Spazio giocatore (predefinito): su/giù = cenno del telefono stesso, sinistra/destra = rotazione attorno alla verticale (GyroWiki / JoyShockMapper)</string>
+    <string name="air_space_oblique">Misto: sinistra/destra = rotazione attorno alla verticale, su/giù = cenno del telefono stesso, inclinazione compensata</string>
+    <string name="air_space_world">Spazio mondo: sinistra/destra = rotazione attorno alla verticale, su/giù = cenno attorno all\'asse orizzontale</string>
+    <string name="air_min_cutoff">Smorzamento da fermo: frequenza di taglio (più bassa = più stabile, ma più ritardo)</string>
+    <string name="air_beta">Inseguimento nei movimenti rapidi: β (più alto = segue meglio, ma trema di più)</string>
+    <string name="air_speed_cutoff">Rapidità nel riconoscere il movimento (più bassa = il tremolio conta meno come movimento, ma partenza più lenta)</string>
+    <string name="air_deadzone">Zona morta morbida: più lento di così viene ridotto (più alta = più stabile da fermo, regolazione fine più difficile)</string>
+    <string name="air_path">Levigatura del percorso: le oscillazioni laterali vengono smussate, l\'avanzamento non è ritardato (più alta = più dritto e fluido, curve più arrotondate; 0 = disattivato)</string>
+    <string name="air_string">Raggio di stabilità: le oscillazioni entro questo angolo non muovono il puntatore (più alto = più stabile da fermo, per tornare indietro serve ruotare un po\' di più; 0 = disattivato)</string>
+    <string name="air_filter_reset">Ripristina lo smorzamento predefinito</string>
+    <string name="air_abs_note">«Centro» salta direttamente al centro dello schermo (posizione assoluta). I dispositivi associati prima di questa versione devono rimuovere questo telefono nelle impostazioni Bluetooth e riassociarlo una volta.</string>
+    <string name="air_aspect">Formato dello schermo di %1$s (nella pagina mouse aereo la velocità su/giù dipende da questo; se è sbagliato su/giù sembra più veloce o lento di destra/sinistra)</string>
+    <string name="air_aspect_auto">Automatico (Apple 4:3, altri 16:9)</string>
+    <string name="air_fix_v">Correzione angolo linee verticali (se in alto pendono a destra, aumenta)</string>
+    <string name="air_fix_h">Correzione angolo linee orizzontali (se a destra scendono, aumenta)</string>
+    <string name="air_aspect_custom">Oppure inserisci la risoluzione (larghezza × altezza):</string>
+    <string name="air_buttons">Pulsanti della pagina mouse aereo (dall\'alto, due per riga; il pulsante rotondo al centro è fisso: tieni = muovi, tocco = blocca il movimento, altro tocco = sblocca)</string>
+    <string name="air_row_add">＋ Aggiungi riga (fino a %1$d)</string>
+    <string name="air_round_at">Dove sta il pulsante rotondo</string>
+    <string name="air_round_between">Tra %1$d, %2$d, %3$d e %4$d</string>
+    <string name="sec_hard_keys">Tasti volume</string>
+    <string name="hard_keys_hint">«Nessuna» = volume come sempre. «Tieni per muovere» su un tocco: un tocco avvia, un altro ferma.</string>
+    <string name="hk_up_tap">Volume + tocco</string>
+    <string name="hk_up_hold">Volume + tieni</string>
+    <string name="hk_down_tap">Volume − tocco</string>
+    <string name="hk_down_hold">Volume − tieni</string>
+    <string name="air_center_btn">Centro</string>
 </resources>

@@ -54,9 +54,6 @@
     <string name="edge_h">上下の端を左右になぞる = 横スクロール</string>
     <string name="edge_width">端の帯の幅（dp）</string>
     <string name="ticks">スクロールの「カチッ」振動（ホイールのように）</string>
-    <string name="ticks_off">オフ</string>
-    <string name="ticks_edge">端のスクロールのみ</string>
-    <string name="ticks_all">すべてのスクロール（2本指も）</string>
     <string name="tick_strength">「カチッ」の強さ</string>
     <string name="sec_haptics">振動</string>
     <string name="haptic_off">オフ</string>
@@ -74,8 +71,9 @@
     <string name="g4_down">4本指で下スワイプ</string>
     <string name="g4_left">4本指で左スワイプ</string>
     <string name="g4_right">4本指で右スワイプ</string>
-    <string name="sec_strip">サイドボタン（上から順。上の「終了」「回転」「設定」と下の「隠す」は固定）</string>
+    <string name="sec_strip">サイドボタン（上から順。上の「終了」「設定」と下の「隠す」は固定）</string>
     <string name="strip_hidden">サイドボタンを隠す（タッチパッドの角に小さなボタンを表示）</string>
+    <string name="strip_add">＋ ボタンを追加（最大 %1$d 個）</string>
     <string name="nth">%1$d 番目</string>
     <string name="sec_corners">タッチパッドの角のボタン（サイドボタンを隠したとき。左下の ☰ は固定）</string>
     <string name="corner_tl">左上</string>
@@ -109,6 +107,10 @@
     <string name="act_right_click_s">右</string>
     <string name="act_middle_click">中クリック（リンクを新しいタブで開く）</string>
     <string name="act_middle_click_s">中</string>
+    <string name="act_wheel_up">ホイール上（押し続けるとスクロールし続ける）</string>
+    <string name="act_wheel_up_s">ホイール↑</string>
+    <string name="act_wheel_down">ホイール下（押し続けるとスクロールし続ける）</string>
+    <string name="act_wheel_down_s">ホイール↓</string>
     <string name="act_back">戻る</string>
     <string name="act_back_s">戻る</string>
     <string name="act_home">ホーム画面</string>
@@ -193,7 +195,53 @@
     <string name="bt_state_connecting">%1$s に接続中…</string>
     <string name="bt_state_connected">Bluetooth：%1$s</string>
     <string name="bt_state_failed">Bluetooth を開始できませんでした：別のアプリが Bluetooth キーボードとして動いている可能性があります。それを閉じて豆花を開き直してください</string>
+    <string name="bt_state_stuck">システムの Bluetooth が応答しません（豆花を開いたまま Bluetooth をオフ・オンするとこうなることがあります）。スマホを再起動すると直ります</string>
     <string name="bt_no_phone_text">Bluetooth では文字の貼り付けは使えません（クリップボードはスマホ側にあります）</string>
     <string name="bt_no_such_key">このキーは Bluetooth では使えません</string>
     <string name="drag_hum">ドラッグ中の弱い連続振動（左ボタンを押したままだとわかる）</string>
+    <string name="texture">カーソル移動中のざらざら感（ごく弱い振動。少し粗い面をなぞる感じ）</string>
+    <string name="act_air_mouse">エアマウス画面（大きなボタン：押して移動・左・右など。Bluetooth モードのみ）</string>
+    <string name="act_air_mouse_s">エア</string>
+    <string name="act_air_move">押して移動（押している間カーソルがスマホの向きに追従。Bluetooth モードのみ）</string>
+    <string name="act_air_move_s">押して移動</string>
+    <string name="act_air_drag">押してドラッグ（押している間左ボタンを押下、カーソルが追従。Bluetooth モードのみ）</string>
+    <string name="act_air_drag_s">押してドラッグ</string>
+    <string name="act_air_center">中央へ（カーソルを一発で画面中央へ）</string>
+    <string name="act_air_center_s">中央へ</string>
+    <string name="air_bt_only">エアマウスは Bluetooth モードでのみ使えます</string>
+    <string name="air_no_gyro">このスマホにはジャイロスコープがないため、エアマウスは使えません</string>
+    <string name="air_following">追従中</string>
+    <string name="air_dragging">ドラッグ中（左ボタンを押下中）</string>
+    <string name="air_waiting">Bluetooth が未接続です</string>
+    <string name="air_exit">長押しでエアマウスを終了</string>
+    <string name="sec_air">エアマウス</string>
+    <string name="air_sensitivity">エアマウスの感度（同じ角度でカーソルが動く距離）</string>
+    <string name="air_space">向きの換算：スマホの回し方を左右・上下にどう割り当てるか</string>
+    <string name="air_space_player">プレイヤー空間（既定）：上下 = スマホ自身のうなずき、左右 = 鉛直軸まわりの回転（GyroWiki / JoyShockMapper）</string>
+    <string name="air_space_oblique">斜交基底：左右 = 鉛直軸まわり、上下 = スマホ自身のうなずき（傾けた持ち方の影響を除く）</string>
+    <string name="air_space_world">ワールド空間：左右 = 鉛直軸まわり、上下 = 水平軸まわりのうなずき</string>
+    <string name="air_min_cutoff">手ブレ補正：静止時のカットオフ（小さいほど安定、遅れも大きい）</string>
+    <string name="air_beta">手ブレ補正：速く動かすときの追従 β（大きいほど追従、ブレやすい）</string>
+    <string name="air_speed_cutoff">手ブレ補正：「動いている」と判定する速さ（小さいほど手ブレを動きと誤認しにくい、動き出しは遅い）</string>
+    <string name="air_deadzone">ソフトデッドゾーン：これより遅い動きは縮小（大きいほど止めたとき安定、微調整しにくい）</string>
+    <string name="air_path">軌跡スムージング：進む向きと横にぶれる分を分け、横ぶれだけを滑らかに（大きいほどまっすぐ滑らか、角は丸く；0 = オフ）</string>
+    <string name="air_string">ブレ止め半径：この角度内の手の揺れではポインタが動かない（大きいほど止めたとき安定、折り返しは少し多めに回す；0 = オフ）</string>
+    <string name="air_filter_reset">手ブレ補正を既定に戻す</string>
+    <string name="air_abs_note">「中央へ」は画面中央へ直接移動します（絶対座標）。このバージョンより前にペアリングした機器は、相手の Bluetooth 設定でこのスマホを削除して、もう一度ペアリングしてください。</string>
+    <string name="air_aspect">%1$s の画面比率（エアマウス画面で上下の速さはこれで決まる。違うと上下が左右より速く／遅く感じる）</string>
+    <string name="air_aspect_auto">自動（Apple は 4:3、ほかは 16:9）</string>
+    <string name="air_fix_v">縦線の角度補正（縦線の上が右に倒れるなら + へ）</string>
+    <string name="air_fix_h">横線の角度補正（横線の右側が下がるなら + へ）</string>
+    <string name="air_aspect_custom">または解像度を入力（幅 × 高さ）：</string>
+    <string name="air_buttons">エアマウス画面のボタン（上から、1 行に 2 つ。真ん中の丸ボタンは固定：押している間移動、タップで移動をロック、もう一度で解除）</string>
+    <string name="air_row_add">＋ 行を追加（最大 %1$d 行）</string>
+    <string name="air_round_at">丸ボタンの位置</string>
+    <string name="air_round_between">%1$d・%2$d・%3$d・%4$d の間</string>
+    <string name="sec_hard_keys">音量キー</string>
+    <string name="hard_keys_hint">「なし」なら普段どおり音量を変えます。「押して移動」を「タップ」に割り当てると、タップで開始、もう一度で停止。</string>
+    <string name="hk_up_tap">音量 + タップ</string>
+    <string name="hk_up_hold">音量 + 長押し</string>
+    <string name="hk_down_tap">音量 − タップ</string>
+    <string name="hk_down_hold">音量 − 長押し</string>
+    <string name="air_center_btn">中央へ</string>
 </resources>

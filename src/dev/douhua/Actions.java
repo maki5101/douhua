@@ -30,6 +30,8 @@ final class Actions {
         CLICK,
         /** 按住期间鼠标左键一直按着（只在左侧按钮上有意义；放在别处等同单击）。 */
         HOLD_LEFT,
+        /** 滚轮（code = +1 向上 / -1 向下）：按钮、音量键按住时匀速一格格连续滚；只能点一下的地方（手势、键盘那排）滚一格。 */
+        WHEEL,
         /** 打开 / 关闭键盘界面（虚拟 USB 键盘）。 */
         KEYBOARD,
         /** 打开 / 关闭"贴字"面板：用手机自己的输入法（语音、中文）打字，经剪贴板贴到 DeX。 */
@@ -44,6 +46,14 @@ final class Actions {
         ROTATE,
         /** 收起 / 显示左侧按钮条（收起后触控板四角放小按钮）。 */
         TOGGLE_STRIP,
+        /** 进出空中鼠标页面（上面是可设定的大按钮；只在蓝牙模式）。 */
+        AIR_MOUSE,
+        /** 按住移动：按着时光标跟着手机转动走（放在只能点一下的地方：点一下开、再点一下关）。 */
+        AIR_MOVE,
+        /** 按住拖动：按着时左键按下、光标跟着手机走。 */
+        AIR_DRAG,
+        /** 光标回到屏幕正中（每台设备校准一次）。 */
+        AIR_CENTER,
     }
 
     static final class Action {
@@ -51,6 +61,8 @@ final class Actions {
         final Kind kind;
         final int code;
         final int meta;
+        /** HID 动作在苹果设备上发的组合键（⌘ 代替 Ctrl 之类），见 {@link #hidCode}；自定义组合键和非 HID 动作同 code。 */
+        int appleCode;
         /** 名字：资源编号（随系统语言），为 0 时用原文。 */
         private final int labelRes;
         private final int shortRes;
@@ -66,6 +78,12 @@ final class Actions {
             this.kind = kind;
             this.code = code;
             this.meta = meta;
+            this.appleCode = code;
+        }
+
+        /** HID 动作实际要按的组合键：连着苹果设备时按苹果的习惯。 */
+        int hidCode(boolean apple) {
+            return apple ? appleCode : code;
         }
 
         /** 选择列表里显示的全名。 */
@@ -99,11 +117,17 @@ final class Actions {
         add("exit", R.string.act_exit, null, R.string.act_exit_s, null, Kind.EXIT, 0, 0);
         add("rotate", R.string.act_rotate, null, R.string.act_rotate_s, null, Kind.ROTATE, 0, 0);
         add("toggle_strip", R.string.act_toggle_strip, null, R.string.act_toggle_strip_s, null, Kind.TOGGLE_STRIP, 0, 0);
+        add("air_mouse", R.string.act_air_mouse, null, R.string.act_air_mouse_s, null, Kind.AIR_MOUSE, 0, 0);
+        add("air_move", R.string.act_air_move, null, R.string.act_air_move_s, null, Kind.AIR_MOVE, 0, 0);
+        add("air_drag", R.string.act_air_drag, null, R.string.act_air_drag_s, null, Kind.AIR_DRAG, 0, 0);
+        add("air_center", R.string.act_air_center, null, R.string.act_air_center_s, null, Kind.AIR_CENTER, 0, 0);
 
         // ── 鼠标 ──
         add("hold_left", R.string.act_hold_left, null, R.string.act_hold_left_s, null, Kind.HOLD_LEFT, Proto.BUTTON_LEFT, 0);
         add("right_click", R.string.act_right_click, null, R.string.act_right_click_s, null, Kind.CLICK, Proto.BUTTON_RIGHT, 0);
         add("middle_click", R.string.act_middle_click, null, R.string.act_middle_click_s, null, Kind.CLICK, Proto.BUTTON_MIDDLE, 0);
+        add("wheel_up", R.string.act_wheel_up, null, R.string.act_wheel_up_s, null, Kind.WHEEL, 1, 0);
+        add("wheel_down", R.string.act_wheel_down, null, R.string.act_wheel_down_s, null, Kind.WHEEL, -1, 0);
 
         // ── 系统 / DeX（键盘上没有的键，注入） ──
         key("back", R.string.act_back, null, R.string.act_back_s, null, KeyEvent.KEYCODE_BACK);
@@ -152,6 +176,16 @@ final class Actions {
         hid("backspace", R.string.act_backspace, null, 0, "⌫", 0x2A, 0);
         hid("delete", R.string.act_delete, null, 0, "Del", 0x4C, 0);
 
+        // ── 苹果设备上习惯不同的（其余带 Ctrl 的自动换成 ⌘） ──
+        apple("switch_next", 0x2B, WIN);              // ⌘Tab
+        apple("switch_prev", 0x2B, WIN | SHIFT);      // ⌘⇧Tab
+        apple("desktop", letter('h'), WIN);           // ⌘H：iPad 回主屏幕，Mac 隐藏当前应用
+        apple("close_window", letter('w'), WIN);      // ⌘W
+        apple("screenshot", 0x20, WIN | SHIFT);       // ⌘⇧3
+        apple("browser_back", 0x2F, WIN);             // ⌘[
+        apple("browser_forward", 0x30, WIN);          // ⌘]
+        apple("refresh", letter('r'), WIN);           // ⌘R
+
         // ── 媒体（键盘上没有，注入） ──
         key("play_pause", R.string.act_play_pause, null, R.string.act_play_pause_s, null, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
         key("volume_up", R.string.act_volume_up, null, R.string.act_volume_up_s, null, KeyEvent.KEYCODE_VOLUME_UP);
@@ -176,8 +210,16 @@ final class Actions {
         add(id, labelRes, labelText, shortRes, shortText, Kind.KEY, keyCode, 0);
     }
 
+    /** 内置快捷键。苹果设备上默认把 Ctrl 换成 ⌘（复制、粘贴、新标签……），习惯不同的另用 {@link #apple} 指定。 */
     private static void hid(String id, int labelRes, String labelText, int shortRes, String shortText, int usage, int mods) {
         add(id, labelRes, labelText, shortRes, shortText, Kind.HID, usage | (mods << 8), 0);
+        int appleMods = (mods & CTRL) != 0 ? (mods & ~CTRL) | WIN : mods;
+        ALL.get(id).appleCode = usage | (appleMods << 8);
+    }
+
+    /** 苹果设备上这个动作改按别的组合键（WIN 位 = ⌘）。 */
+    private static void apple(String id, int usage, int mods) {
+        ALL.get(id).appleCode = usage | (mods << 8);
     }
 
     /** 自定义组合键的 id：key = HID 用法码 | 修饰键 << 8，label = 按钮上显示的字。 */

@@ -98,7 +98,7 @@ public final class GestureEngineTest {
         bottomEdgeSwipeScrollsHorizontally();
         cornerPicksDirectionByMovement();
         edgeScrollTicks();
-        twoFingerScrollTicksOnlyWhenAll();
+        twoFingerScrollTicksLikeEdge();
         longPressDrags();
         longPressReleaseIsClick();
         moveCancelsLongPress();
@@ -107,6 +107,7 @@ public final class GestureEngineTest {
         fineMoveIsNotLongPress();
         jitterStillLongPress();
         slowMovesLessThanFast();
+        textureGrainsByDistance();
 
         System.err.println(checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
@@ -483,34 +484,28 @@ public final class GestureEngineTest {
         check(countWheelEvents(r) > 0, "确实滚了");
     }
 
-    static void twoFingerScrollTicksOnlyWhenAll() {
-        Rec r = new Rec();
-        GestureEngine.Config edgeOnly = new GestureEngine.Config();
-        edgeOnly.scrollTicks = GestureEngine.TICKS_EDGE;
-        GestureEngine e = new GestureEngine(r, edgeOnly);
-        e.down(0, 50, 50, 1000);
-        e.down(1, 80, 50, 1000);
-        for (int i = 1; i <= 7; i++) {
-            e.move(0, 50, 50 + i * 10);
-            e.move(1, 80, 50 + i * 10);
-            e.endFrame(1000 + i * 16);
+    static void twoFingerScrollTicksLikeEdge() {
+        for (int ticks : new int[]{GestureEngine.TICKS_ALL, GestureEngine.TICKS_OFF}) {
+            Rec r = new Rec();
+            GestureEngine.Config c = new GestureEngine.Config();
+            c.scrollTicks = ticks;
+            GestureEngine e = new GestureEngine(r, c);
+            e.down(0, 50, 50, 1000);
+            e.down(1, 80, 50, 1000);
+            for (int i = 1; i <= 7; i++) {
+                e.move(0, 50, 50 + i * 10);
+                e.move(1, 80, 50 + i * 10);
+                e.endFrame(1000 + i * 16);
+            }
+            e.up(0, 1200);
+            e.up(1, 1200);
+            if (ticks == GestureEngine.TICKS_ALL) {
+                check(countWheelEvents(r) > 0, "双指确实滚了");
+                eq(count(r, "h" + GestureEngine.HAPTIC_TICK), countWheelEvents(r), "双指滚动和边缘滚动一样，每滚一下咔嗒一下");
+            } else {
+                eq(count(r, "h" + GestureEngine.HAPTIC_TICK), 0, "关了就不咔嗒");
+            }
         }
-        e.up(0, 1200);
-        e.up(1, 1200);
-        eq(count(r, "h" + GestureEngine.HAPTIC_TICK), 0, "选了「只在边缘」时双指滚动不咔嗒");
-
-        Rec r2 = new Rec();
-        GestureEngine.Config c = new GestureEngine.Config();
-        c.scrollTicks = GestureEngine.TICKS_ALL;
-        GestureEngine e2 = new GestureEngine(r2, c);
-        e2.down(0, 50, 50, 1000);
-        e2.down(1, 80, 50, 1000);
-        for (int i = 1; i <= 7; i++) {
-            e2.move(0, 50, 50 + i * 10);
-            e2.move(1, 80, 50 + i * 10);
-            e2.endFrame(1000 + i * 16);
-        }
-        check(count(r2, "h" + GestureEngine.HAPTIC_TICK) > 0, "选了「所有滚动」时双指滚动也咔嗒");
     }
 
     static void longPressDrags() {
@@ -632,6 +627,50 @@ public final class GestureEngineTest {
     }
 
     // ═══════════ 工具 ═══════════
+
+    static void textureGrainsByDistance() {
+        String grain = "h" + GestureEngine.HAPTIC_TEXTURE;
+        GestureEngine.Config c = new GestureEngine.Config();
+        c.texture = true;
+        Rec r = new Rec();
+        GestureEngine e = new GestureEngine(r, c);
+        e.down(0, 0, 0, 1000);
+        for (int i = 1; i <= 20; i++) {   // 每帧 3dp、隔 30ms，共 60dp
+            e.move(0, i * 3f, 0);
+            e.endFrame(1000 + i * 30);
+        }
+        e.up(0, 1700);
+        eq(count(r, grain), 6, "颗粒：每 10dp 一颗");
+
+        Rec fast = new Rec();
+        GestureEngine f = new GestureEngine(fast, c);
+        f.down(0, 0, 0, 1000);
+        for (int i = 1; i <= 10; i++) {   // 每帧 30dp、隔 10ms：距离够 30 颗，但两颗至少隔 25ms
+            f.move(0, i * 30f, 0);
+            f.endFrame(1000 + i * 10);
+        }
+        f.up(0, 1200);
+        eq(count(fast, grain), 4, "颗粒：划得再快也不密于 25ms 一颗");
+
+        Rec off = new Rec();
+        GestureEngine o = new GestureEngine(off, new GestureEngine.Config());
+        o.down(0, 0, 0, 1000);
+        for (int i = 1; i <= 20; i++) {
+            o.move(0, i * 3f, 0);
+            o.endFrame(1000 + i * 30);
+        }
+        eq(count(off, grain), 0, "颗粒：默认关");
+
+        Rec held = new Rec();
+        GestureEngine h = new GestureEngine(held, c);
+        h.setExternalButtons(Proto.BUTTON_LEFT);   // 按着"左键"按钮拖动
+        h.down(0, 0, 0, 1000);
+        for (int i = 1; i <= 20; i++) {
+            h.move(0, i * 3f, 0);
+            h.endFrame(1000 + i * 30);
+        }
+        eq(count(held, grain), 0, "颗粒：按着左键拖动时不发（有持续轻震）");
+    }
 
     static GestureEngine engine(Rec r) {
         return new GestureEngine(r, new GestureEngine.Config());

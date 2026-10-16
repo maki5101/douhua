@@ -209,6 +209,11 @@ public final class TouchRouter implements GestureEngine.Output {
         if (engine != null) engine.click(button);
     }
 
+    /** 滚轮滚 n 格（正 = 向上）。 */
+    public void wheel(int n) {
+        if (engine != null) engine.wheel(n);
+    }
+
     /** 按下 / 松开一个键（key = HID 用法码 | 自带修饰键 << 8，同 Proto.REGION_KEY）。界面自己收到的键、动作里的组合键走这里。 */
     public void key(int key, boolean down) {
         if (down) keyDown(key);

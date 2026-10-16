@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>空中鼠标白板</title>
+<style>
+  :root { --bg: #121212; --fg: #e8e8e8; --dim: #8a8f94; --target: #33383e; --ink: #ff6b5a; --old: #7a3a33; --btn: #2a2f35; --accent: #8ab4f8; --ok: #4cd964; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 17px/1.5 system-ui, sans-serif; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  canvas { position: fixed; inset: 0; touch-action: none; }
+  #top { position: fixed; top: 10px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { background: var(--btn); color: var(--fg); border: 1px solid #444; border-radius: 8px; padding: 8px 14px; font-size: 17px; cursor: pointer; }
+  button:hover { border-color: #888; }
+  button.on { border-color: var(--accent); background: #24324a; }
+  button.save { border-color: var(--ok); }
+  .sp { flex: 1; }
+  #pill { border-radius: 999px; padding: 2px 12px; font-size: 15px; border: 1px solid #444; color: var(--dim); white-space: nowrap; }
+  #pill.rec { color: #fff; background: #c0392b; border-color: #c0392b; }
+  #pill.ok { color: #121212; background: var(--ok); border-color: var(--ok); }
+  #hint { position: fixed; left: 12px; bottom: 10px; color: var(--dim); font-size: 15px; pointer-events: none; }
+  #card { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 16px; background: var(--bg); }
+  #card h1 { font-size: 28px; margin: 0; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="top" class="hidden">
+  <span id="cats"></span>
+  <span id="pill"></span>
+  <span class="sp"></span>
+  <button id="undo">撤销上一笔</button>
+  <button id="clear">清屏</button>
+  <button id="save" class="save">完成并保存</button>
+</div>
+<div id="hint" class="hidden"></div>
+<div id="card"></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const cv = $("c"), cx = cv.getContext("2d");
+const CATS = [
+  { id: "竖线", hint: "竖着画，可以不松手上下来回折返" },
+  { id: "横线", hint: "横着画，可以不松手左右来回折返" },
+  { id: "斜线", hint: "沿对角线斜着画（两个方向都画），可以不松手来回折返" },
+  { id: "圆", hint: "沿灰色的圆描，顺时针、逆时针都行，可以连着绕几圈", target: "circle" },
+  { id: "三角", hint: "沿灰色的三角描，可以连着绕几圈", target: "triangle" },
+];
+let W = 0, H = 0, dpr = 1, cat = 0, drawing = null, flash = 0;
+const strokes = [];          // 全部记下的
+let shown = [];              // 这一屏上画着的（清屏只清这个）
+const now = () => performance.timeOrigin + performance.now();
+
+function resize() {
+  dpr = window.devicePixelRatio || 1; W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + "px"; cv.style.height = H + "px";
+  draw();
+}
+window.addEventListener("resize", resize);
+
+function targetPath(kind) {
+  const m = Math.min(W, H), cxp = W / 2, cyp = H / 2 + 20, pts = [];
+  if (kind === "circle") { const r = m * 0.32; for (let i = 0; i <= 120; i++) { const a = -Math.PI / 2 + i / 120 * 2 * Math.PI; pts.push([cxp + r * Math.cos(a), cyp + r * Math.sin(a)]); } }
+  if (kind === "triangle") { const r = m * 0.36; for (let i = 0; i <= 3; i++) { const a = -Math.PI / 2 + i / 3 * 2 * Math.PI; pts.push([cxp + r * Math.cos(a), cyp + r * Math.sin(a)]); } }
+  return pts;
+}
+
+function counts() { const c = {}; for (const s of strokes) c[s.cat] = (c[s.cat] || 0) + 1; return c; }
+
+function renderTop() {
+  const c = counts();
+  $("cats").innerHTML = CATS.map((k, i) => `<button data-i="${i}" class="${i === cat ? "on" : ""}">${k.id}（${c[k.id] || 0}）</button>`).join(" ");
+  $("cats").querySelectorAll("button").forEach(b => b.onclick = () => { cat = +b.dataset.i; shown = []; renderTop(); draw(); });
+  const p = $("pill");
+  if (drawing) { p.className = "rec"; p.textContent = "● 记录中"; }
+  else if (now() - flash < 1500) { p.className = "ok"; p.textContent = `✓ 记下了（共 ${strokes.length} 笔）`; }
+  else { p.className = ""; p.textContent = "按住左键画，松开算一笔"; }
+  $("hint").textContent = `${CATS[cat].id}：${CATS[cat].hint}。每类画到你觉得够了为止，十几笔以上更好。`;
+}
+
+window.addEventListener("pointerdown", e => {
+  if (e.button !== 0 || e.target !== cv) return;
+  e.preventDefault();
+  drawing = { cat: CATS[cat].id, target: CATS[cat].target ? targetPath(CATS[cat].target) : null, viewport: [W, H], dpr,
+              points: [[performance.timeOrigin + e.timeStamp, e.clientX, e.clientY]] };
+  renderTop(); draw();
+});
+window.addEventListener("pointermove", e => {
+  if (!drawing) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  for (const ev of (evs.length ? evs : [e])) drawing.points.push([performance.timeOrigin + ev.timeStamp, ev.clientX, ev.clientY]);
+  draw();
+});
+window.addEventListener("pointerup", e => {
+  if (!drawing || e.button !== 0) return;
+  const s = drawing; drawing = null;
+  s.points.push([performance.timeOrigin + e.timeStamp, e.clientX, e.clientY]);
+  let len = 0; for (let i = 1; i < s.points.length; i++) len += Math.hypot(s.points[i][1] - s.points[i - 1][1], s.points[i][2] - s.points[i - 1][2]);
+  if (len < 40) { $("pill").className = ""; $("pill").textContent = "太短了，没记"; draw(); return; }
+  strokes.push(s); shown.push(s); flash = now();
+  fetch("/progress", { method: "POST", body: JSON.stringify({ cat: s.cat, n: counts()[s.cat], total: strokes.length }) }).catch(() => {});
+  renderTop(); draw();
+  setTimeout(renderTop, 1600);
+});
+window.addEventListener("dragstart", e => e.preventDefault());
+
+$("undo").onclick = () => { const s = strokes.pop(); if (s) shown = shown.filter(x => x !== s); renderTop(); draw(); };
+$("clear").onclick = () => { shown = []; draw(); };
+$("save").onclick = async () => {
+  if (!strokes.length) { $("pill").textContent = "还一笔都没画"; return; }
+  $("top").classList.add("hidden"); $("hint").classList.add("hidden");
+  card(`<h1>保存中……</h1>`);
+  try {
+    const r = await fetch("/result", { method: "POST", body: JSON.stringify({ strokes, userAgent: navigator.userAgent, savedAt: now() }) });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const c = counts();
+    card(`<h1>已保存 ✓ 共 ${strokes.length} 笔</h1><div>${CATS.map(k => `${k.id} ${c[k.id] || 0}`).join("　")}</div><div>可以关掉这个页面了，终端那边也已经自动结束。</div>`);
+  } catch (e) {
+    card(`<h1>保存失败</h1><div>${e}</div><button id="retry">再试一次</button>`);
+    $("retry").onclick = () => { $("card").classList.add("hidden"); $("top").classList.remove("hidden"); $("save").onclick(); };
+  }
+};
+
+function card(html) { $("card").innerHTML = html; $("card").classList.remove("hidden"); }
+
+function line(pts, color, w) {
+  if (pts.length < 2) return;
+  cx.strokeStyle = color; cx.lineWidth = w; cx.beginPath();
+  pts.forEach((p, i) => { const x = p.length === 3 ? p[1] : p[0], y = p.length === 3 ? p[2] : p[1]; i ? cx.lineTo(x, y) : cx.moveTo(x, y); });
+  cx.stroke();
+}
+
+function draw() {
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, W, H);
+  cx.lineCap = cx.lineJoin = "round";
+  const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
+  if (CATS[cat].target) line(targetPath(CATS[cat].target), v("--target"), 16);
+  for (const s of shown) line(s.points, v("--old"), 2);
+  if (drawing) line(drawing.points, v("--ink"), 2.5);
+}
+
+card(`<h1>空中鼠标白板</h1>
+  <div>用手机现在的设置随便画，画的全记下来当数据。<br>
+  顶上选类别：竖线、横线、斜线随便画，可以不松手来回折返；圆和三角沿灰色图案描。<br>
+  按住左键画，松开算一笔；每类画到你觉得够了，点"完成并保存"。</div>
+  <div style="color:var(--dim)">手机先打开空中鼠标页、点一下"回正中"。</div>
+  <div><button id="fs">全屏</button>　<button id="go" class="on">开始</button></div>`);
+$("fs").onclick = () => document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+$("go").onclick = () => { $("card").classList.add("hidden"); $("top").classList.remove("hidden"); $("hint").classList.remove("hidden"); resize(); renderTop(); };
+resize();
+</script>
+</body>
+</html>

@@ -54,9 +54,6 @@
     <string name="edge_h">위/아래 가장자리를 좌우로 밀기 = 가로 스크롤</string>
     <string name="edge_width">가장자리 영역 폭 (dp)</string>
     <string name="ticks">스크롤 \'딸깍\' 진동 (휠처럼)</string>
-    <string name="ticks_off">끄기</string>
-    <string name="ticks_edge">가장자리 스크롤만</string>
-    <string name="ticks_all">모든 스크롤 (두 손가락 포함)</string>
     <string name="tick_strength">\'딸깍\' 세기</string>
     <string name="sec_haptics">진동</string>
     <string name="haptic_off">끄기</string>
@@ -74,8 +71,9 @@
     <string name="g4_down">네 손가락 아래로 밀기</string>
     <string name="g4_left">네 손가락 왼쪽으로 밀기</string>
     <string name="g4_right">네 손가락 오른쪽으로 밀기</string>
-    <string name="sec_strip">측면 버튼 (위에서 아래로, 맨 위 \'종료\' \'회전\' \'설정\'과 맨 아래 \'숨기기\'는 고정)</string>
+    <string name="sec_strip">측면 버튼 (위에서 아래로; 맨 위 \'종료\' \'설정\'과 맨 아래 \'숨기기\'는 고정)</string>
     <string name="strip_hidden">측면 버튼 숨기기 (터치패드 모서리에 작은 버튼 표시)</string>
+    <string name="strip_add">＋ 버튼 추가 (최대 %1$d개)</string>
     <string name="nth">%1$d번째</string>
     <string name="sec_corners">터치패드 모서리 버튼 (측면 버튼을 숨겼을 때, 왼쪽 아래 ☰는 고정)</string>
     <string name="corner_tl">왼쪽 위</string>
@@ -109,6 +107,10 @@
     <string name="act_right_click_s">오른쪽</string>
     <string name="act_middle_click">가운데 클릭 (링크를 새 탭에서 열기)</string>
     <string name="act_middle_click_s">가운데</string>
+    <string name="act_wheel_up">휠 위로 (누르고 있으면 계속 스크롤)</string>
+    <string name="act_wheel_up_s">휠↑</string>
+    <string name="act_wheel_down">휠 아래로 (누르고 있으면 계속 스크롤)</string>
+    <string name="act_wheel_down_s">휠↓</string>
     <string name="act_back">뒤로</string>
     <string name="act_back_s">뒤로</string>
     <string name="act_home">홈 화면</string>
@@ -193,7 +195,53 @@
     <string name="bt_state_connecting">%1$s에 연결 중…</string>
     <string name="bt_state_connected">블루투스: %1$s</string>
     <string name="bt_state_failed">블루투스를 시작하지 못했습니다: 다른 앱이 블루투스 키보드로 동작 중일 수 있습니다. 그 앱을 닫고 더우화를 다시 여세요</string>
+    <string name="bt_state_stuck">시스템 블루투스가 응답하지 않습니다(더우화를 켠 채 블루투스를 껐다 켜면 이럴 수 있습니다). 휴대폰을 다시 시작하면 해결됩니다</string>
     <string name="bt_no_phone_text">블루투스에서는 글자 붙여넣기를 쓸 수 없습니다 (클립보드는 폰에 있습니다)</string>
     <string name="bt_no_such_key">블루투스에서는 이 키를 쓸 수 없습니다</string>
     <string name="drag_hum">드래그 중 약한 연속 진동 (왼쪽 버튼을 누르고 있음을 알림)</string>
+    <string name="texture">커서 이동 시 까끌까끌한 느낌 (아주 약한 진동, 살짝 거친 표면을 만지는 느낌)</string>
+    <string name="act_air_mouse">에어 마우스 화면 (큰 버튼: 눌러서 이동, 왼쪽, 오른쪽…; 블루투스 모드 전용)</string>
+    <string name="act_air_mouse_s">에어</string>
+    <string name="act_air_move">눌러서 이동 (누르는 동안 커서가 폰 방향을 따라감; 블루투스 모드 전용)</string>
+    <string name="act_air_move_s">눌러서 이동</string>
+    <string name="act_air_drag">눌러서 드래그 (누르는 동안 왼쪽 버튼 누름, 커서가 따라감; 블루투스 모드 전용)</string>
+    <string name="act_air_drag_s">눌러서 드래그</string>
+    <string name="act_air_center">가운데로 (커서를 한 번에 화면 가운데로)</string>
+    <string name="act_air_center_s">가운데로</string>
+    <string name="air_bt_only">에어 마우스는 블루투스 모드에서만 쓸 수 있습니다</string>
+    <string name="air_no_gyro">이 폰에는 자이로스코프가 없어 에어 마우스를 쓸 수 없습니다</string>
+    <string name="air_following">따라가는 중</string>
+    <string name="air_dragging">드래그 중 (왼쪽 버튼 누름)</string>
+    <string name="air_waiting">블루투스 연결 안 됨</string>
+    <string name="air_exit">길게 눌러 에어 마우스 종료</string>
+    <string name="sec_air">에어 마우스</string>
+    <string name="air_sensitivity">에어 마우스 감도 (같은 각도로 돌릴 때 커서가 움직이는 거리)</string>
+    <string name="air_space">방향 환산: 휴대폰 회전을 좌우·상하로 어떻게 나눌지</string>
+    <string name="air_space_player">플레이어 공간(기본): 상하 = 휴대폰 자체 끄덕임, 좌우 = 수직축 회전(GyroWiki / JoyShockMapper)</string>
+    <string name="air_space_oblique">사교 기저: 좌우 = 수직축 회전, 상하 = 휴대폰 자체 끄덕임(기울여 잡은 영향 제거)</string>
+    <string name="air_space_world">월드 공간: 좌우 = 수직축 회전, 상하 = 수평축 끄덕임</string>
+    <string name="air_min_cutoff">떨림 보정: 정지 시 차단 주파수(낮을수록 안정적이지만 더 느림)</string>
+    <string name="air_beta">떨림 보정: 빠르게 움직일 때 따라가는 정도 β(클수록 잘 따라가지만 더 흔들림)</string>
+    <string name="air_speed_cutoff">떨림 보정: \"움직임\"을 판단하는 속도(낮을수록 손떨림을 움직임으로 덜 오인하지만 출발이 느림)</string>
+    <string name="air_deadzone">소프트 데드존: 이보다 느린 움직임은 비례 축소(클수록 멈췄을 때 안정적, 미세 조정은 어려움)</string>
+    <string name="air_path">궤적 다듬기: 진행 방향은 그대로, 옆으로 흔들리는 부분만 부드럽게(클수록 곧고 매끄럽지만 모서리가 둥글어짐; 0 = 끔)</string>
+    <string name="air_string">떨림 방지 반경: 이 각도 안의 손 흔들림에는 포인터가 움직이지 않음(클수록 멈췄을 때 안정적, 되돌아갈 때 조금 더 돌려야 함; 0 = 끔)</string>
+    <string name="air_filter_reset">떨림 보정 기본값으로</string>
+    <string name="air_abs_note">가운데로는 화면 가운데로 바로 이동합니다 (절대 좌표). 이 버전 전에 페어링한 기기는 그 기기의 블루투스 설정에서 이 폰을 삭제하고 한 번 다시 페어링하세요.</string>
+    <string name="air_aspect">%1$s 화면 비율(에어 마우스 화면에서 위아래 속도가 이것으로 정해짐. 틀리면 위아래가 좌우보다 빠르거나 느리게 느껴짐)</string>
+    <string name="air_aspect_auto">자동(Apple은 4:3, 나머지는 16:9)</string>
+    <string name="air_fix_v">세로선 각도 보정(세로선 위쪽이 오른쪽으로 기울면 + 쪽으로)</string>
+    <string name="air_fix_h">가로선 각도 보정(가로선 오른쪽이 내려가면 + 쪽으로)</string>
+    <string name="air_aspect_custom">또는 해상도를 입력(너비 × 높이):</string>
+    <string name="air_buttons">에어 마우스 화면 버튼 (위에서 아래로, 한 줄에 두 개; 가운데 둥근 버튼은 고정: 누르는 동안 이동, 탭하면 이동 고정, 다시 탭하면 해제)</string>
+    <string name="air_row_add">＋ 줄 추가 (최대 %1$d줄)</string>
+    <string name="air_round_at">둥근 버튼 위치</string>
+    <string name="air_round_between">%1$d, %2$d, %3$d, %4$d 사이</string>
+    <string name="sec_hard_keys">볼륨 키</string>
+    <string name="hard_keys_hint">\'없음\'이면 평소처럼 볼륨 조절. \'눌러서 이동\'을 \'탭\'에 두면 탭으로 시작, 다시 탭하면 멈춤.</string>
+    <string name="hk_up_tap">볼륨 + 탭</string>
+    <string name="hk_up_hold">볼륨 + 길게</string>
+    <string name="hk_down_tap">볼륨 − 탭</string>
+    <string name="hk_down_hold">볼륨 − 길게</string>
+    <string name="air_center_btn">가운데로</string>
 </resources>

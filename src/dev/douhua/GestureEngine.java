@@ -53,6 +53,8 @@ public final class GestureEngine {
     public static final int HAPTIC_GESTURE = 3;
     /** 滚动一格的"咔嗒"。 */
     public static final int HAPTIC_TICK = 4;
+    /** 移动光标时的"颗粒"：极轻的一下，模拟摸着不光滑的表面（{@link Config#texture}）。 */
+    public static final int HAPTIC_TEXTURE = 5;
 
     /** 按下点在左右边缘带里（单指上下滑 = 竖向滚动）。 */
     public static final int EDGE_VERTICAL = 1;
@@ -60,7 +62,6 @@ public final class GestureEngine {
     public static final int EDGE_HORIZONTAL = 2;
 
     public static final int TICKS_OFF = 0;
-    public static final int TICKS_EDGE = 1;
     public static final int TICKS_ALL = 2;
 
     /** 可调参数。设置页改的就是这些。 */
@@ -84,7 +85,7 @@ public final class GestureEngine {
         public boolean edgeScrollHorizontal = true;
         /** 边缘带宽度（宿主用它判断按下的位置在不在边缘带里）。 */
         public float edgeWidthDp = 28f;
-        /** 滚动"咔嗒"震动：TICKS_OFF / TICKS_EDGE（只在边缘滚动时）/ TICKS_ALL（双指滚动也震）。 */
+        /** 滚动"咔嗒"震动：TICKS_OFF / TICKS_ALL（双指滚动、边缘滚动一样震；以前的"只在边缘"也当开）。 */
         public int scrollTicks = TICKS_ALL;
         /** 单指按住不动 longPressMs 毫秒 = 按下左键（之后移动就是拖动）。 */
         public boolean longPressDrag = true;
@@ -99,6 +100,12 @@ public final class GestureEngine {
         public boolean tapToDrag = true;
         /** 轻点后等多久看有没有第二次按下。 */
         public int dragWindowMs = 220;
+        /** 移动光标时，手指每划过 textureStepDp 发一颗"颗粒"震动（HAPTIC_TEXTURE）；拖动、按着左键、滚动时不发。 */
+        public boolean texture = false;
+        /** 两颗之间手指划过的距离（约 1.6 毫米）。 */
+        public float textureStepDp = 10f;
+        /** 两颗之间至少隔多久：划得再快也不密成一片嗡嗡声。 */
+        public int textureMinGapMs = 25;
         /** 按下到抬起不超过这么久、且没移动，才算轻点。 */
         public int tapMaxMs = 250;
         public float tapSlopDp = 6f;
@@ -172,6 +179,9 @@ public final class GestureEngine {
     /** 本次手势是在轻点后的等待窗口里开始的（可能变成拖动或双击）。 */
     private boolean secondTouch;
     private boolean dragging;
+    /** "颗粒"：攒着的手指移动距离、上一颗的时间。 */
+    private float textureDist;
+    private long lastTextureTime;
     /** 长按触发的拖动（左键按着，松手时松开）。 */
     private boolean longDrag;
 
@@ -280,6 +290,7 @@ public final class GestureEngine {
             if (moved) edgeScroll(dx, dy);
         } else if (maxFingers == 1) {
             pointer(dx, dy, dt);
+            if (!dragging && external == 0) texture(dx, dy, t);   // 拖动时有持续轻震，颗粒会打断它
         } else if (maxFingers == 2 && activeCount == 2) {
             twoFingers(dx, dy);
         } else if (maxFingers >= 3) {
@@ -347,6 +358,11 @@ public final class GestureEngine {
         out.mouse(buttons | external, 0, 0, 0, 0);
     }
 
+    /** 滚轮滚 n 格（正 = 向上），按着的键照带（动作"滚轮向上 / 向下"用）。 */
+    public void wheel(int n) {
+        out.mouse(buttons | external, 0, 0, n, 0);
+    }
+
     // ═══════════ 内部 ═══════════
 
     private void startGesture(long t, int edge) {
@@ -356,6 +372,7 @@ public final class GestureEngine {
         maxFingers = 0;
         moved = false;
         remX = remY = 0;
+        textureDist = 0;
         velocity = -1;
         scrollAccX = scrollAccY = 0;
         swipeAccX = swipeAccY = 0;
@@ -463,6 +480,17 @@ public final class GestureEngine {
         if (ix != 0 || iy != 0) out.mouse(buttons | external, ix, iy, 0, 0);
     }
 
+    /** 手指每划过 textureStepDp 发一颗；离上一颗太近就跳过（距离照扣，不攒着补发）。 */
+    private void texture(float dx, float dy, long t) {
+        if (!cfg.texture) return;
+        textureDist += (float) Math.hypot(dx, dy);
+        if (textureDist < cfg.textureStepDp) return;
+        textureDist %= cfg.textureStepDp;
+        if (t - lastTextureTime < cfg.textureMinGapMs) return;
+        lastTextureTime = t;
+        out.haptic(HAPTIC_TEXTURE);
+    }
+
     /** 双指：先判断是滚动还是开合，判定后这次手势就一直按它处理。 */
     private void twoFingers(float dx, float dy) {
         float[] p = twoPoints();
@@ -537,8 +565,7 @@ public final class GestureEngine {
         int wheel = cfg.naturalScroll ? stepsY : -stepsY;
         int pan = cfg.naturalScroll ? -stepsX : stepsX;
         out.mouse(buttons | external, 0, 0, wheel, pan);
-        boolean tick = cfg.scrollTicks == TICKS_ALL || (cfg.scrollTicks == TICKS_EDGE && edgeMode != 0);
-        if (tick) out.haptic(HAPTIC_TICK);
+        if (cfg.scrollTicks != TICKS_OFF) out.haptic(HAPTIC_TICK);
     }
 
     private void swipe(float dx, float dy) {

@@ -54,9 +54,6 @@
     <string name="edge_h">Deslizar por el borde superior/inferior = desplazamiento horizontal</string>
     <string name="edge_width">Ancho de la franja del borde (dp)</string>
     <string name="ticks">Vibración de «clic» al desplazar (como una rueda)</string>
-    <string name="ticks_off">Desactivada</string>
-    <string name="ticks_edge">Solo al desplazar por los bordes</string>
-    <string name="ticks_all">Todo desplazamiento (también con dos dedos)</string>
     <string name="tick_strength">Intensidad del «clic»</string>
     <string name="sec_haptics">Vibración</string>
     <string name="haptic_off">No</string>
@@ -74,8 +71,9 @@
     <string name="g4_down">Deslizar hacia abajo con cuatro dedos</string>
     <string name="g4_left">Deslizar a la izquierda con cuatro dedos</string>
     <string name="g4_right">Deslizar a la derecha con cuatro dedos</string>
-    <string name="sec_strip">Botones laterales (de arriba abajo; Salir, Girar, Ajustes arriba y Ocultar abajo son fijos)</string>
+    <string name="sec_strip">Botones laterales (de arriba abajo; Salir y Ajustes arriba y Ocultar abajo son fijos)</string>
     <string name="strip_hidden">Ocultar los botones laterales (botones pequeños en las esquinas)</string>
+    <string name="strip_add">＋ Añadir botón (hasta %1$d)</string>
     <string name="nth">N.º %1$d</string>
     <string name="sec_corners">Botones de las esquinas (con los laterales ocultos; ☰ abajo a la izquierda es fijo)</string>
     <string name="corner_tl">Arriba a la izquierda</string>
@@ -109,6 +107,10 @@
     <string name="act_right_click_s">Der.</string>
     <string name="act_middle_click">Clic central (abre enlaces en una pestaña nueva)</string>
     <string name="act_middle_click_s">Centro</string>
+    <string name="act_wheel_up">Rueda arriba (mantén pulsado para seguir)</string>
+    <string name="act_wheel_up_s">Rueda ↑</string>
+    <string name="act_wheel_down">Rueda abajo (mantén pulsado para seguir)</string>
+    <string name="act_wheel_down_s">Rueda ↓</string>
     <string name="act_back">Atrás</string>
     <string name="act_back_s">Atrás</string>
     <string name="act_home">Pantalla de inicio</string>
@@ -193,7 +195,53 @@
     <string name="bt_state_connecting">Conectando con %1$s…</string>
     <string name="bt_state_connected">Bluetooth: %1$s</string>
     <string name="bt_state_failed">El Bluetooth no se inició: puede que otra app ya esté haciendo de teclado Bluetooth; ciérrala y vuelve a abrir Douhua</string>
+    <string name="bt_state_stuck">El Bluetooth del sistema no responde (puede pasar al apagar y encender el Bluetooth con Douhua abierto). Reinicia el teléfono para solucionarlo</string>
     <string name="bt_no_phone_text">No se puede pegar texto por Bluetooth: el portapapeles se queda en el teléfono</string>
     <string name="bt_no_such_key">Esta tecla no está disponible por Bluetooth</string>
     <string name="drag_hum">Vibración suave continua al arrastrar (recuerda que el botón izquierdo está pulsado)</string>
+    <string name="texture">Sensación granulada al mover el puntero (vibración muy suave, como una superficie algo rugosa)</string>
+    <string name="act_air_mouse">Página de ratón aéreo (botones grandes: mantener para mover, izquierdo, derecho…; solo en modo Bluetooth)</string>
+    <string name="act_air_mouse_s">Aéreo</string>
+    <string name="act_air_move">Mantener para mover (el puntero sigue al teléfono mientras se mantiene; solo en modo Bluetooth)</string>
+    <string name="act_air_move_s">Mantener</string>
+    <string name="act_air_drag">Mantener para arrastrar (botón izquierdo pulsado, el puntero sigue al teléfono; solo en modo Bluetooth)</string>
+    <string name="act_air_drag_s">Arrastrar</string>
+    <string name="act_air_center">Centro (puntero al centro de la pantalla de una vez)</string>
+    <string name="act_air_center_s">Centro</string>
+    <string name="air_bt_only">El ratón aéreo solo funciona en modo Bluetooth</string>
+    <string name="air_no_gyro">Este teléfono no tiene giroscopio, así que el ratón aéreo no está disponible</string>
+    <string name="air_following">Siguiendo</string>
+    <string name="air_dragging">Arrastrando (botón izquierdo pulsado)</string>
+    <string name="air_waiting">Bluetooth no conectado</string>
+    <string name="air_exit">Mantén pulsado para salir del ratón aéreo</string>
+    <string name="sec_air">Ratón aéreo</string>
+    <string name="air_sensitivity">Sensibilidad del ratón aéreo (cuánto se mueve el puntero con el mismo giro)</string>
+    <string name="air_space">Conversión de dirección: cómo girar el teléfono da izquierda/derecha y arriba/abajo</string>
+    <string name="air_space_player">Espacio de jugador (predeterminado): arriba/abajo = cabeceo del propio teléfono, izquierda/derecha = giro alrededor de la vertical (GyroWiki / JoyShockMapper)</string>
+    <string name="air_space_oblique">Mixto: izquierda/derecha = giro alrededor de la vertical, arriba/abajo = cabeceo del propio teléfono, inclinación compensada</string>
+    <string name="air_space_world">Espacio mundo: izquierda/derecha = giro alrededor de la vertical, arriba/abajo = cabeceo alrededor del eje horizontal</string>
+    <string name="air_min_cutoff">Suavizado en reposo: frecuencia de corte (más baja = más estable, pero con más retraso)</string>
+    <string name="air_beta">Seguimiento al moverse rápido: β (más alto = sigue mejor, pero tiembla más)</string>
+    <string name="air_speed_cutoff">Rapidez para detectar movimiento (más baja = el temblor cuenta menos como movimiento, pero arranca más lento)</string>
+    <string name="air_deadzone">Zona muerta suave: lo más lento que esto se reduce (más alta = más estable al quedarse quieto, ajuste fino más difícil)</string>
+    <string name="air_path">Suavizado de trayectoria: se suaviza el bamboleo lateral, el avance no se retrasa (más alto = más recto y suave, esquinas más redondas; 0 = desactivado)</string>
+    <string name="air_string">Radio de estabilidad: el temblor dentro de este ángulo no mueve el puntero (más alto = más estable en reposo, al volver hay que girar un poco más; 0 = desactivado)</string>
+    <string name="air_filter_reset">Restablecer el suavizado</string>
+    <string name="air_abs_note">«Centro» salta directamente al centro de la pantalla (posición absoluta). Los dispositivos emparejados antes de esta versión deben eliminar este teléfono en sus ajustes de Bluetooth y volver a emparejarlo una vez.</string>
+    <string name="air_aspect">Formato de pantalla de %1$s (en la página de ratón aéreo la velocidad vertical depende de esto; si está mal, arriba/abajo parece más rápido o lento que izquierda/derecha)</string>
+    <string name="air_aspect_auto">Automático (Apple 4:3, otros 16:9)</string>
+    <string name="air_fix_v">Corrección de ángulo de líneas verticales (si arriba se inclinan a la derecha, sube)</string>
+    <string name="air_fix_h">Corrección de ángulo de líneas horizontales (si a la derecha bajan, sube)</string>
+    <string name="air_aspect_custom">O escribe su resolución (ancho × alto):</string>
+    <string name="air_buttons">Botones de la página de ratón aéreo (de arriba abajo, dos por fila; el botón redondo del centro es fijo: mantener = mover, toque = bloquear el movimiento, otro toque = desbloquear)</string>
+    <string name="air_row_add">＋ Añadir fila (hasta %1$d)</string>
+    <string name="air_round_at">Dónde va el botón redondo</string>
+    <string name="air_round_between">Entre %1$d, %2$d, %3$d y %4$d</string>
+    <string name="sec_hard_keys">Teclas de volumen</string>
+    <string name="hard_keys_hint">«Ninguna» = volumen como siempre. «Mantener para mover» en un toque: un toque empieza, otro para.</string>
+    <string name="hk_up_tap">Volumen + toque</string>
+    <string name="hk_up_hold">Volumen + mantener</string>
+    <string name="hk_down_tap">Volumen − toque</string>
+    <string name="hk_down_hold">Volumen − mantener</string>
+    <string name="air_center_btn">Centro</string>
 </resources>

@@ -19,7 +19,10 @@ import android.os.Looper;
 import android.os.PersistableBundle;
 import android.os.SystemClock;
 import android.text.InputType;
+import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.Display;
+import android.view.Gravity;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -35,6 +38,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.window.OnBackInvokedCallback;
@@ -62,10 +66,21 @@ import java.util.List;
  */
 public final class MainActivity extends Activity
         implements Link.Listener, KeyboardPanel.Listener, KeyboardScreen.Listener, DisplayManager.DisplayListener,
-        BtHid.Listener {
+        BtHid.Listener, AirMouse.Host {
 
     /** 按钮条收起后，触控板四角的小按钮（左上、右上、右下可自定义；左下 ☰ 固定，是回到按钮条和设置的入口）。 */
     private static final int CORNER_BASE_ID = 500;
+    /** 空中鼠标页上的按钮（其它按钮编号：0–15、300–302、400–403、500–503、600 起、0x10000 起）。 */
+    private static final int AIR_EXIT_ID = 700;
+    private static final int AIR_CENTER_ID = 701;
+    /** 空中鼠标页的圆钮：点一下（不到 HardKeys.HOLD_MS 就松开）回正中，按住移动。 */
+    private static final int AIR_ROUND_ID = 702;
+    /** 空中鼠标页上可设定的大按钮：710 + 第几个（2 × Prefs.AIR_ROWS_MAX 个以内）。 */
+    private static final int AIR_SLOT_BASE_ID = 710;
+    /** 退出空中鼠标要按住这么久：拿手机当遥控器时手掌容易误碰屏幕。 */
+    private static final long AIR_EXIT_HOLD_MS = 600;
+    /** "滚轮向上 / 向下"按住：先滚一格，停 WHEEL_DELAY_MS 再每 WHEEL_REPEAT_MS 匀速滚一格（像按住键盘的键连发）。 */
+    private static final long WHEEL_DELAY_MS = 250, WHEEL_REPEAT_MS = 80;
     private static final int[] CORNER_GRAVITY = {
             android.view.Gravity.TOP | android.view.Gravity.LEFT, android.view.Gravity.TOP | android.view.Gravity.RIGHT,
             android.view.Gravity.BOTTOM | android.view.Gravity.RIGHT, android.view.Gravity.BOTTOM | android.view.Gravity.LEFT,
@@ -76,7 +91,8 @@ public final class MainActivity extends Activity
     private static final int KB_RESET_ID = 402;
     private static final int KB_TOOLBAR_POS_ID = 403;
     /** 左侧按钮条的区域编号：0 = 退出，1 = 旋转，2 = 设置，之后是可设定的位置。 */
-    private static final String[] FIXED_ACTIONS = {"exit", "rotate", "settings"};
+    /** 按钮条最上面固定的；下面是 Prefs 里可增减的按钮，最下面固定"收起"。 */
+    private static final String[] FIXED_ACTIONS = {"exit", "settings"};
     /** 数字键盘：标签和 HID 用法码。 */
     private static final String[][] NUMPAD_LABELS = {
             {"7", "8", "9", "⌫"},
@@ -140,6 +156,64 @@ public final class MainActivity extends Activity
     private BtHid bt;
     private boolean btAcquired;
     private int btState = BtHid.STATE_OFF;
+    /** 蓝牙连着的是苹果设备（见 updateHostKind）。 */
+    private boolean appleHost;
+    // ── 空中鼠标（只在蓝牙模式） ──
+    private AirMouse air;
+    private DebugMoves debugMoves;
+    /** 空中鼠标模式开着（只在内存里，进程没了就关）。 */
+    private boolean airOn;
+    private FrameLayout airOverlay;
+    private TextView airStatus;
+    private TextView airState;
+    private TextView airCenter;
+    private TextView airExit;
+    private LinearLayout airGrid;
+    private final List<TextView> airSlots = new ArrayList<>();
+    private RoundPad airRound;
+    /** 圆钮在第几、几 + 1 行之间（Prefs.airRoundAt）。 */
+    private int airRoundAt = 1;
+    private boolean airRoundPressed;
+    /** 圆钮点一下锁定了移动（再点一下解锁）。 */
+    private boolean airRoundLocked;
+    /** 按住左键后等着开始跟随的（来源 → 到点开始跟随）。 */
+    private final java.util.Map<Integer, Runnable> leftFollowPending = new java.util.HashMap<>();
+    private static final long LEFT_FOLLOW_DELAY_MS = 200;
+    /** 按着的"左键"有几个（屏幕按钮、音量键）：松开一个时别的还按着，就还在拖、接着嗡。 */
+    private int leftHolds;
+    /** onStop 之后：读线程在断开前塞进主线程的转发报文丢掉，免得把刚松开的键又按下去。 */
+    private boolean stopped;
+    private long airRoundDownAt;
+    /** 移动"颗粒"开没开（设置里的开关；空中鼠标那一路在 airHaptic 里按它过滤）。 */
+    private boolean textureOn;
+    /** 滚动"咔嗒"开没开：滚轮按钮滚一格也咔嗒一下，和触控板滚动一样。 */
+    private boolean scrollTicksOn;
+    // ── 滚轮按钮按住时连续滚 ──
+    private int wheelDir;
+    private int wheelSource = Integer.MIN_VALUE;
+    private final Runnable wheelRepeat = new Runnable() {
+        @Override
+        public void run() {
+            if (wheelDir == 0) return;
+            wheel(wheelDir);
+            main.postDelayed(this, WHEEL_REPEAT_MS);
+        }
+    };
+    // ── 实体按键（音量 + / −，只在蓝牙模式）：[键][0 = 点一下, 1 = 按住]，null = 没设，照常调音量 ──
+    private final Actions.Action[][] hardKeyActions = new Actions.Action[2][2];
+    private final HardKeys hardKeys = new HardKeys(new HardKeysOutput());
+    private final Runnable[] hardKeyTimers = {
+            () -> hardKeys.onTimer(HardKeys.VOL_UP, SystemClock.uptimeMillis()),
+            () -> hardKeys.onTimer(HardKeys.VOL_DOWN, SystemClock.uptimeMillis()),
+    };
+    /** 触摸那一路（服务转发 / 本地分流）最近报的鼠标键；和空中鼠标那一路并起来发，谁也不会松掉对方按着的键。 */
+    private int touchButtons;
+    /** 服务那边锁住的修饰键（MSG_MODIFIERS）：进空中鼠标时要让服务解开，不然 Ctrl 一直按着、每次点击都成了 Ctrl+点击。 */
+    private int latchedMods;
+    private final Runnable airExitLater = () -> {
+        haptics.play(GestureEngine.HAPTIC_CLICK);
+        setAirMode(false);
+    };
     private String btDevice = "";
     /** 蓝牙模式下的触摸分流（DeX 模式下这件事在服务里做）。 */
     private final TouchRouter local = new TouchRouter(new LocalOutput());
@@ -163,6 +237,8 @@ public final class MainActivity extends Activity
         haptics = new Haptics(this);
         displays = getSystemService(DisplayManager.class);
         bt = BtHid.get(this);
+        air = new AirMouse(this, bt, prefs, this);
+        debugMoves = DebugMoves.register(this, bt);   // 只在可调试包里有：adb 让手机发任意位移，量回正中用
         density = getResources().getDisplayMetrics().density;
         linkMessage = getString(R.string.status_connecting);
         tiltListener = new OrientationEventListener(this) {
@@ -188,9 +264,12 @@ public final class MainActivity extends Activity
     @Override
     protected void onStart() {
         super.onStart();
+        stopped = false;
         linkSeen = false;
         applyPrefs();
         refreshDisplay();
+        Display disp = getDisplay();
+        if (disp != null) air.setRotation(disp.getRotation());
         displays.registerDisplayListener(this, main);
         link.start();
         if (btMode) {
@@ -210,6 +289,7 @@ public final class MainActivity extends Activity
         if (tiltListener.canDetectOrientation()) tiltListener.enable();
         main.post(heartbeat);
         pushLayout();
+        hardKeys.forget();   // 停着的时候收不到按键，之前记的按下作废
     }
 
     @Override
@@ -221,14 +301,34 @@ public final class MainActivity extends Activity
         main.removeCallbacks(heartbeat);
         local.releaseAll();   // 蓝牙模式：按着的键、鼠标键都松开（DeX 模式下 local 本来就闲着）
         localGesture = false;
+        hardKeys.reset();   // 音量键按住中的先收尾（按住移动 / 拖动 / 左键松开）
+        stopWheel();
+        leftHolds = 0;
+        releaseAir();   // 空中指针：停跟随、松开按着的键（空中鼠标页本身留着，回来接着用）
+        main.removeCallbacks(airExitLater);
         pushLayout();
         super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (debugMoves != null) debugMoves.unregister(this);
+        super.onDestroy();
     }
 
     @Override
     protected void onStop() {
         closeTextBar();
         link.stop();
+        stopped = true;
+        if (btMode) {
+            // 服务释放触摸屏后发回的"松开"可能还在路上，连接就关了：主机那头别留着按住的鼠标键、键盘键
+            touchButtons = 0;
+            bt.sendMouse(air.buttons(), 0, 0, 0, 0);
+            bt.sendKeyboard(new byte[Hid.KEYBOARD_REPORT_SIZE]);
+            latchedMods = 0;
+            keyboard.setModifiers(0);
+        }
         grabbed = false;
         if (btAcquired) {
             bt.release(this);
@@ -241,7 +341,12 @@ public final class MainActivity extends Activity
     /** 设置页改完回来：按新设置更新按钮和震动强度，参数发给服务（蓝牙模式下给本地分流）。 */
     private void applyPrefs() {
         btMode = prefs.btMode();
-        updateGuiLabel();
+        updateHostKind();
+        if (!btMode && airOn) setAirMode(false);
+        air.setSensitivity(prefs.airSensitivity());
+        air.loadFilter();
+        updateAirAbs();   // 屏幕比例可能刚改过
+        loadHardKeys();
         local.setConfig(prefs.engineConfig(), density);
         applyBackSwallow();
         if (!btMode) requestOrientationSelf(-1);   // 蓝牙模式下等连服务的结果再定，见 onLinkStatus
@@ -250,16 +355,13 @@ public final class MainActivity extends Activity
         haptics.setDragHum(prefs.dragHum());
         applyStripHidden(prefs.stripHidden());
         GestureEngine.Config cfg = prefs.engineConfig();
+        textureOn = cfg.texture;
+        scrollTicksOn = cfg.scrollTicks != GestureEngine.TICKS_OFF;
         float edge = cfg.edgeWidthDp * density;
         pad.setEdgeGuides(edge, cfg.edgeScroll, cfg.edgeScrollHorizontal);
         miniPad.setEdgeGuides(edge, cfg.edgeScroll, cfg.edgeScrollHorizontal);
-        for (int i = 0; i < Prefs.SLOT_COUNT; i++) {
-            Actions.Action a = Actions.get(prefs.slot(i));
-            TextView b = stripButtons.get(FIXED_ACTIONS.length + i);
-            b.setText(a.shortLabel(this));
-            b.setTag(a);
-            b.setVisibility(a.kind == Actions.Kind.NONE ? View.INVISIBLE : View.VISIBLE);
-        }
+        rebuildStrip();
+        rebuildAirSlots();
         updateActiveButtons();
         keyboardRow.clear();
         for (int i = 0; i < Prefs.KEYBOARD_ROW_COUNT; i++) keyboardRow.add(Actions.get(prefs.keyboardRow(i)));
@@ -272,6 +374,7 @@ public final class MainActivity extends Activity
         }
         keyboardScreen.setToolbarAtBottom(prefs.keyboardToolbarBottom());
         link.config(prefs.engineConfig(), density);
+        updateFocusable();
     }
 
     // ═══════════ 界面 ═══════════
@@ -298,9 +401,7 @@ public final class MainActivity extends Activity
         strip = new ButtonStrip(this, dp(60), dp(52), dp(6));
         mainRow.addView(strip, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        for (String id : FIXED_ACTIONS) addStripButton(Actions.get(id));
-        for (int i = 0; i < Prefs.SLOT_COUNT; i++) addStripButton(null);
-        addStripButton(Actions.get("toggle_strip"));
+        rebuildStrip();
 
         // ── 右侧："贴字"面板在上；下面是触控板 + 数字键盘 / 外接键盘 ──
         right = new LinearLayout(this);
@@ -334,6 +435,8 @@ public final class MainActivity extends Activity
         keyboardScreen = new KeyboardScreen(this, toolbar, miniPad, keyboard, this);
         keyboardScreen.setVisibility(View.GONE);
         root.addView(keyboardScreen, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(buildAirOverlay(), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return root;
     }
@@ -380,6 +483,20 @@ public final class MainActivity extends Activity
         toolbar.addView(b, p);
         kbToolbar.add(b);
         return b;
+    }
+
+    /** 按钮条：固定的 + 设置里的若干个 + "收起"。按钮编号就是在条里的下标，设置改了个数就整条重建。 */
+    private void rebuildStrip() {
+        strip.removeAllViews();
+        stripButtons.clear();
+        for (String id : FIXED_ACTIONS) addStripButton(Actions.get(id));
+        int n = prefs.slotCount();
+        for (int i = 0; i < n; i++) {
+            Actions.Action a = Actions.get(prefs.slot(i));
+            addStripButton(a);
+            if (a.kind == Actions.Kind.NONE) stripButtons.get(stripButtons.size() - 1).setVisibility(View.INVISIBLE);
+        }
+        addStripButton(Actions.get("toggle_strip"));
     }
 
     private void addStripButton(Actions.Action fixed) {
@@ -446,7 +563,7 @@ public final class MainActivity extends Activity
                     int a = e.getActionMasked();
                     if (a == MotionEvent.ACTION_DOWN) {
                         Style.look(v, false, true);
-                        onKeyHaptic();
+                        keyHaptic();
                         onLocalKey(usage, true);
                     } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
                         Style.look(v, false, false);
@@ -485,6 +602,8 @@ public final class MainActivity extends Activity
     /** 面板开着时，对应按钮高亮。 */
     private void updateActiveButtons() {
         for (TextView b : stripButtons) Style.look(b, isActive(b), false);
+        for (TextView b : airSlots) Style.look(b, isActive(b), false);
+        if (airRound != null) airRound.setState(air.following(), airRoundPressed);
     }
 
     private boolean isActive(View b) {
@@ -493,6 +612,8 @@ public final class MainActivity extends Activity
             case KEYBOARD: return keyboardScreen.getVisibility() == View.VISIBLE;
             case NUMPAD: return numpad.getVisibility() == View.VISIBLE;
             case PHONE_TEXT: return textBar.getVisibility() == View.VISIBLE;
+            case AIR_MOVE: return air.following() && !air.dragging();
+            case AIR_DRAG: return air.dragging();
             default: return false;
         }
     }
@@ -504,7 +625,9 @@ public final class MainActivity extends Activity
      *   系统等 5 秒没人接，就弹"豆花没有响应"。
      */
     private void updateFocusable() {
-        boolean focusable = textBar.getVisibility() == View.VISIBLE || targetDisplay == Display.INVALID_DISPLAY;
+        // 音量键设了动作要收按键：接着外接屏时也让窗口能获得焦点
+        boolean focusable = textBar.getVisibility() == View.VISIBLE || targetDisplay == Display.INVALID_DISPLAY
+                || hardKeysActive();
         if (focusable) {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
         } else {
@@ -515,6 +638,7 @@ public final class MainActivity extends Activity
     /** 没有外接屏时，豆花虚拟键盘的键会送到这里：吞掉，免得 Esc 被系统当返回键把豆花关了。 */
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        if (onHardKey(e)) return true;   // 音量键设了动作：归豆花（音量不变）
         InputDevice dev = e.getDevice();
         if (textBar.getVisibility() != View.VISIBLE && dev != null && dev.getVendorId() == Proto.HID_VENDOR) return true;
         return super.dispatchKeyEvent(e);
@@ -538,7 +662,7 @@ public final class MainActivity extends Activity
     private void pushLayout() {
         if (pad == null) return;
         boolean keyboardShown = keyboardScreen.getVisibility() == View.VISIBLE;
-        if (keyboardShown ? keyboardScreen.getWidth() == 0 : pad.getWidth() == 0) return;
+        if (airOn ? airOverlay.getWidth() == 0 : keyboardShown ? keyboardScreen.getWidth() == 0 : pad.getWidth() == 0) return;
         List<int[]> regions = collectRegions(keyboardShown);
         if (btMode) {
             TouchRouter.Region[] rs = new TouchRouter.Region[regions.size()];
@@ -561,6 +685,17 @@ public final class MainActivity extends Activity
     /** 区域列表，每项 {type, id, left, top, right, bottom}（屏幕像素）；叠在上面的排在前面。 */
     private List<int[]> collectRegions(boolean keyboardShown) {
         List<int[]> regions = new ArrayList<>();
+        if (airOn) {   // 空中鼠标页：只报页上的按钮，碰到别处没有反应
+            addRegion(regions, airRound, Proto.REGION_BUTTON, AIR_ROUND_ID);   // 叠在四个格子的角上，排最前
+            for (int i = 0; i < airSlots.size(); i++) {
+                TextView b = airSlots.get(i);
+                if (b.getVisibility() != View.VISIBLE) continue;
+                addRegion(regions, b, holdLeft(b) ? Proto.REGION_HOLD_LEFT : Proto.REGION_BUTTON, AIR_SLOT_BASE_ID + i);
+            }
+            addRegion(regions, airCenter, Proto.REGION_BUTTON, AIR_CENTER_ID);
+            addRegion(regions, airExit, Proto.REGION_BUTTON, AIR_EXIT_ID);
+            return regions;
+        }
         if (keyboardShown) {
             for (int i = 0; i < kbToolbar.size(); i++) {
                 if (kbToolbar.get(i).getVisibility() == View.VISIBLE) {
@@ -573,16 +708,16 @@ public final class MainActivity extends Activity
         }
         // 四角的小按钮叠在触控板上，要排在触控板前面（服务按顺序找第一个命中的区域）
         for (int i = 0; i < cornerButtons.size(); i++) {
-            if (cornerButtons.get(i).getVisibility() == View.VISIBLE) {
-                addRegion(regions, cornerButtons.get(i), Proto.REGION_BUTTON, CORNER_BASE_ID + i);
+            TextView b = cornerButtons.get(i);
+            if (b.getVisibility() == View.VISIBLE) {
+                addRegion(regions, b, holdLeft(b) ? Proto.REGION_HOLD_LEFT : Proto.REGION_BUTTON, CORNER_BASE_ID + i);
             }
         }
         addRegion(regions, pad, Proto.REGION_PAD, 0);
         for (int id = 0; id < stripButtons.size(); id++) {
             TextView b = stripButtons.get(id);
             if (b.getVisibility() != View.VISIBLE || !(b.getTag() instanceof Actions.Action)) continue;
-            boolean hold = ((Actions.Action) b.getTag()).kind == Actions.Kind.HOLD_LEFT;
-            addRegion(regions, b, hold ? Proto.REGION_HOLD_LEFT : Proto.REGION_BUTTON, id);
+            addRegion(regions, b, holdLeft(b) ? Proto.REGION_HOLD_LEFT : Proto.REGION_BUTTON, id);
         }
         if (numpad.getVisibility() == View.VISIBLE) {
             for (int i = 0; i < numpadButtons.size(); i++) {
@@ -597,6 +732,11 @@ public final class MainActivity extends Activity
         Rect bounds = getWindowManager().getCurrentWindowMetrics().getBounds();
         link.layout(active, btMode, d != null ? d.getDisplayId() : Display.DEFAULT_DISPLAY, d != null ? d.getRotation() : 0,
                 bounds.width(), bounds.height(), regions);
+    }
+
+    /** "左键"按钮：鼠标左键由分流直接按住 / 松开（REGION_HOLD_LEFT），和触控板的手势合在一起算拖动。 */
+    private static boolean holdLeft(View b) {
+        return b.getTag() instanceof Actions.Action && ((Actions.Action) b.getTag()).kind == Actions.Kind.HOLD_LEFT;
     }
 
     private static void addRegion(List<int[]> regions, View v, int type, int id) {
@@ -630,7 +770,7 @@ public final class MainActivity extends Activity
         boolean down = action == Proto.BUTTON_DOWN;
         if (id >= Proto.KEY_ID_BASE) {   // 键盘键：按键本身服务已经发了，这里只管画面和震动
             int key = id - Proto.KEY_ID_BASE;
-            if (down) onKeyHaptic();
+            if (down) keyHaptic();
             keyboard.showPressed(key, down);
             for (int i = 0; i < numpadButtons.size(); i++) {
                 if (numpadUsages.get(i) == key) Style.look(numpadButtons.get(i), false, down);
@@ -639,7 +779,7 @@ public final class MainActivity extends Activity
         }
         if (id == KeyboardPanel.SYMBOLS_BUTTON_ID || id == KeyboardPanel.FN_BUTTON_ID || id == KeyboardPanel.GLOBE_BUTTON_ID
                 || (id >= KeyboardPanel.ROW_ACTION_BASE_ID && id < KeyboardPanel.ROW_ACTION_BASE_ID + keyboardRow.size())) {
-            if (down) onKeyHaptic();
+            if (down) onKeyHaptic(id, true);
             keyboard.showPressed(id, down);
             if (action == Proto.BUTTON_TAP) onSpecialKey(id);
             return;
@@ -647,10 +787,7 @@ public final class MainActivity extends Activity
         if (id >= CORNER_BASE_ID && id < CORNER_BASE_ID + cornerButtons.size()) {
             TextView b = cornerButtons.get(id - CORNER_BASE_ID);
             b.setBackground(Style.border(this, 0xFF1E1E1E, down ? Style.PRESSED : 0));
-            if (action == Proto.BUTTON_TAP) {
-                haptics.play(GestureEngine.HAPTIC_CLICK);
-                run((Actions.Action) b.getTag());
-            }
+            buttonAction((Actions.Action) b.getTag(), action, AirMouse.SRC_CORNER + id - CORNER_BASE_ID);
             return;
         }
         if (id >= KB_CLOSE_ID && id <= KB_TOOLBAR_POS_ID) {
@@ -662,23 +799,203 @@ public final class MainActivity extends Activity
             }
             return;
         }
+        if (id == AIR_ROUND_ID) {   // 圆钮：按着就移动；点一下（没到 HOLD_MS 就松开、还在圆钮上）锁定移动，再点一下解锁
+            airRoundPressed = down;
+            if (down) {
+                airRoundDownAt = SystemClock.uptimeMillis();
+                haptics.play(GestureEngine.HAPTIC_CLICK);
+                air.holdFollow(AirMouse.SRC_ROUND, true);
+            } else {
+                air.holdFollow(AirMouse.SRC_ROUND, false);
+                if (action == Proto.BUTTON_TAP && SystemClock.uptimeMillis() - airRoundDownAt < HardKeys.HOLD_MS) {
+                    airRoundLocked = !airRoundLocked;
+                    air.holdFollow(AirMouse.SRC_ROUND_LOCK, airRoundLocked);
+                    if (!airRoundLocked) haptics.play(GestureEngine.HAPTIC_DRAG_END);   // 解锁再"嗒"一下，和锁定分得开
+                }
+            }
+            airRound.setState(air.following(), airRoundPressed);
+            return;
+        }
+        if (id >= AIR_SLOT_BASE_ID && id < AIR_SLOT_BASE_ID + airSlots.size()) {
+            TextView b = airSlots.get(id - AIR_SLOT_BASE_ID);
+            buttonAction((Actions.Action) b.getTag(), action, AirMouse.SRC_AIR_PAGE + id - AIR_SLOT_BASE_ID);
+            Style.look(b, isActive(b), down);
+            return;
+        }
+        if (id == AIR_EXIT_ID) {   // 按住 0.6 秒才退出
+            Style.look(airExit, false, down);
+            main.removeCallbacks(airExitLater);
+            if (down) main.postDelayed(airExitLater, AIR_EXIT_HOLD_MS);
+            return;
+        }
+        if (id == AIR_CENTER_ID) {   // 回正中（绝对坐标）
+            Style.look(airCenter, false, down);
+            if (action == Proto.BUTTON_TAP) {
+                haptics.play(GestureEngine.HAPTIC_CLICK);
+                centerPointer();
+            }
+            return;
+        }
         if (id < 0 || id >= stripButtons.size()) return;
         TextView b = stripButtons.get(id);
         if (!(b.getTag() instanceof Actions.Action)) return;
-        Actions.Action a = (Actions.Action) b.getTag();
-        boolean hold = a.kind == Actions.Kind.HOLD_LEFT;   // 左键的按住 / 松开由服务直接处理，这里只管画面和震动
+        buttonAction((Actions.Action) b.getTag(), action, AirMouse.SRC_STRIP + id);
         Style.look(b, isActive(b), down);
-        if (down) {
-            if (hold) {
-                haptics.play(GestureEngine.HAPTIC_CLICK);
-                haptics.startHum();   // 按着"左键"按钮 = 拖动中
-            }
-        } else if (hold) {
-            haptics.play(GestureEngine.HAPTIC_DRAG_END);
-        } else if (action == Proto.BUTTON_TAP) {
-            haptics.play(GestureEngine.HAPTIC_CLICK);
-            run(a);
+    }
+
+    /**
+     * 按钮条、角上按钮、空中鼠标页的按钮共用：按住类的动作按下 / 松开各做一半，别的动作轻点（松手时还在按钮上）才做。
+     * source 区分是哪个按钮按着（AirMouse.SRC_*），一个松开不影响别的。
+     */
+    private void buttonAction(Actions.Action a, int action, int source) {
+        boolean down = action == Proto.BUTTON_DOWN;
+        switch (a.kind) {
+            case HOLD_LEFT:   // 鼠标左键由分流直接按住 / 松开（REGION_HOLD_LEFT），这里只管震动
+                leftFollow(source, down);
+                holdLeftFeedback(down);
+                break;
+            case AIR_MOVE:
+            case AIR_DRAG:
+            case WHEEL:
+                if (down) actionDown(a, source);
+                else actionUp(a, source);
+                break;
+            default:
+                if (action == Proto.BUTTON_TAP) fire(a);
+                break;
         }
+    }
+
+    /** 按住类动作的按下（按钮按下、音量键按住到点）。不是按住类的动作在这时做一次。 */
+    private void actionDown(Actions.Action a, int source) {
+        switch (a.kind) {
+            case AIR_MOVE:
+                if (!airReady()) return;
+                haptics.play(GestureEngine.HAPTIC_CLICK);
+                air.holdFollow(source, true);
+                break;
+            case AIR_DRAG:
+                if (airReady()) air.holdDrag(source, true);   // 震动（开始拖动 + 持续轻震）由 AirMouse 发
+                break;
+            case HOLD_LEFT:   // 音量键按住（屏幕上的"左键"按钮走分流，不经过这里）
+                air.holdLeft(source, true);
+                leftFollow(source, true);
+                holdLeftFeedback(true);
+                break;
+            case WHEEL:   // 震动是每格的咔嗒（同触控板滚动），不另外"嗒"
+                wheelSource = source;
+                wheelDir = a.code;
+                main.removeCallbacks(wheelRepeat);
+                wheel(wheelDir);
+                main.postDelayed(wheelRepeat, WHEEL_DELAY_MS);
+                break;
+            default:
+                fire(a);
+                break;
+        }
+    }
+
+    private void actionUp(Actions.Action a, int source) {
+        switch (a.kind) {
+            case AIR_MOVE:
+                air.holdFollow(source, false);
+                break;
+            case AIR_DRAG:
+                air.holdDrag(source, false);
+                break;
+            case HOLD_LEFT:
+                air.holdLeft(source, false);
+                leftFollow(source, false);
+                holdLeftFeedback(false);
+                break;
+            case WHEEL:
+                if (source == wheelSource) stopWheel();
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** 滚一格：DeX 模式交给服务的虚拟鼠标；蓝牙模式直接发，带上两路按着的键。 */
+    private void wheel(int n) {
+        if (btMode) bt.sendMouse(touchButtons | air.buttons(), 0, 0, n, 0);
+        else link.wheel(n);
+        if (scrollTicksOn) haptics.play(GestureEngine.HAPTIC_TICK);
+    }
+
+    private void stopWheel() {
+        wheelDir = 0;
+        wheelSource = Integer.MIN_VALUE;
+        main.removeCallbacks(wheelRepeat);
+    }
+
+    /** "左键"按着 = 拖动中：按下"嗒"一下再持续轻震，松开停震再"嗒"一下。屏幕上的"左键"按钮、音量键都是这一套。 */
+    private void holdLeftFeedback(boolean down) {
+        leftHolds = Math.max(0, leftHolds + (down ? 1 : -1));
+        if (down) {
+            haptics.play(GestureEngine.HAPTIC_CLICK);
+            haptics.startHum();
+        } else if (leftHolds > 0 || leftHeld()) {
+            haptics.play(GestureEngine.HAPTIC_TICK);   // 别的来源还按着左键：还在拖，"嗒"一下接着嗡
+        } else {
+            haptics.play(GestureEngine.HAPTIC_DRAG_END);
+        }
+    }
+
+    /**
+     * 空中鼠标页里按住左键 = 光标跟着手机走（拖动），用户 2026-10-15："左键点击按住的时候自动解锁移动"，
+     * 要的是边按边拖、不用另外按着圆钮。按下 LEFT_FOLLOW_DELAY_MS 后才开始跟：快点一下就是单击，按的那一下手抖不带走光标。
+     * （第一版理解反了，做成按左键就停掉锁定的移动，结果按着左键根本拖不动。）
+     * 只在空中鼠标页：主界面上按着"左键"是配合触控板拖动，手机转动不该带着光标走。
+     */
+    private void leftFollow(int source, boolean down) {
+        Runnable pending = leftFollowPending.remove(source);
+        if (pending != null) main.removeCallbacks(pending);
+        if (!down) {
+            air.holdFollow(source, false);
+            return;
+        }
+        if (!airOn || !btMode) return;
+        Runnable r = () -> {
+            leftFollowPending.remove(source);
+            air.holdFollow(source, true);
+        };
+        leftFollowPending.put(source, r);
+        main.postDelayed(r, LEFT_FOLLOW_DELAY_MS);
+    }
+
+    /** 两路里还按着左键没有（蓝牙模式才知道；DeX 模式下左键的状态在服务那边）。 */
+    private boolean leftHeld() {
+        return btMode && ((touchButtons | air.buttons()) & Proto.BUTTON_LEFT) != 0;
+    }
+
+    /** 回正中；按着鼠标键（拖动中）时不回：甩角会把拖着的东西带到角上、路过热角。 */
+    private void centerPointer() {
+        if ((touchButtons | air.buttons()) != 0) {
+            haptics.play(GestureEngine.HAPTIC_GESTURE);
+            return;
+        }
+        air.center();
+    }
+
+    /** 点一下就做的动作：震一下再做（按钮轻点、音量键点一下）。滚轮的震动是那一格的咔嗒，不另外"嗒"。 */
+    private void fire(Actions.Action a) {
+        if (a.kind == Actions.Kind.NONE) return;
+        if (a.kind != Actions.Kind.WHEEL) haptics.play(GestureEngine.HAPTIC_CLICK);
+        run(a);
+    }
+
+    /** 空中指针只在蓝牙模式、有陀螺仪时能用；不能用就提示一下。 */
+    private boolean airReady() {
+        if (!btMode) {
+            toast(R.string.air_bt_only);
+            return false;
+        }
+        if (!AirMouse.supported(this)) {
+            toast(R.string.air_no_gyro);
+            return false;
+        }
+        return true;
     }
 
     @Override
@@ -771,6 +1088,8 @@ public final class MainActivity extends Activity
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        Display disp = getDisplay();
+        if (disp != null) air.setRotation(disp.getRotation());
         // 横竖屏各有一份键盘大小
         if (keyboardScreen.getVisibility() == View.VISIBLE) {
             keyboardScreen.setRect(prefs.keyboardRect(keyboardScreen.isLandscape()));
@@ -778,22 +1097,30 @@ public final class MainActivity extends Activity
     }
 
     @Override
-    public void onKeyHaptic() {
+    public void onKeyHaptic(int id, boolean special) {
+        // 快捷行里的"滚轮"：那一格自己咔嗒（同触控板滚动），按下不再"嗒"
+        int i = id - KeyboardPanel.ROW_ACTION_BASE_ID;
+        if (special && i >= 0 && i < keyboardRow.size() && keyboardRow.get(i).kind == Actions.Kind.WHEEL) return;
+        keyHaptic();
+    }
+
+    private void keyHaptic() {
         haptics.play(GestureEngine.HAPTIC_CLICK);
     }
 
     @Override
     public void onRelayMouse(int buttons, int dx, int dy, int wheel, int pan) {
-        if (btMode) bt.sendMouse(buttons, dx, dy, wheel, pan);
+        if (btMode && !stopped) sendTouchMouse(buttons, dx, dy, wheel, pan);
     }
 
     @Override
     public void onRelayKeyboard(byte[] report) {
-        if (btMode) bt.sendKeyboard(report);
+        if (btMode && !stopped) bt.sendKeyboard(report);
     }
 
     @Override
     public void onModifiers(int mask) {
+        latchedMods = mask;
         keyboard.setModifiers(mask);
     }
 
@@ -802,8 +1129,8 @@ public final class MainActivity extends Activity
     private void run(Actions.Action a) {
         switch (a.kind) {
             case HID:   // 虚拟键盘按一下这个组合键
-                onLocalKey(a.code, true);
-                onLocalKey(a.code, false);
+                onLocalKey(a.hidCode(appleHost), true);
+                onLocalKey(a.hidCode(appleHost), false);
                 break;
             case KEY:
                 key(a.code, a.meta);
@@ -813,6 +1140,9 @@ public final class MainActivity extends Activity
                 break;
             case HOLD_LEFT:
                 click(Proto.BUTTON_LEFT);   // 分给手势时就是单击
+                break;
+            case WHEEL:   // 只能点一下的地方：滚一格
+                wheel(a.code);
                 break;
             case KEYBOARD:
                 setKeyboardScreen(keyboardScreen.getVisibility() != View.VISIBLE);
@@ -845,6 +1175,18 @@ public final class MainActivity extends Activity
                 applyStripHidden(hidden);
                 break;
             }
+            case AIR_MOUSE:
+                if (airReady()) setAirMode(!airOn);
+                break;
+            case AIR_MOVE:   // 只能点一下的地方（手势、音量键点一下）：点一下开始跟随，再点一下停
+                if (airReady()) air.toggleFollow();
+                break;
+            case AIR_DRAG:
+                if (airReady()) air.toggleDrag();
+                break;
+            case AIR_CENTER:
+                if (airReady()) centerPointer();
+                break;
             default:
                 break;
         }
@@ -862,8 +1204,14 @@ public final class MainActivity extends Activity
     }
 
     private void click(int button) {
-        if (btMode) local.click(button);
-        else link.click(button);
+        if (!btMode) {
+            link.click(button);
+            return;
+        }
+        // 蓝牙：直接发，带上两路按着的键（经本地分流的话，转发模式下会把服务那一路按着的左键盖掉）
+        int held = touchButtons | air.buttons();
+        bt.sendMouse(held | button, 0, 0, 0, 0);
+        bt.sendMouse(held, 0, 0, 0, 0);
     }
 
     private void toast(int res) {
@@ -975,11 +1323,16 @@ public final class MainActivity extends Activity
 
     @Override
     public void onHaptic(int kind) {
+        // 空中指针那一路按着左键（音量键按住左键）时在触控板上划 = 拖动：和"左键"按钮一样只有持续轻震，没有颗粒
+        if (kind == GestureEngine.HAPTIC_TEXTURE && air.buttons() != 0) return;
+        if (kind == GestureEngine.HAPTIC_DRAG_END && (air.buttons() & Proto.BUTTON_LEFT) != 0) kind = GestureEngine.HAPTIC_TICK;
         haptics.play(kind);
     }
 
     @Override
     public void onLinkStatus(boolean connected, String message) {
+        boolean wasConnected = linkOk;
+        boolean wasGrabbed = grabbed;
         linkOk = connected;
         linkMessage = message;
         if (connected) {
@@ -993,16 +1346,43 @@ public final class MainActivity extends Activity
             // 蓝牙模式下这次一直没连上服务：没有服务，自己请求方向。连上过又断的不请求，免得服务重启时被塞进横框
             if (btAcquired && !linkSeen && prefs.rotation() >= 0) requestOrientationSelf(prefs.rotation());
             grabbed = false;
-            keyboard.setModifiers(0);
-            haptics.stopHum();   // 断了就收不到"拖动结束"了
+            // 连着的服务断了才收尾：服务没开时这里每秒来一次（连不上就重试），不能每次都打断本地分流里正按着的东西。
+            // 蓝牙模式下服务没接管时，按钮、修饰键、拖动都归本地分流，也不用收
+            if (wasConnected && (!btMode || wasGrabbed)) {
+                if (btMode && touchButtons != 0) {   // 服务那一路等不到它发的松开了
+                    touchButtons = 0;
+                    bt.sendMouse(air.buttons(), 0, 0, 0, 0);
+                }
+                if (wheelSource >= AirMouse.SRC_ROUND) stopWheel();   // 屏幕按钮的滚轮经服务转来；音量键的不归服务
+                air.releaseFrom(AirMouse.SRC_ROUND);   // 屏幕按钮按住的空中移动 / 拖动同理
+                leftFollowPending.entrySet().removeIf(e -> {   // 屏幕"左键"等着开始跟随的也作罢（等不到它的松开）
+                    if (e.getKey() < AirMouse.SRC_ROUND) return false;
+                    main.removeCallbacks(e.getValue());
+                    return true;
+                });
+                airRoundPressed = false;
+                leftHolds = 0;
+                latchedMods = 0;
+                keyboard.setModifiers(0);
+                if (air.buttons() == 0) haptics.stopHum();   // 收不到"拖动结束"了（空中指针那一路不归服务管）
+                updateActiveButtons();
+            }
         }
         updateStatus();
     }
 
     @Override
     public void onGrab(boolean isGrabbed, int reason, String detail) {
+        boolean was = grabbed;
         grabbed = isGrabbed;
-        if (!isGrabbed) haptics.stopHum();
+        if (isGrabbed && !was && !btMode) {
+            // DeX 模式下没接管时按钮是 View 自己收的（localTouch），接管后系统收不到触摸，按着的按钮等不到松开
+            if (wheelSource >= AirMouse.SRC_ROUND) stopWheel();
+            leftHolds = 0;
+            haptics.stopHum();
+            updateActiveButtons();
+        }
+        if (!isGrabbed && air.buttons() == 0) haptics.stopHum();
         if (isGrabbed && btMode) {
             // 服务接管后系统收不到触摸，本地分流里正按着的手指等不到抬起：先收尾，按着的键松开
             local.releaseAll();
@@ -1037,6 +1417,9 @@ public final class MainActivity extends Activity
 
     @Override
     public void onDisplayChanged(int displayId) {
+        // 转 180° 时不走 onConfigurationChanged（方向、尺寸都没变），空中鼠标的方向在这里跟上
+        Display own = getDisplay();
+        if (own != null && own.getDisplayId() == displayId) air.setRotation(own.getRotation());
         refreshDisplay();
     }
 
@@ -1075,6 +1458,260 @@ public final class MainActivity extends Activity
         }
         pad.setStatus(s, ok);
         miniPad.setStatus(s, ok);
+    }
+
+    // ═══════════ 空中鼠标 ═══════════
+
+    /** 空中鼠标页：盖住触控板和键盘。上面一行状态，中间是可设定的大按钮，下面"校准回正中"和"按住退出"。默认隐藏。 */
+    private View buildAirOverlay() {
+        airOverlay = new FrameLayout(this);
+        airOverlay.setBackgroundColor(Color.BLACK);
+        airOverlay.setClickable(true);   // 没有服务、服务没接管时，挡住底下的按钮
+        airOverlay.setVisibility(View.GONE);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(16), dp(12), dp(16), dp(16));
+        airOverlay.addView(col, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        airStatus = airText("", 14, Style.TEXT);
+        airStatus.setSingleLine(true);
+        airStatus.setEllipsize(TextUtils.TruncateAt.END);
+        top.addView(airStatus, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        airState = airText("", 16, 0xFF8AB4F8);
+        airState.setPadding(dp(12), 0, 0, 0);
+        top.addView(airState);
+        col.addView(top);
+
+        // 格子和叠在上面的圆钮
+        FrameLayout gridFrame = new FrameLayout(this);
+        airGrid = new LinearLayout(this);
+        airGrid.setOrientation(LinearLayout.VERTICAL);
+        gridFrame.addView(airGrid, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        airRound = new RoundPad(this);
+        airRound.setOnTouchListener((v, e) -> localTouch(v, e, AIR_ROUND_ID));
+        gridFrame.addView(airRound, new FrameLayout.LayoutParams(dp(96), dp(96)));
+        airGrid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> placeAirRound());
+        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
+        gp.topMargin = dp(12);
+        gp.bottomMargin = dp(12);
+        col.addView(gridFrame, gp);
+
+        // 两个按钮永远贴在底部（横屏矮屏时也退得出去）
+        LinearLayout bottom = new LinearLayout(this);
+        airCenter = Style.button(this, 15);
+        airCenter.setText(R.string.air_center_btn);
+        airCenter.setOnTouchListener((v, e) -> localTouch(v, e, AIR_CENTER_ID));
+        bottom.addView(airCenter, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        airExit = Style.button(this, 15);
+        airExit.setText(R.string.air_exit);
+        airExit.setOnTouchListener((v, e) -> localTouch(v, e, AIR_EXIT_ID));
+        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
+        ep.leftMargin = dp(8);
+        bottom.addView(airExit, ep);
+        col.addView(bottom, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)));
+        return airOverlay;
+    }
+
+    /** 按设置排空中鼠标页：每行两个大按钮（"无"的空着、位置留着，圆钮按格子定位），圆钮放到选的两行之间。 */
+    private void rebuildAirSlots() {
+        airGrid.removeAllViews();
+        airSlots.clear();
+        int rows = prefs.airRows();
+        for (int r = 0; r < rows; r++) {
+            LinearLayout row = new LinearLayout(this);
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
+            if (r > 0) rp.topMargin = dp(8);
+            airGrid.addView(row, rp);
+            for (int c = 0; c < 2; c++) {
+                int i = r * 2 + c;
+                Actions.Action a = Actions.get(prefs.airSlot(i));
+                TextView b = Style.button(this, 20);
+                b.setText(a.shortLabel(this));
+                b.setTag(a);
+                if (a.kind == Actions.Kind.NONE) b.setVisibility(View.INVISIBLE);
+                int id = AIR_SLOT_BASE_ID + i;
+                b.setOnTouchListener((v, e) -> localTouch(v, e, id));
+                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
+                if (c == 1) bp.leftMargin = dp(8);
+                row.addView(b, bp);
+                airSlots.add(b);
+            }
+        }
+        airRoundAt = prefs.airRoundAt();
+        placeAirRound();
+    }
+
+    /** 圆钮放在第 airRoundAt、airRoundAt + 1 行之间、两列中间的交叉点；直径取格子短边的 0.7，最大 112dp。 */
+    private void placeAirRound() {
+        if (airGrid.getChildCount() <= airRoundAt) return;
+        View above = airGrid.getChildAt(airRoundAt - 1);
+        View below = airGrid.getChildAt(airRoundAt);
+        if (below.getHeight() == 0) return;
+        int cell = Math.min((airGrid.getWidth() - dp(8)) / 2, above.getHeight());
+        int d = Math.min(dp(112), Math.round(cell * 0.7f));
+        ViewGroup.LayoutParams p = airRound.getLayoutParams();
+        if (p.width != d || p.height != d) {
+            p.width = d;
+            p.height = d;
+            airRound.setLayoutParams(p);
+        }
+        airRound.setX(airGrid.getLeft() + (airGrid.getWidth() - d) / 2f);
+        airRound.setY(airGrid.getTop() + (above.getBottom() + below.getTop() - d) / 2f);
+    }
+
+    private TextView airText(String s, int sp, int color) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTextColor(color);
+        return t;
+    }
+
+    /** 进出空中鼠标页。进的时候先把触摸那一路收尾（拖动、轻点等待），页面盖上，区域只剩页上的按钮。 */
+    private void setAirMode(boolean on) {
+        if (on == airOn) return;
+        airOn = on;
+        updateAirAbs();
+        local.releaseAll();
+        localGesture = false;
+        if (on && btMode && grabbed && link.isConnected()) {
+            // 服务那边锁住的修饰键：按一下就解开（服务的 TouchRouter 里修饰键是按下时切换）
+            for (int bit = 0; bit < 4; bit++) {
+                if ((latchedMods & (1 << bit)) == 0) continue;
+                link.hidKey(0xE0 + bit, true);
+                link.hidKey(0xE0 + bit, false);
+            }
+        }
+        if (!on) releaseAir();
+        stopWheel();
+        main.removeCallbacks(airExitLater);
+        airOverlay.setVisibility(on ? View.VISIBLE : View.GONE);
+        pushLayout();
+        updateAirOverlay();
+    }
+
+    private void updateAirOverlay() {
+        if (airOverlay == null || !airOn) return;
+        airStatus.setText(bt.isConnected() ? getString(R.string.bt_state_connected, btDevice) : getString(R.string.air_waiting));
+        int state = air.dragging() ? R.string.air_dragging : air.following() ? R.string.air_following : 0;
+        airState.setVisibility(state == 0 ? View.GONE : View.VISIBLE);
+        if (state != 0) airState.setText(state);
+    }
+
+    /** 触摸那一路的鼠标报文：记下它按着的键，并上空中鼠标按着的键再发。 */
+    private void sendTouchMouse(int buttons, int dx, int dy, int wheel, int pan) {
+        touchButtons = buttons;
+        bt.sendMouse(buttons | air.buttons(), dx, dy, wheel, pan);
+    }
+
+    @Override
+    public void airMouse(int airButtons, int dx, int dy) {
+        bt.sendMouse(touchButtons | airButtons, dx, dy, 0, 0);
+    }
+
+    @Override
+    public void airHaptic(int kind) {
+        // 移动"颗粒"和触控板一个规矩：设置里开着才有；按着左键（拖动）时是持续轻震，不发颗粒
+        if (kind == GestureEngine.HAPTIC_TEXTURE && (!textureOn || touchButtons != 0)) return;
+        // 触摸那一路还按着左键：空中拖动结束了也还在拖，接着嗡
+        if (kind == GestureEngine.HAPTIC_DRAG_END && (touchButtons & Proto.BUTTON_LEFT) != 0) kind = GestureEngine.HAPTIC_TICK;
+        haptics.play(kind);
+    }
+
+    /**
+     * 空中鼠标页开着时空中指针用激光笔式（绝对坐标，对方的鼠标加速不起作用）；页面外照普通鼠标发相对位移。
+     * 对方屏幕的宽高比不知道，先按苹果设备 4:3、别的 16:9 估（不准时横竖快慢差一点，横线竖线照样直）。
+     */
+    private void updateAirAbs() {
+        android.bluetooth.BluetoothDevice d = bt.connectedDevice();
+        float set = d != null ? prefs.hostAspect(d.getAddress()) : 0f;   // 设置里给这台主机选过屏幕比例就用它
+        float aspect = set > 0 ? set : d != null && BtHid.isApple(d) ? 4f / 3 : 16f / 9;
+        air.setAbsoluteMode(airOn && btMode, aspect);
+    }
+
+    /** 空中指针全部放开，圆钮的锁定也解开。 */
+    private void releaseAir() {
+        for (Runnable r : leftFollowPending.values()) main.removeCallbacks(r);
+        leftFollowPending.clear();
+        air.releaseAll();
+        airRoundLocked = false;
+        airRoundPressed = false;
+    }
+
+    @Override
+    public void airChanged() {
+        updateAirOverlay();
+        updateActiveButtons();
+    }
+
+    // ═══════════ 实体按键 ═══════════
+
+    /** 按设置读音量键的动作（"无" = 不管，照常调音量）。 */
+    private void loadHardKeys() {
+        for (int k = 0; k < 2; k++) {
+            for (int h = 0; h < 2; h++) {
+                Actions.Action a = Actions.get(prefs.hardKey(k, h == 1));
+                hardKeyActions[k][h] = a.kind == Actions.Kind.NONE ? null : a;
+            }
+            hardKeys.setConfig(k, hardKeyActions[k][0] != null, hardKeyActions[k][1] != null);
+        }
+    }
+
+    /** 音量键有没有设动作（蓝牙模式才管；DeX 模式下的以后由服务做）。 */
+    private boolean hardKeysActive() {
+        return btMode && (hardKeys.mapped(HardKeys.VOL_UP) || hardKeys.mapped(HardKeys.VOL_DOWN));
+    }
+
+    /** 音量键：设了动作就交给 HardKeys 判断点一下 / 按住，并吃掉（音量不变）；没设照常调音量。 */
+    private boolean onHardKey(KeyEvent e) {
+        int code = e.getKeyCode();
+        if (code != KeyEvent.KEYCODE_VOLUME_UP && code != KeyEvent.KEYCODE_VOLUME_DOWN) return false;
+        int k = code == KeyEvent.KEYCODE_VOLUME_UP ? HardKeys.VOL_UP : HardKeys.VOL_DOWN;
+        if (!btMode || !resumed || !hardKeys.mapped(k)) return false;
+        int action = e.getAction();
+        if (action == KeyEvent.ACTION_UP && (e.getFlags() & KeyEvent.FLAG_CANCELED) != 0) {
+            hardKeys.cancel(k);   // 被系统取消的按键：当放手，不算点一下
+        } else if (action == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+            hardKeys.key(k, true, e.getEventTime());
+        } else if (action == KeyEvent.ACTION_UP) {
+            hardKeys.key(k, false, e.getEventTime());
+        }
+        return true;   // 系统连发的按下也吃掉
+    }
+
+    private final class HardKeysOutput implements HardKeys.Output {
+        @Override
+        public void tap(int key) {
+            Actions.Action a = hardKeyActions[key][0];
+            if (a != null) fire(a);
+        }
+
+        @Override
+        public void holdStart(int key) {
+            Actions.Action a = hardKeyActions[key][1];
+            if (a != null) actionDown(a, key);   // 来源编号 = 键（AirMouse.SRC_VOL_UP / SRC_VOL_DOWN）
+        }
+
+        @Override
+        public void holdEnd(int key) {
+            Actions.Action a = hardKeyActions[key][1];
+            if (a != null) actionUp(a, key);
+        }
+
+        @Override
+        public void schedule(int key, long delayMs) {
+            main.removeCallbacks(hardKeyTimers[key]);
+            main.postDelayed(hardKeyTimers[key], delayMs);
+        }
+
+        @Override
+        public void cancelSchedule(int key) {
+            main.removeCallbacks(hardKeyTimers[key]);
+        }
     }
 
     // ═══════════ 蓝牙模式 ═══════════
@@ -1133,7 +1770,7 @@ public final class MainActivity extends Activity
     private final class LocalOutput implements TouchRouter.Output {
         @Override
         public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
-            bt.sendMouse(buttons, dx, dy, wheel, pan);
+            sendTouchMouse(buttons, dx, dy, wheel, pan);
         }
 
         @Override
@@ -1175,17 +1812,25 @@ public final class MainActivity extends Activity
 
     @Override
     public void onBtState(int state, String deviceName) {
+        // 只在"连着的断了"那一刻收尾：没连上时每 5 秒重连一次，状态在连接中 / 等待之间来回变，每次都收会打断正按着的按钮
+        boolean lost = btState == BtHid.STATE_CONNECTED && state != BtHid.STATE_CONNECTED;
         btState = state;
         btDevice = deviceName;
-        if (state != BtHid.STATE_CONNECTED) local.releaseAll();   // 断了：别让对方那头留着按住的键
-        updateGuiLabel();
+        if (lost) {
+            local.releaseAll();   // 别让对方那头留着按住的键
+            touchButtons = 0;
+        }
+        updateHostKind();
+        updateAirAbs();
+        if (lost) releaseAir();   // 停跟随、松开按着的键
+        updateAirOverlay();
         updateStatus();
     }
 
-    /** 键盘上 GUI 键的名字：蓝牙连着苹果设备时叫 ⌘，其余（DeX、别的主机）一律叫 Super。 */
-    private void updateGuiLabel() {
-        boolean apple = btMode && btState == BtHid.STATE_CONNECTED && BtHid.isApple(bt.connectedDevice());
-        keyboard.setGuiLabel(apple ? "⌘" : "Super");
+    /** 蓝牙连着苹果设备时，修饰键按苹果写法标、内置快捷键按苹果习惯发（⌘C 而不是 Ctrl+C）；DeX 和别的主机照通用的。 */
+    private void updateHostKind() {
+        appleHost = btMode && btState == BtHid.STATE_CONNECTED && BtHid.isApple(bt.connectedDevice());
+        keyboard.setAppleHost(appleHost);
     }
 
     private String btStatusText() {
@@ -1197,6 +1842,7 @@ public final class MainActivity extends Activity
             case BtHid.STATE_CONNECTING: return getString(R.string.bt_state_connecting, btDevice);
             case BtHid.STATE_CONNECTED: return getString(R.string.bt_state_connected, btDevice);
             case BtHid.STATE_FAILED: return getString(R.string.bt_state_failed);
+            case BtHid.STATE_STUCK: return getString(R.string.bt_state_stuck);
             default: return getString(R.string.bt_state_starting);
         }
     }

@@ -54,9 +54,6 @@
     <string name="edge_h">Slide along the top/bottom edge = horizontal scroll</string>
     <string name="edge_width">Edge band width (dp)</string>
     <string name="ticks">Scroll \"click\" vibration (like a mouse wheel)</string>
-    <string name="ticks_off">Off</string>
-    <string name="ticks_edge">Edge scrolling only</string>
-    <string name="ticks_all">All scrolling (including two fingers)</string>
     <string name="tick_strength">Scroll \"click\" strength</string>
     <string name="sec_haptics">Vibration</string>
     <string name="haptic_off">Off</string>
@@ -74,8 +71,9 @@
     <string name="g4_down">Four-finger swipe down</string>
     <string name="g4_left">Four-finger swipe left</string>
     <string name="g4_right">Four-finger swipe right</string>
-    <string name="sec_strip">Side buttons (top to bottom; Exit, Rotate, Settings at the top and Hide at the bottom are fixed)</string>
+    <string name="sec_strip">Side buttons (top to bottom; Exit and Settings at the top and Hide at the bottom are fixed)</string>
     <string name="strip_hidden">Hide the side buttons (small buttons go in the touchpad corners)</string>
+    <string name="strip_add">＋ Add button (up to %1$d)</string>
     <string name="nth">No. %1$d</string>
     <string name="sec_corners">Touchpad corner buttons (when side buttons are hidden; ☰ at bottom left is fixed)</string>
     <string name="corner_tl">Top left</string>
@@ -109,6 +107,10 @@
     <string name="act_right_click_s">Right</string>
     <string name="act_middle_click">Middle click (opens links in a new tab)</string>
     <string name="act_middle_click_s">Middle</string>
+    <string name="act_wheel_up">Wheel up (hold to keep scrolling)</string>
+    <string name="act_wheel_up_s">Wheel ↑</string>
+    <string name="act_wheel_down">Wheel down (hold to keep scrolling)</string>
+    <string name="act_wheel_down_s">Wheel ↓</string>
     <string name="act_back">Back</string>
     <string name="act_back_s">Back</string>
     <string name="act_home">Home screen</string>
@@ -193,7 +195,53 @@
     <string name="bt_state_connecting">Connecting to %1$s…</string>
     <string name="bt_state_connected">Bluetooth: %1$s</string>
     <string name="bt_state_failed">Bluetooth didn\'t start: another app may be acting as a Bluetooth keyboard; close it and reopen Douhua</string>
+    <string name="bt_state_stuck">System Bluetooth isn\'t responding (this can happen after turning Bluetooth off and on while Douhua is open). Restart the phone to fix it</string>
     <string name="bt_no_phone_text">Text pasting isn\'t available over Bluetooth: the clipboard stays on the phone</string>
     <string name="bt_no_such_key">This key isn\'t available over Bluetooth</string>
     <string name="drag_hum">Gentle hum while dragging (reminds you the left button is held)</string>
+    <string name="texture">Grainy feel while moving the pointer (a very faint vibration, like touching a slightly rough surface)</string>
+    <string name="act_air_mouse">Air mouse page (big buttons: hold to move, left, right…; Bluetooth mode only)</string>
+    <string name="act_air_mouse_s">Air</string>
+    <string name="act_air_move">Hold to move (the pointer follows the phone while held; Bluetooth mode only)</string>
+    <string name="act_air_move_s">Hold to move</string>
+    <string name="act_air_drag">Hold to drag (left button down, pointer follows the phone while held; Bluetooth mode only)</string>
+    <string name="act_air_drag_s">Hold to drag</string>
+    <string name="act_air_center">Center (pointer to the middle of the screen in one step)</string>
+    <string name="act_air_center_s">Center</string>
+    <string name="air_bt_only">Air mouse only works in Bluetooth mode</string>
+    <string name="air_no_gyro">This phone has no gyroscope, so air mouse isn\'t available</string>
+    <string name="air_following">Following</string>
+    <string name="air_dragging">Dragging (left button held)</string>
+    <string name="air_waiting">Bluetooth not connected</string>
+    <string name="air_exit">Hold to exit air mouse</string>
+    <string name="sec_air">Air mouse</string>
+    <string name="air_sensitivity">Air mouse sensitivity (how far the pointer moves for the same turn)</string>
+    <string name="air_space">How turning the phone maps to left/right and up/down</string>
+    <string name="air_space_player">Player space (default): up/down = the phone\'s own nod; left/right = turning around vertical (GyroWiki / JoyShockMapper)</string>
+    <string name="air_space_oblique">Mixed: left/right = turning around vertical; up/down = the phone\'s own nod, with leaning cancelled</string>
+    <string name="air_space_world">World space: left/right = turning around vertical; up/down = nodding around the horizontal axis</string>
+    <string name="air_min_cutoff">Smoothing when still: cutoff (lower = steadier but laggier)</string>
+    <string name="air_beta">Follow when moving fast: β (higher = keeps up better, but shakier)</string>
+    <string name="air_speed_cutoff">How quickly \"moving\" is detected (lower = hand shake is less likely to count as moving, but starts slower)</string>
+    <string name="air_deadzone">Soft dead zone: slower than this is scaled down (higher = steadier when holding still, harder to fine-tune)</string>
+    <string name="air_path">Path smoothing: sideways wobble along the path is smoothed, forward motion isn\'t delayed (higher = straighter and smoother, corners rounder; 0 = off)</string>
+    <string name="air_string">Steady radius: hand wobble within this angle doesn\'t move the pointer (higher = steadier when still; reversing needs a bit more turn; 0 = off)</string>
+    <string name="air_filter_reset">Reset smoothing to defaults</string>
+    <string name="air_abs_note">Center jumps straight to the middle of the screen (absolute position). Devices paired before this version must remove this phone in their Bluetooth settings and pair again once.</string>
+    <string name="air_aspect">Screen shape of %1$s (in the air mouse page, up/down speed depends on it; if wrong, up/down feels faster or slower than left/right)</string>
+    <string name="air_aspect_auto">Auto (Apple 4:3, others 16:9)</string>
+    <string name="air_fix_v">Vertical line angle correction (if vertical lines lean right at the top, increase)</string>
+    <string name="air_fix_h">Horizontal line angle correction (if horizontal lines sink on the right, increase)</string>
+    <string name="air_aspect_custom">Or enter its resolution (width × height):</string>
+    <string name="air_buttons">Air mouse page buttons (top to bottom, two per row; the round button in the middle is fixed: hold = move, tap = lock moving, tap again = unlock)</string>
+    <string name="air_row_add">＋ Add a row (up to %1$d)</string>
+    <string name="air_round_at">Where the round button sits</string>
+    <string name="air_round_between">Between %1$d, %2$d, %3$d and %4$d</string>
+    <string name="sec_hard_keys">Volume keys</string>
+    <string name="hard_keys_hint">\"None\" keeps normal volume control. \"Hold to move\" on a tap: tap to start, tap again to stop.</string>
+    <string name="hk_up_tap">Volume + tap</string>
+    <string name="hk_up_hold">Volume + hold</string>
+    <string name="hk_down_tap">Volume − tap</string>
+    <string name="hk_down_hold">Volume − hold</string>
+    <string name="air_center_btn">Center</string>
 </resources>

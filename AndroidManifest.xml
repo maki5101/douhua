@@ -38,6 +38,8 @@
             android:label="@string/settings_title"
             android:theme="@android:style/Theme.Material.NoActionBar" />
 
+        <!-- 空中鼠标"回正中"校准；转屏不重建，免得打断正在走的光标 -->
+
         <!-- 只有豆花服务（shell 身份，有 DUMP 权限）能触发 -->
         <receiver
             android:name=".DisplayReceiver"

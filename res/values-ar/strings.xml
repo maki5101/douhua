@@ -54,9 +54,6 @@
     <string name="edge_h">التمرير على الحافة العليا/السفلى = تمرير أفقي</string>
     <string name="edge_width">عرض شريط الحافة (dp)</string>
     <string name="ticks">اهتزاز «طقطقة» عند التمرير (مثل عجلة الفأرة)</string>
-    <string name="ticks_off">إيقاف</string>
-    <string name="ticks_edge">تمرير الحواف فقط</string>
-    <string name="ticks_all">كل أنواع التمرير (بما فيها بإصبعين)</string>
     <string name="tick_strength">شدة «الطقطقة»</string>
     <string name="sec_haptics">الاهتزاز</string>
     <string name="haptic_off">إيقاف</string>
@@ -74,8 +71,9 @@
     <string name="g4_down">سحب لأسفل بأربعة أصابع</string>
     <string name="g4_left">سحب لليسار بأربعة أصابع</string>
     <string name="g4_right">سحب لليمين بأربعة أصابع</string>
-    <string name="sec_strip">الأزرار الجانبية (من الأعلى للأسفل؛ «خروج» و«تدوير» و«الإعدادات» في الأعلى و«إخفاء» في الأسفل ثابتة)</string>
+    <string name="sec_strip">الأزرار الجانبية (من الأعلى للأسفل؛ «خروج» و«الإعدادات» في الأعلى و«إخفاء» في الأسفل ثابتة)</string>
     <string name="strip_hidden">إخفاء الأزرار الجانبية (أزرار صغيرة في زوايا لوحة اللمس)</string>
+    <string name="strip_add">＋ إضافة زر (حتى %1$d)</string>
     <string name="nth">رقم %1$d</string>
     <string name="sec_corners">أزرار زوايا لوحة اللمس (عند إخفاء الأزرار الجانبية؛ ☰ أسفل اليسار ثابت)</string>
     <string name="corner_tl">أعلى اليسار</string>
@@ -109,6 +107,10 @@
     <string name="act_right_click_s">أيمن</string>
     <string name="act_middle_click">نقرة وسطى (تفتح الروابط في علامة تبويب جديدة)</string>
     <string name="act_middle_click_s">أوسط</string>
+    <string name="act_wheel_up">العجلة لأعلى (اضغط مطولًا للاستمرار)</string>
+    <string name="act_wheel_up_s">العجلة ↑</string>
+    <string name="act_wheel_down">العجلة لأسفل (اضغط مطولًا للاستمرار)</string>
+    <string name="act_wheel_down_s">العجلة ↓</string>
     <string name="act_back">رجوع</string>
     <string name="act_back_s">رجوع</string>
     <string name="act_home">الشاشة الرئيسية</string>
@@ -193,7 +195,53 @@
     <string name="bt_state_connecting">جارٍ الاتصال بـ %1$s…</string>
     <string name="bt_state_connected">بلوتوث: %1$s</string>
     <string name="bt_state_failed">تعذّر تشغيل البلوتوث: ربما يعمل تطبيق آخر كلوحة مفاتيح بلوتوث؛ أغلقه وأعد فتح دوهوا</string>
+    <string name="bt_state_stuck">بلوتوث النظام لا يستجيب (قد يحدث هذا عند إيقاف البلوتوث وتشغيله أثناء فتح دوهوا). أعد تشغيل الهاتف لحل المشكلة</string>
     <string name="bt_no_phone_text">لا يمكن لصق النص عبر البلوتوث: الحافظة تبقى على الهاتف</string>
     <string name="bt_no_such_key">هذا المفتاح غير متاح عبر البلوتوث</string>
     <string name="drag_hum">اهتزاز خفيف مستمر أثناء السحب (يذكّرك بأن الزر الأيسر مضغوط)</string>
+    <string name="texture">إحساس حُبيبي أثناء تحريك المؤشر (اهتزاز خفيف جدًا، كأنك تلمس سطحًا خشنًا قليلًا)</string>
+    <string name="act_air_mouse">صفحة الماوس الهوائي (أزرار كبيرة: اضغط مطولًا للتحريك، أيسر، أيمن…؛ في وضع البلوتوث فقط)</string>
+    <string name="act_air_mouse_s">هوائي</string>
+    <string name="act_air_move">اضغط مطولًا للتحريك (يتبع المؤشر الهاتف ما دمت ضاغطًا؛ في وضع البلوتوث فقط)</string>
+    <string name="act_air_move_s">اضغط للتحريك</string>
+    <string name="act_air_drag">اضغط مطولًا للسحب (الزر الأيسر مضغوط والمؤشر يتبع الهاتف؛ في وضع البلوتوث فقط)</string>
+    <string name="act_air_drag_s">اضغط للسحب</string>
+    <string name="act_air_center">المنتصف (المؤشر إلى منتصف الشاشة دفعة واحدة)</string>
+    <string name="act_air_center_s">المنتصف</string>
+    <string name="air_bt_only">الماوس الهوائي يعمل في وضع البلوتوث فقط</string>
+    <string name="air_no_gyro">لا يحتوي هذا الهاتف على جيروسكوب، لذا لا يتوفر الماوس الهوائي</string>
+    <string name="air_following">يتتبّع</string>
+    <string name="air_dragging">سحب (الزر الأيسر مضغوط)</string>
+    <string name="air_waiting">البلوتوث غير متصل</string>
+    <string name="air_exit">اضغط مطولًا للخروج من الماوس الهوائي</string>
+    <string name="sec_air">الماوس الهوائي</string>
+    <string name="air_sensitivity">حساسية الماوس الهوائي (مدى تحرك المؤشر عند الدوران بالزاوية نفسها)</string>
+    <string name="air_space">تحويل الاتجاه: كيف يتحول تدوير الهاتف إلى يمين/يسار وأعلى/أسفل</string>
+    <string name="air_space_player">فضاء اللاعب (افتراضي): أعلى/أسفل = إيماءة الهاتف نفسه، يمين/يسار = الدوران حول المحور الرأسي (GyroWiki / JoyShockMapper)</string>
+    <string name="air_space_oblique">مختلط: يمين/يسار = الدوران حول المحور الرأسي، أعلى/أسفل = إيماءة الهاتف نفسه مع تعويض الإمالة</string>
+    <string name="air_space_world">فضاء العالم: يمين/يسار = الدوران حول المحور الرأسي، أعلى/أسفل = الإيماء حول المحور الأفقي</string>
+    <string name="air_min_cutoff">تنعيم الاهتزاز عند الثبات: تردد القطع (الأقل = أثبت لكن أبطأ)</string>
+    <string name="air_beta">المتابعة عند الحركة السريعة: β (الأكبر = متابعة أفضل لكن اهتزاز أكثر)</string>
+    <string name="air_speed_cutoff">سرعة اكتشاف \"الحركة\" (الأقل = يقل اعتبار ارتعاش اليد حركة، لكن البدء أبطأ)</string>
+    <string name="air_deadzone">منطقة ميتة ناعمة: الأبطأ من هذا يُصغَّر (الأكبر = أثبت عند التوقف، والضبط الدقيق أصعب)</string>
+    <string name="air_path">تنعيم المسار: يُنعَّم الاهتزاز الجانبي على المسار دون تأخير الحركة للأمام (الأكبر = أكثر استقامة ونعومة والزوايا أكثر استدارة؛ 0 = إيقاف)</string>
+    <string name="air_string">نصف قطر الثبات: اهتزاز اليد ضمن هذه الزاوية لا يحرك المؤشر (الأكبر = أثبت عند التوقف، والرجوع يحتاج دورانًا أكثر قليلًا؛ 0 = إيقاف)</string>
+    <string name="air_filter_reset">إعادة تنعيم الاهتزاز إلى الافتراضي</string>
+    <string name="air_abs_note">«المنتصف» يقفز مباشرة إلى منتصف الشاشة (إحداثيات مطلقة). الأجهزة التي أُقرنت قبل هذا الإصدار يجب أن تحذف هذا الهاتف من إعدادات البلوتوث وتعيد الإقران مرة واحدة.</string>
+    <string name="air_aspect">نسبة شاشة %1$s (في صفحة الماوس الهوائي تعتمد سرعة الحركة لأعلى/لأسفل عليها؛ إذا كانت خاطئة يبدو الأعلى/الأسفل أسرع أو أبطأ من اليمين/اليسار)</string>
+    <string name="air_aspect_auto">تلقائي (Apple ‏4:3، والباقي 16:9)</string>
+    <string name="air_fix_v">تصحيح زاوية الخطوط الرأسية (إذا مال أعلاها لليمين فزِد)</string>
+    <string name="air_fix_h">تصحيح زاوية الخطوط الأفقية (إذا انخفض طرفها الأيمن فزِد)</string>
+    <string name="air_aspect_custom">أو أدخل دقتها (العرض × الارتفاع):</string>
+    <string name="air_buttons">أزرار صفحة الماوس الهوائي (من الأعلى، زران في كل صف؛ الزر الدائري في الوسط ثابت: ضغط مطوّل = تحريك، نقرة = تثبيت التحريك، نقرة أخرى = إلغاء التثبيت)</string>
+    <string name="air_row_add">＋ إضافة صف (حتى %1$d)</string>
+    <string name="air_round_at">مكان الزر الدائري</string>
+    <string name="air_round_between">بين %1$d و%2$d و%3$d و%4$d</string>
+    <string name="sec_hard_keys">أزرار الصوت</string>
+    <string name="hard_keys_hint">«لا شيء» = الصوت كالمعتاد. «اضغط مطولًا للتحريك» على النقرة: نقرة تبدأ وأخرى توقف.</string>
+    <string name="hk_up_tap">رفع الصوت: نقرة</string>
+    <string name="hk_up_hold">رفع الصوت: ضغط مطوّل</string>
+    <string name="hk_down_tap">خفض الصوت: نقرة</string>
+    <string name="hk_down_hold">خفض الصوت: ضغط مطوّل</string>
+    <string name="air_center_btn">المنتصف</string>
 </resources>

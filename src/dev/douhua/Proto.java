@@ -16,7 +16,7 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 11;
+    public static final int VERSION = 13;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
 
@@ -29,7 +29,7 @@ public final class Proto {
     /**
      * 手势参数：pointerSpeed:f32, acceleration:f32, scrollStepDp:f32, naturalScroll:u8, pinchZoom:u8, edgeScroll:u8,
      * edgeScrollHorizontal:u8, edgeWidthDp:f32, scrollTicks:u8, longPressDrag:u8, longPressMs:i32,
-     * tapToDrag:u8, dragWindowMs:i32, density:f32（每 dp 多少像素）, slowFactor:f32。
+     * tapToDrag:u8, dragWindowMs:i32, density:f32（每 dp 多少像素）, slowFactor:f32, texture:u8（移动时的颗粒震动）。
      */
     public static final int CMD_CONFIG = 4;
     /**
@@ -48,6 +48,8 @@ public final class Proto {
      * （和系统导航栏的旋转建议按钮做的一样）；连接断开时恢复原来的方向锁定。
      */
     public static final int CMD_ROTATE = 8;
+    /** 滚一格（动作"滚轮向上 / 向下"）：wheel:i8（正 = 向上）。按住连续滚的节奏由 App 定，一格发一次。 */
+    public static final int CMD_WHEEL = 9;
 
     public static final int REGION_PAD = 0;
     /** 普通按钮：服务报告按下 / 松开 / 点击，由 App 决定做什么。 */

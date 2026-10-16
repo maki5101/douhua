@@ -28,6 +28,12 @@ final class Haptics {
     private static final long HUM_MAX_MS = 60_000;
     /** 让前面那下"咔"先震完再接着嗡。 */
     private static final long HUM_AFTER_MS = 80;
+    /** 支持最弱的轻触原语（"颗粒"用）。 */
+    private final boolean lowTick;
+    private static final float TEXTURE_SCALE = 0.3f;
+    /** 没有震动原语、但能调幅度的马达（比如测试机）："颗粒"用一下 5 毫秒、幅度约一成的短震。 */
+    private static final long TEXTURE_ONE_SHOT_MS = 5;
+    private static final int TEXTURE_AMPLITUDE = 30;
     private final Handler main = new Handler(Looper.getMainLooper());
     private int humLevel = 1;
     private boolean humming;
@@ -38,6 +44,7 @@ final class Haptics {
         vibrator = context.getSystemService(VibratorManager.class).getDefaultVibrator();
         primitives = vibrator.areAllPrimitivesSupported(
                 VibrationEffect.Composition.PRIMITIVE_CLICK, VibrationEffect.Composition.PRIMITIVE_TICK);
+        lowTick = vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_LOW_TICK);
     }
 
     /** 0 关、1 小、2 中、3 大。 */
@@ -96,6 +103,22 @@ final class Haptics {
     void play(int kind) {
         if (kind == GestureEngine.HAPTIC_DRAG_END) stopHum();   // 先停持续轻震，再"嗒"一下
         if (level <= 0 || !vibrator.hasVibrator()) return;
+        if (kind == GestureEngine.HAPTIC_TEXTURE) {
+            // "颗粒"：越轻越好。按手机支持的挑：最弱的轻触原语 → 普通轻触原语压低 → 能调幅度就来一下极短极弱的；
+            // 都不行就不震，不拿更重的效果凑数（会变成一路"嗒嗒嗒"）
+            VibrationEffect grain = null;
+            if (lowTick) {
+                grain = VibrationEffect.startComposition()
+                        .addPrimitive(VibrationEffect.Composition.PRIMITIVE_LOW_TICK, TEXTURE_SCALE).compose();
+            } else if (primitives) {
+                grain = VibrationEffect.startComposition()
+                        .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, TEXTURE_SCALE / 2).compose();
+            } else if (vibrator.hasAmplitudeControl()) {
+                grain = VibrationEffect.createOneShot(TEXTURE_ONE_SHOT_MS, TEXTURE_AMPLITUDE);
+            }
+            if (grain != null) vibrator.vibrate(grain, ATTRS);
+            return;
+        }
         boolean heavy = kind == GestureEngine.HAPTIC_TICK ? tickStrength >= 2
                 : kind == GestureEngine.HAPTIC_CLICK && level >= 3;
         if (heavy) {

@@ -14,6 +14,8 @@
     <string name="status_denied">Das System hat die Verbindung abgelehnt: %1$s</string>
     <string name="status_version">Dienstversion %1$d passt nicht zur App-Version %2$d: tools/stop-server.sh, dann tools/start-server.sh ausführen</string>
     <string name="status_service_error">Dienstfehler: %1$s</string>
+    <string name="status_service_stuck">Douhua-Dienst reagiert nicht: tools/start-server.sh am Computer ausführen (startet einen hängenden Dienst neu)</string>
+    <string name="status_service_busy">Douhua-Dienst wird von einer anderen Verbindung genutzt (anderes Douhua-Fenster oder Testwerkzeug); verbindet sich automatisch, sobald sie getrennt ist</string>
     <string name="status_text_mode">Texteingabe · Touchpad pausiert</string>
     <string name="status_adjusting">Tastatur wird angepasst · Touchpad pausiert</string>
     <string name="status_taking_over">Touchscreen wird übernommen…</string>
@@ -237,11 +239,22 @@
     <string name="air_row_add">＋ Reihe hinzufügen (bis zu %1$d)</string>
     <string name="air_round_at">Wo der runde Knopf sitzt</string>
     <string name="air_round_between">Zwischen %1$d, %2$d, %3$d und %4$d</string>
-    <string name="sec_hard_keys">Lautstärketasten</string>
-    <string name="hard_keys_hint">„Keine“ = Lautstärke wie gewohnt. „Halten zum Bewegen“ auf Tippen: einmal tippen startet, nochmal stoppt.</string>
+    <string name="sec_hard_keys">Hardwaretasten</string>
+    <string name="hard_keys_hint">„Keine“ lässt die Taste in Ruhe. Eine Taste mit Aktion gehört ganz Douhua und ändert die Lautstärke nicht mehr. „Halten zum Bewegen“ auf Tippen: einmal tippen startet, nochmal stoppt.</string>
     <string name="hk_up_tap">Lauter tippen</string>
     <string name="hk_up_hold">Lauter halten</string>
     <string name="hk_down_tap">Leiser tippen</string>
     <string name="hk_down_hold">Leiser halten</string>
+    <string name="hk_power_tap">Ein/Aus tippen</string>
+    <string name="hard_keys_power_hint">Nur ein einzelner kurzer Druck wird abgefangen. Langes Drücken, mehrfaches Drücken (Kamera, Notruf-SOS) und Drücken zusammen mit einer Lautstärketaste gehen weiter ans System; langes Drücken dauert etwa 0,35 s länger. Solange abgefangen wird, schaltet die Ein/Aus-Taste den Bildschirm nicht aus: erst Douhua beenden. „Keine“ fängt nichts ab.</string>
+    <string name="hard_keys_service_hint">Der Douhua-Dienst muss laufen; bei Anrufen und Klingeln wird nichts abgefangen.</string>
+    <string name="hard_keys_unavailable">%1$s lässt sich auf diesem Telefon nicht einzeln abfangen (wohl mit anderen Eingaben auf einem Gerät), die Aktion wirkt nicht</string>
+    <string name="hard_keys_no_injector">Der Dienst kann keine Tasten einspeisen, daher werden Hardwaretasten nicht abgefangen (sonst gingen Lautstärke und Ein/Aus nicht mehr)</string>
+    <string name="hard_keys_no_device">Auf diesem Telefon wurde kein Eingabegerät für %1$s gefunden, die Aktion wirkt nicht</string>
+    <string name="hard_keys_failed">Fehler beim Abfangen (%1$s), die Aktion wirkt nicht: %2$s</string>
+    <string name="hard_keys_mixed">Abfangen nicht möglich (%1$s), die Aktionen wirken nicht: %2$s</string>
+    <string name="key_name_power">Ein/Aus-Taste</string>
+    <string name="key_name_volume_up">Lauter-Taste</string>
+    <string name="key_name_volume_down">Leiser-Taste</string>
     <string name="air_center_btn">Mitte</string>
 </resources>

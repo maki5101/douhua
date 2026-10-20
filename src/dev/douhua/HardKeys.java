@@ -6,10 +6,15 @@ package dev.douhua;
  * <li>只设了"点一下"：按下当场就算（不用等），一直到松开都不再算。</li>
  * <li>设了"按住"：按住超过 {@link #HOLD_MS} 算按住（holdStart），松开时 holdEnd；没到就松开算点一下（设了的话）。</li>
  * </ul>
+ * 设了动作的键整个归豆花：没设的那一半（只设了点一下时的按住、只设了按住时的短按）什么都不做，也不调音量。
+ * 蓝牙模式下 App 自己用它，DeX 模式下服务独占实体键设备后用同一个类判断（server.HardKeyGate），两边一个规矩。
+ * 电源键编号 {@link #POWER} 只给 Prefs 和设置页当键用，不进这个状态机（电源键的判断在 server.HardKeyGate 里）。
  * 时间都用 KeyEvent.getEventTime() 那套（uptimeMillis）。
  */
 public final class HardKeys {
     public static final int VOL_UP = 0, VOL_DOWN = 1;
+    /** 电源键：只当键编号用（Prefs、设置页），不进这个状态机。 */
+    public static final int POWER = 2;
     public static final int HOLD_MS = 300;
 
     public interface Output {
@@ -45,6 +50,11 @@ public final class HardKeys {
     /** 这个键设了动作没有（没设就别吃掉，照常调音量）。 */
     public boolean mapped(int key) {
         return hasTap[key] || hasHold[key];
+    }
+
+    /** 这个键的按下还没收到松开（空中鼠标暂停期间只吞这种键，新按下的交还系统调音量）。 */
+    public boolean isPressed(int key) {
+        return pressed[key];
     }
 
     public void key(int key, boolean down, long t) {

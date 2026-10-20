@@ -16,7 +16,7 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 13;
+    public static final int VERSION = 14;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
 
@@ -34,7 +34,8 @@ public final class Proto {
     public static final int CMD_CONFIG = 4;
     /**
      * 界面布局：active:u8, relay:u8, displayId:i32, rotation:u8, width:i32, height:i32, count:u16,
-     * 然后 count 个区域 {type:u8, id:i32, left:i32, top:i32, right:i32, bottom:i32}，坐标是屏幕像素。
+     * 然后 count 个区域 {type:u8, id:i32, left:i32, top:i32, right:i32, bottom:i32}（type 是 REGION_*），坐标是屏幕像素。
+     * 键盘面板的整块范围（{@link #REGION_KEYBOARD}）排在它的键后面。
      * active=1 时服务接管这块屏的触摸屏。relay=1（蓝牙模式）时分流出的鼠标、键盘报文不写手机自己的虚拟设备，
      * 发回 App（{@link #MSG_MOUSE} / {@link #MSG_KEYBOARD}），由 App 从蓝牙发出去。
      */
@@ -50,6 +51,27 @@ public final class Proto {
     public static final int CMD_ROTATE = 8;
     /** 滚一格（动作"滚轮向上 / 向下"）：wheel:i8（正 = 向上）。按住连续滚的节奏由 App 定，一格发一次。 */
     public static final int CMD_WHEEL = 9;
+    /**
+     * 保活：没有负载。App 的连接线程空闲 {@link #PING_INTERVAL_MS} 就发一个，只表示"连接还活着"。
+     * 它不是心跳：服务只用它判断连接死没死（{@link #IDLE_TIMEOUT_MS}、新连接能不能顶掉旧的），
+     * 不进独占条件——App 主线程卡住、连接线程还在发保活时，触摸屏照样要按心跳超时释放。
+     */
+    public static final int CMD_PING = 10;
+    /**
+     * 调试用的触点记录：flags:u8，bit0 = 记键盘触点。只有可调试包的 App 会发（tools/type-log.sh 经 adb 广播打开，
+     * 见 DebugMoves 的 DEBUG_KEYLOG）。服务把落在键盘范围里的每次按下 / 抬起写进 logcat（标签 douhua-keys，
+     * 格式见 TouchRouter.Trace），不写服务的日志文件；每条连接默认关，断开就没了。
+     */
+    public static final int CMD_TRACE = 11;
+    /**
+     * 实体按键要截哪些：volUpTap:u8, volUpHold:u8, volDownTap:u8, volDownHold:u8, powerTap:u8（1 = 这一半配了动作）。
+     * 全 0 = 一个都不截。连上时、改设置后、通话状态变化时发；第一次收到之前服务不碰任何实体键设备。
+     * 配了动作的键整个归豆花（服务判断点一下 / 按住，结果发 {@link #MSG_HARD_KEY}）；和它在同一个设备上、没配动作的键
+     * 由服务原样注入补发，照常调音量。电源键只截单独一次短按（规则见 server.HardKeyGate）。
+     */
+    public static final int CMD_HARD_KEYS = 12;
+    /** 按住 / 松开鼠标左键：down:u8。DeX 模式下实体键按住配了"左键"时用，和 REGION_HOLD_LEFT 共用服务里的计数。 */
+    public static final int CMD_HOLD_LEFT = 13;
 
     public static final int REGION_PAD = 0;
     /** 普通按钮：服务报告按下 / 松开 / 点击，由 App 决定做什么。 */
@@ -62,15 +84,33 @@ public final class Proto {
      * 报给 App 的按钮编号是 KEY_ID_BASE + id。
      */
     public static final int REGION_KEY = 3;
+    /**
+     * 键盘面板的整块范围（不是键，id 不用、填 0），排在它的键后面。按在这里却没落在任何键上（键间的缝、
+     * 第二行两头的空位、外圈边距）时，分给范围里最近的键（TouchRouter.nearestKey）。旧服务不认识它，
+     * 会当成按钮 id 0（按钮条的"退出"），所以加它时协议升到了 14。
+     */
+    public static final int REGION_KEYBOARD = 4;
     public static final int KEY_ID_BASE = 0x10000;
 
     public static final long HEARTBEAT_INTERVAL_MS = 1000;
     public static final long HEARTBEAT_TIMEOUT_MS = 3000;
+    /** App 的连接线程空闲这么久就发一个 {@link #CMD_PING}。 */
+    public static final long PING_INTERVAL_MS = 2000;
+    /** 服务这么久收不到这条连接的任何消息（连保活都没有）就结束会话：对面多半已经不在了，只是断开的包没送到。 */
+    public static final int IDLE_TIMEOUT_MS = 10000;
+    /** App 连上端口后这么久收不到 hello，就提示"服务没响应"（服务卡住了）。 */
+    public static final int HELLO_TIMEOUT_MS = 5000;
 
     // ═══════════ 服务 → 客户端 ═══════════
 
-    /** 连上后服务先发一条：version:u8, ok:u8, message:UTF。ok=0 时 message 说明哪里坏了。 */
+    /** 连上后服务先发一条：version:u8, ok:u8（HELLO_*）, message:UTF。 */
     public static final int MSG_HELLO = 0x80;
+    /** 服务出错，message 说明哪里坏了。 */
+    public static final int HELLO_FAILED = 0;
+    /** 正常；message 不空时是附带的提醒（比如按键注入暂时不可用）。 */
+    public static final int HELLO_OK = 1;
+    /** 另一个连接正在用服务、而且还在说话：服务发完这条就关掉这条连接，App 照常每秒重试。message 为空。 */
+    public static final int HELLO_BUSY = 2;
     /** 震动：kind:u8（GestureEngine.HAPTIC_*）。 */
     public static final int MSG_HAPTIC = 0x81;
     /** 三指 / 四指手势：fingers:u8, kind:u8（GestureEngine.GESTURE_*）。 */
@@ -99,6 +139,35 @@ public final class Proto {
     public static final int MSG_MOUSE = 0x86;
     /** 转发的键盘报文（relay 模式）：HID 键盘报文原样 8 字节（修饰键位、保留、6 个键）。 */
     public static final int MSG_KEYBOARD = 0x87;
+    /** 实体按键（服务已判断好）：key:u8（HARD_VOL_UP / HARD_VOL_DOWN / HARD_POWER）, event:u8（HARD_TAP / HARD_HOLD_START / HARD_HOLD_END）。 */
+    public static final int MSG_HARD_KEY = 0x88;
+    /** 和 HardKeys.VOL_UP / VOL_DOWN 一致。 */
+    public static final int HARD_VOL_UP = 0;
+    public static final int HARD_VOL_DOWN = 1;
+    public static final int HARD_POWER = 2;
+    public static final int HARD_TAP = 0;
+    public static final int HARD_HOLD_START = 1;
+    public static final int HARD_HOLD_END = 2;
+    /**
+     * 实体按键的独占状态：grabbed:u8, unavailable:u8（位掩码：HARD_BIT_*）, reason:u8（HARD_*）, detail:UTF。
+     * unavailable = 配了动作、却截不了的键。文字由 App 按语言拼，服务只发代码和细节（设备名、多出来的键码、错误原文）。
+     */
+    public static final int MSG_HARD_GRAB = 0x89;
+    public static final int HARD_BIT_VOL_UP = 1;
+    public static final int HARD_BIT_VOL_DOWN = 2;
+    public static final int HARD_BIT_POWER = 4;
+    public static final int HARD_OK = 0;
+    /** 没找到带这个键的设备。 */
+    public static final int HARD_NO_DEVICE = 1;
+    /** 和别的输入（别的键、开关、触摸）在同一个设备上，整个设备一起独占代价太大，不截。 */
+    public static final int HARD_SHARED = 2;
+    /** 服务注入不了按键：不截任何实体键（不然没配的键、长按电源键都补发不出去）。 */
+    public static final int HARD_NO_INJECTOR = 3;
+    public static final int HARD_FAILED = 4;
+    /** 不再截了（App 不在前台、心跳超时、配置改成全 0、来电响铃 / 通话中）。 */
+    public static final int HARD_RELEASED = 5;
+    /** 截不了的键不止一个、原因又各不相同（每个键的原因都在 detail 里）。 */
+    public static final int HARD_MIXED = 6;
 
     public static final int BUTTON_DOWN = 0;
     /** 松开但不算点击（手指滑出了按钮，或被取消）。 */

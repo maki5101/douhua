@@ -14,6 +14,8 @@
     <string name="status_denied">Il sistema ha rifiutato la connessione: %1$s</string>
     <string name="status_version">Versione del servizio %1$d diversa dall\'app %2$d: esegui tools/stop-server.sh e poi tools/start-server.sh</string>
     <string name="status_service_error">Errore del servizio: %1$s</string>
+    <string name="status_service_stuck">Il servizio Douhua non risponde: esegui tools/start-server.sh sul computer (riavvia il servizio bloccato)</string>
+    <string name="status_service_busy">Il servizio Douhua è usato da un\'altra connessione (un\'altra finestra di Douhua o uno strumento di test); si collegherà appena si chiude</string>
     <string name="status_text_mode">Inserimento testo · touchpad in pausa</string>
     <string name="status_adjusting">Regolazione tastiera · touchpad in pausa</string>
     <string name="status_taking_over">Acquisizione del touchscreen…</string>
@@ -237,11 +239,22 @@
     <string name="air_row_add">＋ Aggiungi riga (fino a %1$d)</string>
     <string name="air_round_at">Dove sta il pulsante rotondo</string>
     <string name="air_round_between">Tra %1$d, %2$d, %3$d e %4$d</string>
-    <string name="sec_hard_keys">Tasti volume</string>
-    <string name="hard_keys_hint">«Nessuna» = volume come sempre. «Tieni per muovere» su un tocco: un tocco avvia, un altro ferma.</string>
+    <string name="sec_hard_keys">Tasti fisici</string>
+    <string name="hard_keys_hint">«Nessuna» lascia stare il tasto. Un tasto con un\'azione passa tutto a Douhua e non cambia più il volume. «Tieni per muovere» su un tocco: un tocco avvia, un altro ferma.</string>
     <string name="hk_up_tap">Volume + tocco</string>
     <string name="hk_up_hold">Volume + tieni</string>
     <string name="hk_down_tap">Volume − tocco</string>
     <string name="hk_down_hold">Volume − tieni</string>
+    <string name="hk_power_tap">Accensione tocco</string>
+    <string name="hard_keys_power_hint">Viene intercettata solo una singola pressione breve. Pressioni lunghe, ripetute (fotocamera, SOS di emergenza) e insieme a un tasto volume vanno sempre al sistema; una pressione lunga richiede circa 0,35 s in più. Durante l\'intercettazione il tasto di accensione non spegne lo schermo: esci prima da Douhua. «Nessuna» non intercetta nulla.</string>
+    <string name="hard_keys_service_hint">Serve il servizio Douhua attivo; durante le chiamate o mentre squilla non intercetta nulla.</string>
+    <string name="hard_keys_unavailable">Su questo telefono %1$s non si può intercettare da solo (probabilmente condivide il dispositivo con altri input): l\'azione non funziona</string>
+    <string name="hard_keys_no_injector">Il servizio non può inviare tasti: i tasti fisici non vengono intercettati (altrimenti volume e accensione smetterebbero di funzionare)</string>
+    <string name="hard_keys_no_device">Su questo telefono non è stato trovato un dispositivo di input per: %1$s. L\'azione non funziona</string>
+    <string name="hard_keys_failed">Errore nell\'intercettazione (%1$s), l\'azione non funziona: %2$s</string>
+    <string name="hard_keys_mixed">Intercettazione non possibile (%1$s), le azioni non funzionano: %2$s</string>
+    <string name="key_name_power">Tasto di accensione</string>
+    <string name="key_name_volume_up">Tasto volume +</string>
+    <string name="key_name_volume_down">Tasto volume −</string>
     <string name="air_center_btn">Centro</string>
 </resources>

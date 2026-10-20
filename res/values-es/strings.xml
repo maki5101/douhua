@@ -14,6 +14,8 @@
     <string name="status_denied">El sistema rechazó la conexión: %1$s</string>
     <string name="status_version">La versión del servicio %1$d no coincide con la de la app %2$d: ejecuta tools/stop-server.sh y luego tools/start-server.sh</string>
     <string name="status_service_error">Error del servicio: %1$s</string>
+    <string name="status_service_stuck">El servicio Douhua no responde: ejecuta tools/start-server.sh en el ordenador (reinicia el servicio bloqueado)</string>
+    <string name="status_service_busy">El servicio Douhua está en uso por otra conexión (otra ventana de Douhua o una herramienta de prueba); se conectará cuando se cierre</string>
     <string name="status_text_mode">Escribiendo texto · panel táctil en pausa</string>
     <string name="status_adjusting">Ajustando el teclado · panel táctil en pausa</string>
     <string name="status_taking_over">Tomando el control de la pantalla táctil…</string>
@@ -237,11 +239,22 @@
     <string name="air_row_add">＋ Añadir fila (hasta %1$d)</string>
     <string name="air_round_at">Dónde va el botón redondo</string>
     <string name="air_round_between">Entre %1$d, %2$d, %3$d y %4$d</string>
-    <string name="sec_hard_keys">Teclas de volumen</string>
-    <string name="hard_keys_hint">«Ninguna» = volumen como siempre. «Mantener para mover» en un toque: un toque empieza, otro para.</string>
+    <string name="sec_hard_keys">Teclas físicas</string>
+    <string name="hard_keys_hint">«Ninguna» deja la tecla en paz. Una tecla con acción pasa entera a Douhua y ya no cambia el volumen. «Mantener para mover» en un toque: un toque empieza, otro para.</string>
     <string name="hk_up_tap">Volumen + toque</string>
     <string name="hk_up_hold">Volumen + mantener</string>
     <string name="hk_down_tap">Volumen − toque</string>
     <string name="hk_down_hold">Volumen − mantener</string>
+    <string name="hk_power_tap">Encendido toque</string>
+    <string name="hard_keys_power_hint">Solo se intercepta una pulsación corta aislada. Las pulsaciones largas, repetidas (cámara, SOS de emergencia) y junto con una tecla de volumen siguen yendo al sistema; una pulsación larga necesita unos 0,35 s más. Mientras se intercepta, el botón de encendido no apaga la pantalla: sal antes de Douhua. «Ninguna» no intercepta nada.</string>
+    <string name="hard_keys_service_hint">Necesita el servicio Douhua en marcha; no intercepta nada durante llamadas ni mientras suena.</string>
+    <string name="hard_keys_unavailable">En este teléfono %1$s no se puede interceptar por separado (probablemente comparte dispositivo con otras entradas): su acción no funcionará</string>
+    <string name="hard_keys_no_injector">El servicio no puede inyectar teclas: las teclas físicas no se interceptan (si no, el volumen y el encendido dejarían de funcionar)</string>
+    <string name="hard_keys_no_device">En este teléfono no se encontró ningún dispositivo de entrada para %1$s: su acción no funcionará</string>
+    <string name="hard_keys_failed">Error al interceptar (%1$s), su acción no funcionará: %2$s</string>
+    <string name="hard_keys_mixed">No se puede interceptar (%1$s), sus acciones no funcionarán: %2$s</string>
+    <string name="key_name_power">Botón de encendido</string>
+    <string name="key_name_volume_up">Botón de subir volumen</string>
+    <string name="key_name_volume_down">Botón de bajar volumen</string>
     <string name="air_center_btn">Centro</string>
 </resources>

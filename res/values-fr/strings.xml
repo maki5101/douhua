@@ -14,6 +14,8 @@
     <string name="status_denied">Le système a refusé la connexion : %1$s</string>
     <string name="status_version">Version du service %1$d ≠ version de l\'app %2$d : lancez tools/stop-server.sh puis tools/start-server.sh</string>
     <string name="status_service_error">Erreur du service : %1$s</string>
+    <string name="status_service_stuck">Le service Douhua ne répond pas : lancez tools/start-server.sh sur l\'ordinateur (il redémarre un service bloqué)</string>
+    <string name="status_service_busy">Le service Douhua est utilisé par une autre connexion (autre fenêtre Douhua ou outil de test) ; connexion automatique dès qu\'elle se termine</string>
     <string name="status_text_mode">Saisie de texte · pavé tactile en pause</string>
     <string name="status_adjusting">Redimensionnement du clavier · pavé tactile en pause</string>
     <string name="status_taking_over">Prise en main de l\'écran tactile…</string>
@@ -237,11 +239,22 @@
     <string name="air_row_add">＋ Ajouter une ligne (%1$d max.)</string>
     <string name="air_round_at">Position du bouton rond</string>
     <string name="air_round_between">Entre %1$d, %2$d, %3$d et %4$d</string>
-    <string name="sec_hard_keys">Touches de volume</string>
-    <string name="hard_keys_hint">« Aucun » garde le réglage du volume. « Maintenir pour déplacer » sur un appui : un appui démarre, un autre arrête.</string>
+    <string name="sec_hard_keys">Touches physiques</string>
+    <string name="hard_keys_hint">« Aucun » laisse la touche tranquille. Une touche avec une action revient entièrement à Douhua et ne règle plus le volume. « Maintenir pour déplacer » sur un appui : un appui démarre, un autre arrête.</string>
     <string name="hk_up_tap">Volume + appui</string>
     <string name="hk_up_hold">Volume + maintien</string>
     <string name="hk_down_tap">Volume − appui</string>
     <string name="hk_down_hold">Volume − maintien</string>
+    <string name="hk_power_tap">Marche/arrêt appui</string>
+    <string name="hard_keys_power_hint">Seul un appui court isolé est intercepté. Les appuis longs, les appuis répétés (appareil photo, SOS d\'urgence) et les appuis avec une touche de volume vont toujours au système ; un appui long doit durer environ 0,35 s de plus. Pendant l\'interception, la touche marche/arrêt n\'éteint plus l\'écran : quittez d\'abord Douhua. « Aucun » n\'intercepte rien.</string>
+    <string name="hard_keys_service_hint">Le service Douhua doit tourner ; rien n\'est intercepté pendant un appel ou une sonnerie.</string>
+    <string name="hard_keys_unavailable">Sur ce téléphone, %1$s ne peut pas être intercepté seul (sans doute partagé avec d\'autres entrées) : son action ne fonctionnera pas</string>
+    <string name="hard_keys_no_injector">Le service ne peut pas injecter de touches : les touches physiques ne sont pas interceptées (sinon le volume et la touche marche/arrêt ne répondraient plus)</string>
+    <string name="hard_keys_no_device">Aucun périphérique d\'entrée trouvé sur ce téléphone pour : %1$s. L\'action définie ne fonctionnera pas</string>
+    <string name="hard_keys_failed">Erreur lors de l\'interception (%1$s), l\'action définie ne fonctionnera pas : %2$s</string>
+    <string name="hard_keys_mixed">Interception impossible (%1$s), les actions définies ne fonctionneront pas : %2$s</string>
+    <string name="key_name_power">Touche marche/arrêt</string>
+    <string name="key_name_volume_up">Touche volume +</string>
+    <string name="key_name_volume_down">Touche volume −</string>
     <string name="air_center_btn">Centre</string>
 </resources>

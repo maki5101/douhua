@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>豆花儿打字测试</title>
+<style>
+  :root { --bg: #121212; --fg: #e8e8e8; --dim: #8a8f94; --btn: #2a2f35; --accent: #8ab4f8; --ok: #4cd964; --warn: #ffb74d; --line: #33383e; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 17px/1.5 system-ui, sans-serif; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  #top { position: fixed; top: 10px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { background: var(--btn); color: var(--fg); border: 1px solid #444; border-radius: 8px; padding: 8px 14px; font-size: 17px; cursor: pointer; }
+  button:hover { border-color: #888; }
+  button.on { border-color: var(--accent); background: #24324a; }
+  button.save { border-color: var(--ok); }
+  .sp { flex: 1; }
+  #pill { border-radius: 999px; padding: 2px 12px; font-size: 15px; border: 1px solid #444; color: var(--dim); white-space: nowrap; }
+  #main { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 16px; }
+  .line { font: 34px/1.4 ui-monospace, "DejaVu Sans Mono", monospace; white-space: pre; max-width: 100%; overflow: hidden; }
+  #target { color: var(--fg); }
+  #typed { color: var(--accent); border-bottom: 1px solid var(--line); min-height: 1.4em; }
+  #typed::after { content: ""; display: inline-block; width: 2px; height: 1.1em; vertical-align: -0.15em; background: var(--accent); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #warn { color: var(--warn); min-height: 1.5em; font-size: 16px; text-align: center; }
+  #hint { position: fixed; left: 12px; right: 12px; bottom: 10px; color: var(--dim); font-size: 15px; pointer-events: none; }
+  #card { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 16px; background: var(--bg); }
+  #card h1 { font-size: 28px; margin: 0; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="top" class="hidden">
+  <span id="pill"></span>
+  <span class="sp"></span>
+  <button id="save" class="save" tabindex="-1">完成并保存</button>
+</div>
+<div id="main" class="hidden">
+  <div id="target" class="line"></div>
+  <div id="typed" class="line"></div>
+  <div id="warn"></div>
+</div>
+<div id="hint" class="hidden">看着手机打，照平时的速度和习惯；打错了用 ⌫ 改不改都行。↵ 进下一句。按住不放的自动连发不算字。</div>
+<div id="card"></div>
+<script>
+"use strict";
+// 记的东西给 tools/typelog/analyze.py：每句 {target, shown, start, end, text, events, backspaces}，时间都是毫秒（performance.timeOrigin + 事件时间）。
+// events 是电脑收到的每个按键 {t, type: down/up, code, key, repeat, mods}；code 是物理键位（KeyA、Space……），和 HID 用法码一一对应，
+// 不受电脑键盘布局影响。"已打的字"是页面自己画的（不用真输入框），免得电脑输入法 / 自动更正插手。
+const $ = id => document.getElementById(id);
+const now = () => performance.timeOrigin + performance.now();
+let sentences = [], idx = 0, cur = null, running = false, warnTimer = 0;
+const done = [];
+
+function mods(e) { return (e.ctrlKey ? 1 : 0) | (e.shiftKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0); }
+
+function card(html) { $("card").innerHTML = html; $("card").classList.remove("hidden"); }
+
+function warn(text, ms) {
+  $("warn").textContent = text;
+  clearTimeout(warnTimer);
+  if (ms) warnTimer = setTimeout(() => { $("warn").textContent = ""; }, ms);
+}
+
+function render() {
+  $("pill").textContent = `第 ${Math.min(idx + 1, sentences.length)} / ${sentences.length} 句`;
+  $("target").textContent = cur ? cur.target : "";
+  $("typed").textContent = cur ? cur.text : "";
+}
+
+function startSentence() {
+  cur = { target: sentences[idx], shown: now(), start: null, end: null, text: "", events: [], backspaces: 0 };
+  render();
+}
+
+function finishSentence(t) {
+  cur.end = t;
+  done.push(cur);
+  const secs = (cur.end - (cur.start !== null ? cur.start : cur.shown)) / 1000;
+  // 每句都交给本机服务存一份：页面中途被关掉，打完的句子也还在
+  fetch("/progress", { method: "POST", body: JSON.stringify({ i: done.length, n: sentences.length, secs, backspaces: cur.backspaces,
+                                                               same: cur.text === cur.target, sentence: cur }) }).catch(() => {});
+  idx++;
+  if (idx >= sentences.length) { save(); return; }
+  startSentence();
+}
+
+window.addEventListener("keydown", e => {
+  if (!running) {
+    if (sentences.length && !$("card").classList.contains("hidden") && $("go") && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); go(); }
+    return;
+  }
+  const t = performance.timeOrigin + e.timeStamp;
+  cur.events.push({ t, type: "down", code: e.code, key: e.key, repeat: e.repeat, mods: mods(e) });
+  if (e.isComposing || e.key === "Process" || e.keyCode === 229) {
+    warn("电脑的输入法在拼写：把电脑输入法切成英文（拼音句子也是一个个字母原样打），这一下不算");
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;   // 组合键（比如锁住了 Ctrl）不算打字
+  const k = e.key;
+  if (k === "Backspace" || k === "Enter" || k === "Tab" || k === " " || k.length === 1) e.preventDefault();
+  if (e.repeat) { if (k.length === 1 || k === "Backspace") warn("按住不放的自动连发不算", 1500); return; }
+  if (cur.start === null) cur.start = t;
+  if (k === "Backspace") {
+    cur.text = cur.text.slice(0, -1);
+    cur.backspaces++;
+  } else if (k === "Enter") {
+    if (cur.text) finishSentence(t);   // 空着按 ↵ 不跳过（多半是误碰）
+    return;
+  } else if (k.length === 1) {
+    cur.text += k;
+  }
+  render();
+});
+window.addEventListener("keyup", e => {
+  if (running && cur) cur.events.push({ t: performance.timeOrigin + e.timeStamp, type: "up", code: e.code, key: e.key, repeat: e.repeat, mods: mods(e) });
+});
+window.addEventListener("beforeunload", e => { if (running && done.length) { e.preventDefault(); e.returnValue = ""; } });
+
+async function save() {
+  running = false;
+  ["top", "main", "hint"].forEach(id => $(id).classList.add("hidden"));
+  card(`<h1>保存中……</h1>`);
+  const unfinished = cur && cur.end === null && cur.events.length ? cur : null;
+  try {
+    const r = await fetch("/result", { method: "POST", body: JSON.stringify({ sentences: done, unfinished, userAgent: navigator.userAgent, savedAt: now() }) });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const same = done.filter(s => s.text === s.target).length;
+    card(`<h1>已保存 ✓ 共 ${done.length} 句</h1><div>其中打得和目标一模一样的 ${same} 句。</div>
+      <div>可以关掉这个页面了，终端那边也已经自动结束。分析：tools/type-analyze.sh</div>`);
+  } catch (err) {
+    card(`<h1>保存失败</h1><div>${err}</div><button id="retry">再试一次</button>`);
+    $("retry").onclick = () => save();
+  }
+}
+
+function go() {
+  $("card").classList.add("hidden");
+  ["top", "main", "hint"].forEach(id => $(id).classList.remove("hidden"));
+  if (document.activeElement) document.activeElement.blur();   // 别让空格 / ↵ 再按一次按钮
+  running = true;
+  idx = 0;
+  startSentence();
+}
+
+$("save").onclick = () => { $("save").blur(); if (!done.length) { warn("还一句都没打完", 1500); return; } save(); };
+
+card(`<h1>豆花儿打字测试</h1>
+  <div>手机打开豆花儿的键盘界面，看着手机把屏幕上的句子打出来（英文和拼音各一半，全是小写），每句打完按 ↵。<br>
+  照平时的速度打就行，打错了改不改都随意——要的就是平时真实的落点。随时可以点"完成并保存"。</div>
+  <div style="color:var(--dim)">电脑的输入法先切成英文；手机这边的触点日志由终端里的 tools/type-log.sh 开着。</div>
+  <div id="loading">读句子……</div>`);
+fetch("/sentences").then(r => r.json()).then(list => {
+  sentences = list;
+  $("loading").outerHTML = `<div><button id="fs" tabindex="-1">全屏</button>　<button id="go" class="on" tabindex="-1">开始（${list.length} 句）</button></div>`;
+  $("fs").onclick = () => { $("fs").blur(); if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); };
+  $("go").onclick = go;
+}).catch(err => { $("loading").textContent = "读不到句子：" + err; });
+</script>
+</body>
+</html>

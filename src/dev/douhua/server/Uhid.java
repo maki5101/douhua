@@ -24,6 +24,8 @@ final class Uhid implements Closeable {
 
     private final FileDescriptor fd;
     private final ByteBuffer input;
+    /** 关过了：再关什么都不做，再发就报错（文件描述符号会被复用，不能把报文写进别的文件）。 */
+    private boolean closed;
 
     Uhid(String name, int product, byte[] reportDescriptor, int reportSize) throws IOException {
         input = ByteBuffer.allocate(4 + 2 + reportSize).order(ByteOrder.nativeOrder());
@@ -46,6 +48,7 @@ final class Uhid implements Closeable {
 
     /** 发一帧输入报文（HID 报文里的多字节字段由调用方按小端填好）。 */
     synchronized void send(byte[] report, int length) throws IOException {
+        if (closed) throw new IOException("虚拟设备已移除");
         input.clear();
         input.putInt(UHID_INPUT2);
         input.putShort((short) length);
@@ -57,8 +60,11 @@ final class Uhid implements Closeable {
         }
     }
 
+    /** 幂等，和 send 互斥：被顶掉的旧会话收不了尾时，新会话会替它关。 */
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (closed) return;
+        closed = true;
         try {
             Os.close(fd);
         } catch (ErrnoException ignored) {

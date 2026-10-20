@@ -317,8 +317,11 @@ public final class GestureEngine {
         dragging = false;
         longDrag = false;
         endZoom();
+        // 只靠 external 按着的键（实体键按住的"左键"，CMD_HOLD_LEFT）也要发松开
+        boolean held = (buttons | external) != 0;
         external = 0;
-        if (buttons != 0) setButtons(0);
+        buttons = 0;
+        if (held) out.mouse(0, 0, 0, 0, 0);
     }
 
     public void onTimer(long t) {

@@ -1,9 +1,6 @@
 package dev.douhua.server;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -42,17 +39,11 @@ final class TouchDevice {
         return d * rawX + e * rawY + f;
     }
 
+    /** dumpsys 卡住（比如系统框架正在重启）时最多等这么久。 */
+    private static final long DUMPSYS_TIMEOUT_MS = 10_000;
+
     static TouchDevice find(int displayId) throws IOException {
-        Process p = new ProcessBuilder("dumpsys", "input").redirectErrorStream(true).start();
-        String dump;
-        try (InputStream in = p.getInputStream()) {
-            ByteArrayOutputStream buf = new ByteArrayOutputStream();
-            byte[] chunk = new byte[16384];
-            int n;
-            while ((n = in.read(chunk)) > 0) buf.write(chunk, 0, n);
-            dump = new String(buf.toByteArray(), StandardCharsets.UTF_8);
-        }
-        return parse(dump, displayId);
+        return parse(Shell.run(DUMPSYS_TIMEOUT_MS, "dumpsys", "input"), displayId);
     }
 
     /** 这块屏没有对应的触摸屏（比如虚拟屏）。 */

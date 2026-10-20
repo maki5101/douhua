@@ -14,6 +14,8 @@
     <string name="status_denied">The system refused the connection: %1$s</string>
     <string name="status_version">Service version %1$d doesn\'t match app version %2$d: run tools/stop-server.sh, then tools/start-server.sh</string>
     <string name="status_service_error">Service error: %1$s</string>
+    <string name="status_service_stuck">Douhua service isn\'t responding: run tools/start-server.sh on your computer (it restarts a stuck service)</string>
+    <string name="status_service_busy">The Douhua service is in use by another connection (another Douhua window or a test tool); it will connect once that one is gone</string>
     <string name="status_text_mode">Text box open · touchpad paused</string>
     <string name="status_adjusting">Resizing keyboard · touchpad paused</string>
     <string name="status_taking_over">Taking over the touchscreen…</string>
@@ -237,11 +239,22 @@
     <string name="air_row_add">＋ Add a row (up to %1$d)</string>
     <string name="air_round_at">Where the round button sits</string>
     <string name="air_round_between">Between %1$d, %2$d, %3$d and %4$d</string>
-    <string name="sec_hard_keys">Volume keys</string>
-    <string name="hard_keys_hint">\"None\" keeps normal volume control. \"Hold to move\" on a tap: tap to start, tap again to stop.</string>
+    <string name="sec_hard_keys">Hardware keys</string>
+    <string name="hard_keys_hint">\"None\" leaves the key alone. A key with an action belongs to Douhua entirely and no longer changes the volume. \"Hold to move\" on a tap: tap to start, tap again to stop.</string>
     <string name="hk_up_tap">Volume + tap</string>
     <string name="hk_up_hold">Volume + hold</string>
     <string name="hk_down_tap">Volume − tap</string>
     <string name="hk_down_hold">Volume − hold</string>
+    <string name="hk_power_tap">Power key tap</string>
+    <string name="hard_keys_power_hint">Only a single short press is taken. Long presses, repeated presses (camera, emergency SOS) and presses together with a volume key still go to the system; a long press takes about 0.35 s longer. While taken, the power key won\'t turn the screen off: exit Douhua first. \"None\" takes nothing.</string>
+    <string name="hard_keys_service_hint">Needs the Douhua service running; nothing is taken during calls or while ringing.</string>
+    <string name="hard_keys_unavailable">This phone\'s %1$s can\'t be taken on its own (it probably shares a device with other inputs), so its action won\'t work</string>
+    <string name="hard_keys_no_injector">The service can\'t inject keys, so hardware keys aren\'t taken (volume and power would stop working)</string>
+    <string name="hard_keys_no_device">Couldn\'t find an input device for %1$s on this phone, so its action won\'t work</string>
+    <string name="hard_keys_failed">Couldn\'t take %1$s, so its action won\'t work: %2$s</string>
+    <string name="hard_keys_mixed">%1$s can\'t be taken, so their actions won\'t work: %2$s</string>
+    <string name="key_name_power">Power key</string>
+    <string name="key_name_volume_up">Volume up key</string>
+    <string name="key_name_volume_down">Volume down key</string>
     <string name="air_center_btn">Center</string>
 </resources>

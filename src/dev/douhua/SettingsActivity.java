@@ -656,11 +656,14 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         list.addView(g);
     }
 
-    /** 音量键（只在蓝牙模式）：点一下 / 按住各选一个动作，"无"照常调音量。 */
+    /**
+     * 实体按键（两种模式都有）：音量键点一下 / 按住、电源键点一下，各选一个动作，"无"不截。
+     * 蓝牙模式下音量键由 App 自己收；DeX 模式下音量键、两种模式下电源键都要服务独占按键设备（server.HardKeyGate）。
+     */
     private void hardKeysSection() {
-        if (!prefs.btMode()) return;
         header(R.string.sec_hard_keys);
         list.addView(text(getString(R.string.hard_keys_hint), 14, 0xFF9AA0A6));
+        if (!prefs.btMode()) list.addView(text(getString(R.string.hard_keys_service_hint), 14, 0xFF9AA0A6));
         int[][] labels = {{R.string.hk_up_tap, R.string.hk_up_hold}, {R.string.hk_down_tap, R.string.hk_down_hold}};
         for (int k = 0; k < 2; k++) {
             for (int h = 0; h < 2; h++) {
@@ -669,6 +672,10 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 actionRow(getString(labels[k][h]), () -> prefs.hardKey(key, hold), id -> prefs.setHardKey(key, hold, id));
             }
         }
+        actionRow(getString(R.string.hk_power_tap), () -> prefs.hardKey(HardKeys.POWER, false),
+                id -> prefs.setHardKey(HardKeys.POWER, false, id));
+        list.addView(text(getString(R.string.hard_keys_power_hint), 14, 0xFF9AA0A6));
+        if (prefs.btMode()) list.addView(text(getString(R.string.hard_keys_service_hint), 14, 0xFF9AA0A6));
     }
 
     // ═══════════ 对方还连着手机的音频 ═══════════

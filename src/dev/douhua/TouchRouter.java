@@ -2,6 +2,7 @@ package dev.douhua;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 触摸分流：每根手指按下时落在哪个区域，就交给谁——触控板 → 手势引擎；键盘键 → 虚拟键盘；
@@ -9,6 +10,9 @@ import java.util.List;
  *
  * 修饰键（Ctrl / Shift / Alt / Win）点一下锁定、立即按下，打完下一个普通键自动解开，再点一下也能解开；
  * 锁定期间点触控板就是 Ctrl + 点击之类。"自带修饰键"的键（"@"、"复制"之类）按下时连同修饰键一起按。
+ *
+ * 键盘：按在键与键的缝、第二行两头的空位、外圈边距上（落在 Proto.REGION_KEYBOARD 里却没落在键上），
+ * 分给范围里最近的键（{@link #nearestKey}）；按在键上的照旧按矩形判。
  *
  * DeX 模式下跑在服务里（触摸来自独占的触摸屏，输出到 /dev/uhid），蓝牙模式下跑在 App 里
  * （触摸来自 App 自己的窗口，输出到蓝牙），两边只是触摸来源和 {@link Output} 不同。
@@ -38,6 +42,23 @@ public final class TouchRouter implements GestureEngine.Output {
         void cancelSchedule();
     }
 
+    /**
+     * 键盘触点记录（打字测试用，tools/type-log.sh 打开；App 和服务都写 logcat，标签 {@link #TRACE_TAG}）。
+     * 只记落在键盘范围里的触摸，触控板、按钮条上的一律不记。每行一条，空格分隔，id 十六进制，坐标是屏幕像素：
+     *   L l t r b 键数               键盘布局（打开时、键盘部分变了时）：范围的矩形，后面跟着这么多行 K；没有键盘时只有 "L 0"
+     *   K type id l t r b            范围里的一个键（type 是 Proto.REGION_*）
+     *   p t 槽 x y hit near l t r b  按下：hit = 只看矩形（按在缝里写 -），near = 最近的键，
+     *                                l t r b = 实际用的键（都没有写 -）
+     *   u t 槽 x y                   这根手指抬起（x y 是最后的位置）
+     * t 是触摸事件的时间（毫秒，App 和服务的时钟不一样，分析时用 logcat 自己的时间）。
+     * 格式只在这里生成，App 和服务写出来一模一样；分析见 tools/typelog/analyze.py。
+     */
+    public interface Trace {
+        void line(String s);
+    }
+
+    public static final String TRACE_TAG = "douhua-keys";
+
     /** 屏幕上的一块区域（像素），type 是 Proto.REGION_*。 */
     public static final class Region {
         public final int type, id, left, top, right, bottom;
@@ -51,8 +72,18 @@ public final class TouchRouter implements GestureEngine.Output {
             this.bottom = bottom;
         }
 
-        boolean contains(float x, float y) {
+        public boolean contains(float x, float y) {
             return x >= left && x < right && y >= top && y < bottom;
+        }
+
+        /** 同一个区域（App 每次重报布局都是新对象，按内容比）。 */
+        boolean same(Region o) {
+            return o != null && o.type == type && o.id == id && o.left == left && o.top == top
+                    && o.right == right && o.bottom == bottom;
+        }
+
+        boolean inside(Region area) {
+            return left >= area.left && right <= area.right && top >= area.top && bottom <= area.bottom;
         }
 
         @Override
@@ -79,6 +110,11 @@ public final class TouchRouter implements GestureEngine.Output {
     private final Region[] slotRegion = new Region[SLOTS];
     private final float[] lastX = new float[SLOTS];
     private final float[] lastY = new float[SLOTS];
+    /** 这根手指按下时记了触点（抬起时要记一行 u）。 */
+    private final boolean[] slotTraced = new boolean[SLOTS];
+    private Trace trace;
+    /** 上次记下的键盘布局（同样的布局重报时不重复记）。 */
+    private String tracedLayout;
     private int holds;
     /** 点一下锁定的修饰键。 */
     private int latched;
@@ -106,14 +142,54 @@ public final class TouchRouter implements GestureEngine.Output {
         return engine != null;
     }
 
-    /** 整体替换；按顺序找第一个命中的，叠在上面的区域要排在前面。 */
+    /** 整体替换；按顺序找第一个命中的，叠在上面的区域要排在前面。键盘范围（REGION_KEYBOARD）排在它的键后面。 */
     public void setRegions(Region[] regions) {
         this.regions = regions;
+        if (trace != null) traceLayout(false);
     }
 
+    /**
+     * 按顺序找第一个包含这个点的区域；如果它是键盘范围，换成范围里最近的键（可能是 null）。
+     * 所以按在键上的触点结果和只看矩形一样，排在键盘范围前面的区域照样优先。
+     */
     public Region hit(float x, float y) {
+        Region r = rectHit(x, y);
+        if (r != null && r.type == Proto.REGION_KEYBOARD) return nearestKey(regions, r, x, y);
+        return r;
+    }
+
+    /** 只看矩形：第一个包含这个点的区域（键盘范围也照样返回）。 */
+    private Region rectHit(float x, float y) {
         for (Region r : regions) if (r.contains(x, y)) return r;
         return null;
+    }
+
+    /**
+     * 键盘范围 area 里离 (x, y) 最近的键：候选是整个落在 area 里的键、按钮、"左键"（REGION_KEY / BUTTON / HOLD_LEFT）。
+     * 距离按到键的矩形算（不是到中心），先比竖向、再比横向——先定行、再在行里找最近的键；一样近取列表里靠前的。
+     * 效果等于软键盘常见的判定框铺法：每行纵向铺到相邻行的中线，行内横向铺到相邻键的中线，最边上的键一直延到键盘边，
+     * 第二行两头的空位整块归 a / l（按纯欧氏距离的话，空位靠外的大半会分给上一行的 q / p）。
+     * 没有候选返回 null。点不在 area 里也照样找最近的（hit 只在命中键盘范围时才调它）。
+     */
+    public static Region nearestKey(Region[] regions, Region area, float x, float y) {
+        Region best = null;
+        float bestDy = 0, bestDx = 0;
+        for (Region r : regions) {
+            if (!keyLike(r) || !r.inside(area)) continue;
+            float dy = Math.max(0, Math.max(r.top - y, y - r.bottom));
+            float dx = Math.max(0, Math.max(r.left - x, x - r.right));
+            if (best == null || dy < bestDy || (dy == bestDy && dx < bestDx)) {
+                best = r;
+                bestDy = dy;
+                bestDx = dx;
+            }
+        }
+        return best;
+    }
+
+    /** 能当"最近的键"的区域：键、按钮、"左键"（键盘里的特殊键是按钮）。 */
+    private static boolean keyLike(Region r) {
+        return r.type == Proto.REGION_KEY || r.type == Proto.REGION_BUTTON || r.type == Proto.REGION_HOLD_LEFT;
     }
 
     // ═══════════ 触摸（屏幕像素） ═══════════
@@ -125,6 +201,7 @@ public final class TouchRouter implements GestureEngine.Output {
         lastX[slot] = x;
         lastY[slot] = y;
         slotRegion[slot] = r;
+        slotTraced[slot] = trace != null && engine != null && traceDown(slot, x, y, r, t);
         if (r == null || engine == null) {
             slotKind[slot] = KIND_NONE;
             return r;
@@ -150,9 +227,12 @@ public final class TouchRouter implements GestureEngine.Output {
                 keyDown(r.id);
                 out.button(Proto.KEY_ID_BASE + r.id, Proto.BUTTON_DOWN);
                 break;
-            default:
+            case Proto.REGION_BUTTON:
                 slotKind[slot] = KIND_BUTTON;
                 out.button(r.id, Proto.BUTTON_DOWN);
+                break;
+            default:   // 不认识的区域类型（以后的新类型、万一被直接命中的键盘范围）什么都不做，不再当成按钮 id 0
+                slotKind[slot] = KIND_NONE;
                 break;
         }
         return r;
@@ -176,6 +256,10 @@ public final class TouchRouter implements GestureEngine.Output {
         Region r = slotRegion[slot];
         slotKind[slot] = KIND_NONE;
         slotRegion[slot] = null;
+        if (slotTraced[slot]) {
+            slotTraced[slot] = false;
+            if (trace != null) trace.line(String.format(Locale.ROOT, "u %d %d %.1f %.1f", t, slot, lastX[slot], lastY[slot]));
+        }
         if (engine == null) return;
         switch (kind) {
             case KIND_PAD:
@@ -188,9 +272,12 @@ public final class TouchRouter implements GestureEngine.Output {
                 }
                 out.button(r.id, Proto.BUTTON_UP);
                 break;
-            case KIND_BUTTON:
-                out.button(r.id, r.contains(lastX[slot], lastY[slot]) ? Proto.BUTTON_TAP : Proto.BUTTON_UP);
+            case KIND_BUTTON: {
+                // 还在按钮上松开才算点击；被分过来的键盘特殊键（?123 / Fn / 🌐 / 快捷行动作），手指一直停在缝里也算
+                float x = lastX[slot], y = lastY[slot];
+                out.button(r.id, r.contains(x, y) || r.same(hit(x, y)) ? Proto.BUTTON_TAP : Proto.BUTTON_UP);
                 break;
+            }
             case KIND_KEY:
                 keyUp(r.id);
                 out.button(Proto.KEY_ID_BASE + r.id, Proto.BUTTON_UP);
@@ -207,6 +294,21 @@ public final class TouchRouter implements GestureEngine.Output {
     /** 点一下鼠标键（动作"右键""中键"之类）。 */
     public void click(int button) {
         if (engine != null) engine.click(button);
+    }
+
+    /**
+     * 按住 / 松开鼠标左键，和 {@link Proto#REGION_HOLD_LEFT} 共用 {@link #holds} 计数（DeX 模式下实体键按住配了"左键"时用）。
+     * 第一个按下时按住左键，最后一个松开时清零；减到 0 以下截在 0。{@link #releaseAll} / {@link #clearSlots} 会把计数归零，
+     * 这时若实体键还按着，之后的松开减到 0 以下也不会出错。
+     */
+    public void holdLeft(boolean down) {
+        if (engine == null) return;
+        if (down) {
+            if (holds++ == 0) engine.setExternalButtons(Proto.BUTTON_LEFT);
+        } else if (--holds <= 0) {
+            holds = 0;
+            engine.setExternalButtons(0);
+        }
     }
 
     /** 滚轮滚 n 格（正 = 向上）。 */
@@ -244,8 +346,66 @@ public final class TouchRouter implements GestureEngine.Output {
         for (int s = 0; s < SLOTS; s++) {
             slotKind[s] = KIND_NONE;
             slotRegion[s] = null;
+            slotTraced[s] = false;
         }
         holds = 0;
+    }
+
+    // ═══════════ 键盘触点记录 ═══════════
+
+    /** 打开 / 关掉触点记录（null = 关）。打开时先记一次键盘布局。 */
+    public void setTrace(Trace t) {
+        trace = t;
+        tracedLayout = null;
+        if (t == null) {
+            for (int s = 0; s < SLOTS; s++) slotTraced[s] = false;
+        } else {
+            traceLayout(true);
+        }
+    }
+
+    /** 键盘部分（范围 + 里面的键）变了才记；force = 不管变没变都记。 */
+    private void traceLayout(boolean force) {
+        StringBuilder b = new StringBuilder();
+        int areas = 0;
+        for (Region a : regions) {
+            if (a.type != Proto.REGION_KEYBOARD) continue;
+            areas++;
+            List<Region> keys = new ArrayList<>();
+            for (Region r : regions) {
+                if (keyLike(r) && r.inside(a)) keys.add(r);
+            }
+            b.append("L ").append(a.left).append(' ').append(a.top).append(' ').append(a.right).append(' ').append(a.bottom)
+                    .append(' ').append(keys.size()).append('\n');
+            for (Region r : keys) {
+                b.append("K ").append(r.type).append(' ').append(Integer.toHexString(r.id)).append(' ')
+                        .append(r.left).append(' ').append(r.top).append(' ').append(r.right).append(' ').append(r.bottom).append('\n');
+            }
+        }
+        if (areas == 0) b.append("L 0\n");
+        String layout = b.toString();
+        if (!force && layout.equals(tracedLayout)) return;
+        tracedLayout = layout;
+        for (String line : layout.split("\n")) trace.line(line);
+    }
+
+    /** 落在键盘范围里的按下记一行 p，返回记了没有。used = 实际用的键（hit 的结果）。 */
+    private boolean traceDown(int slot, float x, float y, Region used, long t) {
+        Region area = null;
+        for (Region a : regions) {
+            if (a.type == Proto.REGION_KEYBOARD && a.contains(x, y)) {
+                area = a;
+                break;
+            }
+        }
+        if (area == null) return false;
+        Region rect = rectHit(x, y);
+        Region near = nearestKey(regions, area, x, y);
+        String bounds = used == null ? "- - - -" : used.left + " " + used.top + " " + used.right + " " + used.bottom;
+        trace.line(String.format(Locale.ROOT, "p %d %d %.1f %.1f %s %s %s", t, slot, x, y,
+                rect == null || rect.type == Proto.REGION_KEYBOARD ? "-" : Integer.toHexString(rect.id),
+                near == null ? "-" : Integer.toHexString(near.id), bounds));
+        return true;
     }
 
     // ═══════════ 虚拟键盘 ═══════════

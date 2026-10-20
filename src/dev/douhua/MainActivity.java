@@ -13,6 +13,7 @@ import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Rect;
 import android.hardware.display.DisplayManager;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,6 +21,7 @@ import android.os.PersistableBundle;
 import android.os.SystemClock;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Display;
 import android.view.Gravity;
@@ -149,6 +151,8 @@ public final class MainActivity extends Activity
     /** App 自己向系统请求的方向（Surface.ROTATION_*，-1 = 没请求），见 {@link #requestOrientationSelf}。 */
     private int requestedRotation = -1;
     private String linkMessage = "";
+    /** 服务在运行却没响应（卡住了）：蓝牙模式下也要提示，用户得去重启它。 */
+    private boolean linkStuck;
     private boolean grabbed;
     private String grabMessage = "";
     // ── 蓝牙模式 ──
@@ -161,6 +165,9 @@ public final class MainActivity extends Activity
     // ── 空中鼠标（只在蓝牙模式） ──
     private AirMouse air;
     private DebugMoves debugMoves;
+    /** 键盘触点调试日志开着（只在可调试包，租期见 DebugMoves.keyLogUntil）。 */
+    private boolean keyLogOn;
+    private final Runnable keyLogCheck = this::onKeyLogChanged;
     /** 空中鼠标模式开着（只在内存里，进程没了就关）。 */
     private boolean airOn;
     private FrameLayout airOverlay;
@@ -199,13 +206,28 @@ public final class MainActivity extends Activity
             main.postDelayed(this, WHEEL_REPEAT_MS);
         }
     };
-    // ── 实体按键（音量 + / −，只在蓝牙模式）：[键][0 = 点一下, 1 = 按住]，null = 没设，照常调音量 ──
-    private final Actions.Action[][] hardKeyActions = new Actions.Action[2][2];
+    // ── 实体按键：[键][0 = 点一下, 1 = 按住]，null = 没设，不截。音量键蓝牙模式下 App 自己收（hardKeys），
+    // DeX 模式下由服务独占按键设备、判断好发来（onHardKey(int, int)）；电源键（只有点一下）两种模式都由服务截 ──
+    private final Actions.Action[][] hardKeyActions = new Actions.Action[3][2];
     private final HardKeys hardKeys = new HardKeys(new HardKeysOutput());
     private final Runnable[] hardKeyTimers = {
             () -> hardKeys.onTimer(HardKeys.VOL_UP, SystemClock.uptimeMillis()),
             () -> hardKeys.onTimer(HardKeys.VOL_DOWN, SystemClock.uptimeMillis()),
     };
+    /** 服务发来、开始了还没结束的按住（下标 = 键，值 = 开始时的动作）：断开、暂停、服务放开实体键时补结束，不会重复。 */
+    private final Actions.Action[] serverHeld = new Actions.Action[2];
+    /** DeX 模式下实体键经服务按着左键的来源：第一个按下、最后一个松开时才发 CMD_HOLD_LEFT。 */
+    private final java.util.Set<Integer> serverLeftSources = new java.util.HashSet<>();
+    private AudioManager audio;
+    /**
+     * 通话 / 来电响铃时实体键一个都不截（要能用电源键挂断、静音，用音量键调通话音量）：模式一变就重新告诉服务。
+     * 这是第二道保险：振动 / 静音模式下来电不改音频模式，响铃由服务自己查 Telecom 放开（server.CallState）。
+     */
+    private final AudioManager.OnModeChangedListener audioMode = mode -> sendHardKeys();
+    /** 上次提示过的"实体键截不了"（截不了的键位 | 原因 << 8）：同样的不重复提示，配置改了重来。 */
+    private int hardToasted = -1;
+    /** 上次读到的实体键配置（位同 CMD_HARD_KEYS），用来判断配置改没改。 */
+    private int hardConfig = -1;
     /** 触摸那一路（服务转发 / 本地分流）最近报的鼠标键；和空中鼠标那一路并起来发，谁也不会松掉对方按着的键。 */
     private int touchButtons;
     /** 服务那边锁住的修饰键（MSG_MODIFIERS）：进空中鼠标时要让服务解开，不然 Ctrl 一直按着、每次点击都成了 Ctrl+点击。 */
@@ -236,9 +258,12 @@ public final class MainActivity extends Activity
         prefs = new Prefs(this);
         haptics = new Haptics(this);
         displays = getSystemService(DisplayManager.class);
+        audio = getSystemService(AudioManager.class);
         bt = BtHid.get(this);
         air = new AirMouse(this, bt, prefs, this);
-        debugMoves = DebugMoves.register(this, bt);   // 只在可调试包里有：adb 让手机发任意位移，量回正中用
+        // 只在可调试包里有：adb 让手机发任意位移（量回正中用）、开键盘触点日志（打字测试用）
+        debugMoves = DebugMoves.register(this, bt, this::onKeyLogChanged);
+        onKeyLogChanged();   // 界面重建时接上还没到期的租期
         density = getResources().getDisplayMetrics().density;
         linkMessage = getString(R.string.status_connecting);
         tiltListener = new OrientationEventListener(this) {
@@ -271,6 +296,7 @@ public final class MainActivity extends Activity
         Display disp = getDisplay();
         if (disp != null) air.setRotation(disp.getRotation());
         displays.registerDisplayListener(this, main);
+        if (audio != null) audio.addOnModeChangedListener(getMainExecutor(), audioMode);
         link.start();
         if (btMode) {
             bt.acquire(this);
@@ -302,6 +328,7 @@ public final class MainActivity extends Activity
         local.releaseAll();   // 蓝牙模式：按着的键、鼠标键都松开（DeX 模式下 local 本来就闲着）
         localGesture = false;
         hardKeys.reset();   // 音量键按住中的先收尾（按住移动 / 拖动 / 左键松开）
+        endServerHolds();   // 服务那一路的同理（服务随后放开实体键，发来的结束按住不会再做一次）
         stopWheel();
         leftHolds = 0;
         releaseAir();   // 空中指针：停跟随、松开按着的键（空中鼠标页本身留着，回来接着用）
@@ -313,6 +340,7 @@ public final class MainActivity extends Activity
     @Override
     protected void onDestroy() {
         if (debugMoves != null) debugMoves.unregister(this);
+        main.removeCallbacks(keyLogCheck);
         super.onDestroy();
     }
 
@@ -335,6 +363,7 @@ public final class MainActivity extends Activity
             btAcquired = false;
         }
         displays.unregisterDisplayListener(this);
+        if (audio != null) audio.removeOnModeChangedListener(audioMode);
         super.onStop();
     }
 
@@ -347,6 +376,7 @@ public final class MainActivity extends Activity
         air.loadFilter();
         updateAirAbs();   // 屏幕比例可能刚改过
         loadHardKeys();
+        sendHardKeys();
         local.setConfig(prefs.engineConfig(), density);
         applyBackSwallow();
         if (!btMode) requestOrientationSelf(-1);   // 蓝牙模式下等连服务的结果再定，见 onLinkStatus
@@ -662,7 +692,8 @@ public final class MainActivity extends Activity
     private void pushLayout() {
         if (pad == null) return;
         boolean keyboardShown = keyboardScreen.getVisibility() == View.VISIBLE;
-        if (airOn ? airOverlay.getWidth() == 0 : keyboardShown ? keyboardScreen.getWidth() == 0 : pad.getWidth() == 0) return;
+        // 键盘在最上面（空中鼠标页上调出来的也是），先看它
+        if (keyboardShown ? keyboardScreen.getWidth() == 0 : airOn ? airOverlay.getWidth() == 0 : pad.getWidth() == 0) return;
         List<int[]> regions = collectRegions(keyboardShown);
         if (btMode) {
             TouchRouter.Region[] rs = new TouchRouter.Region[regions.size()];
@@ -677,14 +708,44 @@ public final class MainActivity extends Activity
         updateStatus();
     }
 
+    /**
+     * 键盘触点调试日志（打字测试，tools/type-log.sh 经 adb 广播打开、每 3 秒续一次租期）：开着时本地分流和服务的分流
+     * 都把键盘上的触点写 logcat（TouchRouter.Trace）。租期一到自己关，不靠工具退出时那一下。
+     */
+    private void onKeyLogChanged() {
+        main.removeCallbacks(keyLogCheck);
+        long left = debugMoves == null ? 0 : DebugMoves.keyLogUntil - SystemClock.uptimeMillis();
+        boolean on = left > 0;
+        if (on) main.postDelayed(keyLogCheck, left + 1);   // 到期再查一次（续过就接着等）
+        if (on == keyLogOn) return;
+        keyLogOn = on;
+        local.setTrace(on ? s -> Log.d(TouchRouter.TRACE_TAG, s) : null);
+        link.trace(on);
+        Log.i("douhua", "键盘触点调试日志" + (on ? "开" : "关"));
+    }
+
     /** 豆花在前台、"贴字"面板没开、键盘不在调整模式：触摸由分流处理（否则按普通方式交给各个按钮）。 */
     private boolean localActive() {
         return resumed && textBar.getVisibility() != View.VISIBLE && !keyboardScreen.isAdjusting();
     }
 
-    /** 区域列表，每项 {type, id, left, top, right, bottom}（屏幕像素）；叠在上面的排在前面。 */
+    /**
+     * 区域列表，每项 {type, id, left, top, right, bottom}（屏幕像素）；叠在上面的排在前面。
+     * 只报看得见的那一屏：键盘（空中鼠标页上调出来的也是）、空中鼠标页、主界面三组互斥。
+     * 键盘开着时连空中鼠标页的也报的话，键盘空隙里看不见的圆钮、格子照样按得到。
+     */
     private List<int[]> collectRegions(boolean keyboardShown) {
         List<int[]> regions = new ArrayList<>();
+        if (keyboardShown) {
+            for (int i = 0; i < kbToolbar.size(); i++) {
+                if (kbToolbar.get(i).getVisibility() == View.VISIBLE) {
+                    addRegion(regions, kbToolbar.get(i), Proto.REGION_BUTTON, KB_CLOSE_ID + i);
+                }
+            }
+            keyboard.collectRegions(regions);
+            if (keyboardScreen.isPadUsable()) addRegion(regions, miniPad, Proto.REGION_PAD, 0);
+            return regions;
+        }
         if (airOn) {   // 空中鼠标页：只报页上的按钮，碰到别处没有反应
             addRegion(regions, airRound, Proto.REGION_BUTTON, AIR_ROUND_ID);   // 叠在四个格子的角上，排最前
             for (int i = 0; i < airSlots.size(); i++) {
@@ -694,16 +755,6 @@ public final class MainActivity extends Activity
             }
             addRegion(regions, airCenter, Proto.REGION_BUTTON, AIR_CENTER_ID);
             addRegion(regions, airExit, Proto.REGION_BUTTON, AIR_EXIT_ID);
-            return regions;
-        }
-        if (keyboardShown) {
-            for (int i = 0; i < kbToolbar.size(); i++) {
-                if (kbToolbar.get(i).getVisibility() == View.VISIBLE) {
-                    addRegion(regions, kbToolbar.get(i), Proto.REGION_BUTTON, KB_CLOSE_ID + i);
-                }
-            }
-            keyboard.collectRegions(regions);
-            if (keyboardScreen.isPadUsable()) addRegion(regions, miniPad, Proto.REGION_PAD, 0);
             return regions;
         }
         // 四角的小按钮叠在触控板上，要排在触控板前面（服务按顺序找第一个命中的区域）
@@ -799,6 +850,14 @@ public final class MainActivity extends Activity
             }
             return;
         }
+        boolean airPageId = id == AIR_ROUND_ID || id == AIR_EXIT_ID || id == AIR_CENTER_ID
+                || (id >= AIR_SLOT_BASE_ID && id < AIR_SLOT_BASE_ID + airSlots.size());
+        if (airPageId && airPaused()) {
+            // 键盘盖着空中鼠标页：页上的按钮看不见了。分流按按下时记的区域报，键盘打开前就按着的手指抬起时仍报到这里，
+            // 轻点当松开：按住类照常松开，点按类不做（不然一个 TAP 就锁定移动、在暂停中跟起来）
+            if (down) return;
+            action = Proto.BUTTON_UP;
+        }
         if (id == AIR_ROUND_ID) {   // 圆钮：按着就移动；点一下（没到 HOLD_MS 就松开、还在圆钮上）锁定移动，再点一下解锁
             airRoundPressed = down;
             if (down) {
@@ -870,15 +929,15 @@ public final class MainActivity extends Activity
     private void actionDown(Actions.Action a, int source) {
         switch (a.kind) {
             case AIR_MOVE:
-                if (!airReady()) return;
+                if (!airReady() || airPaused()) return;   // 键盘盖着空中鼠标页：不跟随（兜底）
                 haptics.play(GestureEngine.HAPTIC_CLICK);
                 air.holdFollow(source, true);
                 break;
             case AIR_DRAG:
-                if (airReady()) air.holdDrag(source, true);   // 震动（开始拖动 + 持续轻震）由 AirMouse 发
+                if (airReady() && !airPaused()) air.holdDrag(source, true);   // 震动（开始拖动 + 持续轻震）由 AirMouse 发
                 break;
             case HOLD_LEFT:   // 音量键按住（屏幕上的"左键"按钮走分流，不经过这里）
-                air.holdLeft(source, true);
+                holdLeft(source, true);
                 leftFollow(source, true);
                 holdLeftFeedback(true);
                 break;
@@ -904,7 +963,7 @@ public final class MainActivity extends Activity
                 air.holdDrag(source, false);
                 break;
             case HOLD_LEFT:
-                air.holdLeft(source, false);
+                holdLeft(source, false);
                 leftFollow(source, false);
                 holdLeftFeedback(false);
                 break;
@@ -927,6 +986,22 @@ public final class MainActivity extends Activity
         wheelDir = 0;
         wheelSource = Integer.MIN_VALUE;
         main.removeCallbacks(wheelRepeat);
+    }
+
+    /**
+     * 实体键按住"左键"：蓝牙模式经空中指针那一路发；DeX 模式鼠标在服务里，经服务的虚拟鼠标按住（CMD_HOLD_LEFT，
+     * 和屏幕上的"左键"按钮共用服务里的计数）。
+     */
+    private void holdLeft(int source, boolean down) {
+        if (btMode) {
+            air.holdLeft(source, down);
+            return;
+        }
+        boolean was = !serverLeftSources.isEmpty();
+        if (down) serverLeftSources.add(source);
+        else serverLeftSources.remove(source);
+        boolean now = !serverLeftSources.isEmpty();
+        if (now != was) link.holdLeft(now);
     }
 
     /** "左键"按着 = 拖动中：按下"嗒"一下再持续轻震，松开停震再"嗒"一下。屏幕上的"左键"按钮、音量键都是这一套。 */
@@ -955,7 +1030,7 @@ public final class MainActivity extends Activity
             air.holdFollow(source, false);
             return;
         }
-        if (!airOn || !btMode) return;
+        if (!airOn || airPaused() || !btMode) return;   // 键盘盖着空中鼠标页时也不跟（兜底）
         Runnable r = () -> {
             leftFollowPending.remove(source);
             air.holdFollow(source, true);
@@ -1019,17 +1094,23 @@ public final class MainActivity extends Activity
 
     // ═══════════ 键盘屏 ═══════════
 
+    /** 键盘屏开 / 关。空中鼠标页上调出来时键盘盖在页面上面，空中鼠标暂停（见 {@link #airPaused}），收起回到页面。 */
     private void setKeyboardScreen(boolean on) {
+        boolean was = keyboardScreen.getVisibility() == View.VISIBLE;
         if (on) {
             closeTextBar();
             keyboardScreen.setRect(prefs.keyboardRect(keyboardScreen.isLandscape()));
         } else {
             setAdjusting(false);
         }
+        if (airOn && on && !was) pauseAir();
         mainRow.setVisibility(on ? View.GONE : View.VISIBLE);
         keyboardScreen.setVisibility(on ? View.VISIBLE : View.GONE);
+        applyAirOverlayVisibility();
+        if (airOn && !on && was) resumeAirPage();
         updateActiveButtons();
         updateStatus();
+        updateAirOverlay();
         pushLayout();
     }
 
@@ -1176,13 +1257,15 @@ public final class MainActivity extends Activity
                 break;
             }
             case AIR_MOUSE:
-                if (airReady()) setAirMode(!airOn);
+                // 键盘盖着空中鼠标页时 = 收起键盘回到空中鼠标页（人看到的是键盘，多半是想回去，不是退出）
+                if (airPaused()) setKeyboardScreen(false);
+                else if (airReady()) setAirMode(!airOn);
                 break;
             case AIR_MOVE:   // 只能点一下的地方（手势、音量键点一下）：点一下开始跟随，再点一下停
-                if (airReady()) air.toggleFollow();
+                if (airReady() && !airPaused()) air.toggleFollow();   // 暂停中（小触控板手势、键盘最下面一排）不跟随，不提示
                 break;
             case AIR_DRAG:
-                if (airReady()) air.toggleDrag();
+                if (airReady() && !airPaused()) air.toggleDrag();
                 break;
             case AIR_CENTER:
                 if (airReady()) centerPointer();
@@ -1330,10 +1413,11 @@ public final class MainActivity extends Activity
     }
 
     @Override
-    public void onLinkStatus(boolean connected, String message) {
+    public void onLinkStatus(boolean connected, boolean stuck, String message) {
         boolean wasConnected = linkOk;
         boolean wasGrabbed = grabbed;
         linkOk = connected;
+        linkStuck = stuck;
         linkMessage = message;
         if (connected) {
             linkSeen = true;
@@ -1341,11 +1425,17 @@ public final class MainActivity extends Activity
             link.config(prefs.engineConfig(), density);
             Display d = getDisplay();
             if (prefs.rotation() >= 0 && d != null) link.rotate(d.getDisplayId(), prefs.rotation());
+            if (keyLogOn) link.trace(true);   // 服务每条连接默认不记
+            sendHardKeys();
             pushLayout();
         } else {
             // 蓝牙模式下这次一直没连上服务：没有服务，自己请求方向。连上过又断的不请求，免得服务重启时被塞进横框
             if (btAcquired && !linkSeen && prefs.rotation() >= 0) requestOrientationSelf(prefs.rotation());
             grabbed = false;
+            if (wasConnected) {   // 服务那一路的实体键按住等不到结束了；服务那边的左键随会话结束松开
+                endServerHolds();
+                serverLeftSources.clear();
+            }
             // 连着的服务断了才收尾：服务没开时这里每秒来一次（连不上就重试），不能每次都打断本地分流里正按着的东西。
             // 蓝牙模式下服务没接管时，按钮、修饰键、拖动都归本地分流，也不用收
             if (wasConnected && (!btMode || wasGrabbed)) {
@@ -1353,7 +1443,10 @@ public final class MainActivity extends Activity
                     touchButtons = 0;
                     bt.sendMouse(air.buttons(), 0, 0, 0, 0);
                 }
-                if (wheelSource >= AirMouse.SRC_ROUND) stopWheel();   // 屏幕按钮的滚轮经服务转来；音量键的不归服务
+                // 键盘同理：服务收尾时先关连接再松键，那份全零报文发不过来，主机那头锁住的修饰键、按着的键会一直按着
+                if (btMode) bt.sendKeyboard(new byte[Hid.KEYBOARD_REPORT_SIZE]);
+                // 屏幕按钮的滚轮经服务转来；蓝牙模式下音量键的不归服务（DeX 模式下服务截的音量键上面 endServerHolds 已收尾）
+                if (wheelSource >= AirMouse.SRC_ROUND) stopWheel();
                 air.releaseFrom(AirMouse.SRC_ROUND);   // 屏幕按钮按住的空中移动 / 拖动同理
                 leftFollowPending.entrySet().removeIf(e -> {   // 屏幕"左键"等着开始跟随的也作罢（等不到它的松开）
                     if (e.getKey() < AirMouse.SRC_ROUND) return false;
@@ -1364,6 +1457,10 @@ public final class MainActivity extends Activity
                 leftHolds = 0;
                 latchedMods = 0;
                 keyboard.setModifiers(0);
+                if (wasGrabbed) {   // 服务转来的键按下等不到松开了：按下的样子、放大提示收起
+                    keyboard.clearPressed();
+                    for (TextView b : numpadButtons) Style.look(b, false, false);
+                }
                 if (air.buttons() == 0) haptics.stopHum();   // 收不到"拖动结束"了（空中指针那一路不归服务管）
                 updateActiveButtons();
             }
@@ -1390,6 +1487,78 @@ public final class MainActivity extends Activity
         }
         grabMessage = grabText(reason, detail);
         updateStatus();
+    }
+
+    /** 服务截住的实体键（已判断好点一下 / 按住）：照蓝牙模式本地那一路执行动作，来源编号 = 键（AirMouse.SRC_VOL_*）。 */
+    @Override
+    public void onHardKey(int key, int event) {
+        if (key == Proto.HARD_POWER) {
+            Actions.Action a = hardKeyActions[HardKeys.POWER][0];
+            if (event == Proto.HARD_TAP && a != null && resumed && !stopped) fire(a);
+            return;
+        }
+        if (key != HardKeys.VOL_UP && key != HardKeys.VOL_DOWN) return;
+        if (event == Proto.HARD_HOLD_END) {
+            endServerHold(key);
+            return;
+        }
+        if (!resumed || stopped) return;   // 不在前台：不做（服务随后会放开实体键）
+        if (event == Proto.HARD_TAP) {
+            Actions.Action a = hardKeyActions[key][0];
+            if (a != null) fire(a);
+        } else if (event == Proto.HARD_HOLD_START && serverHeld[key] == null) {
+            Actions.Action a = hardKeyActions[key][1];
+            if (a == null) return;
+            serverHeld[key] = a;
+            actionDown(a, key);
+        }
+    }
+
+    /** 服务那一路的按住结束（收到 HOLD_END，或断开 / 暂停 / 服务放开实体键时补）：只结束一次。 */
+    private void endServerHold(int key) {
+        Actions.Action a = serverHeld[key];
+        if (a == null) return;
+        serverHeld[key] = null;
+        actionUp(a, key);
+    }
+
+    private void endServerHolds() {
+        endServerHold(HardKeys.VOL_UP);
+        endServerHold(HardKeys.VOL_DOWN);
+    }
+
+    /**
+     * 实体键的独占状态。服务不截了（grabbed 为 0）：按住的补结束。配了动作却截不了的键提示一次
+     * （同样的不重复提示，配置改了重来）；文字在这里按语言和原因拼，出错（HARD_FAILED）时带上服务发来的细节
+     * （同触摸屏的 grab_failed），别的原因细节只写在服务日志里。
+     */
+    @Override
+    public void onHardGrab(int grabbedBits, int unavailable, int reason, String detail) {
+        if (grabbedBits == 0) endServerHolds();
+        if (reason == Proto.HARD_NO_INJECTOR) {
+            toastHardOnce(reason << 8, getString(R.string.hard_keys_no_injector));
+            return;
+        }
+        if (unavailable == 0) return;
+        List<String> names = new ArrayList<>();
+        if ((unavailable & Proto.HARD_BIT_VOL_UP) != 0) names.add(getString(R.string.key_name_volume_up));
+        if ((unavailable & Proto.HARD_BIT_VOL_DOWN) != 0) names.add(getString(R.string.key_name_volume_down));
+        if ((unavailable & Proto.HARD_BIT_POWER) != 0) names.add(getString(R.string.key_name_power));
+        String keys = android.icu.text.ListFormatter.getInstance().format(names);
+        String text;
+        switch (reason) {
+            case Proto.HARD_SHARED: text = getString(R.string.hard_keys_unavailable, keys); break;
+            case Proto.HARD_NO_DEVICE: text = getString(R.string.hard_keys_no_device, keys); break;
+            case Proto.HARD_MIXED: text = getString(R.string.hard_keys_mixed, keys, detail); break;
+            default: text = getString(R.string.hard_keys_failed, keys, detail); break;   // HARD_FAILED
+        }
+        toastHardOnce(unavailable | (reason << 8), text);
+    }
+
+    private void toastHardOnce(int what, String text) {
+        if (what == hardToasted) return;
+        hardToasted = what;
+        Toast.makeText(this, text, Toast.LENGTH_LONG).show();
     }
 
     /** 服务只发原因代码，文字在这里按系统语言拼。 */
@@ -1438,6 +1607,8 @@ public final class MainActivity extends Activity
         boolean ok;
         if (btMode) {
             s = btStatusText();
+            // 蓝牙模式下没开服务是正常配置，不提示；开了却卡住，系统手势就挡不住了，要告诉用户去重启
+            if (linkStuck) s += " · " + linkMessage;
             ok = btState == BtHid.STATE_CONNECTED;
         } else if (!linkOk) {
             s = linkMessage;
@@ -1462,7 +1633,10 @@ public final class MainActivity extends Activity
 
     // ═══════════ 空中鼠标 ═══════════
 
-    /** 空中鼠标页：盖住触控板和键盘。上面一行状态，中间是可设定的大按钮，下面"校准回正中"和"按住退出"。默认隐藏。 */
+    /**
+     * 空中鼠标页：盖住触控板屏；在页上调出的键盘反过来盖住它（这时页面隐藏，见 applyAirOverlayVisibility）。
+     * 上面一行状态，中间是可设定的大按钮和圆钮，下面"回正中"和"按住退出"。默认隐藏。
+     */
     private View buildAirOverlay() {
         airOverlay = new FrameLayout(this);
         airOverlay.setBackgroundColor(Color.BLACK);
@@ -1571,27 +1745,67 @@ public final class MainActivity extends Activity
         return t;
     }
 
-    /** 进出空中鼠标页。进的时候先把触摸那一路收尾（拖动、轻点等待），页面盖上，区域只剩页上的按钮。 */
+    /**
+     * 进出空中鼠标页。进的时候先把触摸那一路收尾（拖动、轻点等待），页面盖上，区域只剩页上的按钮。
+     * 从键盘屏进来先收起键盘（键盘开着时盖在页面上面，不收起就看不出进了）；退出后回到触控板屏。
+     * 暂停中（键盘盖着页面）退出的，键盘留下当主界面的键盘。
+     */
     private void setAirMode(boolean on) {
         if (on == airOn) return;
+        if (on && keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);   // airOn 还是假：普通的收起
         airOn = on;
         updateAirAbs();
         local.releaseAll();
         localGesture = false;
-        if (on && btMode && grabbed && link.isConnected()) {
-            // 服务那边锁住的修饰键：按一下就解开（服务的 TouchRouter 里修饰键是按下时切换）
-            for (int bit = 0; bit < 4; bit++) {
-                if ((latchedMods & (1 << bit)) == 0) continue;
-                link.hidKey(0xE0 + bit, true);
-                link.hidKey(0xE0 + bit, false);
-            }
-        }
+        if (on) unlatchServiceModifiers();
         if (!on) releaseAir();
         stopWheel();
         main.removeCallbacks(airExitLater);
-        airOverlay.setVisibility(on ? View.VISIBLE : View.GONE);
+        applyAirOverlayVisibility();
         pushLayout();
         updateAirOverlay();
+    }
+
+    /** 空中鼠标暂停：空中鼠标模式开着、键盘盖在页面上面。只看键盘看不看得见，不另记状态。 */
+    private boolean airPaused() {
+        return airOn && keyboardScreen.getVisibility() == View.VISIBLE;
+    }
+
+    /**
+     * 空中鼠标页显示与否：模式开着、键盘没盖上来才显示。键盘开着时页面 GONE 而不是调层次：
+     * 键盘屏没有背景，页面还在的话会从小触控板和键盘的空隙里透出来；没接管、调整键盘时，可点的页面还会先把触摸吃掉。
+     */
+    private void applyAirOverlayVisibility() {
+        airOverlay.setVisibility(airOn && keyboardScreen.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
+    }
+
+    /**
+     * 键盘盖上空中鼠标页：照 onPause 的顺序收尾。先 hardKeys.reset()（音量键按住中的先 holdEnd，按住移动 / 左键 / 滚轮
+     * 正常收尾、leftHolds 跟着减），再 releaseAir()——反过来的话 air.releaseAll() 先清掉了左键，音量键"左键"的震动收不了尾。
+     * 不清 leftHolds、不动本地分流：触摸没有丢，正按着的手指抬起时照常收到松开。收起后不自动恢复跟随，要人再按。
+     */
+    private void pauseAir() {
+        hardKeys.reset();
+        stopWheel();
+        releaseAir();
+        main.removeCallbacks(airExitLater);
+    }
+
+    /** 收起键盘回到空中鼠标页：本地分流收尾，键盘上锁住的修饰键解开（不然每次空中点击都成了 Ctrl+点击，同进页面时）。 */
+    private void resumeAirPage() {
+        local.releaseAll();   // 本地分流里锁住的修饰键也在这里解开
+        localGesture = false;
+        unlatchServiceModifiers();
+    }
+
+    /** 服务那边锁住的修饰键：按一下就解开（服务的 TouchRouter 里修饰键是按下时切换）。只在蓝牙模式、服务接管着时。 */
+    private void unlatchServiceModifiers() {
+        if (!btMode || !grabbed || !link.isConnected()) return;
+        for (int bit = 0; bit < 4; bit++) {
+            if ((latchedMods & (1 << bit)) == 0) continue;
+            link.hidKey(0xE0 + bit, true);
+            link.hidKey(0xE0 + bit, false);
+        }
     }
 
     private void updateAirOverlay() {
@@ -1604,6 +1818,8 @@ public final class MainActivity extends Activity
 
     /** 触摸那一路的鼠标报文：记下它按着的键，并上空中鼠标按着的键再发。 */
     private void sendTouchMouse(int buttons, int dx, int dy, int wheel, int pan) {
+        // 触控板挪过光标（空中鼠标页上调出的键盘带小触控板）：激光笔式记的位置作废，下次跟随先回正中。没挪过就接着原来的位置
+        if (dx != 0 || dy != 0) air.forgetPosition();
         touchButtons = buttons;
         bt.sendMouse(buttons | air.buttons(), dx, dy, wheel, pan);
     }
@@ -1650,18 +1866,45 @@ public final class MainActivity extends Activity
 
     // ═══════════ 实体按键 ═══════════
 
-    /** 按设置读音量键的动作（"无" = 不管，照常调音量）。 */
+    /** 按设置读实体键的动作（"无" = 不截）。电源键只有点一下。 */
     private void loadHardKeys() {
-        for (int k = 0; k < 2; k++) {
+        for (int k = 0; k < 3; k++) {
             for (int h = 0; h < 2; h++) {
-                Actions.Action a = Actions.get(prefs.hardKey(k, h == 1));
-                hardKeyActions[k][h] = a.kind == Actions.Kind.NONE ? null : a;
+                Actions.Action a = h == 1 && k == HardKeys.POWER ? null : Actions.get(prefs.hardKey(k, h == 1));
+                hardKeyActions[k][h] = a == null || a.kind == Actions.Kind.NONE ? null : a;
             }
-            hardKeys.setConfig(k, hardKeyActions[k][0] != null, hardKeyActions[k][1] != null);
+            if (k < 2) hardKeys.setConfig(k, hardKeyActions[k][0] != null, hardKeyActions[k][1] != null);
         }
+        int cfg = 0;
+        for (int i = 0; i < 5; i++) if (hardKeyActions[i / 2][i % 2] != null) cfg |= 1 << i;
+        if (cfg != hardConfig) hardToasted = -1;   // 配置改了：截不了的话再提示一次
+        hardConfig = cfg;
     }
 
-    /** 音量键有没有设动作（蓝牙模式才管；DeX 模式下的以后由服务做）。 */
+    /**
+     * 告诉服务截哪些实体键（连上时、改设置后、通话状态变了时）。DeX 模式：音量键、电源键按配置；
+     * 蓝牙模式：音量键 App 自己收（发 0），电源键按配置（App 自己拿不到电源键）。
+     * 通话、来电响铃时全发 0，服务全部放开：要能用电源键挂断 / 静音、用音量键调通话音量。
+     * 只看音频模式：振动 / 静音模式下来电模式不变，那种响铃靠服务自己查 Telecom（server.CallState）。
+     */
+    private void sendHardKeys() {
+        if (!link.isConnected()) return;
+        boolean call = inCall();
+        boolean vol = !btMode && !call;
+        link.hardKeys(vol && hardKeyActions[0][0] != null, vol && hardKeyActions[0][1] != null,
+                vol && hardKeyActions[1][0] != null, vol && hardKeyActions[1][1] != null,
+                !call && hardKeyActions[HardKeys.POWER][0] != null);
+    }
+
+    /**
+     * 通话中或来电响铃（音频模式不是 NORMAL）：实体键交还系统。看不到振动 / 静音模式下的响铃（模式不变），
+     * 那种情况服务截的键由服务查 Telecom 放开；App 自己收的音量键响铃时系统会先截去静音，到不了这里。
+     */
+    private boolean inCall() {
+        return audio != null && audio.getMode() != AudioManager.MODE_NORMAL;
+    }
+
+    /** 音量键有没有设动作（蓝牙模式才由 App 自己收；DeX 模式下由服务截，窗口照旧不抢 DeX 的焦点）。 */
     private boolean hardKeysActive() {
         return btMode && (hardKeys.mapped(HardKeys.VOL_UP) || hardKeys.mapped(HardKeys.VOL_DOWN));
     }
@@ -1673,6 +1916,13 @@ public final class MainActivity extends Activity
         int k = code == KeyEvent.KEYCODE_VOLUME_UP ? HardKeys.VOL_UP : HardKeys.VOL_DOWN;
         if (!btMode || !resumed || !hardKeys.mapped(k)) return false;
         int action = e.getAction();
+        if (inCall() || airPaused()) {
+            // 通话中（调通话音量）、键盘盖着空中鼠标页：音量键交还系统调音量。之前按下、还没松开的那一下（连发的按下、最后的松开）
+            // 照旧吞掉，松开当取消、不算点一下（按住中的补结束）——不然系统收到没头的松开，HardKeys 也一直以为它按着，回来后第一下被吃掉
+            if (!hardKeys.isPressed(k)) return false;
+            if (action == KeyEvent.ACTION_UP) hardKeys.cancel(k);
+            return true;
+        }
         if (action == KeyEvent.ACTION_UP && (e.getFlags() & KeyEvent.FLAG_CANCELED) != 0) {
             hardKeys.cancel(k);   // 被系统取消的按键：当放手，不算点一下
         } else if (action == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {

@@ -16,6 +16,7 @@ public final class AirMouseTest {
         keysCancel();
         keysResetWhileHeld();
         keysForgetDropsStaleUp();
+        keysPausePassThrough();
         pointerFlatYawAndPitch();
         pointerRollDoesNotLeak();
         pointerCameraPose();
@@ -114,6 +115,33 @@ public final class AirMouseTest {
         r.keys.key(UP, false, 100);
         r.keys.key(UP, true, 200);
         eq(r.log, list("t0", "t0"), "forget：停着时漏掉的松开不影响下一次按下");
+    }
+
+    /**
+     * 空中鼠标暂停（键盘盖着页面）：MainActivity 先 reset 收尾；暂停期间只吞暂停前按下、还没松开的那一下（isPressed），
+     * 它的松开当 cancel，不多算点一下；新按下的不进 HardKeys（交还系统调音量）。
+     */
+    static void keysPausePassThrough() {
+        KeysRec r = keys(true, false);
+        r.keys.key(UP, true, 0);   // 这一下（点一下 = 键盘）把键盘调出来
+        r.keys.reset();
+        check(r.keys.isPressed(UP), "暂停前按下、还没松开：算按着（暂停中照旧吞掉）");
+        check(!r.keys.isPressed(DOWN), "没按过的键：不算按着（暂停中交还系统）");
+        r.keys.cancel(UP);
+        check(!r.keys.isPressed(UP), "松开时 cancel：不再算按着");
+        eq(r.log, list("t0"), "只设了点一下：暂停前那一下的松开不多算");
+        r.keys.key(UP, true, 500);
+        eq(r.log, list("t0", "t0"), "回到空中鼠标页后再按：照常点一下");
+
+        KeysRec h = keys(false, true);
+        h.keys.key(UP, true, 0);
+        h.keys.onTimer(UP, 300);
+        h.keys.reset();
+        eq(h.log, list("s0", "h0", "e0"), "按住中暂停：reset 先结束按住");
+        check(h.keys.isPressed(UP), "按住中暂停：还算按着");
+        h.keys.cancel(UP);
+        eq(h.log, list("s0", "h0", "e0"), "之后的 cancel 不再结束一次");
+        check(!h.keys.isPressed(UP), "cancel 后不再算按着");
     }
 
     // ═══════════ 陀螺仪换算 ═══════════

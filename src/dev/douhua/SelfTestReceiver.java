@@ -19,13 +19,14 @@ public final class SelfTestReceiver extends BroadcastReceiver {
             String result;
             try (Socket s = new Socket()) {
                 s.connect(new InetSocketAddress(Proto.HOST, Proto.PORT), 1000);
+                s.setSoTimeout(Proto.HELLO_TIMEOUT_MS);   // 服务卡住时不死等
                 DataInputStream in = new DataInputStream(s.getInputStream());
                 int tag = in.readUnsignedByte();
                 int version = in.readUnsignedByte();
-                boolean ok = in.readUnsignedByte() == 1;
+                int ok = in.readUnsignedByte();   // Proto.HELLO_*：0 出错、1 正常、2 忙（另一个连接正在用）
                 String message = in.readUTF();
                 result = "连接成功：tag=" + tag + " version=" + version
-                        + " ok=" + ok + (message.isEmpty() ? "" : " " + message);
+                        + " ok=" + ok + (ok == Proto.HELLO_BUSY ? "（忙）" : "") + (message.isEmpty() ? "" : " " + message);
             } catch (Exception e) {
                 result = "连接失败：" + e;
             }

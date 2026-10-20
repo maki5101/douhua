@@ -14,6 +14,8 @@
     <string name="status_denied">رفض النظام الاتصال: %1$s</string>
     <string name="status_version">إصدار الخدمة %1$d لا يطابق إصدار التطبيق %2$d: شغّل tools/stop-server.sh ثم tools/start-server.sh</string>
     <string name="status_service_error">خطأ في الخدمة: %1$s</string>
+    <string name="status_service_stuck">خدمة دوهوا لا تستجيب: شغّل tools/start-server.sh على الحاسوب (يعيد تشغيل الخدمة المتوقفة)</string>
+    <string name="status_service_busy">خدمة دوهوا مستخدمة من اتصال آخر (نافذة دوهوا أخرى أو أداة اختبار)؛ سيتصل تلقائيًا عند انقطاعه</string>
     <string name="status_text_mode">إدخال نص · لوحة اللمس متوقفة مؤقتًا</string>
     <string name="status_adjusting">ضبط لوحة المفاتيح · لوحة اللمس متوقفة مؤقتًا</string>
     <string name="status_taking_over">جارٍ تولي الشاشة اللمسية…</string>
@@ -237,11 +239,22 @@
     <string name="air_row_add">＋ إضافة صف (حتى %1$d)</string>
     <string name="air_round_at">مكان الزر الدائري</string>
     <string name="air_round_between">بين %1$d و%2$d و%3$d و%4$d</string>
-    <string name="sec_hard_keys">أزرار الصوت</string>
-    <string name="hard_keys_hint">«لا شيء» = الصوت كالمعتاد. «اضغط مطولًا للتحريك» على النقرة: نقرة تبدأ وأخرى توقف.</string>
+    <string name="sec_hard_keys">الأزرار الفعلية</string>
+    <string name="hard_keys_hint">«لا شيء» = يبقى الزر كالمعتاد. الزر الذي له إجراء يصبح كله لدوهوا ولا يغيّر الصوت بعد ذلك. «اضغط مطولًا للتحريك» على النقرة: نقرة تبدأ وأخرى توقف.</string>
     <string name="hk_up_tap">رفع الصوت: نقرة</string>
     <string name="hk_up_hold">رفع الصوت: ضغط مطوّل</string>
     <string name="hk_down_tap">خفض الصوت: نقرة</string>
     <string name="hk_down_hold">خفض الصوت: ضغط مطوّل</string>
+    <string name="hk_power_tap">زر التشغيل: نقرة</string>
+    <string name="hard_keys_power_hint">يُعترض الضغط القصير المنفرد فقط. الضغط المطوّل والضغط المتكرر (الكاميرا، استغاثة الطوارئ) والضغط مع زر صوت تذهب إلى النظام كالمعتاد، والضغط المطوّل يحتاج نحو 0.35 ثانية إضافية. أثناء الاعتراض لا يطفئ زر التشغيل الشاشة: اخرج من دوهوا أولًا. «لا شيء» = لا اعتراض.</string>
+    <string name="hard_keys_service_hint">يلزم تشغيل خدمة دوهوا؛ لا اعتراض أثناء المكالمات أو الرنين.</string>
+    <string name="hard_keys_unavailable">لا يمكن اعتراض %1$s وحده على هذا الهاتف (غالبًا يشارك جهازًا مع مدخلات أخرى)، فلن يعمل الإجراء المعيّن</string>
+    <string name="hard_keys_no_injector">لا تستطيع الخدمة حقن المفاتيح، لذا لا تُعترض الأزرار الفعلية (وإلا لتوقف الصوت وزر التشغيل عن العمل)</string>
+    <string name="hard_keys_no_device">لم يُعثر على جهاز إدخال لـ%1$s على هذا الهاتف، فلن يعمل الإجراء المعيّن</string>
+    <string name="hard_keys_failed">تعذّر اعتراض %1$s، فلن يعمل الإجراء المعيّن: %2$s</string>
+    <string name="hard_keys_mixed">تعذّر اعتراض %1$s، فلن تعمل الإجراءات المعيّنة: %2$s</string>
+    <string name="key_name_power">زر التشغيل</string>
+    <string name="key_name_volume_up">زر رفع الصوت</string>
+    <string name="key_name_volume_down">زر خفض الصوت</string>
     <string name="air_center_btn">المنتصف</string>
 </resources>

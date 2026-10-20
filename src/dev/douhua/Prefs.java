@@ -352,7 +352,10 @@ final class Prefs {
         putInt("air_round", k);
     }
 
-    /** 实体按键（HardKeys.VOL_UP / VOL_DOWN）"点一下" / "按住"做什么；默认"无" = 照常调音量。 */
+    /**
+     * 实体按键（HardKeys.VOL_UP / VOL_DOWN / POWER）"点一下" / "按住"做什么；默认"无" = 不截，照常调音量 / 按电源。
+     * 电源键只有"点一下"（只截单独一次短按，见 server.HardKeyGate），hold 不管传什么都是同一个键名。
+     */
     String hardKey(int key, boolean hold) {
         return sp.getString(hardKeyName(key, hold), "none");
     }
@@ -362,6 +365,7 @@ final class Prefs {
     }
 
     private static String hardKeyName(int key, boolean hold) {
+        if (key == HardKeys.POWER) return "hk_power_tap";
         return "hk_" + (key == HardKeys.VOL_UP ? "up" : "down") + (hold ? "_hold" : "_tap");
     }
 

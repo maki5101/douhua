@@ -13,8 +13,11 @@ import dev.douhua.Proto;
  * 只验证"接管 / 释放"这条安全链路，自己不发鼠标位移、不点击。测试期间那块屏摸不动。
  * 第三个参数写 relay 就按蓝牙模式接管：服务把分流出的鼠标、键盘报文发回来，这里打印出来
  * （配合往触摸屏节点 sendevent 模拟触摸，不用真人去摸也能验证转发）。
+ * App 正在用服务（还在说话）时，服务会回 hello ok=2（忙）并断开，这里打印出来就退出。
+ * 再带一个 keys=<5 位 0/1>（音量+点一下、音量+按住、音量−点一下、音量−按住、电源点一下）就一起要求截实体键，
+ * 打印服务发来的实体键事件和独占状态；停发心跳后应该收到"截住=0 原因=5"（已放开）。服务找不到触摸屏时实体键照样截（测试机能测）。
  *
- * 用法：app_process / dev.douhua.server.TestClient [displayId] [接管秒数] [relay]
+ * 用法：app_process / dev.douhua.server.TestClient [displayId] [接管秒数] [relay] [keys=00001]
  */
 public final class TestClient {
     private TestClient() {}
@@ -22,7 +25,16 @@ public final class TestClient {
     public static void main(String[] args) throws Exception {
         int displayId = args.length > 0 ? Integer.parseInt(args[0]) : 0;
         int seconds = args.length > 1 ? Integer.parseInt(args[1]) : 2;
-        boolean relay = args.length > 2 && args[2].equals("relay");
+        boolean relay = false;
+        String keys = null;
+        for (int i = 2; i < args.length; i++) {
+            if (args[i].equals("relay")) relay = true;
+            if (args[i].startsWith("keys=")) keys = args[i].substring(5);
+        }
+        if (keys != null && !keys.matches("[01]{5}")) {
+            Server.log("自测：keys= 要 5 位 0/1，比如 keys=00001（只截电源键点一下）");
+            System.exit(2);
+        }
         try (Socket s = new Socket()) {
             s.connect(new InetSocketAddress(Proto.HOST, Proto.PORT), 1000);
             DataInputStream in = new DataInputStream(s.getInputStream());
@@ -62,8 +74,13 @@ public final class TestClient {
             out.writeInt(0);
             out.writeInt(1248);
             out.writeInt(1972);
+            if (keys != null) {
+                out.writeByte(Proto.CMD_HARD_KEYS);
+                for (int i = 0; i < 5; i++) out.writeByte(keys.charAt(i) - '0');
+            }
             out.flush();
-            Server.log("自测：已请求接管屏幕 " + displayId + "，保持 " + seconds + " 秒心跳");
+            Server.log("自测：已请求接管屏幕 " + displayId + (keys != null ? "、截实体键 " + keys : "")
+                    + "，保持 " + seconds + " 秒心跳");
             for (int i = 0; i < seconds * 2; i++) {
                 out.writeByte(Proto.CMD_HEARTBEAT);
                 out.flush();
@@ -80,10 +97,16 @@ public final class TestClient {
             while (true) {
                 int type = in.readUnsignedByte();
                 switch (type) {
-                    case Proto.MSG_HELLO:
-                        Server.log("自测收到 HELLO version=" + in.readUnsignedByte() + " ok=" + in.readUnsignedByte()
-                                + " " + in.readUTF());
+                    case Proto.MSG_HELLO: {
+                        int version = in.readUnsignedByte();
+                        int ok = in.readUnsignedByte();
+                        Server.log("自测收到 HELLO version=" + version + " ok=" + ok + " " + in.readUTF());
+                        if (ok == Proto.HELLO_BUSY) {
+                            Server.log("自测：服务正被另一个连接（多半是豆花 App）占用，先把豆花退到后台再测");
+                            System.exit(1);
+                        }
                         break;
+                    }
                     case Proto.MSG_GRAB:
                         Server.log("自测收到 接管=" + in.readUnsignedByte() + " 原因=" + in.readUnsignedByte() + " " + in.readUTF());
                         break;
@@ -102,6 +125,14 @@ public final class TestClient {
                     case Proto.MSG_MOUSE:
                         Server.log("自测收到 鼠标 键=" + in.readUnsignedByte() + " 位移=(" + in.readShort() + "," + in.readShort()
                                 + ") 滚轮=" + in.readByte() + " 横滚=" + in.readByte());
+                        break;
+                    case Proto.MSG_HARD_KEY:
+                        Server.log("自测收到 实体键 " + in.readUnsignedByte() + " 事件 " + in.readUnsignedByte()
+                                + "（键 0 音量+、1 音量−、2 电源；事件 0 点一下、1 开始按住、2 结束按住）");
+                        break;
+                    case Proto.MSG_HARD_GRAB:
+                        Server.log("自测收到 实体键 截住=" + in.readUnsignedByte() + " 截不了=" + in.readUnsignedByte()
+                                + " 原因=" + in.readUnsignedByte() + " " + in.readUTF());
                         break;
                     case Proto.MSG_KEYBOARD: {
                         byte[] r = new byte[8];

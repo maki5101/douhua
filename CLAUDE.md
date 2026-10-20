@@ -11,26 +11,27 @@
 ```
 外屏触摸屏 /dev/input/eventN ──(服务独占)──┐
                                            ↓
-       Server / Session（shell 身份，app_process 拉起）
+       Server / Session（shell 身份，app_process 拉起；主线程只 accept，每条连接一个会话线程）
          ├ TouchReader + MtDecoder：读原始多点触控，用系统的换算矩阵转成屏幕坐标
          ├ 按 App 报来的区域分流：触控板 → GestureEngine；键盘键 → UhidKeyboard；按钮 → 报告给 App；
          │  "左键" → 直接按住鼠标左键
          ├ UhidMouse / UhidKeyboard：/dev/uhid 造的 USB 鼠标和键盘 → 系统输入 → DeX
          │  （双指开合 = UhidKeyboard 按住 Ctrl + UhidMouse 滚轮）
+         ├ KeyReader + HardKeyGate：独占音量 / 电源键设备，判断点一下 / 按住报给 App，没配的键注入补发
          └ Injector：带 displayId 往 DeX 屏注入按键（隐藏 API，反射）
-                ↑ 布局 / 参数 / 心跳 / 按键      ↓ 震动 / 三指四指手势 / 按钮事件 / 修饰键 / 接管状态
+                ↑ 布局 / 参数 / 心跳 / 按键 / 实体键配置   ↓ 震动 / 三指四指手势 / 按钮事件 / 修饰键 / 接管状态 / 实体键
        MainActivity（App，普通权限）：画界面、震动、执行动作；127.0.0.1:37601
 ```
 
 | 文件 | 职责 |
 |---|---|
-| `src/dev/douhua/Proto.java` | 协议常量，两边共用 |
+| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 14） |
 | `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测） |
-| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；DeX 模式跑在服务的 Session 里，蓝牙模式跑在 App 里 |
+| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；DeX 模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里 |
 | `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号 |
 | `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停 |
 | `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务 |
-| `src/dev/douhua/KeyboardPanel.java` | 外接键盘键位（Gboard 式字母区 + 功能行 / 数字行 / 快捷行，符号层、Fn 层），键 id = 用法码 \| 自带修饰键 << 8 |
+| `src/dev/douhua/KeyboardPanel.java` | 外接键盘键位（Gboard 式字母区 + 功能行 / 数字行 / 快捷行，符号层、Fn 层），键 id = 用法码 \| 自带修饰键 << 8；报区域时最后报面板整块（REGION_KEYBOARD），键自己收触摸时缝里的触摸也在 onTouchEvent 里分给最近的键 |
 | `src/dev/douhua/KeyboardScreen.java` | 键盘界面：工具栏 + 可调大小位置的键盘 + 键盘上方的小触控板；调整模式由 App 自己收触摸 |
 | `src/dev/douhua/Style.java` | 共用样式（边框、颜色、按下 / 高亮） |
 | `src/dev/douhua/ButtonStrip.java` | 左侧按钮条，屏幕矮时自动分列 |
@@ -41,22 +42,31 @@
 | `art/icon.webp` → `tools/make_icon.py` | App 图标原图（不带元数据）；脚本生成自适应图标的前景层 `ic_launcher_fg.webp` 和彩蛋大图 `egg.webp`（都在 `res/drawable-nodpi/`，换图后重跑，要 Pillow） |
 | 彩蛋 | 设置页最下面的版本号快速连点 5 下（每下间隔 ≤ 0.6 秒），弹出 egg.webp；SettingsActivity.version / showEgg。README 里不写 |
 | `src/dev/douhua/Combos.java` | 自定义组合键：可选的键、拼 id、起名字、迁移上一版键盘快捷行的存储格式 |
-| `src/dev/douhua/HardKeys.java` | 音量 + / − 的"点一下 / 按住"判断（做什么由设置里选的动作定），纯 Java（离线测） |
+| `src/dev/douhua/HardKeys.java` | 音量 + / − 的"点一下 / 按住"判断（做什么由设置里选的动作定），纯 Java（离线测）；蓝牙模式 App 自己用，DeX 模式服务里的 HardKeyGate 用同一个；设了动作的键整个归豆花 |
 | `src/dev/douhua/AirPointer.java` | 陀螺仪 + 重力 → 光标位移：斜基分解（左右 = 绕竖直轴、上下 = 绕手机自己的右轴、绕水平朝前拧不算）、固定灵敏度不加速、两级 1€ 滤波消抖 + 软死区（可选轨迹平滑、防抖半径），纯 Java（离线测） |
 | `src/dev/douhua/CenterRunner.java` | 主线程上按固定间隔一帧帧发位移（只剩调试位移 DebugMoves 在用） |
 | `src/dev/douhua/AirMouse.java` | 空中指针：按住移动 / 按住拖动 / 按住左键（按来源分开记）、陀螺仪按需开关、移动颗粒；回正中发一帧绝对坐标 |
-| `src/dev/douhua/DebugMoves.java` | 只在可调试包里：`adb shell am broadcast -a dev.douhua.DEBUG_MOVES --es moves "dx,dy,ms;…"` 让手机经蓝牙发任意位移（要 DUMP 权限，adb shell 有），量回正中 / 加速用 |
+| `src/dev/douhua/DebugMoves.java` | 只在可调试包里：`adb shell am broadcast -a dev.douhua.DEBUG_MOVES --es moves "dx,dy,ms;…"` 让手机经蓝牙发任意位移（要 DUMP 权限，adb shell 有），量回正中 / 加速用；另有 DEBUG_AIRLOG（空中鼠标日志）、DEBUG_KEYLOG（键盘触点日志，租期制） |
 | `src/dev/douhua/RoundPad.java` | 空中鼠标页的圆钮：圆 + 3×3 九个小点（像 ThinkPad 小红点），按住移动、点一下锁定移动 / 再点解锁 |
 | `tools/air-log.sh` | 空中鼠标双日志：手机端 AirMouse 调试日志（DebugMoves 的 DEBUG_AIRLOG 广播打开，可改激光笔式发送间隔、临时换消抖参数）+ 电脑端 KWin 记光标 + 能读就 evtest 记原始报文，结果在 `.private/airlog/`。默认按终端提示随手画；`--trace` 是描红：浏览器全屏页（tools/airlog/trace.html，本机小服务 trace_server.py 切参数、收结果），三轮盲测三组参数，最后选最顺手的 |
+| `tools/type-log.sh` | 打字测试记录：DebugMoves 的 DEBUG_KEYLOG 广播开键盘触点日志（租期 10 秒，每 3 秒续）+ logcat 收 `douhua-keys` + 电脑浏览器打字页（tools/typelog/typing.html，本机小服务 server.py，句子 sentences.txt），结果在 `.private/typelog/`；`--dex` 用 adb reverse 把页面开在 DeX 里 |
+| `tools/type-analyze.sh` + `tools/typelog/` | 分析一次打字测试：analyze.py 对齐、误按率（按空 / 按错没改 / 按错改过）、每个键的落点偏移、电脑丢键核对（`--selftest` 在 test.sh 里跑）；KeyReplay.java 用真正的 TouchRouter 重放触点，核对和手机一致、比较缝分给最近的键前后 |
 | `tools/air-analyze.sh` + `tools/airlog/` | 分析一次双日志：送达节奏（卡不卡、排不排队）；用记下的原始转动按参数网格重放真正的 AirPointer（Replay.java），算静止抖动、2Hz / 5Hz 以上的晃、速度落后、距离保留 |
 | `tools/adb-device.sh` | 选哪台手机（-s → ANDROID_SERIAL → 只连一台就用它 → 多台时列出来让人选），start/stop-server、selftest、build --install 共用 |
 | `src/dev/douhua/KeyboardSnap.java` | 调整键盘时的轻微吸附，纯 Java（离线测） |
 | `src/dev/douhua/Prefs.java` | 设置键名和默认值 |
-| `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息 |
+| `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息；空闲 2 秒发保活（CMD_PING），连接超时 / 5 秒等不到 hello 报"服务没响应" |
 | `src/dev/douhua/DexDisplay.java` | 找 DeX 所在的屏（按键注入目标） |
 | `src/dev/douhua/DisplayReceiver.java` | 服务叫醒它：接上外接屏弹通知（点开在手机屏上打开豆花），拔掉收回 |
-| `src/dev/douhua/server/Server.java` | 服务入口；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒 |
-| `src/dev/douhua/server/Session.java` | 一次 App 连接：独占时机、转屏、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App |
+| `src/dev/douhua/server/Server.java` | 服务入口：主线程只 accept，按 SessionPolicy 接 / 顶掉旧会话 / 回"忙"，每条连接一个 douhua-session 线程；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒；`keys` 只读列出实体键设备、能不能截 |
+| `src/dev/douhua/server/Session.java` | 一次 App 连接：建虚拟设备、发 hello、独占时机、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App；10 秒没消息自己断开，可被新连接顶掉（kick） |
+| `src/dev/douhua/server/SessionPolicy.java` | 新连接来时旧会话怎么办：没有 / 已收尾 → 接，沉默 ≥ 5 秒 → 顶掉，否则回"忙"，纯 Java（离线测） |
+| `src/dev/douhua/server/GrabCondition.java` | 独占条件里的心跳（只有心跳和布局算，保活不算）和释放原因码，Session 调它，纯 Java（离线测） |
+| `src/dev/douhua/server/TouchGrabLock.java` | 全服务一把锁：同一时刻只有一个会话能独占触摸屏，纯 Java（离线测） |
+| `src/dev/douhua/server/RotationLock.java` | 方向锁定全服务一份（`wm user-rotation`，记原值、正常断开时恢复），纯 Java（离线测） |
+| `src/dev/douhua/server/Shell.java` | 带超时的子进程（wm 5 秒、dumpsys input / am 10 秒），只用 JDK（离线测） |
+| `src/dev/douhua/server/SystemServices.java` | 从 ServiceManager 现取系统服务代理（框架重启后旧代理全死），DisplayWatcher / Injector / DexFocus 共用 |
+| `src/dev/douhua/server/LogThrottle.java` | 同一条错误限频（第一次记、之后每 60 秒一行汇总、恢复时一行），展开异常原因链，纯 Java（离线测） |
 | `src/dev/douhua/server/TouchReader.java` | 独占并读触摸屏，poll 100ms 检查是否该释放 |
 | `src/dev/douhua/server/MtDecoder.java` | 多点触控协议 B 解码，纯 Java（离线测） |
 | `src/dev/douhua/server/TouchDevice.java` | 从 `dumpsys input` 找屏幕对应的触摸屏和 RawToDisplay 矩阵，解析部分纯 Java（离线测） |
@@ -65,7 +75,11 @@
 | `src/dev/douhua/server/Uhid.java` | /dev/uhid 造 USB HID 设备的公共部分 |
 | `src/dev/douhua/server/UhidMouse.java` / `UhidKeyboard.java` | 虚拟 USB 鼠标 / 键盘，只管发报文（描述符在 Hid，按键状态在 TouchRouter） |
 | `src/dev/douhua/server/PeerUid.java` | 查 /proc/net/tcp 确认连进来的是谁 |
-| `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放 |
+| `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放；`keys=<5 位>` 一起截实体键，打印实体键事件 / 状态 |
+| `src/dev/douhua/server/KeyDevices.java` | 解析 /proc/bus/input/devices，挑能单独独占的实体键设备（白名单）和只旁观的设备，纯 Java（离线测） |
+| `src/dev/douhua/server/HardKeyGate.java` | 实体键的判断：配了动作的音量键交给 HardKeys、没配的透传注入、电源键只截单独短按（长按 / 连按 / 组合键补发后交还系统），纯 Java（离线测） |
+| `src/dev/douhua/server/KeyReader.java` | 独占并读实体键设备（plain + grab 两个描述符，交还时读空 grabFd 再关），poll 100ms 检查是否该放开 |
+| `src/dev/douhua/server/CallState.java` | 问 Telecom（ITelecomService 反射）是不是在来电响铃 / 通话中，缓存 400ms，结束后冷却 2 秒才算空闲；只在实体键线程用 |
 | `src/dev/douhua/server/DisplayWatcher.java` | 每 1.5 秒查屏幕列表，外接屏接上 / 拔掉时 am broadcast 给 DisplayReceiver |
 
 蓝牙模式：报文最后都经 BtHid（系统的 BluetoothHidDevice，键盘 + 鼠标 + 媒体键合成一个描述符）→ 配对的电脑 / 平板 / 电视。
@@ -108,6 +122,24 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 
 - **独占触摸屏的条件**：App 报 active（在前台、打字面板没开）、参数已到、心跳（每秒一次，主线程发）没超过 3 秒。
   任一条件不满足，100ms 内释放；连接断开立刻释放。这是"外屏不会被锁死"的保证，改动时必须保住。
+  被新连接顶掉、10 秒没消息断开，都走"连接断开"同一条路。保活（CMD_PING）不是心跳，绝不能刷新心跳（规则在 GrabCondition.onMessage，ServerPartsTest 锁住）。
+- **同一时刻只有一个会话能独占触摸屏**（TouchGrabLock，持有范围从打开触摸屏之前到关掉之后；内核 EVIOCGRAB 的 EBUSY 兜底）。
+- **旧会话 2 秒收不完尾、还占着触摸屏 → 服务退出**（System.exit，内核收回独占和虚拟设备）；没占触摸屏就由新会话替它关掉虚拟设备。
+- **键盘的缝分给最近的键只改"按在缝里"的触点**：hit() 先照旧按列表找第一个包含的区域，只有命中键盘范围（REGION_KEYBOARD，
+  排在它的键后面）才找最近的键；按在键上的结果、排在前面的区域优先都不变（TouchRouterTest 逐点锁住）。规则只有 TouchRouter.nearestKey 一份，
+  KeyboardPanel 自己收触摸、KeyReplay 重放都调它。
+- **键盘触点日志等于按键记录**：只在可调试包、只能由 adb 广播（DUMP 权限）打开、租期 10 秒不续自己关、只写 logcat 不落盘；
+  服务端每条连接默认关，开关只能由通过 uid 校验的连接发（CMD_TRACE）。
+- **独占实体键的条件**：和触摸屏同一个 Session.wanted（active、参数到了、心跳 < 3 秒），再加 App 发过 CMD_HARD_KEYS 且至少截一个键、
+  按键注入可用（不可用绝不独占，不然没配的键、长按电源键补发不出去；截着时补发失败一次也算不可用，等配置变了或 App 回前台再试）、
+  没在来电响铃 / 通话中（服务问 Telecom，CallState；查不到不拦）；不依赖触摸屏接管成功。不满足 100ms 内放开，断开立刻放开
+  （KeyReader 每轮 poll ≤ 100ms 问 keepGoing）。同一时刻只有一个会话打开实体键设备（Session.KEY_GRAB）；收尾 2 秒还独占着 → 服务退出。
+- **注入过的每个"按下"在所有退出路径上都配一个"松开"**（HardKeyGate.releaseAll 在 KeyReader 的 finally 里，交还后由真松开配上），
+  否则系统一直连发：音量推到头，电源键弹关机菜单。
+- **电源键没配动作，绝不独占电源键所在的设备**（同设备上的音量键因此截不了，报 HARD_SHARED）；设备白名单：只有 SYN/KEY/MSC、
+  键码只有 114/115/116、不是 USB / 蓝牙 / 虚拟总线、厂商号不是 0x1209（KeyDevices.whyNotGrabbable）。
+- **区域只报看得见的那一屏**：键盘（含空中鼠标页上调出来的）、空中鼠标页、主界面三组互斥（MainActivity.collectRegions，键盘最先判断）。
+  只把键盘排前面不够：键盘空隙里看不见的圆钮、格子照样按得到。
 - 只接管 App 所在那块屏的触摸屏（按 displayId 在 dumpsys 里找）；找不到（比如虚拟屏）就不接管。
 - 坐标换算：系统的 RawToDisplay 矩阵（原始 → 没转过的物理屏）+ ScreenRotation（物理屏 → 当前方向）。
   真机上这个矩阵转屏后仍不含旋转；万一某个系统版本的矩阵已经含旋转（unrotated() 为假），就不再自己转。
@@ -197,6 +229,61 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   DisplayManagerGlobal（TYPE_EXTERNAL / TYPE_WIFI 才算，scrcpy 虚拟屏不算），用 `am broadcast -f 0x20` 叫醒 App 发通知。
   通知要 POST_NOTIFICATIONS 运行时权限，MainActivity 第一次打开时申请（申请对话框会让豆花 onPause，触摸自动释放）。
 - **轻点拖动**：轻点后先按下左键，等 `dragWindowMs`；期间再按下并移动 = 拖动，再轻点 = 双击，超时 = 松开。
+- **服务卡住却显示在运行**（2026-10-19，主力机：服务进程在、LISTEN 行 rx_queue=2，App 一直"正在连接"或"连接 1 秒超时"）。
+  根因：accept 和会话在同一个线程里串行，一个不结束的会话把后来的连接全堵在 accept 队列里（backlog 1）。会话为什么不结束
+  没取证（没拿到线程堆栈）：推测是 App 的断开包被 Doze 掐了、App 进程随后没了，服务这边一直停在已连接、卡在读；
+  另一条没上限的等待是收尾时恢复方向的 wm 子进程。App 端 Link.stop() 叫不醒卡在 connect / 读 hello 上的线程，每次 onStop/onStart
+  漏一个线程、占一个排队位置，多半也是把队列塞满的帮凶。
+  修法不依赖到底是哪种：主线程只 accept；旧会话沉默 ≥ 5 秒就被新连接顶掉、还在说话就回"忙"（不无条件顶替：两个窗口 / 自测工具
+  会来回互顶，每次都要重新接管触摸屏、重建虚拟设备）；正在收尾的旧会话不回"忙"，新会话等它收完（App 回前台总是断开旧的马上连新的）；
+  App 空闲 2 秒发 CMD_PING，服务 10 秒收不到任何消息就断开（不复用心跳：心跳决定独占，App 暂停时不发）；子进程全有超时；
+  方向锁定全服务一份，被顶掉的会话不恢复（免得和新会话的锁定交错）；切键盘焦点挪到定时器线程（不在已独占、没进读循环时等 binder）。
+  App 连接超时（回环上只可能是 accept 队列满）或 5 秒等不到 hello 就提示"服务没响应"（蓝牙模式也提示，接在蓝牙状态后面）；
+  start-server.sh 看 /proc/net/tcp(6) 的 accept 队列（连着 3 次有排队 / 没在监听 = 卡住）自动重启，不主动连服务探测（探测连接会被当成真会话）。
+  顺带扛住系统框架重启：IDisplayManager / IInputManager / IActivityTaskManager 的代理调用失败就丢掉、从 ServiceManager 重取
+  （app_process 里 ServiceManager 不缓存，servicemanager 不跟着框架重启；Android 17 上没验证），日志经 LogThrottle 限频并展开原因。
+  框架重启会杀掉 App、清掉"打开豆花"通知，所以 DisplayWatcher 出过错后第一次查成功时，接着的外接屏都重发一次 ADDED。
+- **键盘的缝和空位分给最近的键**（2026-10-19，盲打纠偏第一步）：原来按键就是"按下时落在哪个矩形里"，键间 4dp 的缝、
+  第二行两头的半格空位、外圈 2dp 边距都是死区。现在 KeyboardPanel 在键后面多报一块面板整块的范围（Proto.REGION_KEYBOARD = 4），
+  分流命中它时交给 TouchRouter.nearestKey：候选是整个落在范围里的键 / 按钮（?123、Fn、🌐、快捷行动作也算），距离按到键的矩形算，
+  先比竖向再比横向（先定行、再在行里找），一样近取列表里靠前的。等于软键盘常见的判定框铺法（按记忆的 AOSP LatinIME，没联网核对）；
+  第二行空位整块归 a / l（纯欧氏距离会把空位靠外的大半分给 q / p）。改在 TouchRouter 而不是让 App 把键的矩形扩大了再报：
+  规则只有一处、能离线测，上报的还是真实矩形（触点日志才知道按在键外多远）。被分过来的特殊键手指停在缝里松开也算点击
+  （up 里 contains || hit 还是它）；down 的 default 改成什么都不做（以前不认识的类型当按钮）。协议因此必须 14：旧服务会把类型 4
+  当按钮 id 0，按钮条 id 0 是"退出"。数字键盘这次没加范围；不加开关（确定性、默认开，前后差别用记下的触点重放算）。
+  服务没接管、各键自己收触摸时（DeX 下服务连着但没接管），缝里的触摸冒泡到 KeyboardPanel.onTouchEvent，用同一个 nearestKey 兜，只管第一根手指。
+- **打字测试的触点日志**（同一天）：TouchRouter.Trace 把落在键盘范围里的按下 / 抬起写成 L/K/p/u 行，App 的本地分流和服务的分流
+  格式一模一样，都写 logcat（标签 douhua-keys；服务进程 app_process 里调 android.util.Log 这个项目以前没用过，没在真机上验证）。
+  开关是 DebugMoves 的 DEBUG_KEYLOG 租期（10 秒，type-log.sh 每 3 秒续），App 连着服务时转发 CMD_TRACE = 11。
+  电脑这边网页记按键用 e.code（物理键位，和 HID 用法码一一对应），自己画"已打的字"（不用输入框，免得电脑输入法插手）。
+  分析时按手机实际判定的键重放编辑，再和目标对齐；被删掉的字按"打它之前的字对应到目标哪里"推想打的字。
+  重放用 Java（KeyReplay 和真正的 TouchRouter 一起编译），Python 只做对齐和统计，免得两份规则悄悄对不上。学落点偏移这次没做。
+- **空中鼠标页能调出键盘**（2026-10-19）：原来"键盘"在空中鼠标页上打开了却压在黑色页面下面，区域也只报页上的按钮。
+  现在键盘开着就盖在最上面：页面 GONE（不调层次：键盘屏没背景，页面会从空隙透出来；没接管、调整键盘时可点的页面会先吃掉触摸），
+  只报键盘那组区域。键盘开着 + 空中鼠标模式 = 暂停（MainActivity.airPaused，只看键盘可不可见）：照 onPause 先 hardKeys.reset()
+  再 releaseAir()，停跟随、圆钮解锁；收起后不自动恢复，回到页面时本地分流收尾、解开键盘上锁住的修饰键（同进页面时）。
+  暂停期间：音量键全部交还系统调音量（暂停前按下、还没松开的那一下照旧吞掉、松开当取消，HardKeys.isPressed）；
+  按住移动 / 拖动不生效、不提示，回正中照常，"空中鼠标"动作变成收起键盘回到页面；页上按钮在暂停中报来的轻点当松开
+  （分流按按下时记的区域报，键盘盖上前就按着的手指抬起仍报给圆钮 / 格子）。从键盘屏进空中鼠标先收起键盘，退出回触控板屏。
+  激光笔式原来的前提"页面上没有触控板"破了：触摸那一路真挪过光标（dx / dy 不为 0）就作废记的位置（AirMouse.forgetPosition），
+  下次跟随先回正中；只打字没碰小触控板就接着原来的位置。数字键盘在空中鼠标页上的同类问题没做。
+- **DeX 模式的音量键、两种模式的电源键由服务独占实体键设备**（2026-10-19）：DeX 下豆花窗口不收焦点、收不到音量键，电源键 App 根本拿不到。
+  服务读 /proc/bus/input/devices（内核稳定格式，比 dumpsys 稳）挑设备，EVIOCGRAB 整个设备一起独占，所以白名单很严（见不变量），
+  先严后松：拿到主力机 `Server keys` 的真实分组再看要不要放宽（比如带 EV_REP 的 gpio-keys 现在也会被拒）。
+  "点一下 / 按住"在服务里判断（HardKeyGate 里跑同一个 HardKeys），App 只执行动作（MSG_HARD_KEY）：补发要在服务里做、时机准，App 卡一下也不拖慢透传。
+  语义和蓝牙模式一样：设了动作的键整个归豆花，没设的那一半不调音量（考虑过"没设的一半照常调音量"，要把点一下挪到松手才算，
+  用户没要求改蓝牙模式的手感，没做）；同一设备上没配动作的键原样注入补发（downTime 用原始的，系统自己连发）。
+  电源键只截单独一次短按：350ms 内松开、从第一次按下算 500ms 内没有第二次按下 → 第 500ms 执行动作；按满 350ms（长按）、500ms 内再按（连按，
+  覆盖紧急求救 500ms、双击相机 300ms）、和音量键一起按（截屏 / 强制重启）→ 按原始时间补发吞掉的按下（连按的第一下按下 / 松开都补），
+  把设备交还系统（关掉 grabFd，plain 接着读给补发的按下配松开），两个键都空闲 2 秒再独占。组合键也看只旁观、没独占的机身按键设备
+  （Plan.watch），免得音量键在另一个没截的设备上时截屏失灵。补发注入不指定屏（INVALID_DISPLAY），和物理键一样由系统送到有焦点的屏。
+  独占前的竞态：EVIOCGRAB 返回时独占前的投递都已完成（synchronize_rcu），读完 plain 上剩下的，有键动过就马上放开重来；
+  打开设备前就按着的键，独占后收到"没见过按下的松开"，系统多半看到了按下：音量补一对按下 + 松开（注入的松开止不住物理设备那一路的连发，
+  要先用注入的按下接过来；最坏多调一格），电源只补松开。通话 / 响铃时（AudioManager 模式不是 NORMAL）App 发全 0，服务全部放开；振动 / 静音来电时音频模式不变，
+  所以服务自己也每 400ms 问一次 Telecom 的 isRinging / isInCall（CallState），响铃或通话中放开，结束 2 秒后再截。
+  蓝牙模式下服务只截电源键（音量键仍由 App 自己收：通话中交还系统调音量，响铃时系统自己先截去静音）；电源键和音量下在同一设备时，音量下由服务透传注入，App 照常当本地实体键收
+  （所以没照方案在 onHardKey 里忽略注入来的键：服务从不注入它自己截了的那一半，不会处理两遍）。
+  DeX 下实体键按住配了"左键"：CMD_HOLD_LEFT 经服务的 TouchRouter 按住（和屏幕上的"左键"共用计数）。
 - **服务目前要靠电脑 adb 拉起**（`tools/start-server.sh`），手机重启后要重跑。Shizuku 方案还没做。
 
 - **蓝牙 HID**（用户要"任何设备通用的外接 HID"、"装上就能用"）：系统的 BluetoothHidDevice（Android 9 起），不需要服务、
@@ -239,11 +326,21 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **测试设备**：用 USB 连的测试机（序列号见 `.private/NOTES.md`），命令里显式 `adb -s`。用户的主力机禁止拿来测试。
   测试机不是三星、没有 DeX，DeX 模式只能交给用户在主力机上试；`tools/build.sh --install`、`start-server.sh` 等脚本连着多台时会列出来让人选（tools/adb-device.sh），我自己跑时一律加 `-s <测试机>`。
 
-- `tools/test.sh`：GestureEngine、MtDecoder、TouchDevice 解析的离线测试。
+- `tools/test.sh`：GestureEngine、MtDecoder、TouchDevice 解析的离线测试；服务的会话交接部件（TouchGrabLock、SessionPolicy、
+  RotationLock、GrabCondition）、LogThrottle、Shell（会真起 echo / sleep 子进程）、实体键（KeyDevices 解析 / 挑设备、HardKeyGate 状态机）也在 ServerPartsTest 里。
 - 服务安全链路（真机）：`adb shell CLASSPATH=<apk 路径> app_process / dev.douhua.server.TestClient 0 2`
   ——接管屏幕 0 两秒、停发心跳，服务应在 3 秒内报"App 没有响应，已把触摸屏还给系统"。**测试期间外屏摸不动约 5 秒。**
   第三个参数写 `relay` 按蓝牙模式接管，服务转发回来的鼠标 / 键盘报文会打印出来；不用真人摸，可以在接管后往触摸屏节点
   `sendevent`（slot / 跟踪号 / X / Y / SYN，原始坐标），独占期间写进去的事件只送给服务。
+- 实体键（真机，测试机上做；服务找不到触摸屏时实体键照样截）：先 `adb shell CLASSPATH=<apk 路径> app_process / dev.douhua.server.Server keys`
+  看设备分组（只读）；再 `TestClient 0 5 keys=00001`（只截电源键点一下）：日志"已独占实体键"，短按电源键收到"实体键 2 事件 0"、屏幕不灭，
+  长按出关机菜单（约晚 0.35 秒）、双击开相机，停发心跳后服务日志"实体键已交还系统"、TestClient 收到"截住=0 原因=5"。`keys=10000`（音量+点一下）时同设备上的音量−照常调音量。
+  紧急求救绝不实测；三星"侧键 + 音量下"强制重启也不能在主力机上试。
+- 服务卡住 / 顶替（真机，**只在测试机上做**；主力机上禁止 kill -STOP 服务，那会让外屏触摸屏锁死）：
+  ① 起服务后用 TestClient 连上再 `kill -STOP` 它（模拟沉默的死连接），然后开 App 或再起一个 TestClient：约 5 秒内日志"旧连接 N 秒没消息，
+  被新连接顶掉"；不再连的话 10 秒后"App 10 秒没有任何消息……断开"。② `kill -STOP douhua_server` 后开 App：5 秒内状态栏"服务没响应"；
+  这时跑 start-server.sh 应判定卡住并重启（之后 `kill -CONT` 收尾）。③ `adb shell am restart` 模拟框架重启（会把测试机界面整个重启，先问用户；
+  shell 有没有这个权限没验证）：日志"查屏幕列表出错"一次，然后"恢复了"，注入按键、DexFocus 照常。测试机上服务找不到触摸屏、不会独占，所以安全。
 - 界面（不碰真屏）：scrcpy 开私有虚拟屏，把豆花启动上去录屏。虚拟屏没有触摸屏，服务会拒绝接管，所以只能看布局：
   ```bash
   scrcpy --new-display=1248x1972/420 --no-window --no-audio --no-control --record=ui.mkv --time-limit=9 &
@@ -256,8 +353,30 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   `/Scripting/Script<N>` 调 `run`；`journalctl --user -f` 里看 `js:` 行；用完 `unloadScript <名字>`）。会动用户的光标，先问；
   用户自己在动鼠标时数据会乱（轨迹里出现斜着走的段就是）。
 - 触摸手感、按钮、三指四指、震动只能真人在真机上试；服务用 `tools/start-server.sh --debug` 起，日志里有每秒的鼠标包统计。
+- 打字测试（盲打纠偏的数据）：手机装调试包、服务重启成同一版，`tools/type-log.sh`（蓝牙连这台电脑；DeX 下加 `--dex`），
+  在打开的网页里看着手机打 30 句（英文小写、拼音各半）；完了 `tools/type-analyze.sh` 出误按率、每个键的落点偏移、
+  缝里的触点新规则分对 / 分错几个。`tools/test.sh` 里的 `analyze.py --selftest` + `KeyReplay check` 只验证分析脚本本身。
 
 ## 进行中（交接；做完删掉这一节）
+
+- **DeX 模式的音量键、两种模式的电源键（2026-10-19 写完，没提交，待真机验证；协议 14，装完要重启服务）**：见决策记录。
+  只跑了离线测试（服务端部件 199 项：设备解析 / 白名单（含虚拟总线）/ 旁观 / 原因混合、HardKeyGate 透传 / 电源短按长按连按（350 / 500ms 两头都锁）/ 组合键（含补发排序）/ 冷却 / releaseAll / 没见过按下的松开 / 竞态、GrabCondition 心跳 / 保活）和编译。
+  没验证：主力机的实体键设备分组（先跑只读的 `Server keys`）、Fold 合盖霍尔是不是和音量键分开、EVIOCGRAB 对实体键设备行不行、
+  独占前竞态的处理、补发的电源长按 / 双击相机认不认、截屏组合键、通话时放开（含振动模式来电：服务查 Telecom 的反射在 One UI 上通不通，
+  日志里有"来电响铃或通话中：实体键还给系统"）、DeX 下音量键按住"左键"拖动、App 端的提示文字。
+
+- **键盘的缝分给最近的键 + 打字测试工具（2026-10-19 写完，没提交，待真机验证；协议 14，装完要重启服务）**：见决策记录。
+  只跑了离线测试（分流 87 项、打字分析自测 30 项、重放核对）和编译。没验证：服务进程写 logcat、DeX 下各键自己收触摸那条路的兜底、
+  缝里分到 ?123 / 快捷行动作时点击生效、tools/type-log.sh 和网页整套流程（一次都没跑过）。
+
+- **空中鼠标页调出键盘（2026-10-19 写完，没提交，待主力机验证；协议不变，只改 App）**：见决策记录。
+  只跑了离线测试（分流 95 项、空中鼠标 65 项）和编译。要在主力机上看：页上点"键盘"（格子 / 音量键）键盘盖上来、能打字、
+  小触控板能挪光标；服务接管（relay）和没开服务两条路都试；键盘上锁住 Ctrl 后"收起键盘"，回到页面点击不带 Ctrl；
+  暂停中音量键调音量、调出键盘的那一下松开时音量不变；调整键盘大小能拖；用小触控板挪过光标后再跟随先回正中，没挪过接着走。
+
+- **服务卡住修复（2026-10-19 写完，没提交，待真机验证；协议 14，装完要重启服务）**：见决策记录"服务卡住却显示在运行"。
+  只跑了离线测试和编译；测试机上的验证步骤见"测试"一节。主力机上那个卡住的旧服务（v13）被新 start-server.sh 认出来的前提是有连接在排队，
+  部署时用 build.sh --install / deploy-phone.sh（先 stop 再 start）或 `start-server.sh --restart`。
 
 - **版本号 0.2.0**（2026-10-15 用户定，单独一个提交）：包括 2026-10-14 蓝牙 HID + TouchRouter 重构 + DexFocus 等、
   2026-10-15 蓝牙模式由服务独占触摸屏两次提交。正式包（tools/package.sh）还没打，打包、打标签、推送都由人来。
@@ -499,8 +618,9 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     来源要点：developer.apple.com/forums/thread/770639、/652700，github.com/tukitohosi/mouselink，QEMU dev-hid.c，
     AOSP inputflinger CursorInputMapper / EventHub，Chromium event_device_info.cc，libinput pointer-acceleration 文档。
 - **空中鼠标页放键盘**（用户 2026-10-15 顺口提的"甚至加个键盘都可以"）：长屏手机上格子下面还有地方，可以放一块小键盘。没做。
+  （2026-10-19 做的"空中鼠标页能调出键盘"是盖上整屏键盘、空中鼠标暂停，不是这条；在格子下面嵌小键盘仍然没做。）
 - **手机放桌上平移当真鼠标**：大概率做不好。加速度计二次积分漂移很快、陀螺仪测不到平移、后摄贴着桌面对不上焦。真想做先做个实验。
-- **截获音量键 / 电源键，短按、长按各配动作**（蓝牙模式的音量键已做，见"进行中"；剩 DeX 模式的音量键和电源键）（在触控板 / 键盘界面时）：音量键豆花在前台时能自己截（窗口要能收按键）；
+- **截获音量键 / 电源键，短按、长按各配动作**（蓝牙模式的音量键、DeX 模式的音量键和两种模式的电源键短按都已做，后两个待真机验证，见"进行中"）（在触控板 / 键盘界面时）：音量键豆花在前台时能自己截（窗口要能收按键）；
   电源键普通 App 截不到，要服务独占按键设备，风险大（截住期间灭不了屏、紧急求救长按被吞），必须有和触摸屏一样的自动释放保证。
 - **盲打纠偏（用户想不看键盘打字）**：现在按键就是"按下时落在哪个矩形里"，键与键之间有 4dp 的缝（各留 2dp 边距）、
   第二行左右半个键的空位（SPACER）都不算任何键，落进去就没反应——"感觉按到了实际没按到"多半是这个。
@@ -508,6 +628,8 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   （按"打完马上退格改成相邻键"推断按错；只存每个键的位置统计，绝不存打过的字）；③ 交界处按前几个字母的概率挑键
   （像 iOS 的动态热区，英文 / 拼音各要一份字母统计）。②③ 做成开关、默认关。不做事后纠错（键已发出，自动退格会和对方输入法打架）。
   建议先只开统计看几天数据，偏移是系统性的话 ② 就够。
+  **① 已做**（2026-10-19，见决策记录）；② 的数据工具备好了（tools/type-log.sh + tools/type-analyze.sh：每个键的落点偏移，
+  学偏移以后加在 KeyReplay / TouchRouter 里），学习本身还没做；③ 没做。
 - **蓝牙报文攒着发**：服务接管后原始触摸每秒约 100 个报文、App 自己收约 120 个；链路要是送不过来（比如对方连着手机音频时
   只有每秒约 11 个）就会排队。现在靠关掉音频解决；要防万一，可在 BtHid 里把移动量攒起来、按链路能送的节奏发（按键变化和
   键盘报文前先把攒着的发掉，保证 Ctrl+滚轮顺序）。
@@ -518,10 +640,18 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 ## 已知技术债 / 没验证的
 
 - 还没由真人试过：外接键盘（含 DeX 侧输入法打中文）、双指缩放在哪些应用生效、双击、系统方向锁定版的旋转按钮、接上外接屏的通知。
-- 服务被直接杀掉（tools/stop-server.sh）时不会恢复方向锁定。
+- 服务被直接杀掉（tools/stop-server.sh）时不会恢复方向锁定；服务因兜底退出（旧会话 2 秒收不完尾还占着触摸屏）时也一样。
+- start-server.sh 只能在"有连接在排队"时认出卡住；服务在 accept 之后、发 hello 之前卡住它看不出来（靠 App 那边 5 秒的提示）；
+  会话中途卡住、App 照常写的情况 App 也察觉不到（服务不给 App 发保活）。
+- 服务用 `--debug` 起时，Session.onDown 把每次按下落在哪个区域（键 id）写进手机上的 /data/local/tmp/douhua-server.log，等于把打的字落了盘（打字测试的触点日志只走 logcat，不受这条影响）。
+- 实体键：音量上 + 音量下一起按（无障碍快捷方式）没当组合键交还，两个都配了动作时豆花在前台就用不了它；
+  触摸屏释放时 router.releaseAll 会把实体键按着的"左键"（CMD_HOLD_LEFT）一起松掉；服务被直接杀掉时，透传中按着的音量键
+  系统会一直连发到下一次按键；交还系统时最后一次读 grabFd 和关掉它之间（微秒级）到的事件会丢；只配了"点一下"的音量键按下当场就发给 App，
+  之后才认出是组合键的话动作已经做了。
 - 键盘键位是初版，按实际用起来再调；竖屏一行 12 个键偏窄。
 - MtDecoder 假设开始读时当前 slot 是 0（没法用 EVIOCGABS 查）；开始读之前就按着的手指一律忽略到抬起。
 - TouchDevice 依赖 `dumpsys input` 的文字格式（三星 One UI 9 实测）；系统升级改格式会找不到触摸屏，状态栏会显示原因。
 - 接管期间横幅通知、来电横幅点不了（全屏来电会让豆花退到后台，自动释放）。
+- 接管期间长按电源键弹出的关机菜单点不了：它是系统对话框，豆花不 onPause、照报 active，触摸还归服务（还会分给菜单底下看不见的按钮）。以前就有；给电源键设了动作后"短按灭屏"这条退路也没了，只剩点退出。改法（失去窗口焦点也报 inactive）在 DeX 下用不上（主窗口平时不收焦点），没做。
 - 滚动是整格滚轮。要更顺可以试 HID 高精度滚轮（Resolution Multiplier，需要服务回应 UHID_SET_REPORT）。
 - 外屏一直亮着同样的边框，长期有烧屏风险；边框已经调得很暗。

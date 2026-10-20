@@ -1,0 +1,33 @@
+# 打字测试的句子（tools/typelog/server.py 每次打乱顺序）。自己写的：英文小写和拼音各一半，
+# 只用 a-z、空格、逗号、句号（不用 Shift、不切符号层），合起来覆盖全部 26 个字母。拼音照电脑 / DeX 上用外接键盘打拼音的键序，ü 写 v。
+# 改的时候守住上面的字符范围（tools/test.sh 不查这个文件）。
+please send the report before lunch, thanks.
+my phone works as a keyboard and a mouse.
+we fixed the bug in the parser last night.
+the cat sat quietly by the warm window.
+jump over the puddle, then take the next left.
+a dozen boxes arrived at the office today.
+she quickly zipped her jacket and walked out.
+turn off the lights when you leave the room.
+the server restarted twice, but nothing broke.
+i will call you back in five minutes.
+move the cursor to the top right corner.
+fresh bread and hot coffee make a good morning.
+the extra cable is in the drawer, next to the tape.
+type slowly at first, speed will come later.
+every key should land where your finger expects.
+jintian tianqi hen hao, women qu gongyuan ba.
+wo xianzai zai jia li xie daima.
+zhege gongneng xuyao zai shouji shang ceshi.
+mingtian zaoshang jiu dian kaihui.
+qing ba wenjian fa gei wo, xiexie.
+ta zuotian mai le yi tai xin diannao.
+women yiqi chi wanfan zenmeyang.
+zhe ge jianpan da zi hen shunshou.
+lvse de shuye zai feng li yaodong.
+wo de shouji keyi dang shubiao yong.
+xiaomao zai chuang bian shui jiao.
+zhoumo women qu hai bian wan ba.
+ni xiang he cha haishi kafei.
+qiantian xia le yi chang da yu.
+nv haizi zai caochang shang paobu.

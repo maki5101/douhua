@@ -26,6 +26,8 @@ import java.util.List;
  * 修饰键点一下锁定（高亮），打完下一个键自动解开。
  *
  * 平时触摸由服务处理（按键的位置判断按到了哪个键）；服务没接管时，键自己响应触摸并转发给服务。
+ * 键与键之间的缝、第二行两头的空位、外圈边距不是死区：分给最近的键（规则只有一份，TouchRouter.nearestKey；
+ * 分流时由面板整块的范围 REGION_KEYBOARD 触发，键自己收触摸时由 {@link #onTouchEvent} 兜）。
  */
 final class KeyboardPanel extends LinearLayout {
     interface Listener {
@@ -190,6 +192,8 @@ final class KeyboardPanel extends LinearLayout {
     /** 当前显示的键（下标对应 views）。 */
     private final List<Key> keys = new ArrayList<>();
     private final List<TextView> views = new ArrayList<>();
+    /** 键自己收触摸时，按在缝里的那根手指分到的键（下标），-1 = 没有。 */
+    private int gapKey = -1;
 
     KeyboardPanel(Context context, Listener listener) {
         super(context);
@@ -234,7 +238,10 @@ final class KeyboardPanel extends LinearLayout {
         rebuild();
     }
 
-    /** 把每个键在屏幕上的位置报给服务。 */
+    /**
+     * 把每个键在屏幕上的位置报给服务，最后是面板整块的范围（REGION_KEYBOARD）：按在缝、空位、边距上时分给范围里最近的键。
+     * 范围就是面板自己，键盘外面的空白、工具栏、小触控板都不在里面。
+     */
     void collectRegions(List<int[]> regions) {
         int[] loc = new int[2];
         for (int i = 0; i < views.size(); i++) {
@@ -245,6 +252,8 @@ final class KeyboardPanel extends LinearLayout {
             regions.add(new int[]{key.special ? Proto.REGION_BUTTON : Proto.REGION_KEY, key.id,
                     loc[0], loc[1], loc[0] + v.getWidth(), loc[1] + v.getHeight()});
         }
+        getLocationOnScreen(loc);
+        regions.add(new int[]{Proto.REGION_KEYBOARD, 0, loc[0], loc[1], loc[0] + getWidth(), loc[1] + getHeight()});
     }
 
     /** 画按下的样子。id 同 Key.id。 */
@@ -254,6 +263,14 @@ final class KeyboardPanel extends LinearLayout {
                 look(i, pressed);
                 preview(i, pressed);
             }
+        }
+    }
+
+    /** 所有键松开的样子、收起放大提示（服务断了，它转来的按下等不到松开）。 */
+    void clearPressed() {
+        for (int i = 0; i < views.size(); i++) {
+            look(i, false);
+            preview(i, false);
         }
     }
 
@@ -273,6 +290,7 @@ final class KeyboardPanel extends LinearLayout {
     }
 
     private void rebuild() {
+        releaseGapKey();
         removeAllViews();
         keys.clear();
         views.clear();
@@ -348,6 +366,60 @@ final class KeyboardPanel extends LinearLayout {
                 || (key.id == FN_BUTTON_ID && layer == LAYER_FN)
                 || (key.id >= 0xE0 && key.id <= 0xE3 && (modifiers & (1 << (key.id - 0xE0))) != 0);
         Style.look(views.get(i), active, pressed);
+    }
+
+    /**
+     * 键自己收触摸时（服务没接管），按在缝、空位、边距上的触摸各键收不到，冒泡到面板这里：分给最近的键，
+     * 之后这根手指当按在那个键上（按下的样子、放大提示、震动、抬起都照常）。只管第一根手指——
+     * 缝上的第二根手指系统会派给已有的触摸目标，和以前一样被忽略。
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    @Override
+    public boolean onTouchEvent(MotionEvent e) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                gapKey = nearestKey(e.getX(), e.getY());
+                return gapKey >= 0 && localTouch(gapKey, e);
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL: {
+                int i = gapKey;
+                gapKey = -1;
+                return i >= 0 && localTouch(i, e);
+            }
+            default:
+                return gapKey >= 0;
+        }
+    }
+
+    /** 键要重建了（换层、换快捷行）：缝里按着的键等不到抬起，先松开。 */
+    private void releaseGapKey() {
+        int i = gapKey;
+        gapKey = -1;
+        if (i < 0) return;
+        look(i, false);
+        preview(i, false);
+        Key key = keys.get(i);
+        if (!key.special) listener.onLocalKey(key.id, false);
+    }
+
+    /** 面板坐标 (x, y) 最近的键的下标（规则同分流，TouchRouter.nearestKey），没有键返回 -1。 */
+    private int nearestKey(float x, float y) {
+        int[] loc = new int[2];
+        getLocationOnScreen(loc);
+        int ox = loc[0], oy = loc[1];
+        List<TouchRouter.Region> rs = new ArrayList<>();
+        for (int i = 0; i < views.size(); i++) {
+            Key key = keys.get(i);
+            if (key.id == Key.SPACER) continue;
+            TextView v = views.get(i);
+            v.getLocationOnScreen(loc);
+            // 编号直接用下标（只在这里用，不是 Key.id）
+            rs.add(new TouchRouter.Region(key.special ? Proto.REGION_BUTTON : Proto.REGION_KEY, i,
+                    loc[0], loc[1], loc[0] + v.getWidth(), loc[1] + v.getHeight()));
+        }
+        TouchRouter.Region area = new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, ox, oy, ox + getWidth(), oy + getHeight());
+        TouchRouter.Region r = TouchRouter.nearestKey(rs.toArray(new TouchRouter.Region[0]), area, ox + x, oy + y);
+        return r == null ? -1 : r.id;
     }
 
     /** 服务没接管时，键自己响应触摸。 */

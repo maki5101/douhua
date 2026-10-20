@@ -1,6 +1,5 @@
 package dev.douhua.server;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 /**
@@ -15,32 +14,41 @@ import java.lang.reflect.Method;
  * 之后用户点哪个窗口，输入照常跟过去。
  *
  * 用 IActivityTaskManager.focusTopTask(屏幕编号)（隐藏 API，反射；要 MANAGE_ACTIVITY_TASKS 权限，shell 有）。
- * 失败只记一次日志、以后不再试，不影响别的功能。
+ * 代理从 ServiceManager 现取（见 {@link SystemServices}）：调用失败（比如系统框架重启过、代理死了）就丢掉、
+ * 重取、当场再试一次，还不行就记日志、下次接管时再试。只有这个系统上根本没有这个接口或方法时才永久停用。
+ * 失败不影响别的功能。
  */
 final class DexFocus {
+    private static final String IFACE = "android.app.IActivityTaskManager";
+
     private static Object service;
     private static Method focusTopTask;
-    private static boolean failed;
+    /** 找不到接口或方法：这个系统版本做不了，以后不再试。 */
+    private static boolean missing;
 
     private DexFocus() {}
 
     /** 返回是否成功（调用没出错；系统有没有真的切过去要看 dumpsys window 的 mTopFocusedDisplayId）。 */
     static synchronized boolean moveTo(int displayId) {
-        if (failed) return false;
-        try {
-            if (focusTopTask == null) {
-                service = Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
-                focusTopTask = service.getClass().getMethod("focusTopTask", int.class);
+        if (missing) return false;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                if (service == null) {
+                    focusTopTask = Class.forName(IFACE).getMethod("focusTopTask", int.class);
+                    service = SystemServices.get("activity_task", IFACE);
+                }
+                focusTopTask.invoke(service, displayId);
+                return true;
+            } catch (ClassNotFoundException | NoSuchMethodException e) {
+                missing = true;
+                Server.log("把键盘输入切到屏幕 " + displayId + " 不可用（以后不再试）：" + e);
+                return false;
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                service = null;   // 代理多半死了：重取
+                if (attempt == 0) continue;
+                Server.log("把键盘输入切到屏幕 " + displayId + " 失败（下次接管时再试）：" + LogThrottle.describe(e));
+                return false;
             }
-            focusTopTask.invoke(service, displayId);
-            return true;
-        } catch (InvocationTargetException e) {
-            failed = true;
-            Server.log("把键盘输入切到屏幕 " + displayId + " 失败（以后不再试）：" + e.getCause());
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            failed = true;
-            Server.log("把键盘输入切到屏幕 " + displayId + " 不可用（以后不再试）：" + e);
         }
-        return false;
     }
 }

@@ -10,7 +10,7 @@ import java.lang.reflect.Method;
 
 /**
  * Linux 输入设备（/dev/input/eventN）的底层操作。shell 在 input 组里，能直接读触摸屏的原始数据。
- * 独占（EVIOCGRAB）期间系统收不到这块触摸屏的任何触摸；关掉文件描述符即自动释放。
+ * 独占（EVIOCGRAB）期间系统收不到这块触摸屏的任何触摸；关掉文件描述符即自动释放。实体键设备（KeyReader）也用这几个。
  */
 final class Evdev {
     /** _IOW('E', 0x90, int) */
@@ -41,7 +41,7 @@ final class Evdev {
                 m.invoke(os, fd, EVIOCGRAB, ref.getConstructor(int.class).newInstance(1));
             }
         } catch (java.lang.reflect.InvocationTargetException e) {
-            throw new IOException("独占触摸屏失败：" + e.getCause(), e.getCause());
+            throw new IOException("独占设备失败：" + e.getCause(), e.getCause());
         } catch (ReflectiveOperationException e) {
             throw new IOException("找不到 ioctl 接口：" + e, e);
         }

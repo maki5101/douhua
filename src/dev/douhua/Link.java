@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * App 这一侧和特权服务的连接。后台线程负责连接、断了每秒重连；要发的报文进队列，由同一个线程写出，不卡界面。
- * 服务发来的消息由另一个线程读，回调都在主线程。
+ * 服务发来的消息由另一个线程读，回调都在主线程（异步消息，不排在界面重画的同步屏障后面，见 {@link #main}）。
  *
  * 队列空闲 {@link Proto#PING_INTERVAL_MS} 就发一个保活（{@link Proto#CMD_PING}）：服务据此判断连接死没死
  * （10 秒没消息就断开、新连接能顶掉 5 秒没消息的旧连接）。保活不是心跳，心跳由主线程发、决定能不能独占触摸屏。
@@ -54,12 +54,20 @@ final class Link {
 
     private static final byte[] PING = {(byte) Proto.CMD_PING};
 
-    private final Handler main = new Handler(Looper.getMainLooper());
+    /**
+     * 回调全部经这一个异步 Handler 到主线程：界面一重画（invalidate）主线程队列里就插一道同步屏障，普通 post 的消息
+     * 要等下一帧画完才轮到，转发回来的键盘 / 鼠标报文（MSG_KEYBOARD / MSG_MOUSE，蓝牙模式下由 App 发出去）就晚一帧；
+     * 异步消息不受屏障挡。所有回调走同一个 Handler，相互之间的先后和服务发的一样：Ctrl + 滚轮缩放靠键盘、鼠标报文的先后；
+     * onGrab 接管时先收尾本地分流（可能发全零报文），要在服务转来的第一个报文之前；按钮、修饰键和报文的先后也不乱。
+     */
+    private final Handler main = Handler.createAsync(Looper.getMainLooper());
     private final LinkedBlockingQueue<byte[]> queue = new LinkedBlockingQueue<>();
     private final Listener listener;
     private final Context context;
     private volatile boolean running;
     private volatile boolean connected;
+    /** 连着的服务是从哪个 APK 起的（hello 里报的；空 = 不知道）。连上的回调之前写好。 */
+    private volatile String serverApk = "";
     /** 现在的连接线程：stop() 后又 start() 时，旧线程看到自己不是它就退出，不和新线程抢队列、不报状态。 */
     private volatile Thread thread;
     /** 现在的连接线程手里的 socket：stop() 关掉它，才叫得醒卡在 connect / 读 hello 上的线程。 */
@@ -86,6 +94,11 @@ final class Link {
         if (t != null) t.interrupt();
         Socket s = current;
         if (s != null) closeQuietly(s);
+    }
+
+    /** 连着的服务是从哪个 APK 起的（协议 16 起 hello 里带；空 = 不知道）。onLinkStatus(true, …) 时已经是这次连接的。 */
+    String serverApk() {
+        return serverApk;
     }
 
     boolean isConnected() {
@@ -200,10 +213,15 @@ final class Link {
                 } catch (SocketTimeoutException e) {
                     throw new Shown(context.getString(R.string.status_service_stuck), true);
                 }
-                socket.setSoTimeout(0);
                 if (version != Proto.VERSION) {
                     throw new Shown(context.getString(R.string.status_version, version, Proto.VERSION), false);
                 }
+                try {
+                    serverApk = in.readUTF();   // 版本对上了才有这一段（协议 16 起）
+                } catch (SocketTimeoutException e) {
+                    throw new Shown(context.getString(R.string.status_service_stuck), true);
+                }
+                socket.setSoTimeout(0);
                 if (ok == Proto.HELLO_BUSY) throw new Shown(context.getString(R.string.status_service_busy), false);
                 if (ok != Proto.HELLO_OK) throw new Shown(context.getString(R.string.status_service_error, message), false);
                 if (!mine(me)) break;

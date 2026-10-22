@@ -100,7 +100,12 @@ public final class TestClient {
                     case Proto.MSG_HELLO: {
                         int version = in.readUnsignedByte();
                         int ok = in.readUnsignedByte();
-                        Server.log("自测收到 HELLO version=" + version + " ok=" + ok + " " + in.readUTF());
+                        String message = in.readUTF();
+                        if (version != Proto.VERSION) {   // 版本不对后面的格式就对不上（apk 字段是协议 16 加的），不往下读
+                            Server.log("自测收到 HELLO version=" + version + "，和自测的 " + Proto.VERSION + " 不一致，停止");
+                            System.exit(1);
+                        }
+                        Server.log("自测收到 HELLO version=" + version + " ok=" + ok + " " + message + " apk=" + in.readUTF());
                         if (ok == Proto.HELLO_BUSY) {
                             Server.log("自测：服务正被另一个连接（多半是豆花 App）占用，先把豆花退到后台再测");
                             System.exit(1);

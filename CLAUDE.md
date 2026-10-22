@@ -25,13 +25,14 @@
 
 | 文件 | 职责 |
 |---|---|
-| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 15） |
+| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 16） |
 | `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测） |
 | `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；DeX 模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里 |
 | `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号 |
 | `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停 |
 | `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务 |
-| `src/dev/douhua/KeyboardPanel.java` | 外接键盘键位（Gboard 式字母区 + 功能行 / 数字行 / 快捷行，符号层、Fn 层），键 id = 用法码 \| 自带修饰键 << 8；报区域时最后报面板整块（REGION_KEYBOARD），键自己收触摸时缝里的触摸也在 onTouchEvent 里分给最近的键 |
+| `src/dev/douhua/KeyboardPanel.java` | 外接键盘键位（Gboard 式字母区 + 功能行 / 数字行 / 快捷行，符号层、Fn 层），键 id = 用法码 \| 自带修饰键 << 8；报区域时最后报面板整块（REGION_KEYBOARD）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键）；三层的中间四行各建一次、换层只切显示；键帽文字 / 高亮没变的键不重设 |
+| `src/dev/douhua/KeyFingers.java` | 键盘面板自己收触摸时每根手指按的是哪个键（按 pointer id 记，抬起只松自己那个）；按下定键 = 包含的键优先、缝里交给 TouchRouter.nearestKey，纯 Java（离线测） |
 | `src/dev/douhua/KeyboardScreen.java` | 键盘界面：工具栏 + 可调大小位置的键盘 + 键盘上方的小触控板；调整模式由 App 自己收触摸 |
 | `src/dev/douhua/Style.java` | 共用样式（边框、颜色、按下 / 高亮） |
 | `src/dev/douhua/ButtonStrip.java` | 左侧按钮条，屏幕矮时自动分列 |
@@ -55,7 +56,7 @@
 | `tools/adb-device.sh` | 选哪台手机（-s → ANDROID_SERIAL → 只连一台就用它 → 多台时列出来让人选），start/stop-server、selftest、build --install 共用 |
 | `src/dev/douhua/KeyboardSnap.java` | 调整键盘时的轻微吸附，纯 Java（离线测） |
 | `src/dev/douhua/Prefs.java` | 设置键名和默认值 |
-| `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息；空闲 2 秒发保活（CMD_PING），连接超时 / 5 秒等不到 hello 报"服务没响应" |
+| `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息；空闲 2 秒发保活（CMD_PING），连接超时 / 5 秒等不到 hello 报"服务没响应"；记下 hello 里服务的 APK 路径（serverApk）；回调全部经一个异步 Handler 到主线程（不排在界面重画的同步屏障后面） |
 | `src/dev/douhua/DexDisplay.java` | 找 DeX 所在的屏（按键注入目标） |
 | `src/dev/douhua/DisplayReceiver.java` | 服务叫醒它：接上外接屏弹通知（点开在手机屏上打开豆花），拔掉收回 |
 | `src/dev/douhua/server/Server.java` | 服务入口：主线程只 accept，按 SessionPolicy 接 / 顶掉旧会话 / 回"忙"，每条连接一个 douhua-session 线程；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒；`keys` 只读：用 getevent -i 列出输入设备、音量键能不能截、会截哪块 / 旁观哪块 |
@@ -81,6 +82,16 @@
 | `src/dev/douhua/server/KeyReader.java` | 独占并读音量键设备、不独占地读旁观设备（plain + grab 两个描述符，交还时读空 grabFd 再关），poll 100ms 检查是否该放开 |
 | `src/dev/douhua/server/CallState.java` | 问 Telecom（ITelecomService 反射）是不是在来电响铃 / 通话中（这时音量键还给系统），缓存 400ms，结束后冷却 2 秒才算空闲；只在实体键线程用 |
 | `src/dev/douhua/server/DisplayWatcher.java` | 每 1.5 秒查屏幕列表，外接屏接上 / 拔掉时 am broadcast 给 DisplayReceiver |
+| `src/dev/douhua/SelfStart.java` | 手机自己拉起服务的编排（进程里一份，单线程 worker）：开 / 关无线调试、mDNS 找端口、连 adbd、pm grant、停旧服务、起服务、等 hello；配对（成功才记 paired）；自动启动、App 更新后重启（按 hello 里的 APK 路径）；"无线调试是豆花开的"落盘、放弃后盯 3 分钟"用户允许"；探测服务状态（连一次端口读 hello） |
+| `src/dev/douhua/SelfStartJob.java` | 开机后等连上 Wi-Fi（截止 10 分钟）调 SelfStart.autoStart，失败只记日志 |
+| `src/dev/douhua/AutoStartBackoff.java` | 自动启动的退避规则（被系统拒过就不再自动打开无线调试，手动启动成功一次才恢复），纯 Java（离线测）；标记在 selfstart.xml 的 auto_backoff |
+| `src/dev/douhua/BootReceiver.java` | 开机广播：设置里"自动启动服务"开着就排 SelfStartJob |
+| `src/dev/douhua/PairingService.java` | 配对用的前台服务（shortService），通知里 RemoteInput 输配对码；服务起来时无线调试还开着就在通知里提醒关掉（带跳转按钮） |
+| `src/dev/douhua/ServiceSection.java` | 设置页最上面一节"豆花儿服务"：Wi-Fi / 开发者选项 / USB 调试 / 无线调试 / 配对 / 服务逐项实时显示、直达系统页面的按钮、配对分步引导（找端口时可"取消配对"；公共网络别选"始终允许"）、自动启动开关和退避说明、无线调试是用户自己开着时的琥珀色提醒 + 跳转 |
+| `src/dev/douhua/AdbKeys.java` | 豆花的 adb 密钥：RSA 2048，AndroidKeyStore 的 AES-GCM 密钥加密后存 files/adb/key.enc（包装密钥不在 / 对不上 = 作废，删掉当没配对；换机迁移不带它，见 res/xml/data_extraction_rules.xml）；自签证书 + SSLContext；导出 TLS 密钥材料走公开的 SSLSockets（API 31+） |
+| `src/dev/douhua/AdbMdns.java` | NsdManager 找 `_adb-tls-pairing._tcp` / `_adb-tls-connect._tcp`，只认本机地址、127.0.0.1 上真在监听的端口 |
+| `src/dev/douhua/ServerCommands.java` | 经 adb 执行的 shell 命令（pm grant、停旧服务、起服务），和 tools/start-server.sh、stop-server.sh 同一套，纯 Java（离线测，sh -n 查语法） |
+| `src/dev/douhua/adb/` | 纯 JDK、不 import android.*（tools/test.sh 整包离线测）：Ed25519Group + Spake2（BoringSSL spake25519.cc 的 Java 移植，保留其 Apache-2.0 声明）、Hkdf、PairingAuth（AES-128-GCM）、AdbMessage（消息帧）、AdbPublicKey（adb 公钥格式）、SelfSignedCert（手写 DER）、AdbTls（TLS 1.3、互不校验证书）、PairingClient、AdbConnection（CNXN → STLS → TLS → OPEN shell） |
 
 蓝牙模式：报文最后都经 BtHid（系统的 BluetoothHidDevice，键盘 + 鼠标 + 媒体键合成一个描述符）→ 配对的电脑 / 平板 / 电视。
 触摸谁来收看服务在不在：
@@ -88,6 +99,11 @@
   发回 App（Proto.MSG_MOUSE / MSG_KEYBOARD），App 交给 BtHid。按钮、震动、手势照常走原来的消息。
 - 服务没开 / 没接管：只有 App 一个进程，MainActivity 自己收触摸（dispatchTouchEvent）→ 同一个 TouchRouter → BtHid。
   这时系统的下拉通知栏、上滑回桌面挡不住，侧滑返回只能靠左右窄边的排除区和吞掉返回。
+
+服务怎么拉起来（两条路，结果一样：shell 身份的 `app_process … dev.douhua.server.Server uid=<App uid>`）：
+- 电脑：`tools/start-server.sh`（adb USB / 无线），照旧保留。
+- 手机自己（SelfStart，不依赖 Shizuku）：豆花经"无线调试"连本机 adbd（127.0.0.1），用配对过的密钥以 shell 身份执行同样的命令。
+  配对一次（设置页"豆花儿服务"→ 开始配对 → 系统里"使用配对码配对设备" → 在豆花的通知里输配对码），之后打开豆花时 / 开机连上 Wi-Fi 时自动启动。
 
 构建不用 Gradle：`tools/build.sh` 直接 javac（Java 8 语法）→ d8 → aapt2 → zipalign → apksigner。
 SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
@@ -153,6 +169,24 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   （0.1.0 的 bug，日志里是 `Input dispatching timed out (Application does not have a focused window)`）；
   这时豆花收下自己虚拟键盘（厂商号 Proto.HID_VENDOR）的键并吞掉，免得 Esc 被系统当返回键。
 - 服务只接受豆花 App 的 uid、shell(2000)、root(0) 的连接；shell 本来就能注入输入，放行它不增加权限。
+
+- **adb 私钥、配对码不落日志、不进界面和异常信息**：私钥只以 AndroidKeyStore 加密的形式存在 files/adb/key.enc（不进 "douhua" 那份
+  SharedPreferences，"恢复默认"不清它）；配对码只经通知的 RemoteInput 进来、直接交给 SelfStart，不存。拿到这把私钥 = 能以 shell 身份连这台手机的 adbd。
+- **豆花打开的无线调试用完就关**（SelfStart.closeWirelessIfOurs，成功失败都关）；用户自己开着的不动。"是豆花开的"在打开之前就 commit 进
+  selfstart.xml（own_wireless_at，15 分钟内有效）：进程中途没了，下次进程起来（SelfStart 构造时）就关掉；开着又带着这个标记的，启动时照"豆花开的"用完关掉。
+  打开后被系统关回去（网络没被信任，系统的确认弹窗还在）而放弃时，标记留着、盯 3 分钟：用户这时才点"允许"就接着启动、用完关；开始配对 / 断 Wi-Fi / 到点就不盯、清标记。
+  前提是 USB 调试开着（不然关无线调试时 adbd 停掉、服务跟着死），所以 USB 调试没开就不启动（RESULT_ADB_OFF）。
+- **用户自己开的无线调试豆花绝不替他关**（他的电脑可能正经无线调试连着这台手机，替他关了电脑就断），只提醒：配对成功的通知里、设置页"无线调试"一项
+  （开着且不是"豆花开的"标记时）琥珀色提醒 + 跳到开发者选项的无线调试那一页。
+- **自动的路径在退避中不自己打开无线调试**（AutoStartBackoff）：自动 = 打开豆花时的 autoStart、开机任务、App 更新后的重启（onServiceConnected），
+  等"用户允许"后接着的那次启动受不受限沿用最初那次是自动还是手动。手动启动（设置页按钮、配对成功后那次）成功、或者盯守中用户在系统弹框里点了
+  "允许"后接着的那次启动成功（最初是自动的也算，用户亲手确认了这个网络；AutoStartBackoff.after 的 allowedByUser）才解除；标记 commit 落盘。
+- **不改 adb_allowed_connection_time**（不动全局安全设置）：密钥 7 天不用被系统作废，靠 keyRejected 提示重新配对。
+  "密钥被拒"只认 TLS 层的报错（SSLException、不是包着 EOF / reset 的），无线调试还开着、重新找端口再连一次还被拒才算；被判被拒后设置页仍给"启动服务"，手动启动成功就解开。
+- **"已配对"= 配对成功过**（selfstart.xml 的 paired，配对成功才写）且密钥文件还在；密钥文件在配对前就生成了，不能拿它在不在当已配对。
+  loadOrCreate 新生成了密钥就清掉 paired。
+- **清单必须申请 WRITE_SECURE_SETTINGS**：pm grant 只给清单里申请过的权限，不申请就永远开关不了无线调试（ServerCommandsTest 锁住）。
+- **`dev.douhua.adb` 包只用 JDK**，不 import android.*；要 Android 的（Keystore、NsdManager、SSLSockets）放 dev.douhua。
 
 ## 决策记录
 
@@ -253,6 +287,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   （up 里 contains || hit 还是它）；down 的 default 改成什么都不做（以前不认识的类型当按钮）。协议因此必须 14：旧服务会把类型 4
   当按钮 id 0，按钮条 id 0 是"退出"。数字键盘这次没加范围；不加开关（确定性、默认开，前后差别用记下的触点重放算）。
   服务没接管、各键自己收触摸时（DeX 下服务连着但没接管），缝里的触摸冒泡到 KeyboardPanel.onTouchEvent，用同一个 nearestKey 兜，只管第一根手指。
+  （这样多指会丢字、晚松开，2026-10-22 改成面板整块收触摸、按手指编号分，见"打字延迟"一条。）
 - **打字测试的触点日志**（同一天）：TouchRouter.Trace 把落在键盘范围里的按下 / 抬起写成 L/K/p/u 行，App 的本地分流和服务的分流
   格式一模一样，都写 logcat（标签 douhua-keys；服务进程 app_process 里调 android.util.Log 这个项目以前没用过，没在真机上验证）。
   开关是 DebugMoves 的 DEBUG_KEYLOG 租期（10 秒，type-log.sh 每 3 秒续），App 连着服务时转发 CMD_TRACE = 11。
@@ -294,7 +329,51 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   打不开的设备只知道路径、不知道带不带电源键，所以一块能旁观的电源键设备都没有（getevent 打不开、带触摸）就什么都不截、报 HARD_SHARED
   （截了电源键 + 音量键的系统组合键（截屏、电源 + 音量上的快捷方式等）会失灵、单按电源直接灭屏；App 提示只说"截不住、原因见服务日志 / Server keys"）；KeyReader 里旁观的设备一块都打不开也一样不截（HARD_FAILED）。
   getevent 不在、超时、一个能打开的设备都没有 → HARD_FAILED（不影响触摸屏接管）。
-- **服务目前要靠电脑 adb 拉起**（`tools/start-server.sh`），手机重启后要重跑。Shizuku 方案还没做。
+- **豆花自己连本机 adbd 拉起服务，不依赖 Shizuku**（2026-10-22，用户："wifi 和那个开发者选项 usb 调试都要有足够的指示，
+  然后确实要把必要的组件塞进来，不能依赖 shizuku"）。以前服务只能靠电脑 `tools/start-server.sh`，手机重启后要重跑；电脑这条路保留不变。
+  ① 配对协议自己实现：SPAKE2 从 BoringSSL 移植成 Java（保留 BoringSSL 的 Apache-2.0 声明；LGPL 的 MuntashirAkon/spake2-java、GPL 的
+  Flyfish233/spake2-java 都没抄、没用）；TLS 用平台 SSLContext("TLSv1.3") + 自己的 X509ExtendedKeyManager；导出密钥材料用公开的
+  android.net.ssl.SSLSockets.exportKeyingMaterial（API 31+，minSdk 33 正好）；HKDF 手写、AES-GCM 用平台 Cipher、自签证书手写 DER。
+  不带 .so、BouncyCastle、hiddenapibypass、隐藏 API。Shizuku 的 manager/adb（Apache-2.0）只对照了结构，没照抄代码。
+  ② 连本机：NsdManager 找端口，只认本机地址，连 127.0.0.1；协议照 AOSP packages/modules/adb（CNXN → STLS → TLS 1.3 → OPEN "shell:…"）。
+  ③ 配对码在前台服务的通知里输（RemoteInput）：系统的配对弹窗一离开就关，不能切回豆花输码。前台服务类型 shortService（配对 + 启动几分钟内做完，
+  不用额外权限、不用写 specialUse 的用途声明；代价：约 3 分钟到点收尾）。
+  ④ 连上后：`pm grant dev.douhua android.permission.WRITE_SECURE_SETTINGS`（之后 App 自己能开关无线调试；清单里必须申请这个权限，
+  第一版漏了，pm grant 必然失败）→ 停旧服务 → 和 start-server.sh 一样起服务 → 等 hello。
+  ⑤ 自动启动：设置里"自动启动服务"（配对成功后默认开）；打开豆花时连不上服务（没在跑 / 卡住 / 协议版本不一致）就（重）启动；
+  连上服务时 hello 里报的 APK 路径（协议 16，服务的 CLASSPATH）和 App 自己的 sourceDir 不一样（App 更新过、服务还跑着旧代码，协议版本没变也算；
+  每次安装 APK 都换目录）就重启一次，不管服务是谁起的：装包后电脑再起的服务（含 --debug）路径一样、不会被动，装包前就在跑的会被重启成不带 debug 的；
+  同一对（旧路径、新路径）只试一次。开机后等 Wi-Fi（SelfStartJob，截止 10 分钟），失败静默记日志。
+  ⑥ 无线调试是豆花自己打开的，服务起来后马上关；用户自己开的不动；没有 WRITE_SECURE_SETTINGS 时引导用户手动打开。打开后被系统关回去
+  （这个 Wi-Fi 没被信任，系统弹"是否允许"）再等 30 秒给用户点"允许"，没等到报 RESULT_WIFI_UNTRUSTED，界面提示去选"始终允许"；
+  之后再盯 3 分钟，用户这时才点"允许"就接着启动、用完照样关（见不变量）。
+  **公共网络、退避、提醒关掉**（2026-10-22 用户定，"还有就是得提醒关掉吧"）：
+  - 公共网络：系统问"是否允许在此网络上使用无线调试"时，"始终允许"只在自己家里 / 信得过的 Wi-Fi 上选，咖啡馆、公司、酒店别选。
+    说明写在配对引导（svc_guide_3 + 引导下面一段琥珀色 svc_public_wifi）和检测到系统弹框时（RESULT_WIFI_UNTRUSTED 的设置页提示后面接同一段、
+    res_wifi_untrusted 里一句），"手动打开"的说明（svc_wireless_manual）也加了一句。说的是：选了的网络上以后豆花拉起服务会把无线调试打开几秒，
+    同网络的设备能看到它开着；连进来要配好的密钥或配对码，2026-05 修过一个能绕过验证的漏洞（CVE-2026-0073，编号和时间是用户给的，没自己查证）。
+  - 退避（AutoStartBackoff）：自动的路径被系统拒过（弹了框、一直没允许）就不再自己打开无线调试（返回 RESULT_PAUSED，不记成"上次的结果"），
+    直到手动启动成功一次。30 秒宽限期到时（结果 Wi-Fi 未信任）先记上退避，之后盯的 3 分钟里用户点了"允许"、接着的启动成功就解除
+    （按手动算；原来沿用自动身份、不解除，同一件事按点得快慢结果不同，设置页还一直说"没被允许"）；3 分钟里没允许才一直退避。手动启动被拒也进退避（下次自动启动会弹同一个框）。无线调试本来开着（用户自己开的，或豆花开的、用户随后点了允许）
+    不受限，照常走，但自动的成功不解除退避。豆花读不到 Wi-Fi 名称（不要定位权限），分不清网络，只能整体暂停；设置页在退避中（自动启动开着时）
+    显示一段琥珀色说明。App 更新后的重启在退避中、无线调试关着时不记"试过"，退避解除后下次连上再试。
+  - 提醒关掉：配对成功、服务起来时无线调试还开着（用户为配对自己开的）就在同一条配对通知里提醒 + "去关掉无线调试"按钮；设置页"无线调试"
+    开着、不是豆花开的、没在配对 / 启动时琥珀色提醒 + 同样的按钮。通知按钮经设置页（EXTRA_OPEN_WIRELESS）转一下，复用 ServiceSection.open 的退路
+    （开发者选项打不开就退到"关于手机"）：PendingIntent 自己没法试第二个。
+  ⑦ 不改 adb_allowed_connection_time；密钥被拒（TLS 层报错，连两次、无线调试还开着）→ keyRejected → 提示重新配对（同一把密钥再配一次就行）。
+  只是被断开（无线调试正好被系统 / 用户关掉、Wi-Fi 漫游，adbd 踢掉所有 TLS 连接）不算。
+  ⑧ adb 私钥 AndroidKeyStore 的 AES-GCM 加密后存私有目录。⑨ 电脑那条路不变。⑩ 指示：设置页最上面"豆花儿服务"一节（见文件表），主界面状态字在服务没开 / 没响应时可点、跳过去。
+  服务状态靠连一次服务端口读 hello 探测：服务对每条连接先建虚拟设备再发 hello，所以只在设置页打开、调试开关变了、启动前后探测，不轮询。
+  已知长期风险：Google 2026-07 起在讨论让 adbd 只绑 wlan0（issuetracker 526109803，转述），真改了"App 连 127.0.0.1 上的 adbd"整类做法都会失效。
+  **主力机实测（同一天晚上）**：配对、连 adbd、pm grant 第一次就都通了；起服务失败了三轮，最后定位：
+  ① 用老的 "shell:" 协议执行起服务命令，服务进程连同外面套的 sh 刚起来就被整个杀掉（服务日志只有启动命令那一行、退出码都没写出来），
+  加了 setsid、连接一直开着也一样；电脑上 adb shell 走 shell 协议 v2（"shell,v2,raw:"）同一条命令却好好的。
+  改成 AdbConnection 在 adbd 声明 shell_v2 时走 v2（CNXN 里也声明 features=shell_v2,cmd，分包见 AdbConnection.ShellV2）后，21:10、21:38 两次都拉起来了。
+  为什么老协议会被杀没深究（推测和 adbd 对老协议子进程的收尾有关），**SelfStart 必须走 v2**。
+  ② 起服务命令的 sh 一退出豆花就断开连接时（断开前 17ms），adbd 拆连接把刚起来的服务带走：现在连接开到服务应答才断，命令里也加了 setsid（start-server.sh 同样加了）。
+  ③ 三星上 logcat 几秒就被别的程序刷满，事后抓不到现场：SelfStart 的每一步另记到私有目录 files/selfstart-log.txt（调试包 `adb shell run-as dev.douhua cat files/selfstart-log.txt`），
+  起服务命令在服务日志里先写"启动命令执行了"、退出时写退出码，外加进程组 / 会话 / cgroup、1 秒和 4 秒后还在不在（诊断，稳定后可以删）。
+  探测服务（probeNow）每次连上服务都会建 / 拆一次虚拟设备，服务日志里一串"连接出错：Connection reset"就是它，无害（见技术债）。
 
 - **蓝牙 HID**（用户要"任何设备通用的外接 HID"、"装上就能用"）：系统的 BluetoothHidDevice（Android 9 起），不需要服务、
   不需要电脑。为了不维护两份分流逻辑，先把 Session 里的分流和修饰键搬进纯 Java 的 TouchRouter，两种模式共用。
@@ -330,13 +409,38 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   只能：注册 5 秒没回话显示"重启手机"（BtHid.STATE_STUCK）；连接 12 秒没结果先断开再连（BtHid.onConnectTimeout，
   用户当时关开蓝牙就是因为换到电脑时卡在"连接中"）；代理整个启动期间只要一个（以前关开蓝牙后两个代理各注册一次，第二次被拒成"注册失败"）。
   索尼测试机上同样关开蓝牙能自己恢复。三项都没在三星上验证过。
+- **打字延迟：转发报文不等重画、键盘少做重活、多指不丢字**（2026-10-22，用户：蓝牙模式下整屏键盘打快了不跟手）。
+  先只读代码查了一遍（蓝牙转发、DeX、App 界面三条路，没实测）。服务端、nearestKey、触点日志、实体键线程都是微秒级或打字时不跑。
+  嫌疑按大小：① 蓝牙链路深度省电（重新配对后电脑多半又连上了手机的通话 / 媒体音频，见"蓝牙卡顿的根因"；关掉就好，不用改代码，设置页有琥珀色提醒）；
+  ② 主线程的同步屏障：每个键都 invalidate，下一帧画完之前普通 post 的消息不执行，服务转发回来的报文（蓝牙模式下由 App 发）最多晚一帧；
+  ③ 锁 Shift / 换层时主线程的重活：每次修饰键变了对全部约 63 个键 setText（开着自动缩字号，要重新排版）+ 新建背景，换层拆掉重建所有键 view；
+  ④ 每个键主线程上两次同步 binder（sendReport、震动），平时不排队。
+  改了：Link 的回调全部经一个异步 Handler（Handler.createAsync）到主线程，不受屏障挡。全部而不是只有 MSG_KEYBOARD / MSG_MOUSE：
+  异步消息会越过排在它前面、被屏障挡住的同步消息，两种混用时 MSG_GRAB 的 onGrab（接管时本地分流 releaseAll，可能发全零报文）
+  可能落到服务转来的第一个报文后面；按钮（快捷行的滚轮动作）、修饰键和报文之间也会乱。全走一个 Handler，先后就和服务发的一样（onLinkStatus 也在里面）。
+  KeyboardPanel：文字没变的键不 setText、高亮 / 按下的样子没变的键不重画（Cap.look 记着上次画的）；三层的中间四行各建一次缓存着，
+  换层只切显示（GONE 的层不在当前键列表里，报的区域、nearestKey 的候选还是只有当前这一层；切换照样触发重新布局、pushLayout）；
+  换快捷行 / 换主机只重建底行和快捷行。面板自己收触摸时先发键、再震动、再画按下的样子（本地分流那条本来就是先发报文）。
+  顺带修了 caeb7b8 带进来的多指丢字：以前各键自己收触摸，第一根手指按在缝里由面板兜底后，同一手势里后来的手指全被吞、缝里的键等全部抬起才松；
+  第一根按在键 A、第二根按在缝里时 A 收到"多指中的一根抬起"被忽略、一直按着。现在面板整块收触摸（onInterceptTouchEvent），
+  按手指编号分（KeyFingers）：按下时包含的键优先、缝里交给 TouchRouter.nearestKey（规则本身没动），抬起只松自己那个，取消全部松开；
+  范围外的手指（多指时别处的也可能派到面板）不算。
+  没做：专门的蓝牙发送线程（BtHid 的字段、鼠标 / 空中鼠标都在主线程，挪线程要全部一起挪，等实测再说）；震动挪后台线程。
+  震动能打断（同一天，用户："不是轻重的问题，是不能打断"）：按键的"嗒"走 Haptics.playKey，先 vibrator.cancel() 停掉还在震的上一下再震
+  （"大"档是系统的重击、余震长，打得快时不停就拖在手指后面；安卓原版本来会顶掉旧的，三星没核对，自己停）。强度不动。
+  要是三星的固件波形停不下来，再给按键换成随时能切断的短震（createOneShot），要用户上手比过才定。数字键盘也改成先发键再震再画。
+  键盘工具栏（同一天，用户：贴着屏幕边、拿手机时容易误触）：高 48 → 36dp，平时两个按钮定宽 104dp 挤在中间，
+  和贴着的那条屏幕边之间空 20dp 不响应（KeyboardScreen.edgeInset）；调整模式四个按钮照旧铺满一行。
+  只跑了离线测试（KeyFingersTest）和编译，没在真机上试。要看：打快了跟不跟手（先确认电脑没连手机的通话 / 媒体音频）；锁 Shift、换层后键帽和高亮对、
+  换层后放大提示和按下的样子不残留；DeX 下服务连着没接管时（或贴字面板开着、调整键盘时）两三根手指交替打、按在缝里，字不丢、键不粘；
+  Ctrl + 双指缩放照常。量法：tools/type-log.sh 录一轮，电脑按下时间 − 手机 p 行时间（analyze.py 还没算这个）。
 
 ## 测试
 
 - **测试设备**：用 USB 连的测试机（序列号见 `.private/NOTES.md`），命令里显式 `adb -s`。用户的主力机禁止拿来测试。
   测试机不是三星、没有 DeX，DeX 模式只能交给用户在主力机上试；`tools/build.sh --install`、`start-server.sh` 等脚本连着多台时会列出来让人选（tools/adb-device.sh），我自己跑时一律加 `-s <测试机>`。
 
-- `tools/test.sh`：GestureEngine、MtDecoder、TouchDevice 解析的离线测试；服务的会话交接部件（TouchGrabLock、SessionPolicy、
+- `tools/test.sh`：GestureEngine、MtDecoder、TouchDevice 解析、KeyFingers（键盘面板自己收触摸时的多指）的离线测试；服务的会话交接部件（TouchGrabLock、SessionPolicy、
   RotationLock、GrabCondition）、LogThrottle、Shell（会真起 echo / sleep 子进程）、实体键（KeyDevices 解析 getevent 输出 / 挑设备、HardKeyGate 状态机）也在 ServerPartsTest 里。
 - 服务安全链路（真机）：`adb shell CLASSPATH=<apk 路径> app_process / dev.douhua.server.TestClient 0 2`
   ——接管屏幕 0 两秒、停发心跳，服务应在 3 秒内报"App 没有响应，已把触摸屏还给系统"。**测试期间外屏摸不动约 5 秒。**
@@ -367,7 +471,30 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   在打开的网页里看着手机打 30 句（英文小写、拼音各半）；完了 `tools/type-analyze.sh` 出误按率、每个键的落点偏移、
   缝里的触点新规则分对 / 分错几个。`tools/test.sh` 里的 `analyze.py --selftest` + `KeyReplay check` 只验证分析脚本本身。
 
+- 手机自己拉起服务（SelfStart）的离线部分在 `tools/test.sh`：AdbCryptoTest（SPAKE2 / HKDF / GCM，向量取自 BoringSSL）、
+  AdbProtocolTest（消息帧逐字节、adb 公钥格式对照本机 `adb keygen` 生成的公钥（只放公钥）、自签证书用 JDK 解析验签、
+  配对 / 连接客户端对本进程里的测试服务端，含配对码错、密钥被拒的报错分类）、ServerCommandsTest（命令和两个脚本对得上、sh -n 查语法、
+  清单申请了 WRITE_SECURE_SETTINGS、迁移规则不带 adb 密钥）、AutoStartBackoffTest（退避的进入 / 解除，按经过串起来 + 全组合）。配对服务端的顺序照 AOSP DoExchangePeerInfo：先发自己的 PeerInfo 再读对方的，
+  所以真 adbd 上配对码错时客户端是"解不开对方的 PeerInfo"（AEADBadTagException），读到 EOF 只是兜底；两条都测。
+  假 adbd 拒绝密钥是在 TLS 层发致命警报（和 adbd 的校验回调一样），握手后直接断开（踢掉连接）的另测、不算被拒。
+  端到端（不进仓库，scratchpad 的 selfstart/e2e/）：用 BoringSSL（libssl）照 AOSP adbd 写了配对服务端（PeerInfo 顺序同 AOSP）和连接端口，
+  Java 客户端（JDK 25 的真导出密钥材料）去连：配对成功 / 配对码错（走解密失败那条）/ 连接 + shell / 没配对的密钥被拒（TLS 警报）都符合预期。没用真 adb 客户端测（`adb pair` 走本机正在用的 adb server、会写 ~/.android），
+  也没在真手机上跑过。真机上要看的见"进行中"。
+
 ## 进行中（交接；做完删掉这一节）
+
+- **豆花自己拉起服务（2026-10-22 写完，没提交，待真机验证；协议 16：hello 末尾带服务的 APK 路径，装完要重启服务）**：见决策记录。只跑了离线测试（密码学 187 项、协议 61 项、命令 14 项）、
+  BoringSSL 端到端和编译。真机上要看：① 配对：设置页"开始配对"→ 系统里"使用配对码配对设备"→ 通知横幅 / 下拉里输码（三星横幅能不能直接回复、
+  弹窗会不会因为下拉通知关掉）；配对码错能重输；② 启动：无线调试关着时豆花自己打开、起服务、马上关（日志标签 douhua 里"打开了无线调试""关掉了…"）、
+  关掉后服务还在；第一次会 pm grant WRITE_SECURE_SETTINGS；没信任的 Wi-Fi 上系统弹"是否允许"→ 选"始终允许"后能接着起来；
+  ③ 自动启动：打开豆花时服务没在跑自动起；装新包后打开豆花会重启一次装包前就在跑的服务（电脑装包后再起的不动）；开机连上 Wi-Fi 后自动起（三星开机广播、JobScheduler 的 Wi-Fi 约束）；
+  ④ 各项指示：开 / 关 Wi-Fi、开发者选项、USB 调试、无线调试时设置页实时变，按钮能跳到对的系统页面（三星认不认 `:settings:fragment_args_key` 的高亮）；
+  ⑤ 7 天不用后提示重新配对（Conscrypt 下 adbd 拒绝时客户端是不是报 SSLException，只用 JDK 客户端对 BoringSSL 核对过）；
+  配对码输错后放弃、设置页不显示"已配对"；没信任的 Wi-Fi 上放弃后 3 分钟内点"允许"能接着起来、用完关；在最近任务里划掉豆花后无线调试被关回去（下次打开时）；关掉 USB 调试 / 开发者选项后服务确实停掉（文案是这么写的）；⑥ 探测服务时每次都建一次虚拟设备，DeX 上会不会闪一下光标。
+  ⑦ 公共网络 / 退避 / 提醒（2026-10-22 补，只跑了离线测试（退避 26 项）和编译）：在没信任的 Wi-Fi 上自动启动弹框后点取消 → 设置页出现"自动启动暂停了"、
+  之后打开豆花不再弹框（日志"自动启动服务暂停中"）、手动点"启动服务"成功后那段消失；退避中自己打开无线调试再打开豆花，自动启动照常起来；
+  配对成功的通知里有"无线调试还开着"和"去关掉无线调试"按钮，点了能到无线调试那一页（经设置页转一下，看会不会闪一下设置页、三星认不认高亮）；
+  无线调试已经关着时通知里不提；设置页无线调试是自己开的时显示琥珀色提醒 + 按钮，豆花临时开的那几秒不显示。
 
 - **DeX 模式的音量键（2026-10-19 写完，2026-10-21 去掉电源键、改用 getevent；没提交，待真机验证；协议 15，装完要重启服务）**：见决策记录。
   只跑了离线测试（服务端部件 216 项：getevent 格式解析（样本照 getevent.c 的 printf 拼，不是真机输出）/ 白名单 / 旁观 / 看不到电源键不截 / 原因混合、HardKeyGate 透传 / 组合键（含补发排序）/ 冷却 / releaseAll / 竞态）和编译。
@@ -648,6 +775,12 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   推算缩放，只有一台样本，没做；做了才能在测试机上测服务那一半。
 
 ## 已知技术债 / 没验证的
+
+- 蓝牙发送全在主线程（本地分流、服务转发、空中鼠标都是）：sendReport 是同步 binder，主线程一卡报文跟着晚。要更稳可开专门的发送线程
+  （BtHid 的 hid / connected 和鼠标状态要一起挪过去、保住键盘和鼠标报文的先后），等实测打字延迟再定。
+
+- 手机自己拉起服务：Google 若让 adbd 只绑 wlan0（讨论中），连 127.0.0.1 这条路会整体失效；探测服务状态每次都让服务建 / 拆一次虚拟设备
+  （要省得改服务：先发 hello，或者加只探测的命令）。
 
 - 还没由真人试过：外接键盘（含 DeX 侧输入法打中文）、双指缩放在哪些应用生效、双击、系统方向锁定版的旋转按钮、接上外接屏的通知。
 - 服务被直接杀掉（tools/stop-server.sh）时不会恢复方向锁定；服务因兜底退出（旧会话 2 秒收不完尾还占着触摸屏）时也一样。

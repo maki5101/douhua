@@ -153,6 +153,12 @@ public final class MainActivity extends Activity
     private String linkMessage = "";
     /** 服务在运行却没响应（卡住了）：蓝牙模式下也要提示，用户得去重启它。 */
     private boolean linkStuck;
+    /** 手机自己拉起服务（无线调试连本机 adbd）。 */
+    private SelfStart selfStart;
+    /** 这次回到前台后已经叫过 SelfStart.autoStart：连不上服务时每秒报一次，只叫一次。 */
+    private boolean autoStartAsked;
+    /** 这次按下落在可点的状态字上：整次手势归它，抬起时还在状态字上就打开设置页。 */
+    private boolean statusPress;
     private boolean grabbed;
     private String grabMessage = "";
     // ── 蓝牙模式 ──
@@ -260,6 +266,7 @@ public final class MainActivity extends Activity
         displays = getSystemService(DisplayManager.class);
         audio = getSystemService(AudioManager.class);
         bt = BtHid.get(this);
+        selfStart = SelfStart.get(this);
         air = new AirMouse(this, bt, prefs, this);
         // 只在可调试包里有：adb 让手机发任意位移（量回正中用）、开键盘触点日志（打字测试用）
         debugMoves = DebugMoves.register(this, bt, this::onKeyLogChanged);
@@ -291,6 +298,8 @@ public final class MainActivity extends Activity
         super.onStart();
         stopped = false;
         linkSeen = false;
+        autoStartAsked = false;
+        selfStart.addListener(selfStartListener);
         applyPrefs();
         refreshDisplay();
         Display disp = getDisplay();
@@ -364,8 +373,12 @@ public final class MainActivity extends Activity
         }
         displays.unregisterDisplayListener(this);
         if (audio != null) audio.removeOnModeChangedListener(audioMode);
+        selfStart.removeListener(selfStartListener);
         super.onStop();
     }
+
+    /** 手机自己拉起服务的进度变了（开始启动 / 启动完）：状态字跟着变。 */
+    private final SelfStart.Listener selfStartListener = this::updateStatus;
 
     /** 设置页改完回来：按新设置更新按钮和震动强度，参数发给服务（蓝牙模式下给本地分流）。 */
     private void applyPrefs() {
@@ -457,6 +470,8 @@ public final class MainActivity extends Activity
         addToolbarButton(toolbar, getString(R.string.kb_adjust), KB_ADJUST_ID);
         addToolbarButton(toolbar, getString(R.string.kb_reset), KB_RESET_ID).setVisibility(View.GONE);
         addToolbarButton(toolbar, "", KB_TOOLBAR_POS_ID).setVisibility(View.GONE);
+        toolbar.setGravity(Gravity.CENTER);
+        layoutToolbar(false);
         miniPad = new TrackpadView(this);
         keyboard = new KeyboardPanel(this, this);
         // 键盘和数字键盘按实体键盘排，阿拉伯语这类从右往左的语言下也不镜像
@@ -505,14 +520,27 @@ public final class MainActivity extends Activity
     }
 
     private TextView addToolbarButton(LinearLayout toolbar, String label, int id) {
-        TextView b = Style.button(this, 15);
+        TextView b = Style.button(this, 14);
         b.setText(label);
         b.setOnTouchListener((v, e) -> localTouch(v, e, id));
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
-        p.setMargins(dp(3), 0, dp(3), 0);
-        toolbar.addView(b, p);
+        toolbar.addView(b);
         kbToolbar.add(b);
         return b;
+    }
+
+    /**
+     * 键盘工具栏：平时两个按钮定宽、挤在中间，左右都离屏幕边远一点（拿手机的手指常压在边上，以前一个按钮占半个屏宽，
+     * 贴着边很容易误触）；调整模式四个按钮铺满一行。宽度定死不用 wrap_content：按钮字号是自动缩小的，和 wrap_content 不搭。
+     */
+    private void layoutToolbar(boolean adjusting) {
+        for (TextView b : kbToolbar) {
+            LinearLayout.LayoutParams p = adjusting
+                    ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1)
+                    : new LinearLayout.LayoutParams(dp(104), ViewGroup.LayoutParams.MATCH_PARENT);
+            int m = dp(adjusting ? 3 : 8);
+            p.setMargins(m, 0, m, 0);
+            b.setLayoutParams(p);
+        }
     }
 
     /** 按钮条：固定的 + 设置里的若干个 + "收起"。按钮编号就是在条里的下标，设置改了个数就整条重建。 */
@@ -591,13 +619,13 @@ public final class MainActivity extends Activity
                 b.setText(NUMPAD_LABELS[r][c]);
                 b.setOnTouchListener((v, e) -> {
                     int a = e.getActionMasked();
-                    if (a == MotionEvent.ACTION_DOWN) {
-                        Style.look(v, false, true);
-                        keyHaptic();
+                    if (a == MotionEvent.ACTION_DOWN) {   // 先发键，再震、再画按下的样子
                         onLocalKey(usage, true);
+                        keyHaptic();
+                        Style.look(v, false, true);
                     } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
-                        Style.look(v, false, false);
                         onLocalKey(usage, false);
+                        Style.look(v, false, false);
                     }
                     return true;
                 });
@@ -1144,6 +1172,7 @@ public final class MainActivity extends Activity
         keyboardScreen.setAdjusting(on);
         kbToolbar.get(KB_RESET_ID - KB_CLOSE_ID).setVisibility(on ? View.VISIBLE : View.GONE);
         kbToolbar.get(KB_TOOLBAR_POS_ID - KB_CLOSE_ID).setVisibility(on ? View.VISIBLE : View.GONE);
+        layoutToolbar(on);
         updateToolbarLabels();
         for (TextView b : kbToolbar) Style.look(b, b == kbToolbar.get(1) && on, false);
         updateStatus();
@@ -1186,7 +1215,7 @@ public final class MainActivity extends Activity
     }
 
     private void keyHaptic() {
-        haptics.play(GestureEngine.HAPTIC_CLICK);
+        haptics.playKey();
     }
 
     @Override
@@ -1421,6 +1450,7 @@ public final class MainActivity extends Activity
         linkMessage = message;
         if (connected) {
             linkSeen = true;
+            selfStart.onServiceConnected(link.serverApk());   // 服务还跑着 App 更新前的 APK：重启成新代码
             requestOrientationSelf(-1);   // 方向交给服务
             link.config(prefs.engineConfig(), density);
             Display d = getDisplay();
@@ -1429,6 +1459,12 @@ public final class MainActivity extends Activity
             sendHardKeys();
             pushLayout();
         } else {
+            // 连不上服务（没在跑 / 卡住 / 版本不一致 / 忙）：设置里开着"自动启动服务"就让 SelfStart 看一眼，
+            // 该（重）启动就启动；忙（别的连接在用）它会认出服务在跑，什么都不做
+            if (!autoStartAsked && prefs.autoStartService()) {
+                autoStartAsked = true;
+                selfStart.autoStart();
+            }
             // 蓝牙模式下这次一直没连上服务：没有服务，自己请求方向。连上过又断的不请求，免得服务重启时被塞进横框
             if (btAcquired && !linkSeen && prefs.rotation() >= 0) requestOrientationSelf(prefs.rotation());
             grabbed = false;
@@ -1599,13 +1635,15 @@ public final class MainActivity extends Activity
         if (pad == null) return;
         String s;
         boolean ok;
+        boolean selfStarting = !linkOk && selfStart.step() == SelfStart.STEP_STARTING;
         if (btMode) {
             s = btStatusText();
             // 蓝牙模式下没开服务是正常配置，不提示；开了却卡住，系统手势就挡不住了，要告诉用户去重启
-            if (linkStuck) s += " · " + linkMessage;
+            if (selfStarting) s += " · " + getString(R.string.status_self_starting);
+            else if (linkStuck) s += " · " + linkMessage;
             ok = btState == BtHid.STATE_CONNECTED;
         } else if (!linkOk) {
-            s = linkMessage;
+            s = selfStarting ? getString(R.string.status_self_starting) : linkMessage;
             ok = false;
         } else if (textBar.getVisibility() == View.VISIBLE) {
             s = getString(R.string.status_text_mode);
@@ -1623,6 +1661,33 @@ public final class MainActivity extends Activity
         }
         pad.setStatus(s, ok);
         miniPad.setStatus(s, ok);
+        boolean tappable = statusTappable();
+        pad.setStatusTappable(tappable);
+        miniPad.setStatusTappable(tappable);
+    }
+
+    /**
+     * 状态字能不能点（点了打开设置页，最上面就是"豆花儿服务"那一节）：服务没开 / 没响应 / 版本不对的时候。
+     * DeX 模式下这时没人接管触摸，触控板本来就不动；蓝牙模式下没开服务是正常配置，只有卡住才算。
+     */
+    private boolean statusTappable() {
+        return btMode ? linkStuck : !linkOk;
+    }
+
+    /** 这一下按在可点的状态字上吗（看得见的那块触控板）。和角上看得见的小按钮重叠时归按钮（文字很长时也点得到 ☰）。 */
+    private boolean onStatus(MotionEvent e) {
+        if (!statusTappable()) return false;
+        float x = e.getRawX(), y = e.getRawY();
+        // 只看最上面那一屏：键盘屏盖着主界面（触控板还算"显示着"），空中鼠标页上没有状态字
+        if (keyboardScreen.getVisibility() == View.VISIBLE) return miniPad.statusHit(x, y);
+        if (airOn) return false;
+        int[] at = new int[2];
+        for (TextView b : cornerButtons) {
+            if (!b.isShown()) continue;
+            b.getLocationOnScreen(at);
+            if (x >= at[0] && x < at[0] + b.getWidth() && y >= at[1] && y < at[1] + b.getHeight()) return false;
+        }
+        return pad.statusHit(x, y);
     }
 
     // ═══════════ 空中鼠标 ═══════════
@@ -1961,6 +2026,17 @@ public final class MainActivity extends Activity
     @Override
     public boolean dispatchTouchEvent(MotionEvent e) {
         int action = e.getActionMasked();
+        // 点状态字（服务没开 / 没响应时）：整次手势归它，不当触控板的点击、也不分给按钮
+        if (action == MotionEvent.ACTION_DOWN) statusPress = onStatus(e);
+        if (statusPress) {
+            if (action == MotionEvent.ACTION_UP) {
+                statusPress = false;
+                if (onStatus(e)) startActivity(new Intent(this, SettingsActivity.class));
+            } else if (action == MotionEvent.ACTION_CANCEL) {
+                statusPress = false;
+            }
+            return true;
+        }
         if (action == MotionEvent.ACTION_DOWN) localGesture = btMode && localActive() && local.ready();
         if (!localGesture) return super.dispatchTouchEvent(e);
         routeLocal(e);

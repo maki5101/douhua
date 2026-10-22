@@ -85,6 +85,18 @@ final class Haptics {
         vibrator.cancel();
     }
 
+    /**
+     * 按键的"嗒"：先把还在震的上一下停掉，再震这一下。打得快时上一下可能还没震完（"大"档是系统的重击，余震长），
+     * 不停的话要么等它放完、要么叠在一起，手感就拖在手指后面（用户 2026-10-22："不是轻重的问题，是不能打断"）。
+     * 安卓原版对同一个 App 的新震动本来就会顶掉旧的，但三星没核对过，这里自己停，不靠系统。
+     * 拖动时的持续轻震也会被停掉，play 里照常 80ms 后接着嗡。
+     */
+    void playKey() {
+        if (level <= 0 || !vibrator.hasVibrator()) return;
+        vibrator.cancel();
+        play(GestureEngine.HAPTIC_CLICK);
+    }
+
     /** 低幅度一直嗡；马达不能调幅度时退成一下一下的轻点。 */
     private void vibrateHum() {
         if (!humming) return;

@@ -64,7 +64,7 @@ public final class DisplayReceiver extends BroadcastReceiver {
     }
 
     /** 通知栏小图标：一块圆角触控板。没有图片资源，直接画。 */
-    private static Bitmap icon() {
+    static Bitmap icon() {
         int size = 96;
         Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);

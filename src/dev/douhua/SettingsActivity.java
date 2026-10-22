@@ -50,6 +50,8 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     private BluetoothProfile headset;
     private BluetoothProfile a2dp;
     private boolean started;
+    /** 最上面一节"豆花儿服务"（手机自己拉起服务的各项状态、配对引导）。 */
+    private ServiceSection service;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,13 +59,33 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         prefs = new Prefs(this);
         density = getResources().getDisplayMetrics().density;
         bt = BtHid.get(this);
+        service = new ServiceSection(this, prefs);
         build();
+        // 转屏重建、从最近任务里回来不再跳一次
+        if (savedInstanceState == null && (getIntent().getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
+            openWirelessIfAsked(getIntent());
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        openWirelessIfAsked(intent);
+    }
+
+    /** 通知里点了"去关掉无线调试"（ServiceSection.openWirelessIntent）：转去开发者选项的无线调试那一页。 */
+    private void openWirelessIfAsked(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra(ServiceSection.EXTRA_OPEN_WIRELESS, false)) return;
+        intent.removeExtra(ServiceSection.EXTRA_OPEN_WIRELESS);
+        service.openWirelessSettings();
     }
 
     @Override
     protected void onStart() {
         super.onStart();
         started = true;
+        service.start();   // 从系统设置回来（开了开发者选项、配对完……）：各项马上刷新
         updateBtUse();
         openAudioProxies();
         // 刚配对好一台（系统的配对确认框不一定让这页 onResume）：列表马上刷新；
@@ -90,6 +112,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     @Override
     protected void onStop() {
         started = false;
+        service.stop();
         unregisterReceiver(bondReceiver);
         closeAudioProxies();
         if (btAcquired) {
@@ -127,6 +150,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         GestureEngine.Config def = new GestureEngine.Config();
 
         list.addView(text(getString(R.string.settings_title), 22, 0xFFE8E8E8));
+        service.build(list);
         header(R.string.sec_connection);
         connection();
         airSection();
@@ -743,6 +767,10 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == ServiceSection.REQ_NOTIFICATIONS) {
+            service.onNotificationPermissionResult();
+            return;
+        }
         bt.retry();
         refreshBtDevices();
     }

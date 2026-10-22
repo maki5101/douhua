@@ -404,6 +404,21 @@ final class Prefs {
     }
 
     void resetAll() {
-        sp.edit().clear().apply();
+        // "自动启动服务"跟着配对走，不算界面偏好：恢复默认不关它（关了用户会以为服务坏了）
+        boolean autoStart = autoStartService();
+        sp.edit().clear().putBoolean(AUTO_START_SERVICE, autoStart).apply();
+    }
+
+    // ═══════════ 手机自己拉起服务 ═══════════
+
+    /** 自动启动服务（SelfStart）：打开豆花时服务没在跑 / 版本不一致就（重）启动，开机连上 Wi-Fi 也启动。配对成功后打开。 */
+    static final String AUTO_START_SERVICE = "auto_start_service";
+
+    boolean autoStartService() {
+        return sp.getBoolean(AUTO_START_SERVICE, false);
+    }
+
+    void setAutoStartService(boolean on) {
+        sp.edit().putBoolean(AUTO_START_SERVICE, on).apply();
     }
 }

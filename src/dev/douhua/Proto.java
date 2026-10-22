@@ -16,7 +16,7 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 15;
+    public static final int VERSION = 16;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
 
@@ -104,7 +104,12 @@ public final class Proto {
 
     // ═══════════ 服务 → 客户端 ═══════════
 
-    /** 连上后服务先发一条：version:u8, ok:u8（HELLO_*）, message:UTF。 */
+    /**
+     * 连上后服务先发一条：version:u8, ok:u8（HELLO_*）, message:UTF, apk:UTF。
+     * apk（协议 16 起）：服务是从哪个 APK 起的（它的 CLASSPATH），不知道时为空。App 拿它和自己的 sourceDir 比：
+     * 每次安装 APK 都换目录，不一样 = App 更新后服务还跑着旧代码（SelfStart.onServiceConnected）。
+     * 读的一方先核对 version 再读 apk（旧服务没有这一段，版本不对就别往下读）。
+     */
     public static final int MSG_HELLO = 0x80;
     /** 服务出错，message 说明哪里坏了。 */
     public static final int HELLO_FAILED = 0;

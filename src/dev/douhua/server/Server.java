@@ -153,7 +153,15 @@ public final class Server {
         out.writeByte(Proto.VERSION);
         out.writeByte(code);
         out.writeUTF(message);
+        out.writeUTF(apkPath());
         out.flush();
+    }
+
+    /** 这个服务是从哪个 APK 起的：start-server.sh 和 App 自己拉起时都用 CLASSPATH=<APK> 起 app_process。 */
+    static String apkPath() {
+        String p = System.getenv("CLASSPATH");
+        if (p == null || p.isEmpty()) p = System.getProperty("java.class.path", "");
+        return p.length() > 4096 ? "" : p;   // writeUTF 有长度上限；这么长的不会是 APK 路径
     }
 
     private static void closeQuietly(Socket s) {

@@ -98,7 +98,8 @@ APP_UID="$(adb shell pm list packages -U "$PKG" | tr -d '\r' \
 
 # 上一次的日志留一份（卡住现场的日志不被覆盖）
 adb shell "if [ -f $LOG ]; then mv -f $LOG $LOG.prev; fi"
-adb shell "CLASSPATH=$APK nohup app_process / --nice-name=douhua_server dev.douhua.server.Server uid=$APP_UID $EXTRA >$LOG 2>&1 &"
+# setsid：服务自成一个会话，adb 连接断开时 adbd 拆掉的那组进程里没有它（手机自己拉起时实测：不加的话断开就被带走）
+adb shell "CLASSPATH=$APK setsid nohup app_process / --nice-name=douhua_server dev.douhua.server.Server uid=$APP_UID $EXTRA >$LOG 2>&1 </dev/null &"
 # 最多等 3 秒，确认端口在监听
 LISTENING=0
 for _ in 1 2 3 4 5 6; do

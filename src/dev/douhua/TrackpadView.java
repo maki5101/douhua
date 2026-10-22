@@ -22,6 +22,9 @@ final class TrackpadView extends View {
     private final RectF box = new RectF();
     private String status = "";
     private boolean statusOk;
+    /** 状态字能点（服务没开 / 没响应时，点了打开设置页）：画下划线。点的判断在 MainActivity。 */
+    private boolean statusTappable;
+    private final int[] onScreen = new int[2];
     /** 边缘滚动带的宽度（像素），0 = 不画。 */
     private float edgeWidth;
     private boolean edgeVertical;
@@ -54,6 +57,33 @@ final class TrackpadView extends View {
         invalidate();
     }
 
+    void setStatusTappable(boolean tappable) {
+        if (tappable == statusTappable) return;
+        statusTappable = tappable;
+        text.setUnderlineText(tappable);
+        invalidate();
+    }
+
+    /**
+     * 屏幕坐标 (rawX, rawY) 落在底部状态字上吗：只算文字实际画出来的那一块，四周各放宽一点手指好点
+     * （左右 12dp、上下 8dp）。不能整条宽度都算：底边是横向边缘滚动带，两头还有收起按钮条后的 ☰ 和右下角按钮。
+     */
+    boolean statusHit(float rawX, float rawY) {
+        if (status.isEmpty() || !isShown() || getWidth() == 0) return false;
+        getLocationOnScreen(onScreen);
+        Paint.FontMetrics fm = text.getFontMetrics();
+        float half = Math.min(text.measureText(status), getWidth()) / 2 + 12 * density;
+        float cx = onScreen[0] + getWidth() / 2f;
+        float baseline = onScreen[1] + statusBaseline();
+        return rawX >= cx - half && rawX < cx + half
+                && rawY >= baseline + fm.ascent - 8 * density && rawY < baseline + fm.descent + 8 * density;
+    }
+
+    /** 状态字的基线（相对这个 View 顶边）：画和点的判断共用。 */
+    private float statusBaseline() {
+        return getHeight() - 14 * density;
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         float inset = outline.getStrokeWidth() / 2;
@@ -70,7 +100,7 @@ final class TrackpadView extends View {
         }
         if (!status.isEmpty()) {
             text.setColor(statusOk ? COLOR_STATUS_OK : COLOR_STATUS_BAD);
-            canvas.drawText(status, getWidth() / 2f, getHeight() - 14 * density, text);
+            canvas.drawText(status, getWidth() / 2f, statusBaseline(), text);
         }
     }
 }

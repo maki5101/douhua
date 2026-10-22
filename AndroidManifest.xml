@@ -11,9 +11,19 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <!-- 手机自己拉起服务（无线调试连本机 adbd）：设置页看连没连 Wi-Fi（不读网络名，不要位置权限） -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 配对时的前台服务（shortService 不用别的类型权限），通知里输入配对码 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- 开机后连上 Wi-Fi 自动启动服务（设置里"自动启动服务"开着才做） -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 第一次经无线调试 adb（shell）连上后 pm grant 授予（保护级别含 development，普通安装不会自动获得），
+         之后豆花自己开关无线调试。不在清单里申请，pm grant 会报"has not requested permission" -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
 
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -50,5 +60,26 @@
             android:name=".SelfTestReceiver"
             android:exported="true"
             android:permission="android.permission.DUMP" />
+
+        <!-- 无线调试配对：通知里输入配对码。几分钟内做完的事，用 shortService（见 PairingService 类注释） -->
+        <service
+            android:name=".PairingService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+
+        <!-- 开机广播只有系统发得出来；收到后只排一个等 Wi-Fi 的任务 -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 开机后等 Wi-Fi 再自动启动服务（JobScheduler 调起） -->
+        <service
+            android:name=".SelfStartJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>

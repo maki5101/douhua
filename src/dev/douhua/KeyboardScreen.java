@@ -54,6 +54,8 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     private final KeyboardPanel keyboard;
     private final Listener listener;
     private final int toolbarHeight;
+    /** 工具栏和它贴着的那条屏幕边之间空出来的一条（拿手机的手指常压在边上，按钮贴边容易误触）：按了什么都不发生。 */
+    private final int edgeInset;
     private final int gap;
     private final int grab;
     private final int minPadHeight;
@@ -102,7 +104,8 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         this.miniPad = miniPad;
         this.keyboard = keyboard;
         this.listener = listener;
-        toolbarHeight = Style.dp(context, 48);
+        toolbarHeight = Style.dp(context, 36);
+        edgeInset = Style.dp(context, 20);
         gap = Style.dp(context, 8);
         grab = Style.dp(context, 28);
         minPadHeight = Style.dp(context, 56);
@@ -193,9 +196,9 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         int h = MeasureSpec.getSize(heightSpec);
         setMeasuredDimension(w, h);
         areaLeft = 0;
-        areaTop = toolbarBottom ? 0 : toolbarHeight + gap;
+        areaTop = toolbarBottom ? 0 : edgeInset + toolbarHeight + gap;
         areaWidth = w;
-        areaHeight = Math.max(0, h - toolbarHeight - gap);
+        areaHeight = Math.max(0, h - edgeInset - toolbarHeight - gap);
         toolbar.measure(exactly(w), exactly(toolbarHeight));
         RectF k = keyboardRect();
         keyboard.measure(exactly(Math.round(k.width())), exactly(Math.round(k.height())));
@@ -206,7 +209,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
-        int ty = toolbarBottom ? getHeight() - toolbarHeight : 0;
+        int ty = toolbarBottom ? getHeight() - edgeInset - toolbarHeight : edgeInset;
         toolbar.layout(0, ty, toolbar.getMeasuredWidth(), ty + toolbarHeight);
         RectF k = keyboardRect();
         keyboard.layout(Math.round(k.left), Math.round(k.top), Math.round(k.right), Math.round(k.bottom));
@@ -261,8 +264,9 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
 
     @Override
     public boolean onInterceptTouchEvent(MotionEvent e) {
-        // 调整模式下工具栏照常能点
-        boolean inToolbar = toolbarBottom ? e.getY() >= getHeight() - toolbarHeight : e.getY() <= toolbarHeight;
+        // 调整模式下工具栏照常能点；工具栏和屏幕边之间那条空白也不算拖动
+        int band = edgeInset + toolbarHeight;
+        boolean inToolbar = toolbarBottom ? e.getY() >= getHeight() - band : e.getY() <= band;
         return adjusting && !inToolbar;
     }
 

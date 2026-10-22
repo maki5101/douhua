@@ -14,10 +14,10 @@ import dev.douhua.Proto;
  * 第三个参数写 relay 就按蓝牙模式接管：服务把分流出的鼠标、键盘报文发回来，这里打印出来
  * （配合往触摸屏节点 sendevent 模拟触摸，不用真人去摸也能验证转发）。
  * App 正在用服务（还在说话）时，服务会回 hello ok=2（忙）并断开，这里打印出来就退出。
- * 再带一个 keys=<5 位 0/1>（音量+点一下、音量+按住、音量−点一下、音量−按住、电源点一下）就一起要求截实体键，
+ * 再带一个 keys=<4 位 0/1>（音量+点一下、音量+按住、音量−点一下、音量−按住）就一起要求截音量键，
  * 打印服务发来的实体键事件和独占状态；停发心跳后应该收到"截住=0 原因=5"（已放开）。服务找不到触摸屏时实体键照样截（测试机能测）。
  *
- * 用法：app_process / dev.douhua.server.TestClient [displayId] [接管秒数] [relay] [keys=00001]
+ * 用法：app_process / dev.douhua.server.TestClient [displayId] [接管秒数] [relay] [keys=1000]
  */
 public final class TestClient {
     private TestClient() {}
@@ -31,8 +31,8 @@ public final class TestClient {
             if (args[i].equals("relay")) relay = true;
             if (args[i].startsWith("keys=")) keys = args[i].substring(5);
         }
-        if (keys != null && !keys.matches("[01]{5}")) {
-            Server.log("自测：keys= 要 5 位 0/1，比如 keys=00001（只截电源键点一下）");
+        if (keys != null && !keys.matches("[01]{4}")) {
+            Server.log("自测：keys= 要 4 位 0/1，比如 keys=1000（只截音量+点一下）");
             System.exit(2);
         }
         try (Socket s = new Socket()) {
@@ -76,7 +76,7 @@ public final class TestClient {
             out.writeInt(1972);
             if (keys != null) {
                 out.writeByte(Proto.CMD_HARD_KEYS);
-                for (int i = 0; i < 5; i++) out.writeByte(keys.charAt(i) - '0');
+                for (int i = 0; i < 4; i++) out.writeByte(keys.charAt(i) - '0');
             }
             out.flush();
             Server.log("自测：已请求接管屏幕 " + displayId + (keys != null ? "、截实体键 " + keys : "")
@@ -128,7 +128,7 @@ public final class TestClient {
                         break;
                     case Proto.MSG_HARD_KEY:
                         Server.log("自测收到 实体键 " + in.readUnsignedByte() + " 事件 " + in.readUnsignedByte()
-                                + "（键 0 音量+、1 音量−、2 电源；事件 0 点一下、1 开始按住、2 结束按住）");
+                                + "（键 0 音量+、1 音量−；事件 0 点一下、1 开始按住、2 结束按住）");
                         break;
                     case Proto.MSG_HARD_GRAB:
                         Server.log("自测收到 实体键 截住=" + in.readUnsignedByte() + " 截不了=" + in.readUnsignedByte()

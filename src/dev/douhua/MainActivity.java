@@ -206,9 +206,9 @@ public final class MainActivity extends Activity
             main.postDelayed(this, WHEEL_REPEAT_MS);
         }
     };
-    // ── 实体按键：[键][0 = 点一下, 1 = 按住]，null = 没设，不截。音量键蓝牙模式下 App 自己收（hardKeys），
-    // DeX 模式下由服务独占按键设备、判断好发来（onHardKey(int, int)）；电源键（只有点一下）两种模式都由服务截 ──
-    private final Actions.Action[][] hardKeyActions = new Actions.Action[3][2];
+    // ── 音量键：[键][0 = 点一下, 1 = 按住]，null = 没设，不截。蓝牙模式下 App 自己收（hardKeys），
+    // DeX 模式下由服务独占按键设备、判断好发来（onHardKey(int, int)） ──
+    private final Actions.Action[][] hardKeyActions = new Actions.Action[2][2];
     private final HardKeys hardKeys = new HardKeys(new HardKeysOutput());
     private final Runnable[] hardKeyTimers = {
             () -> hardKeys.onTimer(HardKeys.VOL_UP, SystemClock.uptimeMillis()),
@@ -220,7 +220,7 @@ public final class MainActivity extends Activity
     private final java.util.Set<Integer> serverLeftSources = new java.util.HashSet<>();
     private AudioManager audio;
     /**
-     * 通话 / 来电响铃时实体键一个都不截（要能用电源键挂断、静音，用音量键调通话音量）：模式一变就重新告诉服务。
+     * 通话 / 来电响铃时音量键一个都不截（要能用音量键静音、调通话音量）：模式一变就重新告诉服务。
      * 这是第二道保险：振动 / 静音模式下来电不改音频模式，响铃由服务自己查 Telecom 放开（server.CallState）。
      */
     private final AudioManager.OnModeChangedListener audioMode = mode -> sendHardKeys();
@@ -1492,11 +1492,6 @@ public final class MainActivity extends Activity
     /** 服务截住的实体键（已判断好点一下 / 按住）：照蓝牙模式本地那一路执行动作，来源编号 = 键（AirMouse.SRC_VOL_*）。 */
     @Override
     public void onHardKey(int key, int event) {
-        if (key == Proto.HARD_POWER) {
-            Actions.Action a = hardKeyActions[HardKeys.POWER][0];
-            if (event == Proto.HARD_TAP && a != null && resumed && !stopped) fire(a);
-            return;
-        }
         if (key != HardKeys.VOL_UP && key != HardKeys.VOL_DOWN) return;
         if (event == Proto.HARD_HOLD_END) {
             endServerHold(key);
@@ -1543,7 +1538,6 @@ public final class MainActivity extends Activity
         List<String> names = new ArrayList<>();
         if ((unavailable & Proto.HARD_BIT_VOL_UP) != 0) names.add(getString(R.string.key_name_volume_up));
         if ((unavailable & Proto.HARD_BIT_VOL_DOWN) != 0) names.add(getString(R.string.key_name_volume_down));
-        if ((unavailable & Proto.HARD_BIT_POWER) != 0) names.add(getString(R.string.key_name_power));
         String keys = android.icu.text.ListFormatter.getInstance().format(names);
         String text;
         switch (reason) {
@@ -1866,34 +1860,31 @@ public final class MainActivity extends Activity
 
     // ═══════════ 实体按键 ═══════════
 
-    /** 按设置读实体键的动作（"无" = 不截）。电源键只有点一下。 */
+    /** 按设置读音量键的动作（"无" = 不截）。 */
     private void loadHardKeys() {
-        for (int k = 0; k < 3; k++) {
+        for (int k = 0; k < 2; k++) {
             for (int h = 0; h < 2; h++) {
-                Actions.Action a = h == 1 && k == HardKeys.POWER ? null : Actions.get(prefs.hardKey(k, h == 1));
+                Actions.Action a = Actions.get(prefs.hardKey(k, h == 1));
                 hardKeyActions[k][h] = a == null || a.kind == Actions.Kind.NONE ? null : a;
             }
-            if (k < 2) hardKeys.setConfig(k, hardKeyActions[k][0] != null, hardKeyActions[k][1] != null);
+            hardKeys.setConfig(k, hardKeyActions[k][0] != null, hardKeyActions[k][1] != null);
         }
         int cfg = 0;
-        for (int i = 0; i < 5; i++) if (hardKeyActions[i / 2][i % 2] != null) cfg |= 1 << i;
+        for (int i = 0; i < 4; i++) if (hardKeyActions[i / 2][i % 2] != null) cfg |= 1 << i;
         if (cfg != hardConfig) hardToasted = -1;   // 配置改了：截不了的话再提示一次
         hardConfig = cfg;
     }
 
     /**
-     * 告诉服务截哪些实体键（连上时、改设置后、通话状态变了时）。DeX 模式：音量键、电源键按配置；
-     * 蓝牙模式：音量键 App 自己收（发 0），电源键按配置（App 自己拿不到电源键）。
-     * 通话、来电响铃时全发 0，服务全部放开：要能用电源键挂断 / 静音、用音量键调通话音量。
+     * 告诉服务截哪些音量键（连上时、改设置后、通话状态变了时）。DeX 模式按配置；蓝牙模式 App 自己收，全发 0。
+     * 通话、来电响铃时全发 0，服务全部放开：要能用音量键静音、调通话音量。
      * 只看音频模式：振动 / 静音模式下来电模式不变，那种响铃靠服务自己查 Telecom（server.CallState）。
      */
     private void sendHardKeys() {
         if (!link.isConnected()) return;
-        boolean call = inCall();
-        boolean vol = !btMode && !call;
+        boolean vol = !btMode && !inCall();
         link.hardKeys(vol && hardKeyActions[0][0] != null, vol && hardKeyActions[0][1] != null,
-                vol && hardKeyActions[1][0] != null, vol && hardKeyActions[1][1] != null,
-                !call && hardKeyActions[HardKeys.POWER][0] != null);
+                vol && hardKeyActions[1][0] != null, vol && hardKeyActions[1][1] != null);
     }
 
     /**

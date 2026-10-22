@@ -35,12 +35,8 @@ final class AirMouse implements SensorEventListener {
         void airChanged();
     }
 
-    /**
-     * 按住类动作的来源：两个音量键（= HardKeys.VOL_*）、空中鼠标页的圆钮、大按钮、按钮条、角上按钮（后三个 + 序号）。
-     * 2 留给电源键（= HardKeys.POWER；电源键只有点一下、现在不当按住的来源，占个位免得以后撞号），3 空着。
-     */
-    static final int SRC_VOL_UP = 0, SRC_VOL_DOWN = 1, SRC_POWER = 2, SRC_ROUND = 5, SRC_AIR_PAGE = 10, SRC_STRIP = 30,
-            SRC_CORNER = 60;
+    /** 按住类动作的来源：两个音量键（= HardKeys.VOL_*）、空中鼠标页的圆钮、大按钮、按钮条、角上按钮（后三个 + 序号）。 */
+    static final int SRC_VOL_UP = 0, SRC_VOL_DOWN = 1, SRC_ROUND = 5, SRC_AIR_PAGE = 10, SRC_STRIP = 30, SRC_CORNER = 60;
     /** 圆钮点一下锁定的移动（不是手指按着，服务断开时不跟着松，所以编号在 SRC_ROUND 下面）。 */
     static final int SRC_ROUND_LOCK = 4;
     /** toggleDrag 用的来源（只能"点一下"的地方：手势、音量键的点一下）。 */

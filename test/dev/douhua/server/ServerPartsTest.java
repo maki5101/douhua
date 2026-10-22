@@ -42,17 +42,15 @@ public final class ServerPartsTest {
         keyDevicesPlan();
         keyDevicesOddFormat();
         keyDevicesWatch();
+        keyDevicesReadFails();
         gateStartsWithSystem();
         gatePassThrough();
         gateStrayUp();
         gateVolumeConfigured();
         gateVolumeHalf();
-        gatePowerShort();
-        gatePowerLong();
-        gatePowerDouble();
-        gatePowerMulti();
+        gateIgnoresPower();
         gateCombo();
-        gateComboWatched();
+        gateObserveVolumeIgnored();
         gateUnseen();
         gateCooldown();
         gateReleaseAll();
@@ -520,6 +518,9 @@ public final class ServerPartsTest {
     static void shellRun() throws Exception {
         eq(Shell.run(1000, "echo", "hi"), "hi\n", "读回输出");
         eq(Shell.run(1000, "sh", "-c", "echo oops; exit 3"), "oops\n", "退出码不是 0 也照样返回输出");
+        Shell.Result split = Shell.runSplit(1000, "sh", "-c", "echo out; echo err >&2; exit 3");
+        check(split.exit == 3 && split.out.equals("out\n") && split.err.equals("err\n"),
+                "runSplit：输出、错误分开，带退出码（实际 " + split.exit + " / " + split.out + " / " + split.err + "）");
         String marker = "4.3217";   // 认得出是哪个进程的 sleep 参数
         long t0 = System.nanoTime();
         String msg = null;
@@ -550,155 +551,238 @@ public final class ServerPartsTest {
 
     // ═══════════ KeyDevices ═══════════
 
-    /** KEY= 的字按 64 位一字、最高位的字在前：第二个字（倒数第二）= 位 64..127，音量 / 电源落在它的 50/51/52 位。 */
-    static final String GPIO = "0 c000000000000 0";        // 音量下(114)+音量上(115)
-    static final String POWER_ONLY = "0 10000000000000 0";  // 电源(116)
-    static final String VOLDOWN_POWER = "0 14000000000000 0"; // 音量下(114)+电源(116)
-    static final String VOLUP_HOME = "100000000000 8000000000000 0"; // 音量上(115)+KEY_HOMEPAGE(172)
-
-    static String block(String bus, String vendor, String name, String ev, String key, String... extra) {
+    /**
+     * 照 getevent -i 的格式拼一块设备。events 每一项是 events 段里的一行（不带缩进）：以 "+" 开头的是续行
+     * （getevent 用 16 个空格缩进），别的是类型行（4 个空格缩进）。
+     */
+    static String dev(int n, String bus, String vendor, String name, String... events) {
         StringBuilder b = new StringBuilder();
-        b.append("I: Bus=").append(bus).append(" Vendor=").append(vendor).append(" Product=0000 Version=0000\n");
-        b.append("N: Name=\"").append(name).append("\"\n");
-        b.append("H: Handlers=").append(name).append(" ").append("event").append(name.hashCode() & 7).append(" \n");
-        if (ev != null) b.append("B: EV=").append(ev).append("\n");
-        if (key != null) b.append("B: KEY=").append(key).append("\n");
-        for (String e : extra) b.append(e).append("\n");
+        b.append("add device ").append(n).append(": /dev/input/event").append(n).append('\n');
+        b.append("  bus:      ").append(bus).append('\n');
+        b.append("  vendor    ").append(vendor).append('\n');
+        b.append("  product   0001\n");
+        b.append("  version   0100\n");
+        b.append("  name:     \"").append(name).append("\"\n");
+        b.append("  location: \"").append(name).append("/input0\"\n");
+        b.append("  id:       \"\"\n");
+        b.append("  version:  1.0.1\n");
+        b.append("  events:\n");
+        for (String e : events) {
+            if (e.startsWith("+")) b.append("                ").append(e.substring(1)).append('\n');
+            else b.append("    ").append(e).append('\n');
+        }
+        b.append("  input props:\n");
+        b.append("    <none>\n");
         return b.toString();
     }
 
+    static final String KEY_VOL = "KEY (0001): 0072  0073 ";          // 音量下(114) + 音量上(115)
+    static final String KEY_VOLDOWN_POWER = "KEY (0001): 0072  0074 "; // 音量下 + 电源(116)
+    static final String KEY_VOLUP = "KEY (0001): 0073 ";               // 只有音量上
+
+    static List<KeyDevices.Device> parse(String out) {
+        return KeyDevices.parse(out, "");
+    }
+
     static void keyDevicesParse() {
-        String proc = block("0019", "0001", "gpio-keys", "3", GPIO)
-                + "\n\n"   // 块之间多个空行
-                + block("0019", "0000", "pmic_key", "3", VOLDOWN_POWER);
-        List<KeyDevices.Device> ds = KeyDevices.parse(proc);
+        String out = dev(2, "0019", "0001", "gpio_keys", KEY_VOL)
+                + dev(0, "0000", "0000", "qpnp_pon", KEY_VOLDOWN_POWER);
+        List<KeyDevices.Device> ds = parse(out);
         eq(ds.size(), 2, "解析出两块设备");
         KeyDevices.Device gpio = ds.get(0);
-        check(gpio.volUp && gpio.volDown && !gpio.power, "gpio-keys：音量上 + 音量下，没有电源");
-        check(gpio.path != null && gpio.path.startsWith("/dev/input/event"), "gpio-keys：解析出 event 路径");
-        check(gpio.whyNotGrabbable() == null, "gpio-keys：能单独截");
-        KeyDevices.Device pmic = ds.get(1);
-        check(pmic.volDown && pmic.power && !pmic.volUp, "pmic：音量下 + 电源");
-        check(pmic.whyNotGrabbable() == null, "pmic：设备本身能截（配置另说）");
+        check(gpio.volUp && gpio.volDown && !gpio.power, "gpio_keys：音量上 + 音量下，没有电源");
+        eq(gpio.path, "/dev/input/event2", "gpio_keys：路径取自 add device 行");
+        eq(gpio.name, "gpio_keys", "名字去掉引号");
+        check(gpio.bus == 0x19 && gpio.vendor == 1 && gpio.product == 1, "bus / vendor（没有冒号的行）/ product 按十六进制");
+        check(gpio.problem == null, "gpio_keys：解析完整");
+        check(gpio.whyNotGrabbable() == null, "gpio_keys：能单独截");
+        check(!gpio.watchable(), "gpio_keys：没有电源键，不用旁观");
+        KeyDevices.Device pon = ds.get(1);
+        check(pon.volDown && pon.power && !pon.volUp, "qpnp_pon：音量下 + 电源");
+        String why = pon.whyNotGrabbable();
+        check(why != null && why.contains("电源键"), "带电源键的设备绝不截，原因写明（实际 " + why + "）");
+        check(pon.watchable(), "带电源键的机身设备：可以旁观");
+        eq(parse("").size(), 0, "空输出：没有设备");
+        eq(KeyDevices.parse("", null).size(), 0, "没有标准错误也行");
     }
 
     static void keyDevicesExcludes() {
-        String proc = block("0003", "05ac", "usb-kbd", "3", "0 8000000000000 0")       // USB 总线
-                + "\n" + block("0005", "004c", "bt-kbd", "3", "0 8000000000000 0")      // 蓝牙总线
-                + "\n" + block("0019", "1209", "douhua-vk", "3", GPIO)                   // 豆花虚拟键盘（厂商号）
-                + "\n" + block("0018", "0000", "touchscreen", "b", "0 8000000000000 0", "B: ABS=3")  // 带 ABS
-                + "\n" + block("0019", "0000", "hall", "21", null, "B: SW=1")            // 合盖霍尔（EV_SW）
-                + "\n" + block("0019", "0000", "side-key", "3", VOLUP_HOME)             // 带 KEY_HOMEPAGE(172)
-                + "\n" + block("0006", "0000", "uinput-vol", "3", GPIO);                // 别的工具 uinput 造的音量键（虚拟总线）
-        List<KeyDevices.Device> ds = KeyDevices.parse(proc);
-        eq(ds.size(), 7, "七块设备");
+        String out = dev(1, "0003", "05ac", "usb-kbd", KEY_VOL)                          // USB 总线
+                + dev(2, "0005", "004c", "bt-kbd", KEY_VOL)                               // 蓝牙总线
+                + dev(3, "0019", "1209", "douhua-vk", KEY_VOL)                            // 豆花虚拟键盘（厂商号）
+                + dev(4, "0018", "0000", "touchscreen", "KEY (0001): 0073  014a ",
+                        "ABS (0003): 0035  : value 0, min 0, max 1079, fuzz 0, flat 0, resolution 0",
+                        "+0036  : value 0, min 0, max 2399, fuzz 0, flat 0, resolution 0")  // 带 ABS
+                + dev(5, "0019", "0000", "hall", KEY_VOLUP, "SW  (0005): 0000 ")        // 合盖霍尔（SW；getevent 把类型名补到三个字符，两个空格）
+                + dev(6, "0019", "0000", "side-key", "KEY (0001): 0073  00ac ")          // 带 KEY_HOMEPAGE(172)
+                + dev(7, "0006", "0000", "uinput-vol", KEY_VOL)                           // 别的工具 uinput 造的（虚拟总线）
+                + dev(9, "0019", "0000", "only-power", "KEY (0001): 0074 ")               // 只有电源键
+                + dev(10, "0019", "0000", "vibrator", KEY_VOL, "FF  (0015): 0050 ")       // 带力反馈（FF 也补到三个字符）
+                + dev(11, "0019", "0000", "odd-type", KEY_VOL, "??? (0013): 0000 ");      // 合成样本：getevent 的 "???" 标签，只测解析宽容
+        // 没有带 REP 的样本：getevent 的 EVIOCGBIT 查不到 REP / PWR / FF_STATUS，真机输出里不会出现这几种类型行
+        List<KeyDevices.Device> ds = parse(out);
+        eq(ds.size(), 10, "十块设备");
         for (KeyDevices.Device d : ds) check(d.whyNotGrabbable() != null, d.name + "：不能单独截");
         check(find(ds, "usb-kbd").whyNotGrabbable().contains("0x3"), "USB：总线原因");
         check(find(ds, "bt-kbd").whyNotGrabbable().contains("0x5"), "蓝牙：总线原因");
         String virt = find(ds, "uinput-vol").whyNotGrabbable();
-        check(virt != null && virt.contains("0x6"), "虚拟总线：总线原因（只带音量键也不截；实际 " + virt + "）");
+        check(virt.contains("0x6"), "虚拟总线：总线原因（只带音量键也不截；实际 " + virt + "）");
         check(find(ds, "douhua-vk").whyNotGrabbable().contains("豆花"), "豆花虚拟键盘：厂商号原因");
-        check(find(ds, "touchscreen").whyNotGrabbable().contains("事件类型"), "触摸屏：事件类型（ABS）原因");
-        check(find(ds, "hall").whyNotGrabbable().contains("事件类型"), "合盖霍尔：事件类型（SW）原因");
+        KeyDevices.Device touch = find(ds, "touchscreen");
+        check(touch.whyNotGrabbable().contains("ABS"), "触摸屏：事件类型（ABS）原因");
+        check(touch.events.get(KeyDevices.EV_ABS).contains(0x36), "ABS 的续行（带 : value …）也解析出代码");
+        check(touch.problem == null, "触摸屏的 ABS 行不算解析出错");
+        for (String n : new String[]{"hall", "vibrator", "odd-type"}) {
+            check(find(ds, n).problem == null, n + "：类型行解析完整（实际 " + find(ds, n).problem + "）");
+        }
+        check(find(ds, "hall").whyNotGrabbable().contains("事件类型 SW"), "合盖霍尔：事件类型（SW）原因（实际 " + find(ds, "hall").whyNotGrabbable() + "）");
+        check(find(ds, "vibrator").whyNotGrabbable().contains("事件类型 FF"), "力反馈：事件类型（FF）原因");
+        check(find(ds, "odd-type").whyNotGrabbable().contains("0x13"), "没有名字的类型：按十六进制写原因");
         check(find(ds, "side-key").whyNotGrabbable().contains("172"), "带 HOMEPAGE：原因里有多出来的键码 172");
+        check(find(ds, "only-power").whyNotGrabbable().contains("电源键"), "只有电源键：也不截");
+        // MSC 是允许的（很多 gpio-keys 报 MSC_SCAN）
+        KeyDevices.Device msc = parse(dev(1, "0019", "0001", "gpio-msc", KEY_VOL, "MSC (0004): 0004 ")).get(0);
+        check(msc.whyNotGrabbable() == null, "带 MSC 的音量键设备：能截");
+    }
+
+    /** 真机上会碰到的格式：按着的 '*'、一行放不下的续行、打不开的设备、设备块之前的杂行、认不出的行、缺段、HID 描述符。 */
+    static void keyDevicesOddFormat() {
+        String out = "some junk before the first device\n"
+                + dev(2, "0019", "0001", "gpio_keys", "KEY (0001): 0072* 0073 ")             // 音量下正按着
+                + dev(3, "0019", "0000", "many-keys", "KEY (0001): 0001  0002  0003  0004  0005  0006  0007  0008 ",
+                        "+0009  0072 ")                                                          // 续行里还有音量下
+                + dev(4, "0019", "0000", "weird", KEY_VOL, "this is not a type line")         // 认不出的行
+                + dev(5, "0019", "0000", "bare-type", KEY_VOL, "001f: 0000 ")                 // 合成样本：只测没有名字的类型行能解析
+                + "add device 6: /dev/input/event6\n"
+                + "  bus:      0019\r\n"                                                       // CRLF
+                + "  vendor    0000\n"
+                + "  name:     \"no-events\"\n"                                                 // 没有 events 段
+                + dev(7, "0019", "0001", "gpio-hid", KEY_VOLUP)
+                + "  HID descriptor: 0019:0001:0001.0001\n\n    05 01 09 02\n\n";               // input props 之后的都不看
+        String err = "could not open /dev/input/event9, Permission denied\n"
+                + "could not get driver version for /dev/input/mice, Not a typewriter\n";
+        List<KeyDevices.Device> ds = KeyDevices.parse(out, err);
+        eq(ds.size(), 7, "六块设备 + 一块打不开的（杂行、别的错误跳过）");
+        KeyDevices.Device gpio = find(ds, "gpio_keys");
+        check(gpio.volUp && gpio.volDown && gpio.problem == null, "带 '*' 的代码照常解析");
+        check(gpio.whyNotGrabbable() == null, "正按着的键不影响能不能截");
+        KeyDevices.Device many = find(ds, "many-keys");
+        check(many.volDown && many.extraKeyCount == 9, "续行里的代码归同一个类型（实际别的键 " + many.extraKeyCount + " 个）");
+        check(many.whyNotGrabbable().contains("别的键"), "别的键多：不截");
+        KeyDevices.Device weird = find(ds, "weird");
+        check(weird.problem != null && weird.whyNotGrabbable().contains("没认全"), "events 段里认不出的行：当不能截");
+        KeyDevices.Device bare = find(ds, "bare-type");
+        check(bare.problem == null && bare.events.containsKey(0x1f), "没有名字的类型按十六进制认");
+        check(bare.whyNotGrabbable().contains("0x1f"), "多出的类型：不截");
+        KeyDevices.Device noEv = find(ds, "no-events");
+        check(noEv.problem != null && noEv.whyNotGrabbable() != null, "没有 events 段：当不能截");
+        KeyDevices.Device hid = find(ds, "gpio-hid");
+        check(hid.volUp && hid.problem == null && hid.whyNotGrabbable() == null, "HID 描述符那几行不影响解析");
+        KeyDevices.Device bad = find(ds, "/dev/input/event9");
+        check(bad.openError != null && bad.openError.contains("Permission denied"), "打不开的设备：记下原因");
+        check(bad.whyNotGrabbable().contains("打不开") && !bad.watchable(), "打不开的设备：不截、不旁观");
+        check(bad.describe().contains("打不开"), "Server keys 里看得到打不开的设备");
+        check(gpio.describe().contains("/dev/input/event2") && gpio.describe().contains("能截"), "describe：路径、能截");
     }
 
     static void keyDevicesPlan() {
-        // gpio（音量上 + 音量下）：配了音量就能截
-        List<KeyDevices.Device> gpio = KeyDevices.parse(block("0019", "0001", "gpio-keys", "3", GPIO));
-        KeyDevices.Plan p = KeyDevices.plan(gpio, new KeyDevices.Config(true, true, false));
+        // gpio（音量上 + 音量下）+ 单独的电源键设备：配了音量就截 gpio，旁观电源键那块
+        List<KeyDevices.Device> gpio = parse(dev(2, "0019", "0001", "gpio_keys", KEY_VOL)
+                + dev(0, "0000", "0000", "pwr", "KEY (0001): 0074 "));
+        KeyDevices.Plan p = KeyDevices.plan(gpio, new KeyDevices.Config(true, true));
         eq(p.grab.size(), 1, "gpio：音量都配了 → 截这块");
+        check(p.watch.size() == 1 && p.watch.get(0).name.equals("pwr"), "旁观电源键那块");
         eq(p.grabbedBits, Proto.HARD_BIT_VOL_UP | Proto.HARD_BIT_VOL_DOWN, "音量上 + 音量下都归豆花");
         eq(p.unavailableBits, 0, "没有截不了的");
+        KeyDevices.Plan one = KeyDevices.plan(gpio, new KeyDevices.Config(true, false));
+        eq(one.grabbedBits, Proto.HARD_BIT_VOL_UP, "只配音量上：只有它归豆花（音量下由 gate 透传）");
 
-        // pmic（音量下 + 电源）：电源没配 → 不截这块，音量下报"和电源键同一设备"
-        List<KeyDevices.Device> pmic = KeyDevices.parse(block("0019", "0000", "pmic", "3", VOLDOWN_POWER));
-        KeyDevices.Plan off = KeyDevices.plan(pmic, new KeyDevices.Config(false, true, false));
-        eq(off.grab.size(), 0, "电源没配 → 不独占带电源的设备");
-        eq(off.grabbedBits, 0, "一个键都没截住");
-        eq(off.unavailableBits, Proto.HARD_BIT_VOL_DOWN, "音量下截不了");
-        eq(off.reason, Proto.HARD_SHARED, "原因：和别的输入在同一设备");
-        check(off.detail.contains("电源键"), "细节：和电源键在同一个设备上");
+        // 有的手机：音量上单独一块，音量下和电源键在一起 → 只截音量上，音量下报"和电源键同一设备"，旁观 pmic
+        List<KeyDevices.Device> split = parse(dev(2, "0019", "0001", "gpio_keys", KEY_VOLUP)
+                + dev(0, "0000", "0000", "pmic", KEY_VOLDOWN_POWER));
+        KeyDevices.Plan s = KeyDevices.plan(split, new KeyDevices.Config(true, true));
+        check(s.grab.size() == 1 && s.grab.get(0).name.equals("gpio_keys"), "只截音量上那块，绝不截带电源键的 pmic");
+        eq(s.grabbedBits, Proto.HARD_BIT_VOL_UP, "音量上归豆花");
+        eq(s.unavailableBits, Proto.HARD_BIT_VOL_DOWN, "音量下截不了");
+        eq(s.reason, Proto.HARD_SHARED, "原因：和别的输入在同一设备");
+        check(s.detail.contains("音量下") && s.detail.contains("电源键"), "细节：音量下和电源键在同一个设备上（实际 " + s.detail + "）");
+        check(s.watch.size() == 1 && s.watch.get(0).name.equals("pmic"), "pmic 只旁观（认截屏组合键）");
 
-        // 电源配了 → 截这块，音量下 + 电源都归豆花
-        KeyDevices.Plan on = KeyDevices.plan(pmic, new KeyDevices.Config(false, true, true));
-        eq(on.grab.size(), 1, "电源配了 → 截带电源的设备");
-        eq(on.grabbedBits, Proto.HARD_BIT_VOL_DOWN | Proto.HARD_BIT_POWER, "音量下 + 电源都归豆花");
-
-        // 配了的键哪儿都没有 → HARD_NO_DEVICE
-        KeyDevices.Plan none = KeyDevices.plan(pmic, new KeyDevices.Config(true, false, false));
-        eq(none.unavailableBits, Proto.HARD_BIT_VOL_UP, "音量上截不了");
-        eq(none.reason, Proto.HARD_NO_DEVICE, "原因：没找到带这个键的设备");
-
-        // 两个键截不了、原因不同（音量上没有设备、音量下和没配的电源键同一设备）→ HARD_MIXED，细节两条都有
-        KeyDevices.Plan mixed = KeyDevices.plan(pmic, new KeyDevices.Config(true, true, false));
+        // 只有 pmic：音量下截不了、音量上哪儿都没有 → 原因不同 → HARD_MIXED，细节两条都有
+        List<KeyDevices.Device> pmic = parse(dev(0, "0000", "0000", "pmic", KEY_VOLDOWN_POWER));
+        KeyDevices.Plan mixed = KeyDevices.plan(pmic, new KeyDevices.Config(true, true));
+        eq(mixed.grab.size(), 0, "不独占带电源键的设备");
+        eq(mixed.watch.size(), 0, "什么都没截：也不旁观");
         eq(mixed.unavailableBits, Proto.HARD_BIT_VOL_UP | Proto.HARD_BIT_VOL_DOWN, "音量上 + 音量下都截不了");
         eq(mixed.reason, Proto.HARD_MIXED, "原因不同 → 混合");
         check(mixed.detail.contains("没找到") && mixed.detail.contains("电源键"), "细节里两个键的原因都有（实际 " + mixed.detail + "）");
+
+        // 配了的键哪儿都没有 → HARD_NO_DEVICE；有打不开的设备时细节里提一句
+        List<KeyDevices.Device> none = KeyDevices.parse(dev(0, "0000", "0000", "pmic", KEY_VOLDOWN_POWER),
+                "could not open /dev/input/event3, Permission denied\n");
+        KeyDevices.Plan nd = KeyDevices.plan(none, new KeyDevices.Config(true, false));
+        eq(nd.unavailableBits, Proto.HARD_BIT_VOL_UP, "音量上截不了");
+        eq(nd.reason, Proto.HARD_NO_DEVICE, "原因：没找到带这个键的设备");
+        check(nd.detail.contains("1 个设备 getevent 打不开"), "细节里提到打不开的设备（实际 " + nd.detail + "）");
+
+        KeyDevices.Plan off = KeyDevices.plan(split, new KeyDevices.Config(false, false));
+        check(off.grab.isEmpty() && off.watch.isEmpty() && off.unavailableBits == 0, "什么都没配：不截、不旁观、不报");
+
+        // 看不到电源键在哪（电源键那块 getevent 打不开）：截了电源键 + 音量键的系统组合键会失灵 → 什么都不截，报 HARD_SHARED
+        List<KeyDevices.Device> blind = KeyDevices.parse(dev(2, "0019", "0001", "gpio_keys", "KEY (0001): 0072 "),
+                "could not open /dev/input/event0, Permission denied\n");
+        KeyDevices.Plan b = KeyDevices.plan(blind, new KeyDevices.Config(false, true));
+        check(b.grab.isEmpty() && b.watch.isEmpty() && b.grabbedBits == 0, "找不到电源键设备：不截音量下");
+        eq(b.unavailableBits, Proto.HARD_BIT_VOL_DOWN, "音量下截不了");
+        eq(b.reason, Proto.HARD_SHARED, "原因：HARD_SHARED");
+        check(b.detail.contains("电源键") && b.detail.contains("1 个设备 getevent 打不开"), "细节：找不到电源键、有打不开的设备（实际 " + b.detail + "）");
+
+        // 电源键所在的设备带 ABS（不能旁观）：同样不截
+        List<KeyDevices.Device> absPwr = parse(dev(2, "0019", "0001", "gpio_keys", "KEY (0001): 0072 ")
+                + dev(3, "0018", "0000", "touch-pwr", "KEY (0001): 0074 ",
+                        "ABS (0003): 0035  : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0"));
+        KeyDevices.Plan ap = KeyDevices.plan(absPwr, new KeyDevices.Config(false, true));
+        check(ap.grab.isEmpty() && ap.watch.isEmpty(), "电源键设备不能旁观：不截音量下");
+        eq(ap.reason, Proto.HARD_SHARED, "电源键设备不能旁观：原因 HARD_SHARED");
+
+        // 配了音量上、却哪儿都没有；音量下本来截得住但看不到电源键 → 两种原因 → HARD_MIXED
+        KeyDevices.Plan mix2 = KeyDevices.plan(blind, new KeyDevices.Config(true, true));
+        eq(mix2.reason, Proto.HARD_MIXED, "音量上没找到、音量下因为看不到电源键：混合");
+        check(mix2.detail.contains("没找到") && mix2.detail.contains("系统组合键"), "细节两条都有（实际 " + mix2.detail + "）");
     }
 
-    /** 真机格式：KEY= 省掉了前导的零字（字数不一样）、空的 B: 行、块之间夹着只有空格的行、没有 event 节点的块。 */
-    static void keyDevicesOddFormat() {
-        String proc = "I: Bus=0019 Vendor=0001 Product=0001 Version=0100\n"
-                + "N: Name=\"gpio-keys\"\n"
-                + "P: Phys=gpio-keys/input0\n"
-                + "S: Sysfs=/devices/platform/gpio-keys/input/input2\n"
-                + "U: Uniq=\n"
-                + "H: Handlers=kbd event2 \n"
-                + "B: PROP=0\n"
-                + "B: EV=3\n"
-                + "B: KEY=c000000000000 0\n"
-                + "   \n\n"
-                + "I: Bus=0019 Vendor=0000 Product=0000 Version=0000\n"
-                + "N: Name=\"qpnp_pon\"\n"
-                + "H: Handlers=kbd event0 \n"
-                + "B: EV=3\n"
-                + "B: KEY=14000000000000 0\n"
-                + "\n"
-                + "I: Bus=0019 Vendor=0000 Product=0000 Version=0000\n"
-                + "N: Name=\"empty\"\n"
-                + "H: Handlers=kbd event5 \n"
-                + "B: EV=3\n"
-                + "B: KEY=\n"
-                + "\n"
-                + "I: Bus=0019 Vendor=0000 Product=0000 Version=0000\n"
-                + "N: Name=\"no-node\"\n"
-                + "H: Handlers=kbd \n"
-                + "B: EV=3\n"
-                + "B: KEY=10000000000000 0\n";
-        List<KeyDevices.Device> ds = KeyDevices.parse(proc);
-        eq(ds.size(), 4, "四块设备（只有空格的行也算分隔）");
-        KeyDevices.Device gpio = find(ds, "gpio-keys");
-        check(gpio.volUp && gpio.volDown && !gpio.power, "两个字的 KEY=：音量上 + 音量下");
-        eq(gpio.path, "/dev/input/event2", "event 路径");
-        check(gpio.whyNotGrabbable() == null, "gpio-keys 能单独截");
-        KeyDevices.Device pon = find(ds, "qpnp_pon");
-        check(pon.power && pon.volDown && !pon.volUp, "qpnp_pon：电源 + 音量下");
-        KeyDevices.Device empty = find(ds, "empty");
-        check(!empty.hasAnyTarget(), "空的 KEY=：没有键");
-        check(empty.whyNotGrabbable() != null, "没有音量 / 电源键：不截");
-        KeyDevices.Device noNode = find(ds, "no-node");
-        check(noNode.power && noNode.path == null, "没有 event 节点：解析出键、路径为空");
-        check(noNode.whyNotGrabbable().contains("event"), "没有 event 节点：不截，原因写明");
-    }
-
-    /** 要截点什么时，其余机身上带音量 / 电源键的按键设备只旁观；外接的、触摸屏、豆花自己的不旁观；什么都不截时不旁观。 */
+    /** 要截点什么时，机身上带电源键的设备只旁观；外接的、触摸屏、豆花自己的、虚拟总线的、不带电源键的不旁观。 */
     static void keyDevicesWatch() {
-        String proc = block("0019", "0001", "gpio-keys", "3", GPIO)
-                + "\n" + block("0019", "0000", "pmic", "3", VOLDOWN_POWER)
-                + "\n" + block("0019", "0000", "side-key", "3", VOLUP_HOME)
-                + "\n" + block("0018", "0000", "touch", "b", POWER_ONLY, "B: ABS=3")
-                + "\n" + block("0003", "05ac", "usb-kbd", "3", "0 8000000000000 0")
-                + "\n" + block("0006", "1209", "douhua-vk", "3", GPIO)
-                + "\n" + block("0006", "0000", "uinput-vol", "3", GPIO);
-        List<KeyDevices.Device> ds = KeyDevices.parse(proc);
-        KeyDevices.Plan p = KeyDevices.plan(ds, new KeyDevices.Config(true, false, false));
-        check(p.grab.size() == 1 && p.grab.get(0).name.equals("gpio-keys"), "只截 gpio-keys（不截虚拟总线上的 uinput-vol）");
+        String out = dev(1, "0019", "0001", "gpio_keys", KEY_VOLUP)
+                + dev(2, "0000", "0000", "pmic", KEY_VOLDOWN_POWER)
+                + dev(3, "0019", "0000", "side-key", "KEY (0001): 0074  00ac ")
+                + dev(4, "0019", "0000", "hall", "SW  (0005): 0000 ")
+                + dev(5, "0018", "0000", "touch", "KEY (0001): 0074 ", "ABS (0003): 0035  : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0")
+                + dev(6, "0003", "05ac", "usb-kbd", KEY_VOLDOWN_POWER)
+                + dev(7, "0006", "1209", "douhua-vk", KEY_VOLDOWN_POWER)
+                + dev(8, "0006", "0000", "uinput-pwr", KEY_VOLDOWN_POWER);
+        List<KeyDevices.Device> ds = parse(out);
+        KeyDevices.Plan p = KeyDevices.plan(ds, new KeyDevices.Config(true, false));
+        check(p.grab.size() == 1 && p.grab.get(0).name.equals("gpio_keys"), "只截 gpio_keys");
         List<String> watched = new ArrayList<>();
         for (KeyDevices.Device d : p.watch) watched.add(d.name);
-        eq(watched, list("pmic", "side-key"), "旁观：带电源键没截的 pmic、带别的键的 side-key；不旁观触摸屏、外接键盘、豆花虚拟键盘、虚拟总线设备");
-        KeyDevices.Plan none = KeyDevices.plan(ds, new KeyDevices.Config(false, false, false));
-        check(none.grab.isEmpty() && none.watch.isEmpty(), "什么都不截：也不旁观");
+        eq(watched, list("pmic", "side-key"), "旁观：带电源键的 pmic、side-key；不旁观合盖霍尔、触摸屏、外接键盘、豆花虚拟键盘、虚拟总线设备");
+    }
+
+    /** 电脑上没有 getevent：read() 抛 IOException、原因写明（服务那边走 HARD_FAILED）。有 getevent 的机器上跳过。 */
+    static void keyDevicesReadFails() {
+        boolean has = false;
+        for (String dir : System.getenv().getOrDefault("PATH", "").split(":")) {
+            if (new java.io.File(dir, "getevent").canExecute()) has = true;
+        }
+        if (has) return;
+        String msg = null;
+        try {
+            KeyDevices.read();
+        } catch (IOException e) {
+            msg = e.getMessage();
+        }
+        check(msg != null && msg.contains("getevent"), "没有 getevent：抛 IOException，原因里有 getevent（实际 " + msg + "）");
     }
 
     static KeyDevices.Device find(List<KeyDevices.Device> ds, String name) {
@@ -741,7 +825,7 @@ public final class ServerPartsTest {
     static void gatePassThrough() {
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
-        g.config(false, false, false, false, true);   // 只电源配了（音量成了被独占设备上没配的键）
+        g.config(false, false, true, false);   // 只音量下配了（音量上成了被独占设备上没配的键）
         g.key(VOLUP, DOWN, 100);
         g.key(VOLUP, REPEAT, 150);   // 内核连发：忽略
         g.key(VOLUP, UP, 300);
@@ -753,19 +837,17 @@ public final class ServerPartsTest {
     }
 
     /**
-     * 独占着却收到没见过按下的松开（键在打开设备之前就按着，系统多半看到了按下）：音量补一对按下 + 松开
-     * （接过系统那一路的连发再松开，最坏多调一格），电源只补松开（补按下就成了按一下电源键）。
+     * 独占着却收到没见过按下的松开（键在打开设备之前就按着，系统多半看到了按下）：补一对按下 + 松开
+     * （接过系统那一路的连发再松开，最坏多调一格）。
      */
     static void gateStrayUp() {
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
-        g.config(true, false, false, false, true);
+        g.config(true, false, false, false);
         g.key(VOLDOWN, UP, 400);
         eq(r.log, list("i114+/400/400", "i114-/400/400"), "音量下（透传键）：补按下 + 松开");
         g.key(VOLUP, UP, 500);
         eq(r.log.subList(2, r.log.size()), list("i115+/500/500", "i115-/500/500"), "音量上（配了动作）：同样补，不发给 App");
-        g.key(POWER, UP, 600);
-        eq(r.log.subList(4, r.log.size()), list("i116-/600/600"), "电源：只补松开");
         for (String x : r.log) check(!x.startsWith("a"), "没见过按下的松开不算点一下");
     }
 
@@ -773,7 +855,7 @@ public final class ServerPartsTest {
     static void gateStartsWithSystem() {
         GateRec r = new GateRec();
         HardKeyGate g = new HardKeyGate(r);
-        g.config(true, false, false, false, true);
+        g.config(true, false, false, false);
         check(g.systemOwns(), "刚建出来：键在系统手里");
         check(g.readyToGrab(0), "没按过键：马上能独占");
         g.system(VOLUP, DOWN, 100);
@@ -792,7 +874,7 @@ public final class ServerPartsTest {
     static void gateVolumeConfigured() {
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
-        g.config(true, true, false, false, false);   // 音量上 点一下 + 按住
+        g.config(true, true, false, false);   // 音量上 点一下 + 按住
         g.key(VOLUP, DOWN, 0);
         g.key(VOLUP, UP, 150);
         eq(r.log, list("a0:0"), "没按够 → 点一下（HARD_VOL_UP, TAP）");
@@ -806,14 +888,14 @@ public final class ServerPartsTest {
     static void gateVolumeHalf() {
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
-        g.config(false, true, false, false, false);   // 音量上 只按住
+        g.config(false, true, false, false);   // 音量上 只按住
         g.key(VOLUP, DOWN, 0);
         g.key(VOLUP, UP, 100);
         eq(r.log, list(), "只配按住、短按：什么都不做，不调音量");
 
         GateRec r2 = new GateRec();
         HardKeyGate g2 = gate(r2);
-        g2.config(true, false, false, false, false);  // 音量上 只点一下
+        g2.config(true, false, false, false);  // 音量上 只点一下
         g2.key(VOLUP, DOWN, 0);
         eq(r2.log, list("a0:0"), "只配点一下：按下当场就算");
         g2.pump(1000);
@@ -821,221 +903,150 @@ public final class ServerPartsTest {
         eq(r2.log, list("a0:0"), "按住也不调音量（不注入）");
     }
 
-    /** 电源键单独短按：按着不到 350ms 松开、从第一次按下算 500ms 内没有第二次按下 → 执行豆花动作，一次都不注入。 */
-    static void gatePowerShort() {
+    /** 独占的描述符上读到电源键（不该有：带电源键的设备不截）：什么都不做，不注入、不发给 App。 */
+    static void gateIgnoresPower() {
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
-        g.config(false, false, false, false, true);
+        g.config(true, true, true, true);
         g.key(POWER, DOWN, 0);
-        g.pump(349);
-        eq(r.log, list(), "按着 349ms：还不算长按");
-        g.key(POWER, UP, 349);
-        g.pump(499);
-        eq(r.log, list(), "第 499ms：还在等第二次按下");
-        g.pump(500);
-        eq(r.log, list("a2:0"), "单独短按：第 500ms 发 POWER TAP，没有注入");
-    }
-
-    /** 每 10ms 调一次 pump（像 KeyReader 每轮 poll），from 到 to 都含。 */
-    static void pumpEvery10(HardKeyGate g, long from, long to) {
-        for (long t = from; t <= to; t += 10) g.pump(t);
-    }
-
-    /** 电源键长按：按满 350ms → 补发按下（原始 downTime）+ handBack；真松开补松开。 */
-    static void gatePowerLong() {
-        GateRec r = new GateRec();
-        HardKeyGate g = gate(r);
-        g.config(false, false, false, false, true);
-        g.key(POWER, DOWN, 0);
-        g.pump(349);
-        eq(r.log, list(), "按着 349ms：还不算长按");
-        g.pump(350);
-        eq(r.log, list("i116+/0/350", "HB"), "按满 350ms：补发按下 + 交还");
-        g.system(POWER, UP, 2000);    // 交还后真松开从 plain 读到
-        eq(r.log, list("i116+/0/350", "HB", "i116-/0/2000"), "长按：补发按下 + 交还 + 松开");
+        g.pump(1000);
+        g.key(POWER, UP, 1200);
+        g.system(POWER, DOWN, 1300);
+        g.system(POWER, UP, 1400);
+        eq(r.log, list(), "电源键不进 gate 的判断，也从不注入");
     }
 
     /**
-     * 电源键双击：补发第一下按下 / 松开（原始时间）、第二下按下，+ handBack；真松开补松开。
-     * 中间照 KeyReader 每 10ms pump 一次，第二下放在第 495ms：从第一次按下算 500ms 内都算连按。
+     * 电源键（旁观的设备上）和截住的音量键一起按（截屏）：按原始时间补发吃掉的音量键按下 + handBack；
+     * 音量在按住中先补 HOLD_END；电源键本身系统自己收，从不注入。
      */
-    static void gatePowerDouble() {
-        GateRec r = new GateRec();
-        HardKeyGate g = gate(r);
-        g.config(false, false, false, false, true);
-        g.key(POWER, DOWN, 0);
-        pumpEvery10(g, 10, 90);
-        g.key(POWER, UP, 100);
-        pumpEvery10(g, 110, 490);
-        g.key(POWER, DOWN, 495);
-        g.system(POWER, UP, 600);
-        eq(r.log, list("i116+/0/0", "i116-/0/100", "i116+/495/495", "HB", "i116-/495/600"),
-                "双击（第二下在第 495ms）：按原始时间补发，第二下交还后补松开");
-
-        // 第二下晚于 500ms：第一下先当单独短按发给 App，第二下重新开始一轮
-        GateRec r2 = new GateRec();
-        HardKeyGate g2 = gate(r2);
-        g2.config(false, false, false, false, true);
-        g2.key(POWER, DOWN, 0);
-        g2.key(POWER, UP, 100);
-        pumpEvery10(g2, 110, 510);
-        eq(r2.log, list("a2:0"), "第 500ms 没有第二次按下：发 POWER TAP");
-        g2.key(POWER, DOWN, 520);
-        g2.key(POWER, UP, 600);
-        pumpEvery10(g2, 610, 1010);
-        g2.pump(1019);
-        eq(r2.log, list("a2:0"), "第二下从头算：第 1019ms 前不发");
-        g2.pump(1020);
-        eq(r2.log, list("a2:0", "a2:0"), "第二下自己又是一次单独短按（从它按下算 500ms）");
-    }
-
-    /** 连按 5 下：一个都不到 App；第一下补发、第二下补发后交还，之后的按下都不再注入（交给原生）。 */
-    static void gatePowerMulti() {
-        GateRec r = new GateRec();
-        HardKeyGate g = gate(r);
-        g.config(false, false, false, false, true);
-        g.key(POWER, DOWN, 0);
-        pumpEvery10(g, 10, 40);
-        g.key(POWER, UP, 50);
-        pumpEvery10(g, 60, 90);
-        g.key(POWER, DOWN, 100);     // 第二次按下 → 补发 + handBack
-        eq(r.log, list("i116+/0/0", "i116-/0/50", "i116+/100/100", "HB"), "连按：第二下补发后交还");
-        g.system(POWER, UP, 150);     // 补发的第二下的松开
-        int after = r.log.size();
-        g.system(POWER, DOWN, 200);  // 第三下起：交还期间，系统原生收，不再注入
-        g.system(POWER, UP, 250);
-        g.system(POWER, DOWN, 300);
-        g.system(POWER, UP, 350);
-        eq(r.log.size(), after, "连按后面几下不再注入（交给原生）");
-        for (String s : r.log) check(!s.startsWith("a"), "连按：一个事件都不到 App");
-    }
-
-    /** 电源键和音量键一起按：按原始时间补发吃掉的部分 + handBack；音量在按住中补 HOLD_END。 */
     static void gateCombo() {
+        // 先按音量下（配了按住，吞进 PENDING），再按电源
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
-        g.config(false, false, false, true, true);   // 音量下 只按住；电源配了
-        g.key(VOLDOWN, DOWN, 0);      // 音量下吞进 PENDING
-        g.key(POWER, DOWN, 100);      // 100ms 内按电源 → 组合键
-        eq(r.log, list("i114+/0/0", "i116+/100/100", "HB"), "组合键：按原始时间补发音量下、电源的按下，再交还");
+        g.config(false, false, false, true);
+        g.key(VOLDOWN, DOWN, 0);
+        g.observe(POWER, DOWN, 100);
+        eq(r.log, list("i114+/0/0", "HB"), "组合键：按原始时间补发音量下的按下，再交还");
         g.system(VOLDOWN, UP, 400);   // 交还后真松开：给补发的按下配松开
-        g.system(POWER, UP, 450);
-        eq(r.log.subList(3, r.log.size()), list("i114-/0/400", "i116-/100/450"), "交还后：两个补发的按下都配上松开");
+        g.observe(POWER, UP, 450);
+        eq(r.log.subList(2, r.log.size()), list("i114-/0/400"), "交还后：补发的按下配上松开，电源键不注入");
 
-        // 先按电源、后按音量下（音量下下标在前）：补发按按下时间排，电源在前
+        // 先按电源、后按音量下（只配了点一下）：不当点一下，补发音量下按下、交还
+        GateRec r1 = new GateRec();
+        HardKeyGate g1 = gate(r1);
+        g1.config(false, false, true, false);
+        g1.observe(POWER, DOWN, 0);
+        g1.key(VOLDOWN, DOWN, 60);
+        eq(r1.log, list("i114+/60/60", "HB"), "电源先按着 + 音量下：不当点一下，补发、交还");
+        g1.observe(POWER, REPEAT, 70);
+        check(!g1.readyToGrab(10000), "电源还按着：不独占");
+
+        // 两个音量键都吞着（只配按住），再按电源：按按下时间排序补发（音量上在前，虽然下标在后）
         GateRec rs = new GateRec();
         HardKeyGate gs = gate(rs);
-        gs.config(false, false, false, false, true);   // 只配电源；音量下透传
-        gs.key(POWER, DOWN, 0);
-        gs.key(VOLDOWN, DOWN, 100);
-        eq(rs.log, list("i116+/0/0", "i114+/100/100", "HB"), "组合键：按原始按下时间排序补发（电源在前）");
+        gs.config(false, true, false, true);
+        gs.key(VOLUP, DOWN, 0);
+        gs.key(VOLDOWN, DOWN, 50);
+        gs.observe(POWER, DOWN, 100);
+        eq(rs.log, list("i115+/0/0", "i114+/50/50", "HB"), "组合键：按原始按下时间排序补发");
         gs.system(VOLDOWN, UP, 300);
-        gs.system(POWER, UP, 400);
-        eq(rs.log.subList(3, rs.log.size()), list("i114-/100/300", "i116-/0/400"), "排序补发后：各配一个松开");
+        gs.system(VOLUP, UP, 400);
+        eq(rs.log.subList(3, rs.log.size()), list("i114-/50/300", "i115-/0/400"), "排序补发后：各配一个松开");
 
-        // 透传的音量下先按（按下已注入过），再按电源：组合键只补发电源，音量下不再注入第二次按下
+        // 透传的音量下先按（按下已注入过），再按电源：不重复补发，只交还
         GateRec ro = new GateRec();
         HardKeyGate go = gate(ro);
-        go.config(false, false, false, false, true);
+        go.config(true, false, false, false);   // 只配音量上；音量下透传
         go.key(VOLDOWN, DOWN, 0);
-        go.key(POWER, DOWN, 80);
-        eq(ro.log, list("i114+/0/0", "i116+/80/80", "HB"), "组合键：已透传的音量下不重复补发按下");
+        go.observe(POWER, DOWN, 80);
+        eq(ro.log, list("i114+/0/0", "HB"), "组合键：已透传的音量下不重复补发按下");
         go.system(VOLDOWN, UP, 300);
-        go.system(POWER, UP, 320);
-        eq(ro.log.subList(3, ro.log.size()), list("i114-/0/300", "i116-/80/320"), "交还后：每个按下只配一个松开");
+        eq(ro.log.subList(2, ro.log.size()), list("i114-/0/300"), "交还后：每个按下只配一个松开");
 
+        // 音量下在按住中按电源：先补 HOLD_END 再补发
         GateRec r2 = new GateRec();
         HardKeyGate g2 = gate(r2);
-        g2.config(false, false, false, true, true);
+        g2.config(false, false, false, true);
         g2.key(VOLDOWN, DOWN, 0);
-        g2.pump(300);                 // 音量下进入按住
-        g2.key(POWER, DOWN, 350);     // 组合键：音量下在按住中 → 补 HOLD_END
-        eq(r2.log, list("a1:1", "a1:2", "i114+/0/0", "i116+/350/350", "HB"), "组合键：按住中补 HOLD_END 再补发");
+        g2.pump(300);                  // 音量下进入按住
+        g2.observe(POWER, DOWN, 350);
+        eq(r2.log, list("a1:1", "a1:2", "i114+/0/0", "HB"), "组合键：按住中补 HOLD_END 再补发");
 
-        // 电源键单独短按等着 500ms 时按音量：电源已松开，不算组合键，照常点一下
+        // 电源按一下松开后再按音量：不是组合键，照常点一下
         GateRec r3 = new GateRec();
         HardKeyGate g3 = gate(r3);
-        g3.config(true, false, false, false, true);
-        g3.key(POWER, DOWN, 0);
-        g3.key(POWER, UP, 100);
+        g3.config(true, false, false, false);
+        g3.observe(POWER, DOWN, 0);
+        g3.observe(POWER, UP, 100);
         g3.key(VOLUP, DOWN, 200);
         g3.key(VOLUP, UP, 250);
-        g3.pump(500);
-        eq(r3.log, list("a0:0", "a2:0"), "电源松开后再按音量：不是组合键");
+        eq(r3.log, list("a0:0"), "电源松开后再按音量：不是组合键");
     }
 
-    /**
-     * 只旁观的设备上的键也认组合键：电源键（配了，独占着）按着时，另一个没截的设备上按了音量下 → 补发电源按下、交还；
-     * 反过来旁观的电源键按着时按独占着的音量键 → 补发音量按下、交还。旁观的键本身从不注入。
-     */
-    static void gateComboWatched() {
+    /** 旁观设备上的音量键（系统自己收）和截住的键无关：不认组合键、不挡独占。 */
+    static void gateObserveVolumeIgnored() {
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
-        g.config(false, false, false, false, true);
-        g.key(POWER, DOWN, 0);
-        g.observe(VOLDOWN, DOWN, 80);
-        eq(r.log, list("i116+/0/0", "HB"), "旁观的音量下 + 电源：补发电源按下、交还");
-        g.observe(VOLDOWN, UP, 300);
-        g.system(POWER, UP, 320);
-        eq(r.log.subList(2, r.log.size()), list("i116-/0/320"), "旁观的键不注入；电源配上松开");
-        check(!g.readyToGrab(2319), "交还后冷却没满：不独占");
-        check(g.readyToGrab(2320), "冷却满了：重新独占");
+        g.config(true, false, false, false);
+        g.observe(VOLDOWN, DOWN, 0);
+        g.key(VOLUP, DOWN, 50);
+        g.key(VOLUP, UP, 80);
+        g.observe(VOLDOWN, UP, 100);
+        eq(r.log, list("a0:0"), "旁观的音量下 + 截住的音量上：不是组合键，照常点一下");
 
         GateRec r2 = new GateRec();
-        HardKeyGate g2 = gate(r2);
-        g2.config(false, false, true, false, false);   // 音量下 只点一下
-        g2.observe(POWER, DOWN, 0);   // 电源在旁观的设备上（系统自己收）
-        g2.key(VOLDOWN, DOWN, 60);
-        eq(r2.log, list("i114+/60/60", "HB"), "旁观的电源 + 独占的音量下：不当点一下，补发音量按下、交还");
-        g2.observe(POWER, REPEAT, 70);
-        check(!g2.readyToGrab(10000), "旁观的电源还按着：不独占");
+        HardKeyGate g2 = new HardKeyGate(r2);
+        g2.config(true, false, false, false);
+        g2.observe(VOLDOWN, DOWN, 0);
+        check(g2.readyToGrab(0), "旁观的音量键按着：不挡独占");
     }
 
     /**
      * 键在系统手里时从独占的描述符上读到的（系统没看到）：独占撞上竞态马上放开时，系统看到了按下、松开却只到了 grabFd
-     * → 替系统补（音量补一对、电源补松开）；交还那一刻还没读完的按下系统不知道，它的真松开（plain）不用补。
+     * → 替系统补一对；交还那一刻还没读完的按下系统不知道，它的真松开（plain）不用补。
      */
     static void gateUnseen() {
         GateRec r = new GateRec();
         HardKeyGate g = new HardKeyGate(r);
-        g.config(true, false, false, false, true);
+        g.config(true, false, false, false);
         g.system(VOLDOWN, DOWN, 100);  // 竞态：独占前按下，系统看到了
         g.key(VOLDOWN, UP, 150);       // 松开只到了 grabFd
         eq(r.log, list("i114+/150/150", "i114-/150/150"), "竞态里的松开：替系统补一对");
-        g.system(POWER, DOWN, 200);
-        g.key(POWER, UP, 250);
-        eq(r.log.subList(2, r.log.size()), list("i116-/250/250"), "电源：只补松开");
 
         GateRec r2 = new GateRec();
         HardKeyGate g2 = gate(r2);
-        g2.config(false, false, false, false, true);
-        g2.key(POWER, DOWN, 0);
-        g2.pump(350);                  // 长按 → 交还
-        g2.key(VOLUP, DOWN, 360);      // 交还那一刻 grabFd 上还没读完的：系统没看到
+        g2.config(false, false, false, true);
+        g2.key(VOLDOWN, DOWN, 0);
+        g2.observe(POWER, DOWN, 100);  // 组合键 → 交还
+        g2.key(VOLUP, DOWN, 110);      // 交还那一刻 grabFd 上还没读完的：系统没看到
         g2.system(VOLUP, UP, 500);     // 真松开从 plain 来：系统会丢掉没头的松开，这里也不补
-        g2.system(POWER, UP, 600);
-        eq(r2.log, list("i116+/0/350", "HB", "i116-/0/600"), "交还时系统没看到的按下：松开不补");
-        check(!g2.readyToGrab(2599), "冷却没满：不独占");
-        check(g2.readyToGrab(2600), "都松开、冷却满：重新独占");
+        g2.system(VOLDOWN, UP, 600);
+        g2.observe(POWER, UP, 650);
+        eq(r2.log, list("i114+/0/0", "HB", "i114-/0/600"), "交还时系统没看到的按下：松开不补");
+        check(!g2.readyToGrab(2649), "冷却没满：不独占");
+        check(g2.readyToGrab(2650), "都松开、冷却满（从电源键松开算）：重新独占");
     }
 
-    /** 交还系统后，两个键都空闲满 2000ms 才允许重新独占。 */
+    /** 交还系统后，键都空闲满 2000ms 才允许重新独占。 */
     static void gateCooldown() {
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
-        g.config(false, false, false, false, true);
-        g.key(POWER, DOWN, 0);
-        g.pump(350);                  // 长按 → handBack
-        g.system(POWER, UP, 500);     // 松开，补松开
+        g.config(false, false, true, false);
+        g.observe(POWER, DOWN, 0);
+        g.key(VOLDOWN, DOWN, 50);      // 组合键 → handBack
+        g.system(VOLDOWN, UP, 300);
+        check(!g.readyToGrab(2400), "电源还按着：不独占");
+        g.observe(POWER, UP, 500);
         check(!g.readyToGrab(2499), "松开后不到 2000ms：不许重新独占");
         check(g.readyToGrab(2500), "满 2000ms：允许重新独占");
     }
 
-    /** releaseAll：透传中按着的音量键补松开、音量按住中发 HOLD_END；长按补发的电源键也补松开。 */
+    /** releaseAll：透传中按着的音量键补松开、音量按住中发 HOLD_END；组合键补发的按下也补松开。 */
     static void gateReleaseAll() {
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
-        g.config(false, true, false, false, false);   // 音量上 只按住
+        g.config(false, true, false, false);   // 音量上 只按住
         g.key(VOLUP, DOWN, 0);        // PENDING
         g.key(VOLDOWN, DOWN, 50);     // 没配 → 透传按下
         g.pump(300);                  // 音量上进入按住
@@ -1045,21 +1056,12 @@ public final class ServerPartsTest {
 
         GateRec r2 = new GateRec();
         HardKeyGate g2 = gate(r2);
-        g2.config(false, false, false, false, true);
-        g2.key(POWER, DOWN, 0);
-        g2.pump(350);                 // 长按 → 补发电源按下 + handBack
+        g2.config(false, false, false, true);
+        g2.key(VOLDOWN, DOWN, 0);
+        g2.observe(POWER, DOWN, 100);  // 组合键 → 补发音量下按下 + handBack
         g2.releaseAll(500);
-        eq(r2.log, list("i116+/0/350", "HB", "i116-/0/500"), "releaseAll：长按补发的电源键补松开");
-
-        GateRec r3 = new GateRec();
-        HardKeyGate g3 = gate(r3);
-        g3.config(false, false, false, false, true);
-        g3.key(POWER, DOWN, 0);
-        g3.key(POWER, UP, 100);       // 短按，等着 500ms
-        g3.releaseAll(200);
-        g3.pump(600);
-        eq(r3.log, list(), "releaseAll：电源键等着的那一下作废，不再发给 App");
-        check(g3.systemOwns(), "releaseAll 之后键算在系统手里");
+        eq(r2.log, list("i114+/0/0", "HB", "i114-/0/500"), "releaseAll：组合键补发的音量下补松开");
+        check(g2.systemOwns(), "releaseAll 之后键算在系统手里");
     }
 
     // ═══════════ 工具 ═══════════

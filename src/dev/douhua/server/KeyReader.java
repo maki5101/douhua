@@ -14,13 +14,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 独占并读手机的实体键设备（音量、电源），按下 / 松开交给 {@link HardKeyGate}。照 {@link TouchReader} 的样子：
+ * 独占并读手机的音量键设备（带电源键的设备从不独占，只旁观），按下 / 松开交给 {@link HardKeyGate}。照 {@link TouchReader} 的样子：
  * {@link #run} 在调用线程里阻塞，每轮 poll 最多 100ms，问一次 keepGoing，返回 false 就放开所有设备并返回。
  *
  * 每块设备开两个文件描述符：plain 从头到尾开着、从不独占（没独占时系统和这里都收得到）；grabFd 只在独占时开着
  * （EVIOCGRAB 只能靠关掉来解除）。交还系统时先把 grabFd 读空再关掉，关掉的那一刻起事件就从 plain 进来。
  * 还有一个漏洞堵不上：最后一次读空到关掉之间（微秒级）到的事件跟着 grabFd 一起丢了（每块设备读空了马上关，窗口尽量小）。
- * 丢的要是松开，系统那边会停在按着的状态（电源键补发过的按下，或者音量键的系统连发），要等下一次按同一个键
+ * 丢的要是松开，系统那边会停在按着的状态（补发过的音量键按下，或者音量键的系统连发），要等下一次按同一个键
  * 或会话结束 releaseAll 才恢复。要堵得按 EVIOCGKEY 查物理状态，现在的 ioctl 通路读不到这些键码，没做。
  *
  * 独占的时机由 gate 定（{@link HardKeyGate#readyToGrab}：所有键都松开、空闲满冷却）。独占前的竞态：
@@ -73,7 +73,8 @@ final class KeyReader {
     }
 
     /**
-     * grab：要独占的设备；watch：只旁观的设备（打不开就算了，只是认不出它上面的键和电源键一起按）。
+     * grab：要独占的设备；watch：只旁观的设备（带电源键的；打不开一块只记日志、认不出它上面的电源键和截住的音量键一起按，
+     * 一块都打不开就抛 IOException、什么都不截：截了电源键 + 音量键的系统组合键（截屏、电源 + 音量上的快捷方式等）会失灵）。
      * 出错抛 IOException（此时已全部放开）。不管怎么退出，gate 都会 releaseAll：注入过的按下全部配上松开。
      */
     static void run(List<KeyDevices.Device> grab, List<KeyDevices.Device> watch, HardKeyGate gate,
@@ -91,8 +92,13 @@ final class KeyReader {
                     x.plain = Evdev.open(d.path);
                     r.devs.add(x);
                 } catch (IOException e) {
-                    Server.log("旁观实体键设备 " + d.name + " 打不开（认不出它上面的键和电源键一起按）：" + e.getMessage());
+                    Server.log("旁观实体键设备 " + d.name + " 打不开（认不出它上面的电源键和截住的音量键一起按）：" + e.getMessage());
                 }
+            }
+            boolean watching = false;
+            for (Dev x : r.devs) if (x.watchOnly) watching = true;
+            if (!watch.isEmpty() && !watching) {
+                throw new IOException("旁观的电源键设备都打不开，不截音量键（截了电源键 + 音量键的系统组合键（截屏、电源 + 音量上的快捷方式等）会失灵）");
             }
             r.loop(keepGoing, listener);
         } catch (ErrnoException e) {
@@ -141,7 +147,7 @@ final class KeyReader {
                 if ((rev & OsConstants.POLLIN) != 0) readOnce(d, fds[i].fd);
             }
             gate.pump(SystemClock.uptimeMillis());
-            if (exclusive && gate.systemOwns()) {   // gate 要交还系统（电源键长按 / 连按 / 组合键）
+            if (exclusive && gate.systemOwns()) {   // gate 要交还系统（电源键和音量键一起按）
                 releaseGrabs();
                 exclusive = false;
                 listener.exclusive(false);

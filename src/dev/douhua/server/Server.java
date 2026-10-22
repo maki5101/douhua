@@ -29,7 +29,7 @@ import dev.douhua.Proto;
  *      debug：每秒记一行发出的鼠标包统计（包数、最长间隔、位移），查卡顿用
  *      app_process / dev.douhua.server.Server probe [秒数]   只造鼠标画个方块，不点击，用来验证这条路通不通
  *      app_process / dev.douhua.server.Server focus <屏幕编号>   只把键盘输入切到那块屏（验证 DexFocus 用）
- *      app_process / dev.douhua.server.Server keys   只读：列出实体键设备、能不能单独截、为什么（不独占任何设备）
+ *      app_process / dev.douhua.server.Server keys   只读：用 getevent -i 列出输入设备、音量键能不能单独截、为什么（不独占任何设备）
  */
 public final class Server {
     private static final int UID_ROOT = 0;
@@ -194,37 +194,46 @@ public final class Server {
     }
 
     /**
-     * 只读：列出带音量 / 电源键的输入设备、能不能单独截，再按"三个键都配了动作""电源键没配"两种配置各算一遍会截哪些。
-     * 不打开、不独占任何设备（只读 /proc/bus/input/devices），在主力机上收集真实设备分组时用。
+     * 只读：用 getevent -i 列出所有输入设备、能不能单独截、为什么，再按"DeX 下音量上 / 音量下都配了动作"算一遍会截哪块、旁观哪块。
+     * 不独占、不读任何设备的事件，在主力机上收集真实设备分组时用。
      */
     private static void listKeys() {
         java.util.List<KeyDevices.Device> devs;
         try {
-            devs = KeyDevices.parse(KeyDevices.readProc());
+            devs = KeyDevices.read();
         } catch (IOException e) {
-            log("读 /proc/bus/input/devices 失败：" + e.getMessage());
+            log("列输入设备失败：" + e.getMessage());
             System.exit(1);
             return;
         }
-        int n = 0;
+        int vol = 0, unopenable = 0;
         for (KeyDevices.Device d : devs) {
-            if (!d.hasAnyTarget()) continue;
-            n++;
-            log("实体键设备：" + d);
+            if (d.openError != null) unopenable++;
+            if (d.hasVolume()) vol++;
+            log("设备 " + d.describe());
         }
-        log("共 " + devs.size() + " 个输入设备，带音量 / 电源键的 " + n + " 个");
-        printPlan("三个键都配了动作", KeyDevices.plan(devs, new KeyDevices.Config(true, true, true)));
-        printPlan("只配了音量键（电源键没配）", KeyDevices.plan(devs, new KeyDevices.Config(true, true, false)));
+        log("共 " + devs.size() + " 个输入设备（getevent 打不开的 " + unopenable + " 个），带音量键的 " + vol + " 个");
+        KeyDevices.Plan p = KeyDevices.plan(devs, new KeyDevices.Config(true, true));
+        log("按 DeX 下音量上 / 音量下都配了动作：独占 " + names(p.grab) + "；旁观（认电源键 + 音量键的组合键）" + names(p.watch));
+        log("截得住：" + keyNames(p.grabbedBits) + "；截不了：" + keyNames(p.unavailableBits)
+                + (p.detail.isEmpty() ? "" : "（" + p.detail + "）"));
     }
 
-    private static void printPlan(String what, KeyDevices.Plan p) {
-        StringBuilder grab = new StringBuilder();
-        for (KeyDevices.Device d : p.grab) grab.append(' ').append(d.name);
-        StringBuilder watch = new StringBuilder();
-        for (KeyDevices.Device d : p.watch) watch.append(' ').append(d.name);
-        log(what + "：独占" + (grab.length() == 0 ? " 无" : grab) + "；旁观" + (watch.length() == 0 ? " 无" : watch)
-                + "；截住的键 " + p.grabbedBits + "，截不了的 " + p.unavailableBits
-                + (p.detail.isEmpty() ? "" : "（" + p.detail + "）") + "  [位：1 音量+、2 音量−、4 电源]");
+    private static String names(java.util.List<KeyDevices.Device> ds) {
+        if (ds.isEmpty()) return "无";
+        StringBuilder b = new StringBuilder();
+        for (KeyDevices.Device d : ds) {
+            if (b.length() > 0) b.append("，");
+            b.append(d.name).append("（").append(d.path).append("）");
+        }
+        return b.toString();
+    }
+
+    private static String keyNames(int bits) {
+        if (bits == 0) return "无";
+        String up = (bits & Proto.HARD_BIT_VOL_UP) != 0 ? "音量上" : "";
+        String down = (bits & Proto.HARD_BIT_VOL_DOWN) != 0 ? "音量下" : "";
+        return up.isEmpty() || down.isEmpty() ? up + down : up + "、" + down;
     }
 
     /** 独占某个输入设备 0.5 秒再释放，验证能不能独占。 */

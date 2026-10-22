@@ -45,7 +45,7 @@ final class Link {
         /** 同上，键盘报文（8 字节）。 */
         void onRelayKeyboard(byte[] report);
 
-        /** 服务截住的实体键（已判断好）：key = Proto.HARD_VOL_UP / VOL_DOWN / POWER，event = Proto.HARD_TAP / HOLD_START / HOLD_END。 */
+        /** 服务截住的实体键（已判断好）：key = Proto.HARD_VOL_UP / VOL_DOWN，event = Proto.HARD_TAP / HOLD_START / HOLD_END。 */
         void onHardKey(int key, int event);
 
         /** 实体键的独占状态：grabbed / unavailable 是 Proto.HARD_BIT_* 位，reason 是 Proto.HARD_*，detail 是设备名或错误原文。 */
@@ -141,11 +141,11 @@ final class Link {
         offer(ByteBuffer.allocate(1).put((byte) Proto.CMD_HEARTBEAT));
     }
 
-    /** 实体键哪一半配了动作（服务据此决定截哪些，见 Proto.CMD_HARD_KEYS）；全 false = 一个都不截。 */
-    void hardKeys(boolean volUpTap, boolean volUpHold, boolean volDownTap, boolean volDownHold, boolean powerTap) {
-        offer(ByteBuffer.allocate(6).put((byte) Proto.CMD_HARD_KEYS)
+    /** 音量键哪一半配了动作（服务据此决定截哪些，见 Proto.CMD_HARD_KEYS）；全 false = 一个都不截。 */
+    void hardKeys(boolean volUpTap, boolean volUpHold, boolean volDownTap, boolean volDownHold) {
+        offer(ByteBuffer.allocate(5).put((byte) Proto.CMD_HARD_KEYS)
                 .put((byte) (volUpTap ? 1 : 0)).put((byte) (volUpHold ? 1 : 0))
-                .put((byte) (volDownTap ? 1 : 0)).put((byte) (volDownHold ? 1 : 0)).put((byte) (powerTap ? 1 : 0)));
+                .put((byte) (volDownTap ? 1 : 0)).put((byte) (volDownHold ? 1 : 0)));
     }
 
     /** 经服务的虚拟鼠标按住 / 松开左键（DeX 模式下实体键按住配了"左键"时）。 */

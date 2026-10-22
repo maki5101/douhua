@@ -4,7 +4,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 /**
- * 手机是不是正在来电响铃 / 通话中：这时实体键（电源键静音 / 挂断、音量键静音）要还给系统，不截。
+ * 手机是不是正在来电响铃 / 通话中：这时音量键（响铃时静音、通话中调通话音量）要还给系统，不截。
  *
  * App 那边只看 AudioManager.getMode()，手机设成振动 / 静音 / 勿扰时来电不响铃，Telecom 不改音频模式（还是 MODE_NORMAL），
  * App 看不出来。这里由服务直接问 Telecom（ITelecomService，隐藏 API，反射）的 isRinging / isInCall：
@@ -13,7 +13,7 @@ import java.lang.reflect.Method;
  *
  * 问一次走一趟 binder，所以结果缓存 {@link #REFRESH_MS}。查不到（反射失败、服务不在）就当没在通话，不因此拒绝截键，
  * 只记日志（限频），靠 App 那边的 getMode 兜底；代理丢掉，下次重新取（框架重启后旧代理就死了，见 {@link SystemServices}）。
- * 通话结束后再等 {@link HardKeyGate#COOLDOWN} 才算空闲：刚挂断时顺手按的电源键（灭屏）照样归系统。
+ * 通话结束后再等 {@link HardKeyGate#COOLDOWN} 才算空闲：刚挂断时顺手按的音量键照样归系统。
  *
  * 不是线程安全的：只在实体键线程（douhua-keys）里用。
  */

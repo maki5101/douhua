@@ -657,8 +657,8 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     }
 
     /**
-     * 实体按键（两种模式都有）：音量键点一下 / 按住、电源键点一下，各选一个动作，"无"不截。
-     * 蓝牙模式下音量键由 App 自己收；DeX 模式下音量键、两种模式下电源键都要服务独占按键设备（server.HardKeyGate）。
+     * 音量键（两种模式都有）：点一下 / 按住各选一个动作，"无"不截。
+     * 蓝牙模式下由 App 自己收；DeX 模式下要服务独占按键设备（server.HardKeyGate），所以多一句服务的说明。
      */
     private void hardKeysSection() {
         header(R.string.sec_hard_keys);
@@ -672,10 +672,6 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 actionRow(getString(labels[k][h]), () -> prefs.hardKey(key, hold), id -> prefs.setHardKey(key, hold, id));
             }
         }
-        actionRow(getString(R.string.hk_power_tap), () -> prefs.hardKey(HardKeys.POWER, false),
-                id -> prefs.setHardKey(HardKeys.POWER, false, id));
-        list.addView(text(getString(R.string.hard_keys_power_hint), 14, 0xFF9AA0A6));
-        if (prefs.btMode()) list.addView(text(getString(R.string.hard_keys_service_hint), 14, 0xFF9AA0A6));
     }
 
     // ═══════════ 对方还连着手机的音频 ═══════════

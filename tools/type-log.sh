@@ -8,7 +8,7 @@
 #   --dex：DeX 模式，用 adb reverse 把页面的端口转到手机上，在 DeX 的浏览器里打开同一个地址（页面的时间用手机的时钟，分析时自动换算）。
 # 前提：
 #   - 手机装的是调试包（tools/build.sh --install）；正式包里根本没有触点日志的开关。
-#   - 服务开着的话要和 App 同一版（协议 14）：装完要重启服务 tools/stop-server.sh && tools/start-server.sh，
+#   - 服务开着的话要和 App 同一版（Proto.VERSION）：装完要重启服务 tools/stop-server.sh && tools/start-server.sh，
 #     不然 App 连不上服务（DeX 模式下用不了；蓝牙模式会退回 App 自己收触摸，照样能记）。
 #   - 电脑的输入法切成英文（拼音句子也是一个个字母原样打，页面会提示）。
 # 触点日志等于按键记录：开着是租期（10 秒），这里每 3 秒续一次；退出（含 Ctrl+C）时立刻关，脚本被强杀也最多 10 秒自己关。

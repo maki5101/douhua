@@ -16,7 +16,7 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 14;
+    public static final int VERSION = 15;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
 
@@ -64,10 +64,11 @@ public final class Proto {
      */
     public static final int CMD_TRACE = 11;
     /**
-     * 实体按键要截哪些：volUpTap:u8, volUpHold:u8, volDownTap:u8, volDownHold:u8, powerTap:u8（1 = 这一半配了动作）。
+     * 音量键要截哪些：volUpTap:u8, volUpHold:u8, volDownTap:u8, volDownHold:u8（1 = 这一半配了动作）。
      * 全 0 = 一个都不截。连上时、改设置后、通话状态变化时发；第一次收到之前服务不碰任何实体键设备。
      * 配了动作的键整个归豆花（服务判断点一下 / 按住，结果发 {@link #MSG_HARD_KEY}）；和它在同一个设备上、没配动作的键
-     * 由服务原样注入补发，照常调音量。电源键只截单独一次短按（规则见 server.HardKeyGate）。
+     * 由服务原样注入补发，照常调音量。电源键不截（带电源键的设备从不独占，见 server.KeyDevices）。
+     * 协议 15 起去掉了电源那一个字节（14 是 5 个字节）。
      */
     public static final int CMD_HARD_KEYS = 12;
     /** 按住 / 松开鼠标左键：down:u8。DeX 模式下实体键按住配了"左键"时用，和 REGION_HOLD_LEFT 共用服务里的计数。 */
@@ -139,12 +140,11 @@ public final class Proto {
     public static final int MSG_MOUSE = 0x86;
     /** 转发的键盘报文（relay 模式）：HID 键盘报文原样 8 字节（修饰键位、保留、6 个键）。 */
     public static final int MSG_KEYBOARD = 0x87;
-    /** 实体按键（服务已判断好）：key:u8（HARD_VOL_UP / HARD_VOL_DOWN / HARD_POWER）, event:u8（HARD_TAP / HARD_HOLD_START / HARD_HOLD_END）。 */
+    /** 实体按键（服务已判断好）：key:u8（HARD_VOL_UP / HARD_VOL_DOWN）, event:u8（HARD_TAP / HARD_HOLD_START / HARD_HOLD_END）。 */
     public static final int MSG_HARD_KEY = 0x88;
     /** 和 HardKeys.VOL_UP / VOL_DOWN 一致。 */
     public static final int HARD_VOL_UP = 0;
     public static final int HARD_VOL_DOWN = 1;
-    public static final int HARD_POWER = 2;
     public static final int HARD_TAP = 0;
     public static final int HARD_HOLD_START = 1;
     public static final int HARD_HOLD_END = 2;
@@ -155,13 +155,15 @@ public final class Proto {
     public static final int MSG_HARD_GRAB = 0x89;
     public static final int HARD_BIT_VOL_UP = 1;
     public static final int HARD_BIT_VOL_DOWN = 2;
-    public static final int HARD_BIT_POWER = 4;
     public static final int HARD_OK = 0;
     /** 没找到带这个键的设备。 */
     public static final int HARD_NO_DEVICE = 1;
-    /** 和别的输入（别的键、开关、触摸）在同一个设备上，整个设备一起独占代价太大，不截。 */
+    /**
+     * 和别的输入（电源键、别的键、开关、触摸）在同一个设备上，整个设备一起独占代价太大，不截；
+     * 也用于找不到能旁观的电源键设备（截了电源键 + 音量键的系统组合键（截屏、电源 + 音量上的快捷方式等）会失灵）。具体原因在 detail 里。
+     */
     public static final int HARD_SHARED = 2;
-    /** 服务注入不了按键：不截任何实体键（不然没配的键、长按电源键都补发不出去）。 */
+    /** 服务注入不了按键：不截任何实体键（不然同设备上没配的音量键补发不出去）。 */
     public static final int HARD_NO_INJECTOR = 3;
     public static final int HARD_FAILED = 4;
     /** 不再截了（App 不在前台、心跳超时、配置改成全 0、来电响铃 / 通话中）。 */

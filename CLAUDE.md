@@ -17,7 +17,7 @@
          │  "左键" → 直接按住鼠标左键
          ├ UhidMouse / UhidKeyboard：/dev/uhid 造的 USB 鼠标和键盘 → 系统输入 → DeX
          │  （双指开合 = UhidKeyboard 按住 Ctrl + UhidMouse 滚轮）
-         ├ KeyReader + HardKeyGate：独占音量 / 电源键设备，判断点一下 / 按住报给 App，没配的键注入补发
+         ├ KeyReader + HardKeyGate：独占音量键设备（带电源键的只旁观），判断点一下 / 按住报给 App，没配的键注入补发
          └ Injector：带 displayId 往 DeX 屏注入按键（隐藏 API，反射）
                 ↑ 布局 / 参数 / 心跳 / 按键 / 实体键配置   ↓ 震动 / 三指四指手势 / 按钮事件 / 修饰键 / 接管状态 / 实体键
        MainActivity（App，普通权限）：画界面、震动、执行动作；127.0.0.1:37601
@@ -25,7 +25,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 14） |
+| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 15） |
 | `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测） |
 | `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；DeX 模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里 |
 | `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号 |
@@ -58,7 +58,7 @@
 | `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息；空闲 2 秒发保活（CMD_PING），连接超时 / 5 秒等不到 hello 报"服务没响应" |
 | `src/dev/douhua/DexDisplay.java` | 找 DeX 所在的屏（按键注入目标） |
 | `src/dev/douhua/DisplayReceiver.java` | 服务叫醒它：接上外接屏弹通知（点开在手机屏上打开豆花），拔掉收回 |
-| `src/dev/douhua/server/Server.java` | 服务入口：主线程只 accept，按 SessionPolicy 接 / 顶掉旧会话 / 回"忙"，每条连接一个 douhua-session 线程；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒；`keys` 只读列出实体键设备、能不能截 |
+| `src/dev/douhua/server/Server.java` | 服务入口：主线程只 accept，按 SessionPolicy 接 / 顶掉旧会话 / 回"忙"，每条连接一个 douhua-session 线程；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒；`keys` 只读：用 getevent -i 列出输入设备、音量键能不能截、会截哪块 / 旁观哪块 |
 | `src/dev/douhua/server/Session.java` | 一次 App 连接：建虚拟设备、发 hello、独占时机、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App；10 秒没消息自己断开，可被新连接顶掉（kick） |
 | `src/dev/douhua/server/SessionPolicy.java` | 新连接来时旧会话怎么办：没有 / 已收尾 → 接，沉默 ≥ 5 秒 → 顶掉，否则回"忙"，纯 Java（离线测） |
 | `src/dev/douhua/server/GrabCondition.java` | 独占条件里的心跳（只有心跳和布局算，保活不算）和释放原因码，Session 调它，纯 Java（离线测） |
@@ -75,11 +75,11 @@
 | `src/dev/douhua/server/Uhid.java` | /dev/uhid 造 USB HID 设备的公共部分 |
 | `src/dev/douhua/server/UhidMouse.java` / `UhidKeyboard.java` | 虚拟 USB 鼠标 / 键盘，只管发报文（描述符在 Hid，按键状态在 TouchRouter） |
 | `src/dev/douhua/server/PeerUid.java` | 查 /proc/net/tcp 确认连进来的是谁 |
-| `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放；`keys=<5 位>` 一起截实体键，打印实体键事件 / 状态 |
-| `src/dev/douhua/server/KeyDevices.java` | 解析 /proc/bus/input/devices，挑能单独独占的实体键设备（白名单）和只旁观的设备，纯 Java（离线测） |
-| `src/dev/douhua/server/HardKeyGate.java` | 实体键的判断：配了动作的音量键交给 HardKeys、没配的透传注入、电源键只截单独短按（长按 / 连按 / 组合键补发后交还系统），纯 Java（离线测） |
-| `src/dev/douhua/server/KeyReader.java` | 独占并读实体键设备（plain + grab 两个描述符，交还时读空 grabFd 再关），poll 100ms 检查是否该放开 |
-| `src/dev/douhua/server/CallState.java` | 问 Telecom（ITelecomService 反射）是不是在来电响铃 / 通话中，缓存 400ms，结束后冷却 2 秒才算空闲；只在实体键线程用 |
+| `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放；`keys=<4 位>` 一起截音量键，打印实体键事件 / 状态 |
+| `src/dev/douhua/server/KeyDevices.java` | 跑 `getevent -i`（经 Shell，5 秒超时）解析输入设备，挑能单独独占的音量键设备（白名单，带电源键的绝不截）和只旁观的带电源键设备，解析部分纯 Java（离线测） |
+| `src/dev/douhua/server/HardKeyGate.java` | 音量键的判断：配了动作的交给 HardKeys、同设备上没配的透传注入；旁观到电源键 + 截住的音量键一起按（截屏）就按原时间补发后交还系统，纯 Java（离线测） |
+| `src/dev/douhua/server/KeyReader.java` | 独占并读音量键设备、不独占地读旁观设备（plain + grab 两个描述符，交还时读空 grabFd 再关），poll 100ms 检查是否该放开 |
+| `src/dev/douhua/server/CallState.java` | 问 Telecom（ITelecomService 反射）是不是在来电响铃 / 通话中（这时音量键还给系统），缓存 400ms，结束后冷却 2 秒才算空闲；只在实体键线程用 |
 | `src/dev/douhua/server/DisplayWatcher.java` | 每 1.5 秒查屏幕列表，外接屏接上 / 拔掉时 am broadcast 给 DisplayReceiver |
 
 蓝牙模式：报文最后都经 BtHid（系统的 BluetoothHidDevice，键盘 + 鼠标 + 媒体键合成一个描述符）→ 配对的电脑 / 平板 / 电视。
@@ -131,13 +131,14 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **键盘触点日志等于按键记录**：只在可调试包、只能由 adb 广播（DUMP 权限）打开、租期 10 秒不续自己关、只写 logcat 不落盘；
   服务端每条连接默认关，开关只能由通过 uid 校验的连接发（CMD_TRACE）。
 - **独占实体键的条件**：和触摸屏同一个 Session.wanted（active、参数到了、心跳 < 3 秒），再加 App 发过 CMD_HARD_KEYS 且至少截一个键、
-  按键注入可用（不可用绝不独占，不然没配的键、长按电源键补发不出去；截着时补发失败一次也算不可用，等配置变了或 App 回前台再试）、
+  按键注入可用（不可用绝不独占，不然同设备上没配的音量键补发不出去；截着时补发失败一次也算不可用，等配置变了或 App 回前台再试）、
   没在来电响铃 / 通话中（服务问 Telecom，CallState；查不到不拦）；不依赖触摸屏接管成功。不满足 100ms 内放开，断开立刻放开
   （KeyReader 每轮 poll ≤ 100ms 问 keepGoing）。同一时刻只有一个会话打开实体键设备（Session.KEY_GRAB）；收尾 2 秒还独占着 → 服务退出。
 - **注入过的每个"按下"在所有退出路径上都配一个"松开"**（HardKeyGate.releaseAll 在 KeyReader 的 finally 里，交还后由真松开配上），
-  否则系统一直连发：音量推到头，电源键弹关机菜单。
-- **电源键没配动作，绝不独占电源键所在的设备**（同设备上的音量键因此截不了，报 HARD_SHARED）；设备白名单：只有 SYN/KEY/MSC、
-  键码只有 114/115/116、不是 USB / 蓝牙 / 虚拟总线、厂商号不是 0x1209（KeyDevices.whyNotGrabbable）。
+  否则系统一直连发、音量推到头。
+- **服务绝不独占带电源键（116）的设备**，任何配置下都不（同设备上的音量键因此截不了，报 HARD_SHARED）；带电源键的机身设备只旁观
+  （不独占地读），只用来认"电源键 + 截住的音量键"（截屏）。设备白名单：事件类型只有 KEY（加 MSC；SYN 隐含；REP / PWR 用 getevent 看不见，连发事件被忽略）、键码只有 114 / 115、
+  不是 USB / 蓝牙 / 虚拟总线、厂商号不是 0x1209、getevent 的输出认全了（KeyDevices.whyNotGrabbable）。
 - **区域只报看得见的那一屏**：键盘（含空中鼠标页上调出来的）、空中鼠标页、主界面三组互斥（MainActivity.collectRegions，键盘最先判断）。
   只把键盘排前面不够：键盘空隙里看不见的圆钮、格子照样按得到。
 - 只接管 App 所在那块屏的触摸屏（按 displayId 在 dumpsys 里找）；找不到（比如虚拟屏）就不接管。
@@ -267,23 +268,32 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   （分流按按下时记的区域报，键盘盖上前就按着的手指抬起仍报给圆钮 / 格子）。从键盘屏进空中鼠标先收起键盘，退出回触控板屏。
   激光笔式原来的前提"页面上没有触控板"破了：触摸那一路真挪过光标（dx / dy 不为 0）就作废记的位置（AirMouse.forgetPosition），
   下次跟随先回正中；只打字没碰小触控板就接着原来的位置。数字键盘在空中鼠标页上的同类问题没做。
-- **DeX 模式的音量键、两种模式的电源键由服务独占实体键设备**（2026-10-19）：DeX 下豆花窗口不收焦点、收不到音量键，电源键 App 根本拿不到。
-  服务读 /proc/bus/input/devices（内核稳定格式，比 dumpsys 稳）挑设备，EVIOCGRAB 整个设备一起独占，所以白名单很严（见不变量），
-  先严后松：拿到主力机 `Server keys` 的真实分组再看要不要放宽（比如带 EV_REP 的 gpio-keys 现在也会被拒）。
+- **DeX 模式的音量键由服务独占实体键设备**（2026-10-19；当时还截电源键短按，2026-10-21 撤了，见下一条）：DeX 下豆花窗口不收焦点、收不到音量键。
+  服务挑设备（现在用 getevent，见下一条），EVIOCGRAB 整个设备一起独占，所以白名单很严（见不变量），
+  先严后松：拿到主力机 `Server keys` 的真实分组再看要不要放宽。
   "点一下 / 按住"在服务里判断（HardKeyGate 里跑同一个 HardKeys），App 只执行动作（MSG_HARD_KEY）：补发要在服务里做、时机准，App 卡一下也不拖慢透传。
   语义和蓝牙模式一样：设了动作的键整个归豆花，没设的那一半不调音量（考虑过"没设的一半照常调音量"，要把点一下挪到松手才算，
   用户没要求改蓝牙模式的手感，没做）；同一设备上没配动作的键原样注入补发（downTime 用原始的，系统自己连发）。
-  电源键只截单独一次短按：350ms 内松开、从第一次按下算 500ms 内没有第二次按下 → 第 500ms 执行动作；按满 350ms（长按）、500ms 内再按（连按，
-  覆盖紧急求救 500ms、双击相机 300ms）、和音量键一起按（截屏 / 强制重启）→ 按原始时间补发吞掉的按下（连按的第一下按下 / 松开都补），
-  把设备交还系统（关掉 grabFd，plain 接着读给补发的按下配松开），两个键都空闲 2 秒再独占。组合键也看只旁观、没独占的机身按键设备
-  （Plan.watch），免得音量键在另一个没截的设备上时截屏失灵。补发注入不指定屏（INVALID_DISPLAY），和物理键一样由系统送到有焦点的屏。
+  电源键（旁观的设备上）和截住的音量键一起按（截屏）→ 按原始时间补发吞掉的音量键按下，把设备交还系统（关掉 grabFd，plain 接着读给补发的按下配松开），
+  都空闲 2 秒再独占。补发注入不指定屏（INVALID_DISPLAY），和物理键一样由系统送到有焦点的屏。
   独占前的竞态：EVIOCGRAB 返回时独占前的投递都已完成（synchronize_rcu），读完 plain 上剩下的，有键动过就马上放开重来；
   打开设备前就按着的键，独占后收到"没见过按下的松开"，系统多半看到了按下：音量补一对按下 + 松开（注入的松开止不住物理设备那一路的连发，
-  要先用注入的按下接过来；最坏多调一格），电源只补松开。通话 / 响铃时（AudioManager 模式不是 NORMAL）App 发全 0，服务全部放开；振动 / 静音来电时音频模式不变，
+  要先用注入的按下接过来；最坏多调一格）。通话 / 响铃时（AudioManager 模式不是 NORMAL）App 发全 0，服务全部放开；振动 / 静音来电时音频模式不变，
   所以服务自己也每 400ms 问一次 Telecom 的 isRinging / isInCall（CallState），响铃或通话中放开，结束 2 秒后再截。
-  蓝牙模式下服务只截电源键（音量键仍由 App 自己收：通话中交还系统调音量，响铃时系统自己先截去静音）；电源键和音量下在同一设备时，音量下由服务透传注入，App 照常当本地实体键收
-  （所以没照方案在 onHardKey 里忽略注入来的键：服务从不注入它自己截了的那一半，不会处理两遍）。
+  蓝牙模式下服务什么实体键都不截（App 发全 0；音量键由 App 自己收：通话中交还系统调音量，响铃时系统自己先截去静音）。
   DeX 下实体键按住配了"左键"：CMD_HOLD_LEFT 经服务的 TouchRouter 按住（和屏幕上的"左键"共用计数）。
+- **只要音量键，电源键不截；找设备改用 getevent**（2026-10-21，用户定；协议 15）：电源键短按配动作是之前多做的，整块撤掉
+  （设置槽、Prefs 的 hk_power_tap——旧值不迁移、不读，状态机、补发、协议里的那个字节）。带电源键的设备任何情况下都不独占，只旁观认电源键 + 音量键的系统组合键（截屏、电源 + 音量上的快捷方式等）。
+  三星 One UI 上 shell 读 /proc/bus/input/devices 被 SELinux 拒绝（EACCES，用户主力机上 `Server keys` 实测），改跑系统自带的 `getevent -i`
+  （shell 能跑、直接开 /dev/input/eventN；-i 列完设备就退出），格式照 AOSP getevent.c 的 printf 写（没在真机上对过）：类型名补到三个字符，
+  SW / FF 和括号之间是两个空格（"SW  (0005)"），类型以括号里的十六进制为准。getevent 按类型调 EVIOCGBIT，内核只认 KEY、REL、ABS、MSC、
+  LED、SND、FF、SW，所以 REP / PWR / FF_STATUS 看不见、不参与判断：开了内核自动连发的 gpio-keys 也会判成能截（读 /proc 时会因 EV_REP 被拒），
+  独占后多收的 value=2 被 HardKeyGate 忽略、透传的键由系统自己连发，无害；真要拒得另读 sysfs 的 capabilities/ev，先要确认 shell 读得了。
+  标准输出、标准错误分开读（Shell.runSplit），"could not open …"只从标准错误里认（getevent 一开头就 setbuf(stdout, NULL)，合着读其实也不会把行打乱；
+  分开读是为了不靠这个前提）。解析宽容，但 events 段有认不出的行、缺 bus / vendor / events 的设备一律不截。
+  打不开的设备只知道路径、不知道带不带电源键，所以一块能旁观的电源键设备都没有（getevent 打不开、带触摸）就什么都不截、报 HARD_SHARED
+  （截了电源键 + 音量键的系统组合键（截屏、电源 + 音量上的快捷方式等）会失灵、单按电源直接灭屏；App 提示只说"截不住、原因见服务日志 / Server keys"）；KeyReader 里旁观的设备一块都打不开也一样不截（HARD_FAILED）。
+  getevent 不在、超时、一个能打开的设备都没有 → HARD_FAILED（不影响触摸屏接管）。
 - **服务目前要靠电脑 adb 拉起**（`tools/start-server.sh`），手机重启后要重跑。Shizuku 方案还没做。
 
 - **蓝牙 HID**（用户要"任何设备通用的外接 HID"、"装上就能用"）：系统的 BluetoothHidDevice（Android 9 起），不需要服务、
@@ -327,14 +337,14 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   测试机不是三星、没有 DeX，DeX 模式只能交给用户在主力机上试；`tools/build.sh --install`、`start-server.sh` 等脚本连着多台时会列出来让人选（tools/adb-device.sh），我自己跑时一律加 `-s <测试机>`。
 
 - `tools/test.sh`：GestureEngine、MtDecoder、TouchDevice 解析的离线测试；服务的会话交接部件（TouchGrabLock、SessionPolicy、
-  RotationLock、GrabCondition）、LogThrottle、Shell（会真起 echo / sleep 子进程）、实体键（KeyDevices 解析 / 挑设备、HardKeyGate 状态机）也在 ServerPartsTest 里。
+  RotationLock、GrabCondition）、LogThrottle、Shell（会真起 echo / sleep 子进程）、实体键（KeyDevices 解析 getevent 输出 / 挑设备、HardKeyGate 状态机）也在 ServerPartsTest 里。
 - 服务安全链路（真机）：`adb shell CLASSPATH=<apk 路径> app_process / dev.douhua.server.TestClient 0 2`
   ——接管屏幕 0 两秒、停发心跳，服务应在 3 秒内报"App 没有响应，已把触摸屏还给系统"。**测试期间外屏摸不动约 5 秒。**
   第三个参数写 `relay` 按蓝牙模式接管，服务转发回来的鼠标 / 键盘报文会打印出来；不用真人摸，可以在接管后往触摸屏节点
   `sendevent`（slot / 跟踪号 / X / Y / SYN，原始坐标），独占期间写进去的事件只送给服务。
 - 实体键（真机，测试机上做；服务找不到触摸屏时实体键照样截）：先 `adb shell CLASSPATH=<apk 路径> app_process / dev.douhua.server.Server keys`
-  看设备分组（只读）；再 `TestClient 0 5 keys=00001`（只截电源键点一下）：日志"已独占实体键"，短按电源键收到"实体键 2 事件 0"、屏幕不灭，
-  长按出关机菜单（约晚 0.35 秒）、双击开相机，停发心跳后服务日志"实体键已交还系统"、TestClient 收到"截住=0 原因=5"。`keys=10000`（音量+点一下）时同设备上的音量−照常调音量。
+  看设备分组（只读，用 getevent -i）；再 `TestClient 0 5 keys=1000`（只截音量+点一下）：日志"已独占实体键"，按音量+收到"实体键 0 事件 0"、音量不变，
+  同设备上的音量−照常调音量；电源键 + 音量下截屏照常；停发心跳后服务日志"实体键已交还系统"、TestClient 收到"截住=0 原因=5"。
   紧急求救绝不实测；三星"侧键 + 音量下"强制重启也不能在主力机上试。
 - 服务卡住 / 顶替（真机，**只在测试机上做**；主力机上禁止 kill -STOP 服务，那会让外屏触摸屏锁死）：
   ① 起服务后用 TestClient 连上再 `kill -STOP` 它（模拟沉默的死连接），然后开 App 或再起一个 TestClient：约 5 秒内日志"旧连接 N 秒没消息，
@@ -359,13 +369,13 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 
 ## 进行中（交接；做完删掉这一节）
 
-- **DeX 模式的音量键、两种模式的电源键（2026-10-19 写完，没提交，待真机验证；协议 14，装完要重启服务）**：见决策记录。
-  只跑了离线测试（服务端部件 199 项：设备解析 / 白名单（含虚拟总线）/ 旁观 / 原因混合、HardKeyGate 透传 / 电源短按长按连按（350 / 500ms 两头都锁）/ 组合键（含补发排序）/ 冷却 / releaseAll / 没见过按下的松开 / 竞态、GrabCondition 心跳 / 保活）和编译。
-  没验证：主力机的实体键设备分组（先跑只读的 `Server keys`）、Fold 合盖霍尔是不是和音量键分开、EVIOCGRAB 对实体键设备行不行、
-  独占前竞态的处理、补发的电源长按 / 双击相机认不认、截屏组合键、通话时放开（含振动模式来电：服务查 Telecom 的反射在 One UI 上通不通，
+- **DeX 模式的音量键（2026-10-19 写完，2026-10-21 去掉电源键、改用 getevent；没提交，待真机验证；协议 15，装完要重启服务）**：见决策记录。
+  只跑了离线测试（服务端部件 216 项：getevent 格式解析（样本照 getevent.c 的 printf 拼，不是真机输出）/ 白名单 / 旁观 / 看不到电源键不截 / 原因混合、HardKeyGate 透传 / 组合键（含补发排序）/ 冷却 / releaseAll / 竞态）和编译。
+  待真机：**先跑只读的 `Server keys`**（getevent 在 One UI 上能不能打开 /dev/input/eventN、主力机的设备分组、音量下是不是和电源键在一起、
+  Fold 合盖霍尔是不是和音量键分开）；再看 EVIOCGRAB 对音量键设备行不行、截屏组合键、通话时放开（含振动模式来电：服务查 Telecom 的反射在 One UI 上通不通，
   日志里有"来电响铃或通话中：实体键还给系统"）、DeX 下音量键按住"左键"拖动、App 端的提示文字。
 
-- **键盘的缝分给最近的键 + 打字测试工具（2026-10-19 写完，没提交，待真机验证；协议 14，装完要重启服务）**：见决策记录。
+- **键盘的缝分给最近的键 + 打字测试工具（2026-10-19 写完，没提交，待真机验证；协议 15（随 DeX 音量键一起升到 15），装完要重启服务）**：见决策记录。
   只跑了离线测试（分流 87 项、打字分析自测 30 项、重放核对）和编译。没验证：服务进程写 logcat、DeX 下各键自己收触摸那条路的兜底、
   缝里分到 ?123 / 快捷行动作时点击生效、tools/type-log.sh 和网页整套流程（一次都没跑过）。
 
@@ -374,7 +384,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   小触控板能挪光标；服务接管（relay）和没开服务两条路都试；键盘上锁住 Ctrl 后"收起键盘"，回到页面点击不带 Ctrl；
   暂停中音量键调音量、调出键盘的那一下松开时音量不变；调整键盘大小能拖；用小触控板挪过光标后再跟随先回正中，没挪过接着走。
 
-- **服务卡住修复（2026-10-19 写完，没提交，待真机验证；协议 14，装完要重启服务）**：见决策记录"服务卡住却显示在运行"。
+- **服务卡住修复（2026-10-19 写完，没提交，待真机验证；协议 15（随 DeX 音量键一起升到 15），装完要重启服务）**：见决策记录"服务卡住却显示在运行"。
   只跑了离线测试和编译；测试机上的验证步骤见"测试"一节。主力机上那个卡住的旧服务（v13）被新 start-server.sh 认出来的前提是有连接在排队，
   部署时用 build.sh --install / deploy-phone.sh（先 stop 再 start）或 `start-server.sh --restart`。
 
@@ -620,7 +630,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **空中鼠标页放键盘**（用户 2026-10-15 顺口提的"甚至加个键盘都可以"）：长屏手机上格子下面还有地方，可以放一块小键盘。没做。
   （2026-10-19 做的"空中鼠标页能调出键盘"是盖上整屏键盘、空中鼠标暂停，不是这条；在格子下面嵌小键盘仍然没做。）
 - **手机放桌上平移当真鼠标**：大概率做不好。加速度计二次积分漂移很快、陀螺仪测不到平移、后摄贴着桌面对不上焦。真想做先做个实验。
-- **截获音量键 / 电源键，短按、长按各配动作**（蓝牙模式的音量键、DeX 模式的音量键和两种模式的电源键短按都已做，后两个待真机验证，见"进行中"）（在触控板 / 键盘界面时）：音量键豆花在前台时能自己截（窗口要能收按键）；
+- **截获音量键 / 电源键，短按、长按各配动作**（蓝牙模式的音量键、DeX 模式的音量键已做，后者待真机验证，见"进行中"；电源键用户 2026-10-21 定了不要）（在触控板 / 键盘界面时）：音量键豆花在前台时能自己截（窗口要能收按键）；
   电源键普通 App 截不到，要服务独占按键设备，风险大（截住期间灭不了屏、紧急求救长按被吞），必须有和触摸屏一样的自动释放保证。
 - **盲打纠偏（用户想不看键盘打字）**：现在按键就是"按下时落在哪个矩形里"，键与键之间有 4dp 的缝（各留 2dp 边距）、
   第二行左右半个键的空位（SPACER）都不算任何键，落进去就没反应——"感觉按到了实际没按到"多半是这个。
@@ -644,7 +654,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - start-server.sh 只能在"有连接在排队"时认出卡住；服务在 accept 之后、发 hello 之前卡住它看不出来（靠 App 那边 5 秒的提示）；
   会话中途卡住、App 照常写的情况 App 也察觉不到（服务不给 App 发保活）。
 - 服务用 `--debug` 起时，Session.onDown 把每次按下落在哪个区域（键 id）写进手机上的 /data/local/tmp/douhua-server.log，等于把打的字落了盘（打字测试的触点日志只走 logcat，不受这条影响）。
-- 实体键：音量上 + 音量下一起按（无障碍快捷方式）没当组合键交还，两个都配了动作时豆花在前台就用不了它；
+- 实体键：音量上 + 音量下一起按（无障碍快捷方式）没当组合键交还，只要有一个音量键配了动作（被截住），豆花在前台时就用不了它（配了的那个被豆花吃掉，系统只看到另一个）；
   触摸屏释放时 router.releaseAll 会把实体键按着的"左键"（CMD_HOLD_LEFT）一起松掉；服务被直接杀掉时，透传中按着的音量键
   系统会一直连发到下一次按键；交还系统时最后一次读 grabFd 和关掉它之间（微秒级）到的事件会丢；只配了"点一下"的音量键按下当场就发给 App，
   之后才认出是组合键的话动作已经做了。
@@ -652,6 +662,6 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - MtDecoder 假设开始读时当前 slot 是 0（没法用 EVIOCGABS 查）；开始读之前就按着的手指一律忽略到抬起。
 - TouchDevice 依赖 `dumpsys input` 的文字格式（三星 One UI 9 实测）；系统升级改格式会找不到触摸屏，状态栏会显示原因。
 - 接管期间横幅通知、来电横幅点不了（全屏来电会让豆花退到后台，自动释放）。
-- 接管期间长按电源键弹出的关机菜单点不了：它是系统对话框，豆花不 onPause、照报 active，触摸还归服务（还会分给菜单底下看不见的按钮）。以前就有；给电源键设了动作后"短按灭屏"这条退路也没了，只剩点退出。改法（失去窗口焦点也报 inactive）在 DeX 下用不上（主窗口平时不收焦点），没做。
+- 接管期间长按电源键弹出的关机菜单点不了：它是系统对话框，豆花不 onPause、照报 active，触摸还归服务（还会分给菜单底下看不见的按钮）。以前就有。改法（失去窗口焦点也报 inactive）在 DeX 下用不上（主窗口平时不收焦点），没做。
 - 滚动是整格滚轮。要更顺可以试 HID 高精度滚轮（Resolution Multiplier，需要服务回应 UHID_SET_REPORT）。
 - 外屏一直亮着同样的边框，长期有烧屏风险；边框已经调得很暗。

@@ -31,7 +31,7 @@ import dev.douhua.TouchRouter;
  * 任何一条不满足，100ms 内释放。连接断开时一切释放、虚拟鼠标移除。
  *
  * 线程：命令线程（douhua-session，每条连接一个）读 App 的消息；监管线程负责独占和读触摸；
- * 实体键线程（douhua-keys）负责独占和读音量 / 电源键（{@link #superviseKeys}）；
+ * 实体键线程（douhua-keys）负责独占和读音量键（{@link #superviseKeys}；电源键从不独占）；
  * 定时器线程跑轻点拖动的等待和切键盘焦点。router 只在持有 lock 时访问。
  *
  * 实体键的独占条件和触摸屏一样（{@link #wanted}），另外要 App 发过 CMD_HARD_KEYS、至少要截一个键、按键注入可用、
@@ -108,13 +108,13 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     private final CountDownLatch ended = new CountDownLatch(1);
 
     /**
-     * App 要截哪些实体键（{@link Proto#CMD_HARD_KEYS} 的 5 个字节压成位：1 音量+点一下、2 音量+按住、4 音量−点一下、
-     * 8 音量−按住、16 电源点一下）；-1 = 还没收到（这之前不碰任何实体键设备）。
+     * App 要截哪些音量键（{@link Proto#CMD_HARD_KEYS} 的 4 个字节压成位：1 音量+点一下、2 音量+按住、4 音量−点一下、
+     * 8 音量−按住）；-1 = 还没收到（这之前不碰任何实体键设备）。
      */
     private volatile int hardMask = -1;
-    /** 实体键线程正独占着设备（收尾时卡住、还独占着就得让服务退出，不然音量 / 电源键一直失灵）。 */
+    /** 实体键线程正独占着设备（收尾时卡住、还独占着就得让服务退出，不然音量键一直失灵）。 */
     private volatile boolean keysExclusive;
-    /** 补发实体键失败了：注入不可用，马上放开实体键（没配的键、长按电源键都补发不出去）。 */
+    /** 补发实体键失败了：注入不可用，马上放开实体键（同设备上没配的音量键补发不出去）。 */
     private volatile boolean injectBroken;
     private final LogThrottle injectLog = new LogThrottle(60_000);
     /** 来电响铃 / 通话中不截实体键；只在实体键线程里用。 */
@@ -179,7 +179,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     /**
      * 收尾。关 socket 放在最前面：卡在回调里写 socket 的线程（持着 lock 和 out）也一起叫醒。
      * 监管线程 / 实体键线程 2 秒还没退出、又还占着触摸屏 / 独占着实体键，就让服务退出——只有进程退出能保证内核收回独占，
-     * 比外屏一直锁死、音量和电源键一直失灵好。
+     * 比外屏一直锁死、音量键一直失灵好。
      */
     private void finish(Thread supervisor, Thread keys) {
         alive = false;
@@ -194,7 +194,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         }
         if (keys != null && keys.isAlive() && keysExclusive) {
             Server.log("实体键线程 " + SessionPolicy.OLD_SESSION_WAIT_MS / 1000 + " 秒没退出、还独占着实体键：服务退出，"
-                    + "让系统收回音量 / 电源键（要重新运行 tools/start-server.sh）");
+                    + "让系统收回音量键（要重新运行 tools/start-server.sh）");
             System.exit(3);
         }
         synchronized (lock) {
@@ -357,7 +357,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                 }
                 case Proto.CMD_HARD_KEYS: {
                     int mask = 0;
-                    for (int i = 0; i < 5; i++) {
+                    for (int i = 0; i < 4; i++) {
                         if (in.readUnsignedByte() == 1) mask |= 1 << i;
                     }
                     if (mask != hardMask) Server.log("App 要截的实体键：" + describeHard(mask));
@@ -512,22 +512,22 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         while (alive && layout == l && wanted(l)) sleep(200);
     }
 
-    // ═══════════ 独占实体键（音量、电源） ═══════════
+    // ═══════════ 独占实体键（只有音量键；电源键所在的设备只旁观） ═══════════
 
     /** 实体键的独占条件：和触摸屏同一个 {@link #wanted}（不管触摸屏接管成功没有），再加上 App 至少要截一个键。 */
     private boolean wantedKeys(Layout l, int mask) {
         return mask > 0 && wanted(l);
     }
 
-    /** 实体键线程里用：{@link #wantedKeys} 再加上没在来电响铃 / 通话中（{@link CallState}，电源键要能静音 / 挂断）。 */
+    /** 实体键线程里用：{@link #wantedKeys} 再加上没在来电响铃 / 通话中（{@link CallState}，音量键要能静音、调通话音量）。 */
     private boolean wantedKeysNow(Layout l, int mask) {
         return wantedKeys(l, mask) && !calls.busy(SystemClock.uptimeMillis());
     }
 
     /**
      * 实体键线程：满足条件就找设备（{@link KeyDevices}）、告诉 App 哪些截住了 / 截不了（MSG_HARD_GRAB），
-     * 再交给 {@link KeyReader}（每 100ms 问一次还要不要截）。按键注入不可用时绝不独占：没配的键、长按电源键都补发不出去，
-     * 音量和电源会整个失灵；截着时补发失败一次也算注入不可用（{@link Injector#status} 只看拿不拿得到代理，不真注入）。
+     * 再交给 {@link KeyReader}（每 100ms 问一次还要不要截）。按键注入不可用时绝不独占：同设备上没配的音量键补发不出去，
+     * 音量会整个失灵；截着时补发失败一次也算注入不可用（{@link Injector#status} 只看拿不拿得到代理，不真注入）。
      * 来电响铃 / 通话中不截。出错后等配置变了、或不再需要截了再重试。
      */
     private void superviseKeys() {
@@ -547,15 +547,14 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
             reported = true;
             String inject = injector.status();
             if (inject != null) {
-                Server.log("按键注入不可用，不截实体键（不然音量、电源会失灵）：" + inject);
+                Server.log("按键注入不可用，不截实体键（不然音量键会失灵）：" + inject);
                 sendHardGrab(0, want, Proto.HARD_NO_INJECTOR, inject);
                 waitForKeysChange(mask);
                 continue;
             }
             KeyDevices.Plan plan;
             try {
-                plan = KeyDevices.plan(KeyDevices.parse(KeyDevices.readProc()),
-                        new KeyDevices.Config((mask & 3) != 0, (mask & 12) != 0, (mask & 16) != 0));
+                plan = KeyDevices.plan(KeyDevices.read(), new KeyDevices.Config((mask & 3) != 0, (mask & 12) != 0));
             } catch (IOException e) {
                 Server.log("读实体键设备列表失败：" + e.getMessage());
                 sendHardGrab(0, want, Proto.HARD_FAILED, e.getMessage());
@@ -575,7 +574,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
             try {
                 injectBroken = false;
                 HardKeyGate gate = new HardKeyGate(new GateOut());
-                gate.config((mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0, (mask & 16) != 0);
+                gate.config((mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0);
                 String names = deviceNames(plan.grab);
                 KeyReader.run(plan.grab, plan.watch, gate,
                         () -> !injectBroken && wantedKeysNow(layout, hardMask) && hardMask == mask && layout.relay == l.relay,
@@ -610,13 +609,12 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
 
     /** CMD_HARD_KEYS 的位 → 配了动作的键（Proto.HARD_BIT_*）。 */
     private static int hardBits(int mask) {
-        return ((mask & 3) != 0 ? Proto.HARD_BIT_VOL_UP : 0) | ((mask & 12) != 0 ? Proto.HARD_BIT_VOL_DOWN : 0)
-                | ((mask & 16) != 0 ? Proto.HARD_BIT_POWER : 0);
+        return ((mask & 3) != 0 ? Proto.HARD_BIT_VOL_UP : 0) | ((mask & 12) != 0 ? Proto.HARD_BIT_VOL_DOWN : 0);
     }
 
     private static String describeHard(int mask) {
         if (mask == 0) return "无";
-        String[] names = {"音量+点一下", "音量+按住", "音量−点一下", "音量−按住", "电源点一下"};
+        String[] names = {"音量+点一下", "音量+按住", "音量−点一下", "音量−按住"};
         StringBuilder b = new StringBuilder();
         for (int i = 0; i < names.length; i++) {
             if ((mask & (1 << i)) == 0) continue;
@@ -635,13 +633,9 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         return b.toString();
     }
 
-    /** Linux 键码 → Android 键码。 */
+    /** Linux 键码 → Android 键码（只补发音量键）。 */
     private static int androidKey(int linux) {
-        switch (linux) {
-            case KeyDevices.KEY_VOLUMEUP: return KeyEvent.KEYCODE_VOLUME_UP;
-            case KeyDevices.KEY_VOLUMEDOWN: return KeyEvent.KEYCODE_VOLUME_DOWN;
-            default: return KeyEvent.KEYCODE_POWER;
-        }
+        return linux == KeyDevices.KEY_VOLUMEUP ? KeyEvent.KEYCODE_VOLUME_UP : KeyEvent.KEYCODE_VOLUME_DOWN;
     }
 
     /** gate 的输出（实体键线程里调）：补发 → 注入；判断结果 → 发给 App。 */

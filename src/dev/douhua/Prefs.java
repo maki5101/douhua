@@ -497,45 +497,55 @@ final class Prefs {
         return getBool(CUSTOM_KEYS, false);
     }
 
-    // ═══════════ 键盘大小和位置（横竖屏各一份） ═══════════
+    // ═══════════ 键盘大小和位置（横竖屏 × 指点三种状态各一份） ═══════════
 
     /**
-     * 用户调过的合并键盘位置 {左, 上, 右, 下}（可用区域的 0–1）；没调过（或恢复默认了）返回 null，
-     * 由 KeyboardPlan.defaultRect 按窗口给默认位置（竖屏占下面七成，横屏占满，宽窗口靠左三分之二）。
+     * 存的键名前缀：横竖屏 × 指点（KeyboardPlan.POINTER_*）各一份。2026-11-01 用户："有触控板的时候我要避让触控板，没有触控板的情况下我就不要避让了，
+     * 但是总不能调来调去吧，写死居中也有问题，比如我要单手，可能就是要侧放"——所以每种状态各记各的，换状态不互相覆盖。
+     * 触控板那份沿用以前的键名（kb_land_* / kb_split_land_*，以前存的都是在它下面调的），小红点、关是新的（kb_stick_*、kb_none_*），没存过就是默认位置。
      */
-    float[] savedKeyboardRect(boolean landscape) {
-        String p = landscape ? "kb_land_" : "kb_port_";
+    private static String rectKey(String kind, boolean landscape, int pointer) {
+        String state = pointer == KeyboardPlan.POINTER_STICK ? "stick_" : pointer == KeyboardPlan.POINTER_NONE ? "none_" : "";
+        return "kb_" + state + kind + (landscape ? "land_" : "port_");
+    }
+
+    /**
+     * 用户调过的合并键盘位置 {左, 上, 右, 下}（可用区域的 0–1），这种指点状态下的；没调过（或恢复默认了）返回 null，
+     * 由 KeyboardPlan.defaultRect 按窗口给默认位置（竖屏占下面七成，横屏占满，宽窗口有触控板时靠左三分之二）。
+     */
+    float[] savedKeyboardRect(boolean landscape, int pointer) {
+        String p = rectKey("", landscape, pointer);
         if (!sp.contains(p + "l")) return null;
         return new float[]{getFloat(p + "l", 0), getFloat(p + "t", 0), getFloat(p + "r", 1), getFloat(p + "b", 1)};
     }
 
-    void setKeyboardRect(boolean landscape, float[] r) {
-        String p = landscape ? "kb_land_" : "kb_port_";
+    void setKeyboardRect(boolean landscape, int pointer, float[] r) {
+        String p = rectKey("", landscape, pointer);
         sp.edit().putFloat(p + "l", r[0]).putFloat(p + "t", r[1]).putFloat(p + "r", r[2]).putFloat(p + "b", r[3]).apply();
     }
 
-    void resetKeyboardRect(boolean landscape) {
-        String p = landscape ? "kb_land_" : "kb_port_";
+    void resetKeyboardRect(boolean landscape, int pointer) {
+        String p = rectKey("", landscape, pointer);
         sp.edit().remove(p + "l").remove(p + "t").remove(p + "r").remove(p + "b").apply();
     }
 
     /**
      * 用户调过的分裂键盘：左半格子 {左, 上, 右, 下}（可用区域的 0–1，右边量到两半中间那条线，0.5 = 两半只隔一条缝；
-     * 右半是镜像，见 KeyboardPlan）；没调过（或恢复默认了）返回 null，用默认的（三分之一 / 往中间伸满）。不影响合并的那份。
+     * 右半是镜像，见 KeyboardPlan），这种指点状态下的；没调过（或恢复默认了）返回 null，用默认的（三分之一 / 往中间伸满）。不影响合并的那份。
      */
-    float[] savedSplitRect(boolean landscape) {
-        String p = landscape ? "kb_split_land_" : "kb_split_port_";
+    float[] savedSplitRect(boolean landscape, int pointer) {
+        String p = rectKey("split_", landscape, pointer);
         if (!sp.contains(p + "l")) return null;
         return new float[]{getFloat(p + "l", 0), getFloat(p + "t", 0), getFloat(p + "r", 0.5f), getFloat(p + "b", 1)};
     }
 
-    void setSplitRect(boolean landscape, float[] r) {
-        String p = landscape ? "kb_split_land_" : "kb_split_port_";
+    void setSplitRect(boolean landscape, int pointer, float[] r) {
+        String p = rectKey("split_", landscape, pointer);
         sp.edit().putFloat(p + "l", r[0]).putFloat(p + "t", r[1]).putFloat(p + "r", r[2]).putFloat(p + "b", r[3]).apply();
     }
 
-    void resetSplitRect(boolean landscape) {
-        String p = landscape ? "kb_split_land_" : "kb_split_port_";
+    void resetSplitRect(boolean landscape, int pointer) {
+        String p = rectKey("split_", landscape, pointer);
         sp.edit().remove(p + "l").remove(p + "t").remove(p + "r").remove(p + "b").apply();
     }
 

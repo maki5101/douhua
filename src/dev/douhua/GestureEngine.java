@@ -143,7 +143,7 @@ public final class GestureEngine {
         /** 小红点灵敏度：TrackPoint 的速度曲线整体乘这个（设置里 0.3–3.0）。 */
         public float stickSpeed = 1.0f;
         /** 轻点红点 = 左键（TrackPoint 的 press to select）。 */
-        public boolean stickTap = true;
+        public boolean stickTap = false;   // 2026-11-01 用户要关（真 ThinkPad 的"按红点 = 点击"也默认关）
         /** 小红点的负惯性（起步、停下更利落，见 TrackPoint）。 */
         public boolean stickInertia = true;
     }

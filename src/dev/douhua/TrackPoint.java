@@ -47,10 +47,13 @@ final class TrackPoint {
     /** 推到底（dp，约 5 毫米）：再远速度封顶。 */
     static final float FULL_DP = 32f;
     static final float CRAWL_END = 0.15f, RISE_END = 0.45f, PLATEAU_END = 0.70f;
-    /** 移动的速度（鼠标计数 / 秒）：爬行、平台、最快（一屏 1920 像素约 0.65 秒）。 */
-    static final float MOVE_CRAWL = 40, MOVE_PLATEAU = 450, MOVE_MAX = 3000;
-    /** 中键滚动的速度（格 / 秒）。 */
-    static final float SCROLL_CRAWL = 2, SCROLL_PLATEAU = 10, SCROLL_MAX = 40;
+    /**
+     * 移动的速度（鼠标计数 / 秒）：爬行、平台、最快（一屏 1920 像素约 1.6 秒）。
+     * 最快原来 3000（约 0.65 秒一屏），用户 2026-11-01："移动远一点的话非常不好控制，要降低一些"——平台到最快只翻 2.7 倍（原来 6.7 倍）。
+     */
+    static final float MOVE_CRAWL = 40, MOVE_PLATEAU = 450, MOVE_MAX = 1200;
+    /** 中键滚动的速度（格 / 秒）：原来 2 / 10 / 40，用户 2026-11-01 嫌慢，整体翻倍。 */
+    static final float SCROLL_CRAWL = 4, SCROLL_PLATEAU = 20, SCROLL_MAX = 80;
     /** 负惯性：增益、滞后的时间常数（毫秒）。 */
     static final float INERTIA_GAIN = 3, INERTIA_TAU_MS = 10;
     /** 一拍最多按这么久积分（主线程 / 定时器卡了一下时不窜）。 */

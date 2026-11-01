@@ -24,10 +24,10 @@ import java.util.List;
  * 不然手机竖屏一分裂键就有一百多 dp 高。
  * 合并时键盘照存下的大小位置；没存过时，宽窗口里触控板设成显示、右边那三分之一又放得下它，默认靠左、占三分之二宽、满高
  * （触控板自然落到右边那三分之一），其它照旧（竖屏占下面七成，横屏占满）——所以没调过大小时开关触控板，键盘会在三分之二宽和满宽之间变。
- * 存下的大小位置横竖屏各一份（Prefs.savedKeyboardRect），这里不改它。
+ * 存下的大小位置横竖屏 × 指点三种状态各一份（Prefs.savedKeyboardRect），这里不改它。
  *
  * 分裂时也能调大小（2026-10-30，用户："分裂状态应该也可以调整大小啊，两边对称调啊"），两半永远左右对称，
- * 存的是左半的"格子" {左, 上, 右, 下}（键盘区的 0–1，横竖屏各一份，Prefs.savedSplitRect；右半是它的镜像）：
+ * 存的是左半的"格子" {左, 上, 右, 下}（键盘区的 0–1，横竖屏 × 指点三种状态各一份，Prefs.savedSplitRect；右半是它的镜像）：
  * 格子的右边量到两半中间那条线、连着半条缝（左半的键实际到 右 × 宽 − 缝 / 2），右 = 0.5 就是两半只隔一条缝（伸满），
  * 跟窗口多宽无关。没存过时按上面的默认规则摆，再折算成格子（{@link Plan#splitCell}），调整模式从它开始拖。
  * 存过的照存的摆（{@link #fitSplit} 先按当前窗口守住约束：一半够宽、不重叠、不出界、够高），不再"往中间伸"：
@@ -469,16 +469,18 @@ final class KeyboardPlan {
         }
         int stickAt = STICK_NONE;
         int[] stick = null;
+        int aim = 0;   // 中键对着的横坐标（placeStick 的第 6 个数）
         if (stickOn) {
             int[] placed = placeStick(panel, block, d.split, d.middle, w, h, s, layers);
             if (placed != null) {
                 stickAt = placed[4];
                 stick = Arrays.copyOf(placed, 4);
+                aim = placed[5];
             }
         }
         int[] middleKey = null;
         if (bar != null) {
-            int center = stick != null ? (stick[0] + stick[2]) / 2 : (bar[0] + bar[2]) / 2;
+            int center = stick != null ? aim : (bar[0] + bar[2]) / 2;
             middleKey = middleKey(bar, center, s);
         }
         return new Plan(d.split, d.middle, d.seam, panel, block, d.padSide, pad, r, d.cell,
@@ -530,7 +532,10 @@ final class KeyboardPlan {
      * 先放进键盘面板 panel 里 KeyRows.stickPoint 那一点（g、h、v、b 交界；分裂时两半中间那截的正中），多大见 {@link #stickSize}：
      * 压着键是 STICK_KEYS，不压（分裂中间那一列）是 STICK_COLUMN。
      * 嵌不下（键太小）就放到键盘的框 block 上面、隔一条缝，对着那一点（STICK_OUTSIDE）：边长不超过 stick、不小于 minStick，
-     * 离页面边至少 edge（Sizes.edgeL / T / R / B）；上面没地方放下面，都没有返回 null（三个鼠标键照样有，轻点红点 = 左键的功能就没了）。
+     * 离页面边至少 edge（Sizes.edgeL / T / R / B）；上面没地方放下面；上下都没有就放 block 右边或左边空着的那块（空得多的那边，挨着 block、
+     * 隔一条缝，竖着对齐那一点）。2026-11-01 用户在分屏下半边换成合并：存下的键盘只占左边六成、扣掉鼠标键那排后键只剩约 29dp 高，
+     * 嵌不下，上下也没地方，右边空着四成却不放——"完全找不见"。都没有才返回 null（三个鼠标键照样有）。
+     * 返回的第 6 个数是中键该对着的横坐标：放在旁边时是那一点（g|h 的缝），别的情况是红点的中线。
      */
     static int[] placeStick(int[] panel, int[] block, boolean split, int middle, int w, int h, Sizes s, KeyRows.Row[][] layers) {
         int pw = panel[2] - panel[0], ph = panel[3] - panel[1];
@@ -541,7 +546,7 @@ final class KeyboardPlan {
         if (size > 0) {
             int l = cx - size / 2, t = panel[1] + p[1] - size / 2;
             boolean onKeys = maxShare(placed, l - panel[0], t - panel[1], size) > 0;
-            return new int[]{l, t, l + size, t + size, onKeys ? STICK_KEYS : STICK_COLUMN};
+            return new int[]{l, t, l + size, t + size, onKeys ? STICK_KEYS : STICK_COLUMN, l + size / 2};
         }
         int across = w - s.edgeL - s.edgeR;
         int above = Math.min(across, block[1] - s.gap - s.edgeT);
@@ -554,10 +559,20 @@ final class KeyboardPlan {
             size = Math.min(s.stick, below);
             top = block[3] + s.gap;
         } else {
-            return null;
+            // 上下都没地方：block 旁边空着的那块（右边、左边取空得多的），竖着对齐那一点
+            int tall = h - s.edgeT - s.edgeB;
+            int rightRoom = Math.min(tall, w - s.edgeR - block[2] - s.gap);
+            int leftRoom = Math.min(tall, block[0] - s.gap - s.edgeL);
+            boolean right = rightRoom >= leftRoom;
+            size = Math.min(s.stick, right ? rightRoom : leftRoom);
+            if (size < s.minStick) return null;
+            int cy = panel[1] + p[1];
+            int t = Math.max(s.edgeT, Math.min(cy - size / 2, h - s.edgeB - size));
+            int l = right ? block[2] + s.gap : block[0] - s.gap - size;
+            return new int[]{l, t, l + size, t + size, STICK_OUTSIDE, cx};
         }
         int left = Math.max(s.edgeL, Math.min(cx - size / 2, w - s.edgeR - size));
-        return new int[]{left, top, left + size, top + size, STICK_OUTSIDE};
+        return new int[]{left, top, left + size, top + size, STICK_OUTSIDE, left + size / 2};
     }
 
     /** 三层的键各自摆在面板（pw × ph）里的位置（同 KeyboardPanel 摆的：缩进 capGap）。 */

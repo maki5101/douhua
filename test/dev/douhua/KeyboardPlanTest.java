@@ -863,7 +863,7 @@ public final class KeyboardPlanTest {
         check(p.stickAt == KeyboardPlan.STICK_KEYS, "宽窗口合并：也嵌在键里");
     }
 
-    /** 键太小嵌不下：放在键盘的框上面（对着那一点）；上下都没地方就不放，三个键照样有。 */
+    /** 键太小嵌不下：放在键盘的框上面（对着那一点）；上下都没地方放旁边；四边都没地方才不放，三个键照样有。 */
     static void stickOutside() {
         // 键盘调成窄窄的一条（180 宽：字母键 14 宽、40 高），32 的红点就要占掉 g 的三成多
         KeyboardPlan.Plan p = stickPlan(KeyboardPlan.MODE_MERGE, 400, 800, new float[]{0, 0.55f, 0.45f, 1}, null, false);
@@ -871,8 +871,23 @@ public final class KeyboardPlanTest {
         check(p.stickAt == KeyboardPlan.STICK_OUTSIDE, "嵌不下：放外面");
         eq(p.stick, new int[]{67, 368, 131, 432}, "在框上面隔 8、对着 g|h（180 × 0.55 = 99）、64 大");
         check(p.keys != null, "三个键照样有");
+        // 上下都没地方（框占满高）：放到框右边空着的那块，挨着框、隔 8，竖着对齐 g|h 那一点；中键还是对着 g|h
         p = stickPlan(KeyboardPlan.MODE_MERGE, 400, 400, new float[]{0, 0, 0.45f, 1}, null, false);
-        check(p.stick == null && p.stickAt == KeyboardPlan.STICK_NONE && p.keys != null, "上下都没地方：不放红点，三个键照样有");
+        check(p.stickAt == KeyboardPlan.STICK_OUTSIDE && p.stick != null, "上下都没地方：放旁边");
+        check(p.stick[0] == p.block[2] + GAP && p.stick[2] <= 400 - EDGE, "放在框右边、隔一条缝、离右边至少 20（实际 " + Arrays.toString(p.stick) + "）");
+        check(p.stick[2] - p.stick[0] == 64, "右边地方够：64 大");
+        // 中键按 g|h 那一点算（不是按红点的中线）；这一排太窄时三个一样宽、中键挪不动，照 middleKey 自己的规则
+        check(p.keys != null && Arrays.equals(p.middleKey, KeyboardPlan.middleKey(p.keys, Math.round(180 * 0.55f), T)),
+                "中键按 g|h 算、不按红点的中线（实际 " + Arrays.toString(p.middleKey) + "）");
+        // 真的哪儿都没地方：窄窗口、框占满 → 不放红点，三个键照样有
+        p = stickPlan(KeyboardPlan.MODE_MERGE, 180, 400, new float[]{0, 0, 1, 1}, null, false);
+        check(p.stick == null && p.stickAt == KeyboardPlan.STICK_NONE && p.keys != null, "四边都没地方：不放红点，三个键照样有");
+        // 2026-11-01 用户主力机的实际情况：分屏下半边（约 641 × 288dp，扣掉边缘留白）换成合并，存下的横屏键盘只占左边六成、上下 11%–89%：
+        // 以前嵌不下、上下没地方就不放了（"完全找不见"），现在放在右边空着的那四成里
+        p = stickPlan(KeyboardPlan.MODE_MERGE, 641, 288, new float[]{0, 0.1075954f, 0.60815454f, 0.88579303f}, null, true);
+        check(p.stick != null && p.stickAt == KeyboardPlan.STICK_OUTSIDE && p.stick[0] >= p.block[2],
+                "主力机分屏下半边合并：红点在键盘右边（实际 " + Arrays.toString(p.stick) + "）");
+        check(p.stick[1] >= EDGE && p.stick[3] <= 288 - EDGE && p.stick[2] <= 641 - EDGE, "不出页面、离边至少 20");
     }
 
     /** 键盘最下面那排三个鼠标键：框太矮（切完键盘面板不到 3 × 48）就不切。 */
@@ -1190,8 +1205,11 @@ public final class KeyboardPlanTest {
                 if (r[0] != b[0] + 2 || r[2] != b[2] - 2 || r[3] != b[3] - 2 || r[1] != k[3] + 2) return "最下面那排没贴着框的下沿、没和键对齐";
                 if (k[3] - k[1] < 3 * 48) return "切完键盘面板太矮";
                 if (p.stick != null) {
+                    // 红点放在框旁边时（2026-11-01 加的退路）中键对着 g|h 那一点、不对着红点（红点在框外头），这里只查不出界
+                    boolean beside = p.stickAt == KeyboardPlan.STICK_OUTSIDE && (p.stick[0] >= b[2] || p.stick[2] <= b[0]);
                     int c = (p.stick[0] + p.stick[2]) / 2;
-                    if (Math.abs((m[0] + m[1]) / 2 - c) > 1 && left != mid && right != mid) return "中键没对着红点（也不是挪到了头）";
+                    if (!beside && Math.abs((m[0] + m[1]) / 2 - c) > 1 && left != mid && right != mid) return "中键没对着红点（也不是挪到了头）";
+                    if (beside && (p.stick[1] < T.edgeT || p.stick[3] > h - T.edgeB || p.stick[0] < T.edgeL || p.stick[2] > w - T.edgeR)) return "放在旁边的红点出了页面 / 贴了边";
                 }
             } else {
                 if (overlap(r, b, 0) && !(p.split && !overlap(r, p.leftHalf, 0) && !overlap(r, p.rightHalf, 0))) return "三键条压着键盘";

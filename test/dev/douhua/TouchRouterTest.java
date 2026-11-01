@@ -975,13 +975,23 @@ public final class TouchRouterTest {
     }
 
     static void stickTapClicks() {
+        // "轻点红点 = 左键"默认关（2026-11-01 用户要关）：打开时点一下左键
+        GestureEngine.Config on = new GestureEngine.Config();
+        on.stickTap = true;
         Rec r = new Rec();
-        TouchRouter t = stickRouter(r);
+        TouchRouter t = stickRouter(r, on);
         t.down(1, 2050, 50, 1000);
         t.onTick(1008);
         t.up(1, 1100);
-        eq(r.only("m"), list("m1", "m0"), "轻点红点：点一下左键");
-        check(r.log.contains("h" + GestureEngine.HAPTIC_CLICK), "轻点红点：嗒一下");
+        eq(r.only("m"), list("m1", "m0"), "轻点红点（开着）：点一下左键");
+        check(r.log.contains("h" + GestureEngine.HAPTIC_CLICK), "轻点红点（开着）：嗒一下");
+        // 默认（关）：轻点什么都不发
+        Rec r2 = new Rec();
+        TouchRouter t2 = stickRouter(r2);
+        t2.down(1, 2050, 50, 1000);
+        t2.onTick(1008);
+        t2.up(1, 1100);
+        check(r2.only("m").isEmpty(), "轻点红点（默认关）：不点");
     }
 
     static void stickWithLeftDrags() {

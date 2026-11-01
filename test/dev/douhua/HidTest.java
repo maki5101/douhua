@@ -605,7 +605,7 @@ public final class HidTest {
         check(def.inertia && !def.smoothScroll && def.inertiaMinSpeed == 0.6f
                         && def.inertiaTauMs == ScrollInertia.tauMs(ScrollInertia.DEFAULT_LEVEL),
                 "默认：惯性开、连续滚动关、0.6dp/ms 算拨、阻尼 4 档");
-        check(def.stickSpeed == 1.0f && def.stickTap && def.stickInertia, "默认：小红点灵敏度 1.0、轻点 = 左键、负惯性开");
+        check(def.stickSpeed == 1.0f && !def.stickTap && def.stickInertia, "默认：小红点灵敏度 1.0、轻点不算左键（2026-11-01 用户要关）、负惯性开");
     }
 
     // ═══════════ 惯性的物理 ═══════════

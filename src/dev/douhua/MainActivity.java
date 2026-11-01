@@ -1911,6 +1911,7 @@ public final class MainActivity extends Activity
                 int pointer = KeyboardPlan.nextPointer(prefs.keyboardPointer());
                 prefs.setKeyboardPointer(pointer);
                 keyboardScreen.setPointer(pointer);
+                loadKeyboardRects();   // 每种指点状态各有一份键盘位置（有触控板时避让它，没有时不避让）
                 setMenu(false);
                 break;
             }
@@ -1926,11 +1927,12 @@ public final class MainActivity extends Activity
             return;
         }
         boolean landscape = keyboardScreen.isLandscape();
+        int pointer = prefs.keyboardPointer();   // 只恢复眼下这种指点状态的那份（触控板 / 小红点 / 关各记各的）
         if (keyboardScreen.isSplit()) {
-            prefs.resetSplitRect(landscape);
+            prefs.resetSplitRect(landscape, pointer);
             keyboardScreen.setSplitRect(null);
         } else {
-            prefs.resetKeyboardRect(landscape);
+            prefs.resetKeyboardRect(landscape, pointer);
             keyboardScreen.setRect(null);
         }
     }
@@ -1961,15 +1963,17 @@ public final class MainActivity extends Activity
 
     @Override
     public void onKeyboardRectChanged(boolean landscape, boolean split, float[] rect) {
-        if (split) prefs.setSplitRect(landscape, rect);
-        else prefs.setKeyboardRect(landscape, rect);
+        int pointer = prefs.keyboardPointer();
+        if (split) prefs.setSplitRect(landscape, pointer, rect);
+        else prefs.setKeyboardRect(landscape, pointer, rect);
     }
 
-    /** 横竖屏各有一份合并、一份分裂的键盘大小位置。 */
+    /** 横竖屏 × 指点三种状态（触控板 / 小红点 / 关）各有一份合并、一份分裂的键盘大小位置。 */
     private void loadKeyboardRects() {
         boolean landscape = keyboardScreen.isLandscape();
-        keyboardScreen.setRect(prefs.savedKeyboardRect(landscape));
-        keyboardScreen.setSplitRect(prefs.savedSplitRect(landscape));
+        int pointer = prefs.keyboardPointer();
+        keyboardScreen.setRect(prefs.savedKeyboardRect(landscape, pointer));
+        keyboardScreen.setSplitRect(prefs.savedSplitRect(landscape, pointer));
     }
 
     @Override

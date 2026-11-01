@@ -100,10 +100,10 @@ public final class TrackPointTest {
                 "平台那段速度不变（" + plateauLo + "–" + plateauHi + "dp）");
         check(TrackPoint.moveSpeed(32) == TrackPoint.MOVE_MAX && TrackPoint.moveSpeed(80) == TrackPoint.MOVE_MAX, "推到底封顶");
         check(TrackPoint.moveSpeed(3) == TrackPoint.MOVE_CRAWL, "刚出死区：爬行");
-        // 方案里的模型算的点：10dp ≈ 154、15dp ≈ 441、25dp ≈ 738
+        // 方案里的模型算的点：10dp ≈ 154、15dp ≈ 441；25dp 原来 ≈ 738（最快 3000），2026-11-01 最快降到 1200 后 ≈ 535
         near(TrackPoint.moveSpeed(10), 154, 1, "10dp");
         near(TrackPoint.moveSpeed(15), 441, 1, "15dp");
-        near(TrackPoint.moveSpeed(25), 738, 1, "25dp");
+        near(TrackPoint.moveSpeed(25), 535, 1, "25dp");
     }
 
     // ── 积分：恒定位移、不开负惯性，1 秒的总计数 ≈ 速度 ──
@@ -231,10 +231,17 @@ public final class TrackPointTest {
         check(r.dx >= before, "往回收手指后也只往前走");
     }
 
+    /** 打开"轻点 = 左键"的配置（2026-11-01 起默认关）。 */
+    static GestureEngine.Config tapOn() {
+        GestureEngine.Config c = cfg(true);
+        c.stickTap = true;
+        return c;
+    }
+
     // ── 轻点 = 左键 ──
     static void tap() {
         Rec r = new Rec();
-        TrackPoint t = stick(r, cfg(true));
+        TrackPoint t = stick(r, tapOn());
         t.down(0, 0, 1000);
         t.move(1, 1);
         t.frame(1050);
@@ -242,7 +249,7 @@ public final class TrackPointTest {
         check(r.clicks == 1 && r.count(GestureEngine.HAPTIC_CLICK) == 1, "快、近：点一下左键，嗒一下");
 
         r = new Rec();
-        t = stick(r, cfg(true));
+        t = stick(r, tapOn());
         t.down(0, 0, 0);
         t.move(7, 0);   // 超过 tapSlopDp
         t.frame(50);
@@ -250,7 +257,7 @@ public final class TrackPointTest {
         check(r.clicks == 0, "挪远了：不算轻点");
 
         r = new Rec();
-        t = stick(r, cfg(true));
+        t = stick(r, tapOn());
         t.down(0, 0, 0);
         t.up(300, false);
         check(r.clicks == 0, "按太久：不算轻点");
@@ -264,10 +271,16 @@ public final class TrackPointTest {
         check(r.clicks == 0 && r.haptics.isEmpty(), "关掉轻点 = 左键：不点");
 
         r = new Rec();
-        t = stick(r, cfg(true));
+        t = stick(r, tapOn());
         t.down(0, 0, 0);
         t.up(100, true);
         check(r.clicks == 0, "被取消的（手掌）：不点");
+
+        r = new Rec();
+        t = stick(r, cfg(true));   // 默认：关
+        t.down(0, 0, 0);
+        t.up(100, false);
+        check(r.clicks == 0 && r.haptics.isEmpty(), "默认（关）：轻点不点");
 
         r = new Rec();
         t = stick(r, cfg(true));
@@ -277,7 +290,7 @@ public final class TrackPointTest {
 
     static void tapNoMove() {
         Rec r = new Rec();
-        TrackPoint t = stick(r, cfg(true));
+        TrackPoint t = stick(r, tapOn());
         t.down(0, 0, 0);
         for (long now = 8; now <= 200; now += 8) {
             t.move((now % 16 == 0) ? 2 : 1.2f, 0.5f);   // 死区里抖

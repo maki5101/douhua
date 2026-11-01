@@ -21,6 +21,7 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.RadioButton;
@@ -34,10 +35,51 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.IntConsumer;
 
-/** 设置页。改动即时保存，回到触控板时生效。 */
+/**
+ * 设置页。改动即时保存，回到触控板时生效。
+ *
+ * 分五个标签页（顶上一排标签固定，不随页面滚动）：通用、触控板、按钮与按键、空中鼠标、外观。
+ * 每次 {@link #build} 五页的内容都照旧全建出来，只显示选中那一页（其它 GONE）：豆花儿服务一节（ServiceSection 的观察者、实时刷新）、
+ * 蓝牙设备列表、音频提醒都引用建好的 view，只建当前页会漏引用；切页只改显示，不重建，进行到一半的东西（配对引导、填了一半的分辨率）都在。
+ */
 public final class SettingsActivity extends Activity implements BtHid.Listener {
+    /** 标签页的 id：存进 Prefs（记住上次停在哪一页），入口用 {@link #EXTRA_TAB} 指定；顺序就是标签的顺序。 */
+    static final String TAB_GENERAL = "general";
+    static final String TAB_PAD = "pad";
+    static final String TAB_BUTTONS = "buttons";
+    static final String TAB_AIR = "air";
+    static final String TAB_LOOK = "look";
+    private static final String[] TABS = {TAB_GENERAL, TAB_PAD, TAB_BUTTONS, TAB_AIR, TAB_LOOK};
+    private static final int[] TAB_LABELS = {R.string.tab_general, R.string.tab_pad, R.string.tab_buttons, R.string.tab_air, R.string.tab_look};
+    /** 打开设置页时停在哪一页（值是 TAB_*）；不带就停在上次那一页。 */
+    static final String EXTRA_TAB = "dev.douhua.settings_tab";
+
+    /**
+     * 选中的标签：设置页自己的强调色（链接色 #8AB4F8）淡一层当底，字用亮一档的 Google 蓝 200；没选中的灰字。
+     * 底叠在窗口底色（Theme.Material 的 #303030）上是 #465060，链接色的字在上面只有 3.9:1（比没选中的灰字 5.0:1 还淡），换成 #AECBFA 是 4.9:1。
+     */
+    private static final int TAB_ON_TEXT = 0xFFAECBFA;
+    private static final int TAB_ON_FILL = 0x3D8AB4F8;
+    private static final int TAB_OFF_TEXT = 0xFF9AA0A6;
+
+    /**
+     * 打开设置页、停在"通用"页最上面（"豆花儿服务"那一节）：主界面点状态字（服务没开 / 没响应）、配对的通知、
+     * 通知里"去关掉无线调试"都走这里。以前那一节在整页最上面，打开就看得到；分页后要指定页。
+     */
+    static Intent serviceIntent(Context c) {
+        return new Intent(c, SettingsActivity.class).putExtra(EXTRA_TAB, TAB_GENERAL);
+    }
+
     private Prefs prefs;
+    /** 正在往里加行的那一页（build 时依次指向各页；下面那些加行的小方法都往它里面加）。 */
     private LinearLayout list;
+    /** 整页滚动的那块和它里面放五页的容器：只建一次，重建时只换里面的页，滚动位置因此留着（重新布局时按新内容截一下）。 */
+    private ScrollView scroll;
+    private LinearLayout pagesBox;
+    private LinearLayout[] pages;
+    private TextView[] tabViews;
+    /** 现在显示的是第几页（TABS 的下标）。 */
+    private int tab;
     private float density;
     private BtHid bt;
     private boolean btAcquired;
@@ -50,8 +92,10 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     private BluetoothProfile headset;
     private BluetoothProfile a2dp;
     private boolean started;
-    /** 最上面一节"豆花儿服务"（手机自己拉起服务的各项状态、配对引导）。 */
+    /** "通用"页最上面一节"豆花儿服务"（手机自己拉起服务的各项状态、配对引导）。 */
     private ServiceSection service;
+    /** "外观"页的"触控板背景图"一节（选图、预览、显示方式……）。 */
+    private PadBgSection padBg;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,17 +104,27 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         density = getResources().getDisplayMetrics().density;
         bt = BtHid.get(this);
         service = new ServiceSection(this, prefs);
-        build();
-        // 转屏重建、从最近任务里回来不再跳一次
-        if (savedInstanceState == null && (getIntent().getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
-            openWirelessIfAsked(getIntent());
+        padBg = new PadBgSection(this, prefs);
+        // 转屏重建、从最近任务里回来：停在上次那一页（每次切页都存了），入口指定的页、转去无线调试都不再来一次
+        boolean fresh = savedInstanceState == null && (getIntent().getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0;
+        tab = tabIndex(prefs.settingsTab());
+        String asked = fresh ? getIntent().getStringExtra(EXTRA_TAB) : null;
+        if (asked != null) {
+            tab = tabIndex(asked);
+            prefs.setSettingsTab(TABS[tab]);
         }
+        buildShell();
+        build();
+        if (fresh) openWirelessIfAsked(getIntent());
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        // 设置页开着时又从通知点进来（"去关掉无线调试"带 SINGLE_TOP）：换到指定的页、滚到顶
+        String asked = intent.getStringExtra(EXTRA_TAB);
+        if (asked != null) selectTab(tabIndex(asked));
         openWirelessIfAsked(intent);
     }
 
@@ -86,6 +140,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         super.onStart();
         started = true;
         service.start();   // 从系统设置回来（开了开发者选项、配对完……）：各项马上刷新
+        padBg.start();   // 背景图导入完时这页不在前台的话，回来刷新
         updateBtUse();
         openAudioProxies();
         // 刚配对好一台（系统的配对确认框不一定让这页 onResume）：列表马上刷新；
@@ -113,6 +168,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     protected void onStop() {
         started = false;
         service.stop();
+        padBg.stop();
         unregisterReceiver(bondReceiver);
         closeAudioProxies();
         if (btAcquired) {
@@ -122,7 +178,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         super.onStop();
     }
 
-    /** 选了蓝牙模式就用着 BtHid（显示状态、能切设备）；切回 DeX 就立刻停掉。 */
+    /** 选了蓝牙模式就用着 BtHid（显示状态、能切设备）；切回桌面模式就立刻停掉。 */
     private void updateBtUse() {
         if (prefs.btMode() && !btAcquired) {
             bt.acquire(this);
@@ -134,27 +190,144 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         }
     }
 
-    private void build() {
-        ScrollView scroll = new ScrollView(this);
-        list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(dp(20), dp(16), dp(20), dp(32));
-        scroll.addView(list);
-        scroll.setOnApplyWindowInsetsListener((v, insets) -> {
+    // ═══════════ 标签页 ═══════════
+
+    /**
+     * 只建一次的外壳：标题、一排标签（放不下就横着滑）、一条分隔线，下面是整页滚动的那块。
+     * 标签和标题在滚动的那块外面，所以不随页面滚走。
+     */
+    private void buildShell() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets i = insets.getInsets(android.view.WindowInsets.Type.systemBars());
             v.setPadding(i.left, i.top, i.right, i.bottom);
             return insets;
         });
-        setContentView(scroll);
 
+        TextView title = text(getString(R.string.settings_title), 22, 0xFFE8E8E8);
+        title.setPadding(dp(20), dp(16), dp(20), dp(8));
+        root.addView(title);
+
+        HorizontalScrollView tabScroll = new HorizontalScrollView(this);
+        tabScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(8), dp(2), dp(8), dp(8));   // 加上标签自己的 12dp，字和下面内容的 20dp 边距对齐
+        tabViews = new TextView[TABS.length];
+        for (int i = 0; i < TABS.length; i++) {
+            final int index = i;
+            TextView t = text(getString(TAB_LABELS[i]), 15, TAB_OFF_TEXT);
+            t.setSingleLine(true);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(dp(12), dp(8), dp(12), dp(8));
+            t.setOnClickListener(v -> selectTab(index));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (i > 0) lp.setMarginStart(dp(4));
+            row.addView(t, lp);
+            tabViews[i] = t;
+        }
+        tabScroll.addView(row);
+        root.addView(tabScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        View line = new View(this);
+        line.setBackgroundColor(0xFF3C4043);
+        root.addView(line, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
+
+        scroll = new ScrollView(this);
+        pagesBox = new LinearLayout(this);
+        pagesBox.setOrientation(LinearLayout.VERTICAL);
+        pagesBox.setPadding(dp(20), 0, dp(20), dp(32));
+        scroll.addView(pagesBox);
+        root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        setContentView(root);
+    }
+
+    /** 点了标签（或者入口指定了页）：换过去、记下来、滚到顶。 */
+    private void selectTab(int index) {
+        // 正在填的输入框（空中鼠标页的分辨率）跟着那一页藏起来：先收起输入法，免得键盘留在屏幕上、字不知道打到哪
+        View focus = getCurrentFocus();
+        if (focus != null && index != tab) {
+            android.view.inputmethod.InputMethodManager imm = getSystemService(android.view.inputmethod.InputMethodManager.class);
+            if (imm != null) imm.hideSoftInputFromWindow(focus.getWindowToken(), 0);
+            focus.clearFocus();
+        }
+        tab = index;
+        prefs.setSettingsTab(TABS[index]);
+        showTab();
+        // 上一页还在惯性滑动时光 scrollTo 不够：ScrollView 下一帧 computeScroll 照滑动的绝对位置把新页拽回去。
+        // 先回顶、再从顶上来一次零速的 fling，顶掉还在走的那次（零速：时长 0、终点就是起点，下一帧就结束、位置不动）。
+        // 顺序不能反：先 fling(0) 的话起点是旧位置，下一帧又被拽回去
+        scroll.scrollTo(0, 0);
+        scroll.fling(0);
+    }
+
+    /** 只显示选中那一页，标签换样子，选中的标签挪进看得见的地方（窄屏上标签横着滑）。 */
+    private void showTab() {
+        for (int i = 0; i < pages.length; i++) pages[i].setVisibility(i == tab ? View.VISIBLE : View.GONE);
+        for (int i = 0; i < tabViews.length; i++) {
+            boolean on = i == tab;
+            TextView t = tabViews[i];
+            t.setSelected(on);
+            t.setTextColor(on ? TAB_ON_TEXT : TAB_OFF_TEXT);
+            t.setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            if (on) {
+                android.graphics.drawable.GradientDrawable fill = new android.graphics.drawable.GradientDrawable();
+                fill.setCornerRadius(dp(18));
+                fill.setColor(TAB_ON_FILL);
+                t.setBackground(fill);
+            } else {
+                t.setBackground(null);
+            }
+        }
+        TextView on = tabViews[tab];
+        // 刚建好时还没量过尺寸：等布局完再挪
+        on.post(() -> on.requestRectangleOnScreen(new android.graphics.Rect(0, 0, on.getWidth(), on.getHeight()), false));
+    }
+
+    private static int tabIndex(String id) {
+        for (int i = 0; i < TABS.length; i++) if (TABS[i].equals(id)) return i;
+        return 0;   // 没存过 / 认不出（以后删了某一页）：通用
+    }
+
+    /** 加删一行、换了连接方式之类：等这次点击处理完整页重建（停在原来那一页、滚动位置尽量不动）。 */
+    private void rebuildLater() {
+        scroll.post(this::build);
+    }
+
+    /** 每一页从上到下有哪些节；五页都建，只显示 {@link #tab} 那一页。 */
+    private void build() {
+        pagesBox.removeAllViews();
+        pages = new LinearLayout[TABS.length];
+        for (int i = 0; i < TABS.length; i++) {
+            pages[i] = new LinearLayout(this);
+            pages[i].setOrientation(LinearLayout.VERTICAL);
+            pagesBox.addView(pages[i], new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
         GestureEngine.Config def = new GestureEngine.Config();
 
-        list.addView(text(getString(R.string.settings_title), 22, 0xFFE8E8E8));
+        // 通用：豆花儿服务、连接方式（含蓝牙设备）、恢复默认、版本号
+        list = pages[0];
         service.build(list);
         header(R.string.sec_connection);
         connection();
-        airSection();
-        hardKeysSection();
+        header(0);
+        TextView reset = text(getString(R.string.reset_all), 16, 0xFFE07A5F);
+        reset.setPadding(0, dp(12), 0, dp(12));
+        reset.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setMessage(R.string.reset_confirm)
+                .setPositiveButton(R.string.reset, (d, w) -> {
+                    prefs.resetAll();
+                    padBg.reset();   // 背景图的文件一起删（Prefs 清了以后它就是没人引用的垃圾）
+                    updateBtUse();   // 恢复默认就是桌面模式：蓝牙键鼠立刻停
+                    build();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show());
+        list.addView(reset);
+        version();
+
+        // 触控板：指针、轻点、滚动、三指四指手势、角上的小按钮、小红点和三键条
+        list = pages[1];
         header(R.string.sec_pointer);
         slider(R.string.pointer_speed, "speed", def.pointerSpeed, 0.5f, 6f, 0.1f, "%.1f");
         slider(R.string.acceleration, "accel", def.acceleration, 0f, 3f, 0.1f, "%.1f");
@@ -174,6 +347,8 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         toggle(R.string.edge_v, "edge", def.edgeScroll);
         toggle(R.string.edge_h, "edge_h", def.edgeScrollHorizontal);
         sliderInt(R.string.edge_width, "edge_width_i", Math.round(def.edgeWidthDp), 12, 64, 2);
+        inertia(def);
+        smoothScroll();
         toggle(R.string.ticks, "scroll_ticks", prefs.scrollTicks());
         list.addView(text(getString(R.string.tick_strength), 16, 0xFFE8E8E8));
         levels(Prefs.TICK_STRENGTH_LABELS, prefs.tickStrength(), strength -> {
@@ -181,9 +356,44 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             Haptics h = new Haptics(this);   // 选了就连震几下，像滚了几格
             h.setLevel(prefs.haptic());
             h.setTickStrength(strength);
-            for (int i = 0; i < 4; i++) list.postDelayed(() -> h.play(GestureEngine.HAPTIC_TICK), i * 70L);
+            for (int i = 0; i < 4; i++) scroll.postDelayed(() -> h.play(GestureEngine.HAPTIC_TICK), i * 70L);
         });
+        if (Haptics.tuning(this)) spinTuning();
 
+        header(R.string.sec_gestures);
+        for (int i = 0; i < Prefs.GESTURE_KEYS.length; i++) {
+            final int index = i;
+            actionRow(getString(Prefs.GESTURE_LABELS[i]), () -> prefs.gesture(index), id -> prefs.setGesture(index, id));
+        }
+
+        header(R.string.sec_corners);
+        for (int index : Prefs.CORNER_ORDER) {
+            actionRow(getString(Prefs.CORNER_LABELS[index]), () -> prefs.corner(index), id -> prefs.setCorner(index, id));
+        }
+
+        trackpoint(def);
+
+        // 按钮与按键：自定义按键（左边一列）、键盘最下面一排、音量键
+        list = pages[2];
+        header(R.string.sec_strip);
+        customKeys();
+
+        header(R.string.sec_kb_row);
+        for (int i = 0; i < Prefs.KEYBOARD_ROW_COUNT; i++) {
+            final int index = i;
+            actionRow(getString(R.string.nth, i + 1), () -> prefs.keyboardRow(index), id -> prefs.setKeyboardRow(index, id));
+        }
+        hardKeysSection();
+
+        // 空中鼠标
+        list = pages[3];
+        airSection();
+
+        // 外观：主题、按键边框……，触控板背景图，震动
+        list = pages[4];
+        appearance();
+        header(R.string.sec_pad_bg);
+        padBg.build(list);
         header(R.string.sec_haptics);
         hapticChoice();
         list.addView(text(getString(R.string.drag_hum), 16, 0xFFE8E8E8));
@@ -193,18 +403,32 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             h.setLevel(prefs.haptic());
             h.setDragHum(level);
             h.startHum();
-            list.postDelayed(h::stopHum, 600);
+            scroll.postDelayed(h::stopHum, 600);
         });
         toggle(R.string.texture, "texture", def.texture);
 
-        header(R.string.sec_gestures);
-        for (int i = 0; i < Prefs.GESTURE_KEYS.length; i++) {
-            final int index = i;
-            actionRow(getString(Prefs.GESTURE_LABELS[i]), () -> prefs.gesture(index), id -> prefs.setGesture(index, id));
-        }
+        showTab();
+    }
 
-        header(R.string.sec_strip);
-        toggle(R.string.strip_hidden, "strip_hidden", false);
+    /**
+     * "自定义按键"（主界面左边一列，原来的左侧按钮条）：最上面一个开关（默认关），开着时下面列出每个按钮（可删、可加，上限照旧）。
+     * 2026-11-01 起条上没有写死的"退出 / 设置 / 收起"（都进了触控板顶上的 ⋯ 菜单），开关只在这里。关着时列表藏起来、配置留着。
+     */
+    private void customKeys() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        Switch s = new Switch(this);
+        s.setText(R.string.custom_keys);
+        s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        s.setChecked(prefs.customKeys());
+        s.setPadding(0, dp(8), 0, dp(8));
+        s.setOnCheckedChangeListener((b, on) -> {
+            prefs.putBool(Prefs.CUSTOM_KEYS, on);
+            box.setVisibility(on ? View.VISIBLE : View.GONE);
+        });
+        list.addView(s);
+        LinearLayout outer = list;
+        list = box;
         int slots = prefs.slotCount();
         for (int i = 0; i < slots; i++) {
             final int index = i;
@@ -213,7 +437,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             remove.setPadding(dp(16), 0, dp(4), 0);
             remove.setOnClickListener(v -> {
                 prefs.removeSlot(index);
-                list.post(this::build);
+                rebuildLater();
             });
             row.addView(remove);
         }
@@ -222,37 +446,13 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             add.setPadding(0, dp(12), 0, dp(12));
             add.setOnClickListener(v -> {
                 prefs.addSlot("none");   // 加一行"无"，再点它选动作
-                list.post(this::build);
+                rebuildLater();
             });
             list.addView(add);
         }
-
-        header(R.string.sec_corners);
-        for (int i = 0; i < Prefs.CORNER_COUNT; i++) {
-            final int index = i;
-            actionRow(getString(Prefs.CORNER_LABELS[i]), () -> prefs.corner(index), id -> prefs.setCorner(index, id));
-        }
-
-        header(R.string.sec_kb_row);
-        for (int i = 0; i < Prefs.KEYBOARD_ROW_COUNT; i++) {
-            final int index = i;
-            actionRow(getString(R.string.nth, i + 1), () -> prefs.keyboardRow(index), id -> prefs.setKeyboardRow(index, id));
-        }
-
-        header(0);
-        TextView reset = text(getString(R.string.reset_all), 16, 0xFFE07A5F);
-        reset.setPadding(0, dp(12), 0, dp(12));
-        reset.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setMessage(R.string.reset_confirm)
-                .setPositiveButton(R.string.reset, (d, w) -> {
-                    prefs.resetAll();
-                    updateBtUse();   // 恢复默认就是 DeX 模式：蓝牙键鼠立刻停
-                    build();
-                })
-                .setNegativeButton(R.string.cancel, null)
-                .show());
-        list.addView(reset);
-        version();
+        list = outer;
+        list.addView(box);
+        box.setVisibility(s.isChecked() ? View.VISIBLE : View.GONE);
     }
 
     // ═══════════ 版本号（彩蛋） ═══════════
@@ -263,7 +463,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     private int eggTaps;
     private long lastEggTap;
 
-    /** 最下面一行"豆花儿 0.1.1"。快速连点 5 下蹦出一只睡着的小鸟。 */
+    /** "通用"页最下面一行"豆花儿 0.1.1"。快速连点 5 下蹦出一只睡着的小鸟。 */
     private void version() {
         String v;
         try {
@@ -402,6 +602,115 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         list.addView(g);
     }
 
+    // ═══════════ 外观 ═══════════
+
+    /**
+     * 外观：一小块预览（一行键 + 一小块触控板）、主题（深色、浅色两组色块网格，ThemeGrid）、按键边框开关、一句费电 / 烧屏的说明。
+     * 切了马上在预览和色块里变，主界面回去时才换（MainActivity.applyTheme）。预览、色块用带 Theme 参数的 Style 方法，不碰主界面的当前主题；
+     * 设置页自己的配色不跟主题变。
+     */
+    private void appearance() {
+        header(R.string.sec_appearance);
+        LinearLayout preview = new LinearLayout(this);
+        preview.setOrientation(LinearLayout.VERTICAL);
+        preview.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);   // 键盘按实体键盘排，从右往左的语言下也不镜像（同主界面）
+        int p = dp(10);
+        preview.setPadding(p, p, p, p);
+        list.addView(preview, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(136)));
+
+        list.addView(text(getString(R.string.theme_label), 16, 0xFFE8E8E8));
+        // 深色、浅色两组（Theme.ALL 先深色后浅色，组里照它的顺序）
+        ThemeGrid[] grids = new ThemeGrid[2];
+        Runnable refresh = () -> {
+            drawPreview(preview, Theme.byId(prefs.theme()), prefs.keyBorders());
+            for (ThemeGrid g : grids) g.show(Theme.byId(prefs.theme()).id, prefs.keyBorders());
+            padBg.themeChanged();   // 背景图那一节的预览也按主题画
+        };
+        int[] titles = {R.string.theme_group_dark, R.string.theme_group_light};
+        for (int group = 0; group < 2; group++) {
+            java.util.List<Theme> ts = new java.util.ArrayList<>();
+            for (Theme t : Theme.ALL) if (t.light == (group == 1)) ts.add(t);
+            String[] names = new String[ts.size()];
+            for (int i = 0; i < names.length; i++) names[i] = themeName(ts.get(i));
+            TextView title = text(getString(titles[group]), 13, 0xFF9AA0A6);
+            title.setPadding(0, dp(group == 0 ? 6 : 14), 0, dp(6));
+            list.addView(title);
+            grids[group] = new ThemeGrid(this, ts.toArray(new Theme[0]), names, t -> {
+                prefs.setTheme(t.id);
+                refresh.run();
+            });
+            list.addView(grids[group], new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        refresh.run();
+
+        Switch borders = new Switch(this);
+        borders.setText(R.string.key_borders);
+        borders.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        borders.setChecked(prefs.keyBorders());
+        borders.setPadding(0, dp(8), 0, dp(8));
+        borders.setOnCheckedChangeListener((b, checked) -> {
+            prefs.setKeyBorders(checked);
+            refresh.run();
+        });
+        list.addView(borders);
+        list.addView(text(getString(R.string.theme_note), 13, 0xFF9A9A9A));
+    }
+
+    /** 主题的名字：配色方案自己的名字（Nord……）各语言都不翻译，纯黑 / 深色 / 海蓝 / 高对比 / 浅色 / 樱花 / 薄荷翻译。 */
+    private String themeName(Theme t) {
+        if (t.fixedName != null) return t.fixedName;
+        switch (t.id) {
+            case "dark":
+                return getString(R.string.theme_dark);
+            case "ocean":
+                return getString(R.string.theme_ocean);
+            case "contrast":
+                return getString(R.string.theme_contrast);
+            case "glight":
+                return getString(R.string.theme_light);
+            case "sakura":
+                return getString(R.string.theme_sakura);
+            case "mint":
+                return getString(R.string.theme_mint);
+            default:
+                return getString(R.string.theme_black);
+        }
+    }
+
+    /** 预览：页面底色上一行键（⇧ 是锁住的样子，⌫ 是功能键的颜色，中间是普通键）+ 一小块触控板（底色、边框、状态字），整块重画。 */
+    private void drawPreview(LinearLayout box, Theme t, boolean keyBorders) {
+        box.removeAllViews();
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setCornerRadius(dp(12));
+        bg.setColor(t.bg);
+        box.setBackground(bg);
+        LinearLayout keys = new LinearLayout(this);
+        String[] labels = {"⇧", "a", "s", "d", "f", "⌫"};
+        for (int i = 0; i < labels.length; i++) {
+            TextView k = Style.button(this, 16, t, keyBorders);
+            k.setText(labels[i]);
+            // ⇧ 锁住（高亮照旧是普通键帽底色 + 强调色的边），⌫ 没锁的功能键
+            if (i == 0 || i == labels.length - 1) Style.look(k, t, keyBorders, true, i == 0, false);
+            LinearLayout.LayoutParams kp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
+            if (i > 0) kp.leftMargin = dp(4);
+            keys.addView(k, kp);
+        }
+        box.addView(keys, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        // 触控板：同 TrackpadView（18dp 圆角、主题的边框粗细），底部一行状态字
+        android.graphics.drawable.GradientDrawable pad = new android.graphics.drawable.GradientDrawable();
+        pad.setCornerRadius(dp(18));
+        pad.setColor(t.padFill);
+        pad.setStroke(Math.max(1, Math.round(t.borderDp * density)), t.padBorder);
+        TextView padText = text(getString(R.string.theme_preview_pad), 12, t.status);
+        padText.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+        padText.setPadding(0, 0, 0, dp(8));
+        padText.setBackground(pad);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.2f);
+        pp.topMargin = dp(8);
+        box.addView(padText, pp);
+    }
+
     // ═══════════ 连接方式 ═══════════
 
     private void connection() {
@@ -421,7 +730,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 prefs.setBtMode(useBt);
                 updateBtUse();
                 if (useBt && !BtHid.hasPermission(this)) requestBtPermissions();
-                list.post(this::build);   // 蓝牙那几项跟着出现 / 消失
+                rebuildLater();   // 蓝牙那几项跟着出现 / 消失
             });
         }
         list.addView(g);
@@ -488,6 +797,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
 
     @Override
     public void onBtState(int state, String deviceName) {
+        refreshSmoothHost();   // 连上 / 断开、主机设了滚轮倍率（BtHid 会再报一次同样的状态）
         if (btStatus == null) return;
         int res;
         switch (state) {
@@ -505,12 +815,169 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         if (state == BtHid.STATE_CONNECTED || state == BtHid.STATE_WAITING) refreshBtDevices();
     }
 
+    // ═══════════ 滚动：惯性、连续滚动 ═══════════
+
+    /** 连续滚动开着、蓝牙连着一台时：这台主机开没开平滑滚动（设了滚轮倍率没有）。 */
+    private TextView smoothHost;
+
+    /**
+     * 惯性滚动：开关；开着才显示阻尼（10 档，下面一行"中等的一拨大约转几秒"随档位变）和"多快算拨"（dp/ms）。
+     * 存进 Prefs，回到主界面 applyPrefs 时连同别的手势参数一起发给服务 / 本地分流。
+     */
+    private void inertia(GestureEngine.Config def) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        Switch s = new Switch(this);
+        s.setText(R.string.inertia);
+        s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        s.setChecked(prefs.getBool(Prefs.INERTIA, def.inertia));
+        s.setPadding(0, dp(8), 0, dp(8));
+        s.setOnCheckedChangeListener((b, on) -> {
+            prefs.putBool(Prefs.INERTIA, on);
+            box.setVisibility(on ? View.VISIBLE : View.GONE);
+        });
+        list.addView(s);
+
+        LinearLayout outer = list;
+        list = box;
+        TextView title = text("", 16, 0xFFE8E8E8);
+        SeekBar bar = new SeekBar(this);
+        bar.setMax(ScrollInertia.LEVELS - 1);
+        TextView hint = text("", 14, 0xFF9AA0A6);
+        IntConsumer show = level -> {
+            title.setText(getString(R.string.value_format, getString(R.string.inertia_damping), String.valueOf(level)));
+            double sec = ScrollInertia.stopSeconds(ScrollInertia.TYPICAL_SPEED, ScrollInertia.tauMs(level) / 1000.0);
+            hint.setText(getString(R.string.inertia_damping_hint, String.format(Locale.ROOT, "%.1f", sec)));
+        };
+        int level = prefs.inertiaDamping();
+        bar.setProgress(level - 1);
+        show.accept(level);
+        bar.setOnSeekBarChangeListener(new SimpleSeek(p -> {
+            prefs.putInt(Prefs.INERTIA_DAMPING, p + 1);
+            show.accept(p + 1);
+        }));
+        list.addView(title);
+        list.addView(bar);
+        list.addView(hint);
+        slider(R.string.inertia_speed, Prefs.INERTIA_SPEED, def.inertiaMinSpeed,
+                Prefs.INERTIA_SPEED_MIN, Prefs.INERTIA_SPEED_MAX, Prefs.INERTIA_SPEED_STEP, "%.1f");
+        list.addView(text(getString(R.string.inertia_speed_hint), 14, 0xFF9AA0A6));
+        list = outer;
+        list.addView(box);
+        box.setVisibility(s.isChecked() ? View.VISIBLE : View.GONE);
+    }
+
+    /**
+     * 小红点（键盘页 ⋯ 菜单里"指点"换成它）：灵敏度、轻点 = 左键、负惯性，一段说明；触控板旁边的三键条：开关 + 放上沿 / 下沿（开着才显示）。
+     * 存进 Prefs，回到主界面 applyPrefs 时连同别的手势参数一起发给服务 / 本地分流（三键条只是界面上的事，不发）。
+     */
+    private void trackpoint(GestureEngine.Config def) {
+        header(R.string.sec_trackpoint);
+        slider(R.string.stick_speed, Prefs.STICK_SPEED, def.stickSpeed, Prefs.STICK_SPEED_MIN, Prefs.STICK_SPEED_MAX,
+                Prefs.STICK_SPEED_STEP, "%.1f");
+        toggle(R.string.stick_tap, Prefs.STICK_TAP, def.stickTap);
+        toggle(R.string.stick_inertia, Prefs.STICK_INERTIA, def.stickInertia);
+        list.addView(text(getString(R.string.stick_hint), 14, 0xFF9AA0A6));
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        Switch s = new Switch(this);
+        s.setText(R.string.mouse_keys);
+        s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        s.setChecked(prefs.getBool(Prefs.PAD_KEYS, false));
+        s.setPadding(0, dp(16), 0, dp(8));
+        s.setOnCheckedChangeListener((b, on) -> {
+            prefs.putBool(Prefs.PAD_KEYS, on);
+            box.setVisibility(on ? View.VISIBLE : View.GONE);
+        });
+        list.addView(s);
+        LinearLayout outer = list;
+        list = box;
+        choice(R.string.mouse_keys_pos, Prefs.PAD_KEYS_POS, 0, Prefs.PAD_KEYS_POS_LABELS);
+        list = outer;
+        list.addView(box);
+        box.setVisibility(s.isChecked() ? View.VISIBLE : View.GONE);
+    }
+
+    /** 连续滚动：开关 + 说明（蓝牙开 / 关后要重新配对）+ 蓝牙连着时这台主机开没开。蓝牙模式下切开关马上用新描述符重新注册。 */
+    private void smoothScroll() {
+        Switch s = new Switch(this);
+        s.setText(R.string.smooth_scroll);
+        s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        s.setChecked(prefs.smoothScroll());
+        s.setPadding(0, dp(8), 0, dp(8));
+        s.setOnCheckedChangeListener((b, on) -> {
+            prefs.putBool(Prefs.SMOOTH_SCROLL, on);
+            if (btAcquired) bt.descriptorChanged();
+            refreshSmoothHost();
+        });
+        list.addView(s);
+        list.addView(text(getString(R.string.smooth_scroll_hint), 14, 0xFF9AA0A6));
+        smoothHost = text("", 14, 0xFFE8B04A);
+        list.addView(smoothHost);
+        refreshSmoothHost();
+    }
+
+    private void refreshSmoothHost() {
+        if (smoothHost == null) return;
+        BluetoothDevice d = prefs.btMode() && prefs.smoothScroll() && bt.state() == BtHid.STATE_CONNECTED ? bt.connectedDevice() : null;
+        if (d == null) {
+            smoothHost.setVisibility(View.GONE);
+            return;
+        }
+        boolean on = bt.hostWheelMultiplier() > 1;
+        smoothHost.setText(getString(on ? R.string.smooth_host_on : R.string.smooth_host_off, BtHid.deviceName(d)));
+        smoothHost.setTextColor(on ? 0xFF9AA0A6 : 0xFFE8B04A);
+        smoothHost.setVisibility(View.VISIBLE);
+    }
+
+    /**
+     * 调试版才有：惯性"放开""刹住"各三种候选波形，点一下震一下、选中的存下来（Prefs.spinStyle），回到主界面生效；
+     * 正式包不显示，一律用默认（Haptics.defaultSpinStyle）。挑定以后把默认改过去、这一节删掉。
+     */
+    private void spinTuning() {
+        list.addView(text(getString(R.string.spin_try), 14, 0xFF9AA0A6));
+        Haptics h = new Haptics(this);
+        int[][] names = {
+                {R.string.spin_wave_spin, R.string.spin_wave_fall, R.string.spin_wave_quick_fall},
+                {R.string.spin_wave_thud, R.string.spin_wave_rise, R.string.spin_wave_heavy},
+        };
+        for (int k = 0; k < 2; k++) {
+            boolean start = k == 0;
+            list.addView(text(getString(start ? R.string.spin_start : R.string.spin_catch), 16, 0xFFE8E8E8));
+            RadioGroup g = new RadioGroup(this);
+            g.setOrientation(RadioGroup.VERTICAL);
+            int current = prefs.spinStyle(start);
+            if (current < 0) current = h.defaultSpinStyle(start);
+            for (int i = 0; i < Haptics.SPIN_STYLES; i++) {
+                RadioButton b = new RadioButton(this);
+                String name = getString(names[k][i]);
+                b.setText(h.spinSupported(start, i) ? name : getString(R.string.spin_wave_unsupported, name));
+                b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+                b.setId(View.generateViewId());
+                g.addView(b);
+                if (i == current) b.setChecked(true);
+                final int style = i;
+                b.setOnClickListener(v -> {   // 点一下（选中的也一样）就震一下
+                    prefs.setSpinStyle(start, style);
+                    h.setLevel(prefs.haptic());
+                    h.setTickStrength(prefs.tickStrength());
+                    h.trySpin(start, style);
+                });
+            }
+            list.addView(g);
+        }
+    }
+
     // ═══════════ 空中鼠标 ═══════════
 
-    /** 只在蓝牙模式：灵敏度、消抖参数、回正中说明、空中鼠标页的按钮。 */
+    /** 只在蓝牙模式：灵敏度、消抖参数、回正中说明、空中鼠标页的按钮。桌面模式下这一页只有一句"只在蓝牙模式下能用"（连接方式在"通用"页）。 */
     private void airSection() {
-        if (!prefs.btMode()) return;
         header(R.string.sec_air);
+        if (!prefs.btMode()) {
+            list.addView(text(getString(R.string.air_bt_only), 14, 0xFF9AA0A6));
+            return;
+        }
         sliderInt(R.string.air_sensitivity, "air_sens", 6, 1, 10, 1);
         // 消抖（AirPointer 的 1€ 滤波 + 软死区），用户自己调；范围比默认值两边都放得很宽
         AirPointer.Config def = new AirPointer.Config();
@@ -529,7 +996,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         resetFilter.setPadding(0, dp(12), 0, dp(12));
         resetFilter.setOnClickListener(v -> {
             prefs.resetAirFilter();
-            list.post(this::build);
+            rebuildLater();
         });
         list.addView(resetFilter);
         hostAspect();
@@ -558,7 +1025,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             b.setOnCheckedChangeListener((btn, checked) -> {
                 if (!checked) return;
                 prefs.putInt(Prefs.AIR_SPACE, v);
-                list.post(this::build);   // 下面的角度校正按换算分开存：换了换算要重画
+                rebuildLater();   // 下面的角度校正按换算分开存：换了换算要重画
             });
         }
         list.addView(g);
@@ -647,7 +1114,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 final int r = i / 2;
                 remove.setOnClickListener(v -> {
                     prefs.removeAirRow(r);
-                    list.post(this::build);
+                    rebuildLater();
                 });
                 row.addView(remove);
             }
@@ -657,7 +1124,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             add.setPadding(0, dp(12), 0, dp(12));
             add.setOnClickListener(v -> {
                 prefs.addAirRow();
-                list.post(this::build);
+                rebuildLater();
             });
             list.addView(add);
         }
@@ -682,7 +1149,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
 
     /**
      * 音量键（两种模式都有）：点一下 / 按住各选一个动作，"无"不截。
-     * 蓝牙模式下由 App 自己收；DeX 模式下要服务独占按键设备（server.HardKeyGate），所以多一句服务的说明。
+     * 蓝牙模式下由 App 自己收；桌面模式下要服务独占按键设备（server.HardKeyGate），所以多一句服务的说明。
      */
     private void hardKeysSection() {
         header(R.string.sec_hard_keys);
@@ -764,6 +1231,13 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE}, 2);
     }
 
+    /** 选图回来（背景图：照片选择器 / 文件选择器）。 */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        padBg.onActivityResult(requestCode, resultCode, data);
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
@@ -812,7 +1286,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     }
 
     /**
-     * 选一个动作。所有能自定义的位置（按钮条、角上按钮、三指四指手势、键盘最下面一排）都用这一份清单，
+     * 选一个动作。所有能自定义的位置（自定义按键、角上按钮、三指四指手势、键盘最下面一排）都用这一份清单，
      * 最后一项是"自定义组合键"。
      */
     private LinearLayout actionRow(String label, Getter getter, Setter setter) {

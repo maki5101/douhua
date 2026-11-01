@@ -35,6 +35,27 @@ final class Haptics {
     private static final long TEXTURE_ONE_SHOT_MS = 5;
     private static final int TEXTURE_AMPLITUDE = 30;
     private final Handler main = new Handler(Looper.getMainLooper());
+
+    // ── 惯性滚动的"放开"（拨出去）和"刹住"（转着时碰屏幕） ──
+    // 和每格的"咔嗒"（等强的一下）、点击（单下 CLICK）、开始拖动（CLICK→TICK）分得开。具体用哪种要手摸：
+    // 调试版设置里列着候选（点一下震一下、选中的存下来），正式包用默认（-1）。默认按马达支持的挑：
+    // 放开 = 旋转原语 → 三下渐弱的轻嗒 → 系统的 TICK；刹住 = 闷响原语 → 轻嗒 + 实的一下 → 系统的重击。
+    /** 放开：旋转原语（模拟旋转的动量）。 */
+    static final int SPIN_START_SPIN = 0;
+    /** 放开：三下渐弱的轻嗒（"嗒嗒嗒"往远处走）。 */
+    static final int SPIN_START_FALL = 1;
+    /** 放开：快速下落原语。 */
+    static final int SPIN_START_QUICK_FALL = 2;
+    /** 刹住：闷响原语（带重量往下落的一下）。 */
+    static final int SPIN_CATCH_THUD = 0;
+    /** 刹住：轻嗒 + 20ms 后实的一下（往上收）。 */
+    static final int SPIN_CATCH_RISE = 1;
+    /** 刹住：系统的重击。 */
+    static final int SPIN_CATCH_HEAVY = 2;
+    static final int SPIN_STYLES = 3;
+    /** 跟"咔嗒强度"三档（小 / 中 / 大）缩放。 */
+    private static final float[] SPIN_SCALES = {0.6f, 0.8f, 1f};
+    private int spinStartStyle = -1, spinCatchStyle = -1;
     private int humLevel = 1;
     private boolean humming;
     private final Runnable humStart = this::vibrateHum;
@@ -58,6 +79,81 @@ final class Haptics {
      */
     void setTickStrength(int strength) {
         this.tickStrength = strength;
+    }
+
+    /** 惯性"放开" / "刹住"用哪种波形（SPIN_*；-1 = 默认）。马达不支持选的那种就退回默认。 */
+    void setSpinStyles(int start, int stop) {
+        spinStartStyle = start;
+        spinCatchStyle = stop;
+    }
+
+    /** 调试版（可调试包）：设置里列"放开 / 刹住"的候选波形；正式包一律用默认。 */
+    static boolean tuning(Context c) {
+        return (c.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+    }
+
+    /** 这台马达放不放得出这种波形（设置页的候选标"不支持"用）。 */
+    boolean spinSupported(boolean start, int style) {
+        if (start) {
+            switch (style) {
+                case SPIN_START_SPIN: return vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_SPIN);
+                case SPIN_START_FALL: return primitives;
+                case SPIN_START_QUICK_FALL: return vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_QUICK_FALL);
+                default: return false;
+            }
+        }
+        switch (style) {
+            case SPIN_CATCH_THUD: return vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_THUD);
+            case SPIN_CATCH_RISE: return primitives;
+            case SPIN_CATCH_HEAVY: return true;   // 系统预设，哪台都有
+            default: return false;
+        }
+    }
+
+    /** 没挑过时用哪种（按马达支持的挑）；连原语都没有返回 -1（放开退成系统的 TICK）。 */
+    int defaultSpinStyle(boolean start) {
+        if (start) {
+            if (spinSupported(true, SPIN_START_SPIN)) return SPIN_START_SPIN;
+            return primitives ? SPIN_START_FALL : -1;
+        }
+        if (spinSupported(false, SPIN_CATCH_THUD)) return SPIN_CATCH_THUD;
+        return primitives ? SPIN_CATCH_RISE : SPIN_CATCH_HEAVY;
+    }
+
+    /** 设置页的"试手感"：放一下指定的候选（不管存的是哪种）。 */
+    void trySpin(boolean start, int style) {
+        if (level <= 0 || !vibrator.hasVibrator()) return;
+        vibrator.vibrate(spinEffect(start, style), ATTRS);
+    }
+
+    private VibrationEffect spinEffect(boolean start, int style) {
+        if (!spinSupported(start, style)) style = defaultSpinStyle(start);
+        float k = SPIN_SCALES[Math.max(0, Math.min(SPIN_SCALES.length - 1, tickStrength))];
+        if (start) {
+            switch (style) {
+                case SPIN_START_SPIN:
+                    return VibrationEffect.startComposition().addPrimitive(VibrationEffect.Composition.PRIMITIVE_SPIN, k).compose();
+                case SPIN_START_QUICK_FALL:
+                    return VibrationEffect.startComposition().addPrimitive(VibrationEffect.Composition.PRIMITIVE_QUICK_FALL, k).compose();
+                case SPIN_START_FALL:
+                    return VibrationEffect.startComposition()
+                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.9f * k)
+                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.55f * k, 25)
+                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.3f * k, 35).compose();
+                default:
+                    return VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK);
+            }
+        }
+        switch (style) {
+            case SPIN_CATCH_THUD:
+                return VibrationEffect.startComposition().addPrimitive(VibrationEffect.Composition.PRIMITIVE_THUD, k).compose();
+            case SPIN_CATCH_RISE:
+                return VibrationEffect.startComposition()
+                        .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.5f * k)
+                        .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, k, 20).compose();
+            default:
+                return VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK);
+        }
     }
 
     /** 拖动时持续轻震的强度：0 关、1 小、2 中、3 大。总强度为"关"时也不震。 */
@@ -129,6 +225,15 @@ final class Haptics {
                 grain = VibrationEffect.createOneShot(TEXTURE_ONE_SHOT_MS, TEXTURE_AMPLITUDE);
             }
             if (grain != null) vibrator.vibrate(grain, ATTRS);
+            return;
+        }
+        if (kind == GestureEngine.HAPTIC_SPIN_START || kind == GestureEngine.HAPTIC_SPIN_CATCH) {
+            boolean start = kind == GestureEngine.HAPTIC_SPIN_START;
+            vibrator.vibrate(spinEffect(start, start ? spinStartStyle : spinCatchStyle), ATTRS);
+            if (humming) {   // 按着左键时拨 / 刹：震完接着嗡
+                main.removeCallbacks(humStart);
+                main.postDelayed(humStart, HUM_AFTER_MS);
+            }
             return;
         }
         boolean heavy = kind == GestureEngine.HAPTIC_TICK ? tickStrength >= 2

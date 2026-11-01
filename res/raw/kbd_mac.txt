@@ -1,0 +1,214 @@
+# kbd_mac.txt：豆花儿实体键盘的键帽字，主机是 macOS / iPadOS（iPadOS 假设和同名 macOS 布局一样，待实测）。自动生成，勿手改。
+# 生成：python3 tools/kbd/gen_layouts.py（数据源、版本、校验见 tools/kbd/sources.json；格式见 tools/kbd/README.md「数据格式」）。
+# 每行：HID 用法码（十六进制，PC 惯例的位置）、普通、Shift、Option、Option+Shift；空 = 没有字，\* = 死键，\\ = 反斜杠，\uXXXX = 看不见的字。
+# Mac 每个布局两段：<id> = macOS 把豆花当 ANSI 键盘（不对调）；<id>.iso = 当 ISO 键盘（对调 0x35 / 0x64，见方案 §7.3）。
+# CLDR osx 的数据是 macOS 10.9（2013 年）的，现名和个别字可能变过。
+# 数据：Unicode CLDR keyboards（老平台数据，最后一版在 release-43，44 起删了） release-43（https://github.com/unicode-org/cldr/tree/release-43/keyboards）。
+# Copyright © 1991-2023 Unicode, Inc.
+# 许可：Unicode License（CLDR 43 发布时用的 Unicode, Inc. License Agreement – Data Files and Software，条款见 https://www.unicode.org/copyright.html；全文随开源许可页一起放）
+#
+#!platform mac
+#!source cldr release-43
+#!file cldr osx/_platform.xml fd0ef144b5007d135d2bf2f89200e32838f0872f345b9af261f21c8556d899dc
+#!file cldr osx/de-t-k0-osx.xml f66cf22d23ff8315f12b773de51c51679e3be3a5e48e46d8ab4c70cd80cb31ab
+#!file cldr osx/en-t-k0-osx.xml cab0fe06ed01686dab90de012f0145280e999042ca18719a287e4637bdf86b17
+
+@us
+04	a	A	å	Å
+05	b	B	∫	ı
+06	c	C	ç	Ç
+07	d	D	∂	Î
+08	e	E	\*´	´
+09	f	F	ƒ	Ï
+0a	g	G	©	˝
+0b	h	H	˙	Ó
+0c	i	I	\*ˆ	ˆ
+0d	j	J	∆	Ô
+0e	k	K	˚	\uF8FF
+0f	l	L	¬	Ò
+10	m	M	µ	Â
+11	n	N	\*˜	˜
+12	o	O	ø	Ø
+13	p	P	π	∏
+14	q	Q	œ	Œ
+15	r	R	®	‰
+16	s	S	ß	Í
+17	t	T	†	ˇ
+18	u	U	\*¨	¨
+19	v	V	√	◊
+1a	w	W	∑	„
+1b	x	X	≈	˛
+1c	y	Y	¥	Á
+1d	z	Z	Ω	¸
+1e	1	!	¡	⁄
+1f	2	@	™	€
+20	3	#	£	‹
+21	4	$	¢	›
+22	5	%	∞	ﬁ
+23	6	^	§	ﬂ
+24	7	&	¶	‡
+25	8	*	•	°
+26	9	(	ª	·
+27	0	)	º	‚
+2d	-	_	–	—
+2e	=	+	≠	±
+2f	[	{	“	”
+30	]	}	‘	’
+31	\\	|	«	»
+33	;	:	…	Ú
+34	'	"	æ	Æ
+35	`	~	\*`	`
+36	,	<	≤	¯
+37	.	>	≥	˘
+38	/	?	÷	¿
+64	§	±	§	±
+
+@us.iso
+04	a	A	å	Å
+05	b	B	∫	ı
+06	c	C	ç	Ç
+07	d	D	∂	Î
+08	e	E	\*´	´
+09	f	F	ƒ	Ï
+0a	g	G	©	˝
+0b	h	H	˙	Ó
+0c	i	I	\*ˆ	ˆ
+0d	j	J	∆	Ô
+0e	k	K	˚	\uF8FF
+0f	l	L	¬	Ò
+10	m	M	µ	Â
+11	n	N	\*˜	˜
+12	o	O	ø	Ø
+13	p	P	π	∏
+14	q	Q	œ	Œ
+15	r	R	®	‰
+16	s	S	ß	Í
+17	t	T	†	ˇ
+18	u	U	\*¨	¨
+19	v	V	√	◊
+1a	w	W	∑	„
+1b	x	X	≈	˛
+1c	y	Y	¥	Á
+1d	z	Z	Ω	¸
+1e	1	!	¡	⁄
+1f	2	@	™	€
+20	3	#	£	‹
+21	4	$	¢	›
+22	5	%	∞	ﬁ
+23	6	^	§	ﬂ
+24	7	&	¶	‡
+25	8	*	•	°
+26	9	(	ª	·
+27	0	)	º	‚
+2d	-	_	–	—
+2e	=	+	≠	±
+2f	[	{	“	”
+30	]	}	‘	’
+31	\\	|	«	»
+33	;	:	…	Ú
+34	'	"	æ	Æ
+35	§	±	§	±
+36	,	<	≤	¯
+37	.	>	≥	˘
+38	/	?	÷	¿
+64	`	~	\*`	`
+
+@de
+04	a	A	å	Å
+05	b	B	∫	‹
+06	c	C	ç	Ç
+07	d	D	∂	™
+08	e	E	€	‰
+09	f	F	ƒ	Ï
+0a	g	G	©	Ì
+0b	h	H	ª	Ó
+0c	i	I	⁄	Û
+0d	j	J	º	ı
+0e	k	K	∆	ˆ
+0f	l	L	@	ﬂ
+10	m	M	µ	˘
+11	n	N	\*~	›
+12	o	O	ø	Ø
+13	p	P	π	∏
+14	q	Q	«	»
+15	r	R	®	¸
+16	s	S	‚	Í
+17	t	T	†	˝
+18	u	U	\*¨	Á
+19	v	V	√	◊
+1a	w	W	∑	„
+1b	x	X	≈	Ù
+1c	z	Z	Ω	ˇ
+1d	y	Y	¥	‡
+1e	1	!	¡	¬
+1f	2	"	“	”
+20	3	§	¶	#
+21	4	$	¢	£
+22	5	%	[	ﬁ
+23	6	&	]	\*^
+24	7	/	|	\\
+25	8	(	{	˜
+26	9	)	}	·
+27	0	=	≠	¯
+2d	ß	?	¿	˙
+2e	\*´	\*`	'	˚
+2f	ü	Ü	•	°
+30	+	*	±	\uF8FF
+31	#	'	‘	’
+33	ö	Ö	œ	Œ
+34	ä	Ä	æ	Æ
+35	<	>	≤	≥
+36	,	;	∞	˛
+37	.	:	…	÷
+38	-	_	–	—
+64	\*^	°	„	“
+
+@de.iso
+04	a	A	å	Å
+05	b	B	∫	‹
+06	c	C	ç	Ç
+07	d	D	∂	™
+08	e	E	€	‰
+09	f	F	ƒ	Ï
+0a	g	G	©	Ì
+0b	h	H	ª	Ó
+0c	i	I	⁄	Û
+0d	j	J	º	ı
+0e	k	K	∆	ˆ
+0f	l	L	@	ﬂ
+10	m	M	µ	˘
+11	n	N	\*~	›
+12	o	O	ø	Ø
+13	p	P	π	∏
+14	q	Q	«	»
+15	r	R	®	¸
+16	s	S	‚	Í
+17	t	T	†	˝
+18	u	U	\*¨	Á
+19	v	V	√	◊
+1a	w	W	∑	„
+1b	x	X	≈	Ù
+1c	z	Z	Ω	ˇ
+1d	y	Y	¥	‡
+1e	1	!	¡	¬
+1f	2	"	“	”
+20	3	§	¶	#
+21	4	$	¢	£
+22	5	%	[	ﬁ
+23	6	&	]	\*^
+24	7	/	|	\\
+25	8	(	{	˜
+26	9	)	}	·
+27	0	=	≠	¯
+2d	ß	?	¿	˙
+2e	\*´	\*`	'	˚
+2f	ü	Ü	•	°
+30	+	*	±	\uF8FF
+31	#	'	‘	’
+33	ö	Ö	œ	Œ
+34	ä	Ä	æ	Æ
+35	\*^	°	„	“
+36	,	;	∞	˛
+37	.	:	…	÷
+38	-	_	–	—
+64	<	>	≤	≥

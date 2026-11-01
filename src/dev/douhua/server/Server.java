@@ -16,7 +16,7 @@ import dev.douhua.Proto;
 
 /**
  * 豆花的特权服务：以 shell 身份运行（adb 或 Shizuku 用 app_process 拉起），替 App 做它自己没权限做的事——
- * 独占触摸屏读原始触摸、识别手势、造虚拟鼠标、往 DeX 屏幕注入按键。具体见 {@link Session}。
+ * 独占触摸屏读原始触摸、识别手势、造虚拟鼠标、往外接屏注入按键。具体见 {@link Session}。
  * 连接断开，触摸屏释放、虚拟鼠标移除。
  *
  * 主线程只管 accept，每条连接在自己的线程（douhua-session）里跑。以前 accept 和会话在同一个线程里串行：
@@ -202,7 +202,7 @@ public final class Server {
     }
 
     /**
-     * 只读：用 getevent -i 列出所有输入设备、能不能单独截、为什么，再按"DeX 下音量上 / 音量下都配了动作"算一遍会截哪块、旁观哪块。
+     * 只读：用 getevent -i 列出所有输入设备、能不能单独截、为什么，再按"桌面模式下音量上 / 音量下都配了动作"算一遍会截哪块、旁观哪块。
      * 不独占、不读任何设备的事件，在主力机上收集真实设备分组时用。
      */
     private static void listKeys() {
@@ -222,7 +222,7 @@ public final class Server {
         }
         log("共 " + devs.size() + " 个输入设备（getevent 打不开的 " + unopenable + " 个），带音量键的 " + vol + " 个");
         KeyDevices.Plan p = KeyDevices.plan(devs, new KeyDevices.Config(true, true));
-        log("按 DeX 下音量上 / 音量下都配了动作：独占 " + names(p.grab) + "；旁观（认电源键 + 音量键的组合键）" + names(p.watch));
+        log("按桌面模式下音量上 / 音量下都配了动作：独占 " + names(p.grab) + "；旁观（认电源键 + 音量键的组合键）" + names(p.watch));
         log("截得住：" + keyNames(p.grabbedBits) + "；截不了：" + keyNames(p.unavailableBits)
                 + (p.detail.isEmpty() ? "" : "（" + p.detail + "）"));
     }

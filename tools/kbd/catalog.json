@@ -1,0 +1,25 @@
+{
+  "_说明": "手写：生成哪些布局。id 是豆花自己的布局名；shape = 默认形状，shapes = 能选的形状（ansi / iso，以后加 jis / abnt2 / ks）；每家用哪个源文件（cldr / aosp 的路径同 sources.json，linux 是 xkb 的 layout + variant）。主机里的名字：mac / win 取 CLDR 文件里的 <name>（macOS 10.9 / Windows 10 时代的名字，现名要用户在主机上看一眼核对），linux 取本机 evdev.xml 的描述，android 手写（AOSP keyboard_layouts 的英文名，凭记忆，三星设置里叫什么没核）。第 1A 批只有美式和德语。",
+  "layouts": [
+    {
+      "id": "us",
+      "shape": "ansi",
+      "shapes": ["ansi", "iso"],
+      "mac": "osx/en-t-k0-osx.xml",
+      "win": "windows/en-t-k0-windows.xml",
+      "linux": {"layout": "us", "variant": ""},
+      "android": "packages/InputDevices/res/raw/keyboard_layout_english_us.kcm",
+      "android_name": "English (US)"
+    },
+    {
+      "id": "de",
+      "shape": "iso",
+      "shapes": ["iso"],
+      "mac": "osx/de-t-k0-osx.xml",
+      "win": "windows/de-t-k0-windows.xml",
+      "linux": {"layout": "de", "variant": ""},
+      "android": "packages/InputDevices/res/raw/keyboard_layout_german.kcm",
+      "android_name": "German"
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * TouchRouter 的离线测试：从服务的 Session 里搬出来以后，DeX 模式的行为要和原来一样，蓝牙模式也靠它。
+ * TouchRouter 的离线测试：从服务的 Session 里搬出来以后，桌面模式的行为要和原来一样，蓝牙模式也靠它。
  * 屏幕布局：触控板 (0,0)-(1000,1000)；左键按钮、普通按钮、Ctrl 键、C 键、"复制"（Ctrl+C）键在右边。密度 1。
  * 键盘的缝分给最近的键另用一份照 KeyboardPanel 搭的布局（{@link #keyboardRegions}）。
  */
@@ -14,6 +14,8 @@ public final class TouchRouterTest {
     static final class Rec implements TouchRouter.Output {
         final List<String> log = new ArrayList<>();
         long scheduled = -1;
+        /** 宿主眼里有没有挂着的定时器（惯性转着时一直挂着）。 */
+        boolean pending;
 
         @Override
         public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
@@ -50,11 +52,29 @@ public final class TouchRouterTest {
         @Override
         public void schedule(long delayMs) {
             scheduled = delayMs;
+            pending = true;
         }
 
         @Override
         public void cancelSchedule() {
             scheduled = -1;
+            pending = false;
+        }
+
+        /** 宿主的节拍开着没有、开 / 停各调了几次（要配对）。 */
+        boolean ticking;
+        int tickStarts, tickStops;
+
+        @Override
+        public void startTicks() {
+            ticking = true;
+            tickStarts++;
+        }
+
+        @Override
+        public void stopTicks() {
+            ticking = false;
+            tickStops++;
         }
 
         List<String> only(String prefix) {
@@ -100,6 +120,28 @@ public final class TouchRouterTest {
         unknownTypeDoesNothing();
         nearestKeyAlone();
         traceLines();
+        onTargetForPassthrough();
+        zoomIsWholeNotches();
+        spinStopsOnKeySilently();
+        spinStopsAnywhereWithCatch();
+        spinCatchOnPadIsNotClick();
+        spinStopsOnAppKeyAndStopSpin();
+        spinNotWithCtrlLatched();
+        spinNotFromCanceledFinger();
+        spinStopsOnNewConfig();
+        stickFirstFingerOnly();
+        stickMovesOnTicks();
+        stickTapClicks();
+        stickWithLeftDrags();
+        mouseButtonsShareCount();
+        middleClickWhenNotScrolled();
+        middleScrollWithStick();
+        middleScrollWithPad();
+        middleCanceledNoClick();
+        releaseAllStopsStick();
+        stickNewConfigStopsTicks();
+        stickTargetsAndNotKeys();
+        stickStopsSpin();
         System.err.println("触摸分流：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -116,6 +158,167 @@ public final class TouchRouterTest {
                 new TouchRouter.Region(Proto.REGION_PAD, PAD, 0, 0, 1000, 1000),
         });
         return t;
+    }
+
+    /** 分屏透传问的"落在键 / 按钮上吗"：键、按钮、"左键"、键盘范围算，触控板、空白处不算；不改状态。 */
+    static void onTargetForPassthrough() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        check(t.onTarget(1050, 50), "\"左键\"按钮：算");
+        check(t.onTarget(1050, 150), "按钮：算");
+        check(t.onTarget(1050, 350), "键：算");
+        check(!t.onTarget(500, 500), "触控板：不算");
+        check(!t.onTarget(1500, 1500), "空白处：不算");
+        t.setRegions(new TouchRouter.Region[]{
+                new TouchRouter.Region(Proto.REGION_KEY, KEY_C, 0, 0, 100, 100),
+                new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, 0, 0, 300, 300),
+        });
+        check(t.onTarget(200, 200), "键盘范围（缝里，分给最近的键）：算");
+        eq(r.log.size(), 0, "只问不按：没有任何输出");
+    }
+
+    // ═══════════ 惯性滚动、滚轮单位 ═══════════
+
+    /** 左边缘带快速往下一划（1.25dp/ms，密度 1），马上松手：起惯性。返回松手时间。 */
+    static long flick(TouchRouter t, long t0) {
+        t.down(0, 10, 300, t0);
+        for (int i = 1; i <= 8; i++) {
+            t.move(0, 10, 300 + i * 10);
+            t.frame(t0 + i * 8);
+        }
+        t.up(0, t0 + 69);
+        return t0 + 69;
+    }
+
+    /** 定时器到点 n 次（挂着才到）。 */
+    static void tick(TouchRouter t, Rec r, long t0, int n) {
+        for (int i = 1; i <= n && r.pending; i++) {
+            r.pending = false;
+            t.onTimer(t0 + i * 16);
+        }
+    }
+
+    static boolean wheelSince(Rec r, int at) {
+        for (String s : r.log.subList(at, r.log.size())) if (s.startsWith("m") && s.contains(" w")) return true;
+        return false;
+    }
+
+    static final String SPIN_START = "h" + GestureEngine.HAPTIC_SPIN_START, SPIN_CATCH = "h" + GestureEngine.HAPTIC_SPIN_CATCH;
+
+    static void zoomIsWholeNotches() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        t.down(0, 400, 500, 1000);
+        t.down(1, 600, 500, 1000);
+        for (int i = 1; i <= 8; i++) {
+            t.move(0, 400 - i * 10, 500);
+            t.move(1, 600 + i * 10, 500);
+            t.frame(1000 + i * 16);
+        }
+        boolean whole = true, any = false;
+        for (String s : r.only("m")) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile(" w(-?\\d+)").matcher(s);
+            if (!m.find()) continue;
+            any = true;
+            whole &= Integer.parseInt(m.group(1)) % Hid.WHEEL_UNIT == 0;
+        }
+        check(any && whole, "开合缩放：滚轮是整格（120 的倍数）");
+    }
+
+    static void spinStopsOnKeySilently() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        long up = flick(t, 1000);
+        check(r.log.contains(SPIN_START) && r.pending, "边缘一拨：起惯性");
+        tick(t, r, up, 3);
+        int at = r.log.size();
+        t.down(1, 1050, 350, up + 60);   // 按 C 键
+        check(!r.pending, "转着时按键：马上停");
+        check(!r.log.subList(at, r.log.size()).contains(SPIN_CATCH), "按键停不震（键自己会\"嗒\"）");
+        check(r.log.subList(at, r.log.size()).contains("k0 6"), "这个键照常按下");
+        tick(t, r, up + 60, 5);
+        check(!wheelSince(r, at), "停了不再滚");
+    }
+
+    static void spinStopsAnywhereWithCatch() {
+        float[][] where = {{1050, 150}, {1500, 1500}, {1050, 50}};
+        String[] what = {"按钮", "空白处", "\"左键\"按钮"};
+        for (int k = 0; k < where.length; k++) {
+            Rec r = new Rec();
+            TouchRouter t = router(r);
+            long up = flick(t, 1000);
+            int at = r.log.size();
+            t.down(1, where[k][0], where[k][1], up + 30);
+            check(!r.pending, "转着时碰" + what[k] + "：马上停");
+            check(r.log.subList(at, r.log.size()).contains(SPIN_CATCH), "碰" + what[k] + "停：震\"刹住\"");
+        }
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        flick(t, 1000);
+        t.down(1, 1050, 150, 1100);
+        check(r.log.contains("b" + BUTTON + ":" + Proto.BUTTON_DOWN), "碰的那一下照常生效（按钮报告按下）");
+    }
+
+    static void spinCatchOnPadIsNotClick() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        long up = flick(t, 1000);
+        int at = r.log.size();
+        t.down(0, 500, 500, up + 30);   // 触控板中间
+        t.frame(up + 30);
+        t.up(0, up + 90);
+        tick(t, r, up + 90, 30);
+        check(r.log.subList(at, r.log.size()).contains(SPIN_CATCH), "碰触控板：抓住，震\"刹住\"");
+        check(!r.log.subList(at, r.log.size()).contains("m1"), "抓住的那一下不算点击");
+    }
+
+    static void spinStopsOnAppKeyAndStopSpin() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        flick(t, 1000);
+        int at = r.log.size();
+        t.key(COPY, true);
+        check(!r.pending, "界面发来的键（组合键动作、服务没接管时键盘自己收的）：停");
+        check(!r.log.subList(at, r.log.size()).contains(SPIN_CATCH), "不震");
+        t.key(COPY, false);
+        flick(t, 2000);
+        t.stopSpin(true);
+        check(!r.pending && r.log.contains(SPIN_CATCH), "stopSpin（分屏透传归系统的手指、App 那边别的按下）：停，震\"刹住\"");
+    }
+
+    static void spinNotWithCtrlLatched() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        t.down(1, 1050, 250, 900);   // 点一下 Ctrl：锁定
+        t.up(1, 950);
+        flick(t, 1000);
+        check(!r.log.contains(SPIN_START) && !r.pending, "锁着 Ctrl：边缘一拨不起惯性（Ctrl + 滚轮是缩放）");
+        t.releaseAll();
+        flick(t, 2000);
+        check(r.log.contains(SPIN_START), "放手（解开 Ctrl）后照常起");
+    }
+
+    static void spinNotFromCanceledFinger() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        t.down(0, 10, 300, 1000);
+        for (int i = 1; i <= 8; i++) {
+            t.move(0, 10, 300 + i * 10);
+            t.frame(1000 + i * 8);
+        }
+        t.up(0, 1069, true);   // 手掌 / 丢数据
+        check(!r.log.contains(SPIN_START) && !r.pending, "被取消的手指松手：不起惯性");
+    }
+
+    static void spinStopsOnNewConfig() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        long up = flick(t, 1000);
+        t.setConfig(new GestureEngine.Config(), 1);
+        check(!r.pending, "换参数：转着的惯性停，定时器撤掉");
+        int at = r.log.size();
+        t.onTimer(up + 16);   // 撤晚了、已经排着的那一次
+        check(!wheelSince(r, at), "换参数后晚到的定时器不出滚轮");
     }
 
     static void notReadyIgnoresTouches() {
@@ -660,6 +863,16 @@ public final class TouchRouterTest {
         t.down(2, 100, 580, 1300);   // 工具栏
         t.up(2, 1350);
         eq(lines, list(), "键盘外面（小触控板、工具栏）的触摸不记");
+        // 小红点嵌在键里（范围在键盘范围里面、排在键前面）：按在红点上不是按键，不记；布局里也不多出它
+        TouchRouter.Region[] base = keyboardRegions();
+        TouchRouter.Region[] withStick = new TouchRouter.Region[base.length + 1];
+        withStick[0] = new TouchRouter.Region(Proto.REGION_STICK, Proto.STICK_ID, 90, 640, 110, 660);
+        System.arraycopy(base, 0, withStick, 1, base.length);
+        t.setRegions(withStick);
+        t.down(3, 100, 650, 1500);
+        t.up(3, 1510);
+        eq(lines, list(), "按在嵌着的红点上：不记 p / u，布局也没变（红点不是键）");
+        t.setRegions(keyboardRegions());
         t.setTrace(null);
         t.down(0, 99, 650, 1400);
         t.up(0, 1450);
@@ -670,6 +883,280 @@ public final class TouchRouterTest {
         List<String> l2 = new ArrayList<>();
         none.setTrace(l2::add);
         eq(l2, list("L 0"), "没有键盘时只记 L 0");
+    }
+
+    // ═══════════ 小红点、三个鼠标键 ═══════════
+
+    static final int STICK = Proto.STICK_ID;
+    static final int M_LEFT = Proto.MOUSE_BUTTON_ID_BASE | Proto.BUTTON_LEFT;
+    static final int M_MIDDLE = Proto.MOUSE_BUTTON_ID_BASE | Proto.BUTTON_MIDDLE;
+    static final int M_RIGHT = Proto.MOUSE_BUTTON_ID_BASE | Proto.BUTTON_RIGHT;
+
+    /** 在 router() 的布局上加：红点 (2000,0)-(2100,100)，下面左 / 中 / 右三个键（各 30 宽、隔 5）。 */
+    static TouchRouter stickRouter(Rec r, GestureEngine.Config c) {
+        TouchRouter t = new TouchRouter(r);
+        t.setConfig(c, 1);
+        t.setRegions(new TouchRouter.Region[]{
+                new TouchRouter.Region(Proto.REGION_STICK, STICK, 2000, 0, 2100, 100),
+                new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, M_LEFT, 2000, 110, 2030, 150),
+                new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, M_MIDDLE, 2035, 110, 2065, 150),
+                new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, M_RIGHT, 2070, 110, 2100, 150),
+                new TouchRouter.Region(Proto.REGION_HOLD_LEFT, 3, 1000, 0, 1100, 100),
+                new TouchRouter.Region(Proto.REGION_BUTTON, BUTTON, 1000, 100, 1100, 200),
+                new TouchRouter.Region(Proto.REGION_KEY, KEY_C, 1000, 300, 1100, 400),
+                new TouchRouter.Region(Proto.REGION_PAD, PAD, 0, 0, 1000, 1000),
+        });
+        return t;
+    }
+
+    static TouchRouter stickRouter(Rec r) {
+        return stickRouter(r, new GestureEngine.Config());
+    }
+
+    /** 推红点：按在 (2050, 50)，挪到 (2050 + dx, 50 + dy)，再按 8ms 一拍跑 ms 毫秒。返回最后的时间。 */
+    static long push(TouchRouter t, int slot, float dx, float dy, long t0, int ms) {
+        t.down(slot, 2050, 50, t0);
+        t.move(slot, 2050 + dx, 50 + dy);
+        t.frame(t0);
+        long now = t0;
+        while (now < t0 + ms) {
+            now += 8;
+            t.onTick(now);
+        }
+        return now;
+    }
+
+    static void stickFirstFingerOnly() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2050, 50, 1000);
+        check(r.log.contains("b" + STICK + ":" + Proto.BUTTON_DOWN), "按在红点上：报按下（画样子）");
+        check(r.ticking && r.tickStarts == 1, "红点按着：开节拍");
+        int at = r.log.size();
+        t.down(2, 2060, 60, 1010);
+        t.move(2, 2090, 60);
+        t.frame(1010);
+        t.up(2, 1020);
+        eq(r.log.size(), at, "第二根手指按在红点上：不理（不报、不动）");
+        check(r.ticking, "第二根抬起：节拍照开着");
+        t.up(1, 1100);
+        check(r.log.contains("b" + STICK + ":" + Proto.BUTTON_UP), "第一根抬起：报松开");
+        check(!r.ticking && r.tickStarts == 1 && r.tickStops == 1, "抬起：节拍停，开停配对");
+    }
+
+    static void stickMovesOnTicks() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        long now = push(t, 1, 15, 0, 1000, 500);
+        check(r.log.contains("m0 d") && r.only("m0 w").isEmpty(), "推红点：按节拍出位移，不按键");
+        t.up(1, now + 4);
+        int at = r.log.size();
+        t.onTick(now + 8);   // 迟到的节拍
+        eq(r.log.size(), at, "抬起后迟到的节拍：什么都不出");
+        check(!r.only("m1").contains("m1"), "推完松手不算轻点（按了 500ms）");
+    }
+
+    static void stickTapClicks() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2050, 50, 1000);
+        t.onTick(1008);
+        t.up(1, 1100);
+        eq(r.only("m"), list("m1", "m0"), "轻点红点：点一下左键");
+        check(r.log.contains("h" + GestureEngine.HAPTIC_CLICK), "轻点红点：嗒一下");
+    }
+
+    static void stickWithLeftDrags() {
+        Rec r = new Rec();
+        GestureEngine.Config c = new GestureEngine.Config();
+        c.texture = true;
+        TouchRouter t = stickRouter(r, c);
+        t.down(2, 2015, 130, 1000);   // 按住三键条的左键
+        eq(r.only("m"), list("m1"), "按住左键：左键按下");
+        push(t, 1, 15, 0, 1000, 1000);
+        check(r.log.contains("m1 d"), "按着左键推红点 = 拖动");
+        check(!r.log.contains("h" + GestureEngine.HAPTIC_TEXTURE), "拖动时不发颗粒");
+        t.up(2, 2100);
+        check(r.log.get(r.log.size() - 1).startsWith("m0") || r.only("m").contains("m0"), "松开左键：左键松");
+        // 不按键时推：有颗粒
+        Rec r2 = new Rec();
+        TouchRouter t2 = stickRouter(r2, c);
+        push(t2, 1, 15, 0, 1000, 1000);
+        check(r2.log.contains("h" + GestureEngine.HAPTIC_TEXTURE), "推着走：发颗粒");
+    }
+
+    static void mouseButtonsShareCount() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2015, 130, 1000);   // 三键条左键
+        eq(r.only("m"), list("m1"), "三键条左键：按下");
+        t.holdLeft(true);               // 实体键也按住左键
+        t.down(2, 1050, 50, 1010);    // "左键"按钮也按住
+        eq(r.only("m"), list("m1"), "三个来源共用计数：不重发");
+        t.up(1, 1100);
+        t.holdLeft(false);
+        eq(r.only("m"), list("m1"), "还有一个按着：不松");
+        t.down(3, 2085, 130, 1110);   // 右键
+        eq(r.only("m"), list("m1", "m3"), "左键按着时按右键：两个都按着");
+        t.up(2, 1200);
+        eq(r.only("m"), list("m1", "m3", "m2"), "左键全松了、右键还按着");
+        t.up(3, 1300);
+        eq(r.only("m"), list("m1", "m3", "m2", "m0"), "右键也松了");
+        check(r.log.contains("b" + M_LEFT + ":" + Proto.BUTTON_DOWN) && r.log.contains("b" + M_RIGHT + ":" + Proto.BUTTON_UP),
+                "界面收到三键条的按下 / 松开（画样子、震动）");
+    }
+
+    static void middleClickWhenNotScrolled() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2050, 130, 1000);
+        check(r.only("m").isEmpty(), "中键按下：先不发中键");
+        t.up(1, 1500);
+        eq(r.only("m"), list("m4", "m0"), "没滚过就松开：补一次中键单击");
+        check(!r.log.contains("h" + GestureEngine.HAPTIC_CLICK), "补的单击不再震（按下时界面已经嗒过）");
+        // 红点按着、在死区里没动，松开中键：照样是中键单击
+        Rec r2 = new Rec();
+        TouchRouter t2 = stickRouter(r2);
+        t2.down(1, 2050, 130, 1000);
+        push(t2, 2, 1, 1, 1000, 300);
+        t2.up(1, 1400);
+        check(r2.only("m").contains("m4"), "红点在死区里没动：中键单击");
+    }
+
+    static void middleScrollWithStick() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2050, 130, 1000);   // 按住中键
+        long now = push(t, 2, 0, 15, 1000, 1000);   // 往下推红点
+        check(r.log.contains("m0 w-" + Hid.WHEEL_UNIT), "按住中键往下推：往下翻（整格，滚轮负）");
+        check(!r.log.contains("m0 d"), "滚动时不出位移");
+        check(r.log.contains("h" + GestureEngine.HAPTIC_TICK), "每格咔嗒");
+        t.up(2, now);
+        t.up(1, now + 10);
+        check(!r.only("m").contains("m4"), "滚过了：松开中键不补单击");
+        // 先推着走，再按中键：从下一拍起变成滚动
+        Rec r2 = new Rec();
+        TouchRouter t2 = stickRouter(r2);
+        long n2 = push(t2, 2, 15, 0, 1000, 300);
+        check(r2.log.contains("m0 d"), "没按中键：移动");
+        int at = r2.log.size();
+        t2.down(1, 2050, 130, n2);
+        for (long x = n2 + 8; x <= n2 + 600; x += 8) t2.onTick(x);
+        List<String> after = r2.log.subList(at, r2.log.size());
+        check(after.contains("m0 p" + Hid.WHEEL_UNIT) && !after.contains("m0 d"), "推着时按下中键：变成横向滚动、不再移动");
+    }
+
+    static void middleScrollWithPad() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2050, 130, 1000);   // 按住中键
+        t.down(0, 500, 300, 1000);
+        for (int i = 1; i <= 10; i++) {
+            t.move(0, 500, 300 + i * 10);   // 单指往下划 100dp
+            t.frame(1000 + i * 16);
+        }
+        t.up(0, 1200);
+        check(r.log.contains("m0 w-" + Hid.WHEEL_UNIT), "按住中键单指往下划：往下翻（不跟自然滚动）");
+        check(!r.log.contains("m0 d"), "中键滚动时不动光标");
+        t.up(1, 1300);
+        check(!r.only("m").contains("m4"), "触控板上滚过：松开中键不补单击");
+        // 中键按着时在触控板上单指轻点：照旧是左键单击
+        Rec r2 = new Rec();
+        TouchRouter t2 = stickRouter(r2);
+        t2.down(1, 2050, 130, 1000);
+        t2.down(0, 500, 300, 1010);
+        t2.up(0, 1080);
+        check(r2.only("m").contains("m1"), "中键按着时单指轻点：照旧左键单击");
+    }
+
+    /**
+     * 中键按着时手指被取消（手掌、丢数据；服务释放触摸屏时 TouchReader 收尾补报的抬起也走 up(…, true)）：照样松开、
+     * 解开滚动，但不补中键单击（同 releaseAll）。左 / 右键被取消照常松开。
+     */
+    static void middleCanceledNoClick() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2050, 130, 1000);   // 中键
+        t.up(1, 1500, true);
+        check(!r.only("m").contains("m4"), "中键被取消：不补中键单击");
+        check(r.log.contains("b" + M_MIDDLE + ":" + Proto.BUTTON_UP), "中键被取消：界面照样收到松开");
+        int at = r.log.size();
+        t.down(0, 500, 300, 1600);
+        for (int i = 1; i <= 10; i++) {
+            t.move(0, 500, 300 + i * 10);
+            t.frame(1600 + i * 16);
+        }
+        t.up(0, 1800);
+        check(r.log.subList(at, r.log.size()).contains("m0 d") && !wheelSince(r, at), "中键被取消后滚动解开了：单指划照常移动光标");
+        Rec r2 = new Rec();
+        TouchRouter t2 = stickRouter(r2);
+        t2.down(1, 2015, 130, 1000);   // 左键
+        t2.down(3, 2085, 130, 1000);   // 右键
+        t2.up(1, 1100, true);
+        t2.up(3, 1100, true);
+        eq(r2.only("m"), list("m1", "m3", "m2", "m0"), "左 / 右键被取消：照常松开");
+    }
+
+    static void releaseAllStopsStick() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2050, 130, 1000);   // 中键
+        t.down(3, 2085, 130, 1000);   // 右键
+        push(t, 2, 15, 0, 1000, 200);
+        t.releaseAll();
+        check(!r.ticking && r.tickStarts == r.tickStops, "releaseAll：节拍停（开停配对）");
+        check(r.log.contains("b" + STICK + ":" + Proto.BUTTON_UP) && r.log.contains("b" + M_MIDDLE + ":" + Proto.BUTTON_UP)
+                && r.log.contains("b" + M_RIGHT + ":" + Proto.BUTTON_UP), "releaseAll：红点、中键、右键报松开");
+        check(!r.only("m").contains("m4") && !r.only("m").contains("m6"), "releaseAll：中键不补单击");
+        eq(r.only("m").get(r.only("m").size() - 1), "m0", "releaseAll：右键松开");
+        int at = r.log.size();
+        t.onTick(1300);
+        t.up(1, 1310);
+        t.up(2, 1310);
+        t.up(3, 1310);
+        eq(r.log.size(), at, "releaseAll 之后迟到的节拍、抬起：什么都不出");
+    }
+
+    static void stickNewConfigStopsTicks() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        push(t, 1, 15, 0, 1000, 100);
+        t.setConfig(new GestureEngine.Config(), 1);
+        check(!r.ticking && r.tickStarts == r.tickStops, "换参数：节拍停");
+        int at = r.log.size();
+        t.onTick(1200);
+        eq(r.log.size(), at, "换参数后：不出东西");
+    }
+
+    static void stickTargetsAndNotKeys() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        check(t.onTarget(2050, 50) && t.onTarget(2015, 130), "分屏透传：红点、三个鼠标键算豆花的");
+        // 键盘范围里摆着红点和一个键：缝里的点离红点近也只分给键（红点、鼠标键不是"最近的键"的候选）
+        TouchRouter.Region area = new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, 0, 0, 400, 200);
+        TouchRouter.Region key = new TouchRouter.Region(Proto.REGION_KEY, KEY_C, 0, 0, 100, 100);
+        TouchRouter.Region[] rs = {
+                new TouchRouter.Region(Proto.REGION_STICK, STICK, 200, 0, 300, 100),
+                new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, M_LEFT, 200, 120, 300, 180),
+                key, area,
+        };
+        check(TouchRouter.nearestKey(rs, area, 250, 110) == key, "nearestKey 不选红点、鼠标键");
+    }
+
+    static void stickStopsSpin() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        long up = flick(t, 1000);
+        check(r.pending, "惯性转着");
+        int at = r.log.size();
+        t.down(1, 2050, 50, up + 30);
+        check(!r.pending, "碰红点：惯性马上停");
+        check(r.log.subList(at, r.log.size()).contains(SPIN_CATCH), "碰红点停：震\"刹住\"");
+        Rec r2 = new Rec();
+        TouchRouter t2 = stickRouter(r2);
+        long up2 = flick(t2, 1000);
+        t2.down(1, 2015, 130, up2 + 30);
+        check(!r2.pending, "碰三键条：惯性马上停");
     }
 
     // ═══════════ 工具 ═══════════

@@ -26,48 +26,80 @@ import java.util.List;
  * <pre>adb shell am broadcast -a dev.douhua.DEBUG_KEYLOG --ez on true|false</pre>
  * 开是租期：从收到起 {@link #KEYLOG_LEASE_MS} 有效，不续就自己关（这份日志等于按键记录，工具被打断时不能一直开着）；
  * type-log.sh 每 3 秒续一次。
+ * 第四个动作是主机实测扫描（tools/kbd-scan.sh；核实体键盘布局的前提：主机把豆花当 ANSI 还是 ISO、0x32、AltGr / Option 层……）：
+ * <pre>adb shell am broadcast -a dev.douhua.DEBUG_KEYSCAN --es keys "414,416,…" [--ei hold 40] [--ei gap 70]
+ * adb shell am broadcast -a dev.douhua.DEBUG_KEYSCAN --ez stop true</pre>
+ * keys 是十六进制的键（用法码 | 修饰键 << 8，同 CMD_HID_KEY），依次按下、松开，每个后面跟一个空格、一个 Tab（主机上的页面按 Tab 分步）。
+ * 一次最多 {@link KeyScan#MAX} 个：页面每收完一段才让电脑发下一段，页面失去焦点、脚本被打断时最多再多出这么多个键。
+ * 只认出字的位置和 Shift / Alt（左右），不发 Ctrl / ⌘ / Enter（{@link KeyScan#allowed}）；新的一段顶掉还没发完的。
  * 只收持有 DUMP 权限的发送方（adb shell 有，普通 App 没有）；正式包里根本不注册——否则任何 App 都能挪对方的光标。
  */
 final class DebugMoves extends BroadcastReceiver {
     static final String ACTION = "dev.douhua.DEBUG_MOVES";
     static final String ACTION_AIRLOG = "dev.douhua.DEBUG_AIRLOG";
     static final String ACTION_KEYLOG = "dev.douhua.DEBUG_KEYLOG";
+    static final String ACTION_KEYSCAN = "dev.douhua.DEBUG_KEYSCAN";
     static final long KEYLOG_LEASE_MS = 10000;
     private static final String TAG = "douhua";
 
     /** 键盘触点日志开到什么时候（SystemClock.uptimeMillis，0 = 关）。只有注册了接收器的可调试包会改它。 */
     static volatile long keyLogUntil;
 
+    /** 按键扫描往哪发：蓝牙模式走本地分流 → 蓝牙，桌面模式走服务的虚拟键盘（同快捷行里的组合键，MainActivity.onLocalKey）。 */
+    interface KeySink {
+        /** 现在发不出去（或不该发）的原因，写日志用；能发返回 null。 */
+        String notReady();
+
+        void key(int key, boolean down);
+    }
+
     private final CenterRunner runner;
     /** 键盘触点日志的开关变了（开、续、关都通知；在主线程上调）。 */
     private final Runnable onKeyLog;
+    private final KeySink keys;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    // 按键扫描：这一段要发的键、发到第几拍（拍怎么排见 KeyScan）
+    private int[] scan;
+    private int scanBeat;
+    private int scanHold;
+    private int scanGap;
+    /** 正按着、还没松开的键（-1 = 没有）。停下时替它补松开，免得主机一直连发。 */
+    private int scanDown = -1;
+    private final Runnable scanTick = this::scanTick;
 
-    private DebugMoves(BtHid bt, Runnable onKeyLog) {
+    private DebugMoves(BtHid bt, Runnable onKeyLog, KeySink keys) {
         this.onKeyLog = onKeyLog;
-        runner = new CenterRunner(new Handler(Looper.getMainLooper()), (dx, dy) -> {
+        this.keys = keys;
+        runner = new CenterRunner(main, (dx, dy) -> {
             bt.sendMouse(0, dx, dy, 0, 0);
             Log.i(TAG, "调试位移 t=" + SystemClock.uptimeMillis() + " " + dx + "," + dy);
         });
     }
 
-    /** 可调试包才注册，返回 null 表示没注册。onKeyLog：键盘触点日志的开关变了。 */
-    static DebugMoves register(Context c, BtHid bt, Runnable onKeyLog) {
+    /** 可调试包才注册，返回 null 表示没注册。onKeyLog：键盘触点日志的开关变了；keys：按键扫描往哪发。 */
+    static DebugMoves register(Context c, BtHid bt, Runnable onKeyLog, KeySink keys) {
         if ((c.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) return null;
-        DebugMoves d = new DebugMoves(bt, onKeyLog);
+        DebugMoves d = new DebugMoves(bt, onKeyLog, keys);
         IntentFilter f = new IntentFilter(ACTION);
         f.addAction(ACTION_AIRLOG);
         f.addAction(ACTION_KEYLOG);
+        f.addAction(ACTION_KEYSCAN);
         c.registerReceiver(d, f, Manifest.permission.DUMP, null, Context.RECEIVER_EXPORTED);
         return d;
     }
 
     void unregister(Context c) {
         runner.cancel();
+        stopScan();
         c.unregisterReceiver(this);
     }
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (ACTION_KEYSCAN.equals(intent.getAction())) {
+            onKeyScan(intent);
+            return;
+        }
         if (ACTION_KEYLOG.equals(intent.getAction())) {
             keyLogUntil = intent.getBooleanExtra("on", false) ? SystemClock.uptimeMillis() + KEYLOG_LEASE_MS : 0;
             onKeyLog.run();
@@ -122,5 +154,65 @@ final class DebugMoves extends BroadcastReceiver {
         }
         Log.i(TAG, "调试位移开始 " + moves.size() + " 帧 t=" + SystemClock.uptimeMillis());
         runner.play(moves, () -> Log.i(TAG, "调试位移播完 t=" + SystemClock.uptimeMillis()));
+    }
+
+    // ═══════════ 按键扫描 ═══════════
+
+    private void onKeyScan(Intent intent) {
+        if (intent.getBooleanExtra("stop", false)) {
+            boolean was = scan != null;
+            stopScan();
+            if (was) Log.i(TAG, "按键扫描：电脑叫停了");
+            return;
+        }
+        String s = intent.getStringExtra("keys");
+        if (s == null) return;
+        int[] list;
+        try {
+            list = KeyScan.parse(s);
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "按键扫描：" + e.getMessage() + "，这一段不发");
+            return;
+        }
+        String why = keys.notReady();
+        if (why != null) {
+            Log.w(TAG, "按键扫描：" + why + "，不发");
+            return;
+        }
+        stopScan();   // 新的一段顶掉还没发完的（先补松开）
+        scan = list;
+        scanBeat = 0;
+        scanHold = clamp(intent.getIntExtra("hold", 40), 20, 500);
+        scanGap = clamp(intent.getIntExtra("gap", 70), 20, 1000);
+        main.post(scanTick);
+    }
+
+    /** 一拍：按下或松开 这个键 / 空格 / Tab 中的一下，排好下一拍。按下后隔 hold 松开，松开后隔 gap 按下一个。 */
+    private void scanTick() {
+        if (scan == null) return;
+        if (scanBeat >= KeyScan.beats(scan)) {
+            scan = null;
+            return;
+        }
+        int key = KeyScan.keyAt(scan, scanBeat);
+        boolean down = KeyScan.downAt(scanBeat);
+        keys.key(key, down);
+        scanDown = down ? key : -1;
+        scanBeat++;
+        main.postDelayed(scanTick, down ? scanHold : scanGap);
+    }
+
+    /** 停下：撤掉排着的下一拍，正按着的键补松开。 */
+    private void stopScan() {
+        main.removeCallbacks(scanTick);
+        if (scanDown >= 0) {
+            keys.key(scanDown, false);
+            scanDown = -1;
+        }
+        scan = null;
+    }
+
+    private static int clamp(int v, int lo, int hi) {
+        return Math.max(lo, Math.min(hi, v));
     }
 }

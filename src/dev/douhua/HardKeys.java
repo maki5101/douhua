@@ -7,7 +7,7 @@ package dev.douhua;
  * <li>设了"按住"：按住超过 {@link #HOLD_MS} 算按住（holdStart），松开时 holdEnd；没到就松开算点一下（设了的话）。</li>
  * </ul>
  * 设了动作的键整个归豆花：没设的那一半（只设了点一下时的按住、只设了按住时的短按）什么都不做，也不调音量。
- * 蓝牙模式下 App 自己用它，DeX 模式下服务独占实体键设备后用同一个类判断（server.HardKeyGate），两边一个规矩。
+ * 蓝牙模式下 App 自己用它，桌面模式下服务独占实体键设备后用同一个类判断（server.HardKeyGate），两边一个规矩。
  * 时间都用 KeyEvent.getEventTime() 那套（uptimeMillis）。
  */
 public final class HardKeys {

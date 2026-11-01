@@ -1,5 +1,5 @@
 # 打字测试的句子（tools/typelog/server.py 每次打乱顺序）。自己写的：英文小写和拼音各一半，
-# 只用 a-z、空格、逗号、句号（不用 Shift、不切符号层），合起来覆盖全部 26 个字母。拼音照电脑 / DeX 上用外接键盘打拼音的键序，ü 写 v。
+# 只用 a-z、空格、逗号、句号（不用 Shift、不切符号层），合起来覆盖全部 26 个字母。拼音照电脑 / 手机上用外接键盘打拼音的键序，ü 写 v。
 # 改的时候守住上面的字符范围（tools/test.sh 不查这个文件）。
 please send the report before lunch, thanks.
 my phone works as a keyboard and a mouse.

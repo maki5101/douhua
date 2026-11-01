@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- gen_layouts.py 自测用的小样本，照 CLDR release-43 keyboards/windows 的写法手写（不是真布局）。 -->
+<keyboard locale="xx-t-k0-windows">
+	<version platform="10" number="$Revision$"/>
+	<names>
+		<name value="Mini Win"/>
+	</names>
+	<keyMap>
+		<map iso="E00" to="^"/>
+		<map iso="C12" to="#"/>
+		<map iso="B00" to="&lt;"/>
+		<map iso="D01" to="q"/>
+	</keyMap>
+	<keyMap modifiers="shift">
+		<map iso="D01" to="Q"/>
+	</keyMap>
+	<keyMap modifiers="caps">
+		<map iso="D01" to="Z"/>
+	</keyMap>
+	<keyMap modifiers="altR+caps? ctrl+alt+caps?">
+		<map iso="D01" to="@"/>
+		<map iso="B00" to="|"/>
+	</keyMap>
+	<keyMap modifiers="ctrl+caps?">
+		<map iso="C12" to="\u{1C}"/>
+	</keyMap>
+	<transforms type="simple">
+		<transform from="^a" to="â"/>
+	</transforms>
+</keyboard>

@@ -6,7 +6,7 @@ import java.io.IOException;
 import dev.douhua.Hid;
 
 /**
- * 虚拟 USB 键盘：DeX 把它当真键盘，打字、快捷键、长按连发、外接键盘下的输入法都是原生的。
+ * 虚拟 USB 键盘：系统把它当真键盘，打字、快捷键、长按连发、外接键盘下的输入法都是原生的。
  * 描述符见 {@link Hid#KEYBOARD_DESC}；按着哪些键由 {@link dev.douhua.TouchRouter} 记，这里只管发报文。
  */
 final class UhidKeyboard implements Closeable {

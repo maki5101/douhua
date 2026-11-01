@@ -6,39 +6,48 @@ import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.view.MotionEvent;
 import android.view.View;
-import android.widget.LinearLayout;
+import android.view.ViewGroup;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+
+import dev.douhua.KeyRows.Key;
 
 /**
  * 手机上的外接键盘。每个键对应一个 HID 用法码（可以自带修饰键，比如"@" = Shift+2、"复制" = Ctrl+C），
- * 按下后由豆花服务通过虚拟 USB 键盘发给 DeX——DeX 看到的就是一块真键盘。
+ * 按下后由豆花服务通过虚拟 USB 键盘发给系统——系统看到的就是一块真键盘。
  *
  * 字母区照 Gboard 排（手机打字的习惯最重要）；修饰键、数字、快捷键各占一排，不往字母区里硬塞：
- *   功能行   Esc Tab Shift Ctrl Alt Super Caps Fn Del
+ *   功能行   Esc Tab Shift Ctrl Alt Super Caps Fn Del（小触控板没摆出来时最右边多一个 ⋯：键盘界面的菜单，见 {@link #setMenuKey}）
  *   数字行   1–0（锁定 Shift 时显示 !@#…）
  *   字母三行 q–p / a–l / ⇧ z–m ⌫
  *   底行     符 ，空格 。↵
  *   快捷行   默认 复制 粘贴 剪切 撤销 全选 ← ↑ ↓ →，9 个位置都能在设置里换（选项是共用的动作清单 Actions）
  * "符"层把数字行和字母三行换成符号（一按就出，不用配 Shift），"Fn"层换成 F1–F12 和 Home/End/翻页。
- * 修饰键点一下锁定（高亮），打完下一个键自动解开。
+ * 修饰键点一下锁定（高亮），打完下一个键自动解开。键位和分裂时怎么分见 {@link KeyRows}。
+ *
+ * 分裂（{@link #setSplit}，由 KeyboardScreen 按布局设置和键盘区的宽高定）时面板从左半的左边到右半的右边，默认两半各占三分之一宽，
+ * 中间这一截面板不画东西，触控板由 KeyboardScreen 摆在那里；触控板藏起来 / 放在别处时两半往中间伸、只隔一条缝。
+ * 用户调过分裂的大小时两半照调的宽度、中间隔多宽就多宽（KeyboardPlan）。两半各报一块键盘范围，缝只在各自那一半里分。
  *
  * 平时触摸由服务处理（按键的位置判断按到了哪个键）；服务没接管、也没走本地分流时，面板整块自己收触摸
  * （{@link #onTouchEvent}，按手指编号分给键）并转发给服务。
  * 键与键之间的缝、第二行两头的空位、外圈边距不是死区：分给最近的键（规则只有一份，TouchRouter.nearestKey；
- * 分流时由面板整块的范围 REGION_KEYBOARD 触发，面板自己收触摸时由 {@link KeyFingers#pick} 调它）。
- * 三层（字母 / 符号 / Fn）的中间四行各建一次缓存着，换层只切显示。
+ * 分流时由键盘范围 REGION_KEYBOARD 触发，面板自己收触摸时由 {@link KeyFingers#pick} 调它）。
+ * 所有键帽 view 都是面板的直接子 view，建一次缓存着（三层、两种布局都是），换层、分裂 / 合拢只切显示、重新摆放。
+ * 键帽分主次（主题的功能键颜色）：字母、数字、空格、标点是普通键，其余（修饰键、⌫ ↵、F 键、?123、快捷行……）是功能键，见 KeyRows.functionKey。
  */
-final class KeyboardPanel extends LinearLayout {
+final class KeyboardPanel extends ViewGroup {
     interface Listener {
         /** 服务没接管时，键被按下 / 松开。key 同 Proto.REGION_KEY 的 id。 */
         void onLocalKey(int key, boolean down);
 
         void onKeyHaptic(int id, boolean special);
 
-        /** 服务没接管时，非 HID 的特殊键（符 / Fn / 快捷行里的非键盘动作）被点了。 */
+        /** 服务没接管时，非 HID 的特殊键（符 / Fn / 🌐 / ⋯ / 快捷行里的非键盘动作）被点了。 */
         void onSpecialKey(int id);
     }
 
@@ -50,151 +59,42 @@ final class KeyboardPanel extends LinearLayout {
         void hideKeyPreview(View key);
     }
 
-    /** "符"和"Fn"切换键的按钮编号（不是 HID 键，由 App 自己处理）。 */
-    static final int SYMBOLS_BUTTON_ID = 300;
-    static final int FN_BUTTON_ID = 301;
-    /** 🌐：切换输入法（动作 lang_switch），由 App 执行。 */
-    static final int GLOBE_BUTTON_ID = 302;
+    static final int SYMBOLS_BUTTON_ID = KeyRows.SYMBOLS_BUTTON_ID;
+    static final int FN_BUTTON_ID = KeyRows.FN_BUTTON_ID;
+    static final int GLOBE_BUTTON_ID = KeyRows.GLOBE_BUTTON_ID;
+    static final int MENU_BUTTON_ID = KeyRows.MENU_BUTTON_ID;
     /** 快捷行里不是键盘组合键的动作（返回、键盘界面……）：按钮编号 = 这个 + 位置。 */
     static final int ROW_ACTION_BASE_ID = 600;
 
-    private static final int SHIFT = 2;
-    private static final int LAYER_LETTERS = 0;
-    private static final int LAYER_SYMBOLS = 1;
-    private static final int LAYER_FN = 2;
-
-    /** 一个键。id = HID 用法码 | (自带修饰键 << 8)；SPACER = 空位；切换键用 *_BUTTON_ID。 */
-    static final class Key {
-        static final int SPACER = -1;
-
-        final int id;
-        final String label;
-        final String shifted;
-        final float weight;
-        final boolean special;
-
-        Key(int id, String label, String shifted, float weight, boolean special) {
-            this.id = id;
-            this.label = label;
-            this.shifted = shifted;
-            this.weight = weight;
-            this.special = special;
-        }
-    }
-
-    private static Key k(int usage, String label) {
-        return new Key(usage, label, null, 1, false);
-    }
-
-    /** 锁定 Shift 时键帽换成 shifted（数字行）。 */
-    private static Key k(int usage, String label, String shifted) {
-        return new Key(usage, label, shifted, 1, false);
-    }
-
-    private static Key wide(int usage, String label, float weight) {
-        return new Key(usage, label, null, weight, false);
-    }
-
-    /** 自带 Shift 的符号键。 */
-    private static Key shift(int usage, String label) {
-        return new Key(usage | (SHIFT << 8), label, null, 1, false);
-    }
-
-    private static Key spacer(float weight) {
-        return new Key(Key.SPACER, "", null, weight, false);
-    }
-
-    private static Key letter(char c) {
-        return new Key(0x04 + (c - 'a'), String.valueOf(c), String.valueOf(Character.toUpperCase(c)), 1, false);
-    }
-
-    private static Key[] letters(String s) {
-        Key[] row = new Key[s.length()];
-        for (int i = 0; i < s.length(); i++) row[i] = letter(s.charAt(i));
-        return row;
-    }
-
-    private static Key[] concat(Key[]... parts) {
-        List<Key> all = new ArrayList<>();
-        for (Key[] p : parts) for (Key key : p) all.add(key);
-        return all.toArray(new Key[0]);
-    }
-
-    /**
-     * 功能行。Shift 和字母区的 ⇧ 是同一个键（左 Shift，一起高亮）：符号层、Fn 层没有 ⇧，
-     * 用户要在任何一层都能锁 Shift（Shift+方向键、Shift+F 键、Ctrl+Shift 组合）。
-     */
-    private static final Key[] TOP = {
-            k(0x29, "Esc"), k(0x2B, "Tab"), k(0xE1, "Shift"), k(0xE0, "Ctrl"), k(0xE2, "Alt"), k(0xE3, "Super"),
-            k(0x39, "Caps"), new Key(FN_BUTTON_ID, "Fn", null, 1, true), k(0x4C, "Del"),
-    };
-
-    private static final Key[][] LETTERS = {
-            {k(0x1E, "1", "!"), k(0x1F, "2", "@"), k(0x20, "3", "#"), k(0x21, "4", "$"), k(0x22, "5", "%"),
-                    k(0x23, "6", "^"), k(0x24, "7", "&"), k(0x25, "8", "*"), k(0x26, "9", "("), k(0x27, "0", ")")},
-            letters("qwertyuiop"),
-            concat(new Key[]{spacer(0.5f)}, letters("asdfghjkl"), new Key[]{spacer(0.5f)}),
-            concat(new Key[]{wide(0xE1, "⇧", 1.5f)}, letters("zxcvbnm"), new Key[]{wide(0x2A, "⌫", 1.5f)}),
-    };
-
-    private static final Key[][] SYMBOLS = {
-            {k(0x1E, "1"), k(0x1F, "2"), k(0x20, "3"), k(0x21, "4"), k(0x22, "5"),
-                    k(0x23, "6"), k(0x24, "7"), k(0x25, "8"), k(0x26, "9"), k(0x27, "0")},
-            {shift(0x1E, "!"), shift(0x1F, "@"), shift(0x20, "#"), shift(0x21, "$"), shift(0x22, "%"),
-                    shift(0x23, "^"), shift(0x24, "&"), shift(0x25, "*"), shift(0x26, "("), shift(0x27, ")")},
-            {k(0x2D, "-"), shift(0x2D, "_"), k(0x2E, "="), shift(0x2E, "+"), k(0x2F, "["), k(0x30, "]"),
-                    shift(0x2F, "{"), shift(0x30, "}"), k(0x31, "\\"), shift(0x31, "|")},
-            {k(0x33, ";"), shift(0x33, ":"), k(0x34, "'"), shift(0x34, "\""), k(0x35, "`"), shift(0x35, "~"),
-                    shift(0x36, "<"), shift(0x37, ">"), k(0x38, "/"), shift(0x38, "?"), wide(0x2A, "⌫", 1.5f)},
-    };
-
-    private static final Key[][] FN = {
-            {k(0x3A, "F1"), k(0x3B, "F2"), k(0x3C, "F3"), k(0x3D, "F4"), k(0x3E, "F5"), k(0x3F, "F6")},
-            {k(0x40, "F7"), k(0x41, "F8"), k(0x42, "F9"), k(0x43, "F10"), k(0x44, "F11"), k(0x45, "F12")},
-            {k(0x4A, "Home"), k(0x4D, "End"), k(0x4B, "PgUp"), k(0x4E, "PgDn")},
-            {k(0x49, "Ins"), k(0x4C, "Del"), k(0x46, "PrtSc"), wide(0x2A, "⌫", 1.5f)},
-    };
-
-    /** 把彩色 emoji 画成灰的：去掉饱和度，再压暗到和普通键名差不多。 */
-    private static final ColorMatrixColorFilter GRAY_EMOJI;
-
-    static {
+    /** 把彩色 emoji 画成灰的：去掉饱和度，再按当前主题映射到键帽的色调（纯黑主题就是乘 0.75 的灰，见 Theme.emojiMap）。 */
+    private static ColorMatrixColorFilter grayEmoji() {
         ColorMatrix m = new ColorMatrix();
         m.setSaturation(0);
-        ColorMatrix dim = new ColorMatrix();
-        dim.setScale(0.75f, 0.75f, 0.75f, 1);
-        m.postConcat(dim);
-        GRAY_EMOJI = new ColorMatrixColorFilter(m);
+        float[] k = Style.theme().emojiMap();
+        m.postConcat(new ColorMatrix(new float[]{
+                k[0], 0, 0, 0, k[3],
+                0, k[1], 0, 0, k[4],
+                0, 0, k[2], 0, k[5],
+                0, 0, 0, 1, 0}));
+        return new ColorMatrixColorFilter(m);
     }
 
-    private static final Key[] BOTTOM = {
-            new Key(SYMBOLS_BUTTON_ID, "?123", null, 1.5f, true), k(0x36, ","), wide(0x2C, "Space", 5),
-            k(0x37, "."), wide(0x28, "↵", 1.5f),
-    };
-
-    /**
-     * 连着苹果设备时多一个 🌐（切换输入法，iPad 上实测管用；Linux 等主机默认没绑这个键，不显示），空格让出一份。
-     */
-    private static final Key[] BOTTOM_APPLE = {
-            new Key(SYMBOLS_BUTTON_ID, "?123", null, 1.5f, true), new Key(GLOBE_BUTTON_ID, "🌐", null, 1, true),
-            k(0x36, ","), wide(0x2C, "Space", 4),
-            k(0x37, "."), wide(0x28, "↵", 1.5f),
-    };
-
-    /** 键盘总行数（功能行 + 中间四行 + 底行 + 快捷行），用来算合适的高度。 */
-    static final int ROWS = 7;
-
-    /** 一个键和它的 view，外加上次画上去的样子（没变就不重画，见 {@link #look}）。 */
+    /** 一个键和它的 view，外加上次画上去的样子（没变就不重画，见 {@link #look}）和摆放的位置。 */
     private static final class Cap {
         final Key key;
         final TextView view;
-        /** 上次 Style.look 画的 (高亮 << 1) | 按下；-1 = 还没画过。 */
+        /** 功能键（KeyRows.functionKey）：用主题的功能键颜色。 */
+        final boolean fn;
+        /** 上次 Style.keyLook 画的 (高亮 << 1) | 按下；-1 = 还没画过。 */
         int look = -1;
         boolean pressed;
+        /** onMeasure 算好的位置（面板坐标），onLayout 照着摆。 */
+        int left, top, right, bottom;
 
-        Cap(Key key, TextView view) {
+        Cap(Key key, TextView view, boolean fn) {
             this.key = key;
             this.view = view;
+            this.fn = fn;
         }
     }
 
@@ -203,40 +103,36 @@ final class KeyboardPanel extends LinearLayout {
     private final int gap;
     /** 快捷行（设置里可改）。 */
     private Key[] shortcuts = new Key[0];
-    private int layer = LAYER_LETTERS;
+    private int layer = KeyRows.LAYER_LETTERS;
     private int modifiers;
-    /** 功能行的键（各层共用）。 */
-    private final List<Cap> top = new ArrayList<>();
+    private boolean split;
+    /** 功能行最右边带 ⋯ 键（小触控板没摆出来时，见 {@link #setMenuKey}）。 */
+    private boolean menuKey;
+    /** 分裂时两半中间那截（KeyRows.leftEnd 的 middle）：MIDDLE_PAD = 三分之一布局（中间放触控板），否则两半中间隔这么宽。 */
+    private int middle = KeyRows.MIDDLE_PAD;
+    /** 分裂时两半只隔一条缝：两块键盘范围各伸到缝的中线；不然（中间有触控板、或者用户把两半拉开了）只到各自那一半的边。 */
+    private boolean seam;
+    /** 底行 + 快捷行（换快捷行、换主机时重建）。 */
+    private KeyRows.Row[] bottomRows = new KeyRows.Row[0];
     /**
-     * 中间四行每层一份（下标 = LAYER_*）：建一次缓存着，换层只切显示，不拆掉重建所有键
-     * （重建几十个自动缩字号的 TextView 会让主线程停一下，蓝牙模式下报文也从主线程发）。
+     * 每个键（Key 对象）的键帽：功能行和三层的中间四行建一次缓存着（重建几十个自动缩字号的 TextView 会让主线程停一下，
+     * 蓝牙模式下报文也从主线程发）；底行和快捷行的在 {@link #bottomCaps} 里，重建时换掉。没显示的是 GONE。
      */
-    private final LinearLayout[] middles = new LinearLayout[3];
-    private final List<List<Cap>> middleCaps = new ArrayList<>();
-    /** 底行 + 快捷行的键（各层共用；换快捷行、换主机时只重建这两行）。 */
-    private final List<Cap> bottom = new ArrayList<>();
-    private final List<View> bottomRows = new ArrayList<>();
-    /** 当前显示的键（不含空位），顺序同报给服务的区域：功能行、中间四行、底行、快捷行。 */
+    private final Map<Key, Cap> capOf = new IdentityHashMap<>();
+    private final List<Cap> bottomCaps = new ArrayList<>();
+    /** 当前显示的键（不含空位），顺序同报给服务的区域：功能行、中间四行、底行、快捷行，分裂时每行先左半后右半。 */
     private final List<Cap> caps = new ArrayList<>();
     /** 键自己收触摸时每根手指按的键（caps 的下标）。 */
     private final KeyFingers fingers = new KeyFingers();
+    /** 小红点嵌在键里时按得到的范围（面板坐标），见 {@link #setStickHole}。 */
+    private int[] stickHole;
 
     KeyboardPanel(Context context, Listener listener) {
         super(context);
         this.listener = listener;
         this.gap = Style.dp(context, 2);
-        setOrientation(VERTICAL);
-        addRow(this, TOP, top);
-        for (int l = 0; l < middles.length; l++) {
-            Key[][] rows = l == LAYER_SYMBOLS ? SYMBOLS : l == LAYER_FN ? FN : LETTERS;
-            LinearLayout block = new LinearLayout(context);
-            block.setOrientation(VERTICAL);
-            List<Cap> list = new ArrayList<>();
-            for (Key[] row : rows) addRow(block, row, list);
-            middles[l] = block;
-            middleCaps.add(list);
-            addView(block, new LayoutParams(LayoutParams.MATCH_PARENT, 0, rows.length));
-        }
+        addCaps(KeyRows.TOP_ROWS_MENU, null);   // 带 ⋯ 的那份是不带的加一个键，两种功能行的键帽都在这里建
+        for (KeyRows.Row[] rows : KeyRows.LAYERS) addCaps(rows, null);
         rebuildBottom();
     }
 
@@ -270,15 +166,58 @@ final class KeyboardPanel extends LinearLayout {
 
     /** "符" / "Fn" 被点了。 */
     void onLayerButton(int id) {
-        int target = id == FN_BUTTON_ID ? LAYER_FN : LAYER_SYMBOLS;
+        int target = id == FN_BUTTON_ID ? KeyRows.LAYER_FN : KeyRows.LAYER_SYMBOLS;
         dropTouches();
-        layer = layer == target ? LAYER_LETTERS : target;
+        layer = layer == target ? KeyRows.LAYER_LETTERS : target;
         showLayer();
     }
 
     /**
-     * 把每个键在屏幕上的位置报给服务，最后是面板整块的范围（REGION_KEYBOARD）：按在缝、空位、边距上时分给范围里最近的键。
-     * 范围就是面板自己，键盘外面的空白、工具栏、小触控板都不在里面。只报当前这一层（藏起来的层不在 caps 里）。
+     * 分裂成左右两半 / 合成一整块，分裂时两半中间留多宽（KeyboardScreen 量尺寸时按布局设置、键盘区的宽高定，见 KeyboardPlan）。
+     * 键的位置全变了：面板自己收的手指按着的键先松开、按下的样子收掉，再换显示的键（分裂时多一个空格）。
+     * 只是中间宽度变了（触控板显示 / 隐藏、调整模式里拖两半）也一样：两半的键都挪了位置。
+     * seam = 两半只隔一条缝（KeyboardPlan.Plan.seam，决定键盘范围伸不伸到缝的中线）。
+     * 在 KeyboardScreen.onMeasure 里、量这个面板之前调：这里改子 view 的显示只会让接着的这次测量把它们算进去。
+     */
+    void setSplit(boolean on, int middle, boolean seam) {
+        int m = on ? middle : KeyRows.MIDDLE_PAD;
+        boolean sm = on && seam;
+        if (on == split && m == this.middle && sm == this.seam) return;
+        dropTouches();
+        split = on;
+        this.middle = m;
+        this.seam = sm;
+        showLayer();
+    }
+
+    boolean isSplit() {
+        return split;
+    }
+
+    /**
+     * 功能行最右边带不带 ⋯ 键（KeyboardScreen 量尺寸时定：小触控板摆出来、角上放得下 ⋯ 小方块就不带，不然带）。
+     * 功能行的键都挪了位置：同 {@link #setSplit}，先松开按着的键、收掉按下的样子，在量这个面板之前调。
+     */
+    void setMenuKey(boolean on) {
+        if (on == menuKey) return;
+        dropTouches();
+        menuKey = on;
+        showLayer();
+    }
+
+    /** ⋯ 键摆在哪（面板坐标 {左, 上, 右, 下}，量过尺寸之后才对）；功能行没带它时返回 null。 */
+    int[] menuKeyRect() {
+        if (!menuKey) return null;
+        for (Cap c : caps) {
+            if (c.key.id == MENU_BUTTON_ID) return new int[]{c.left, c.top, c.right, c.bottom};
+        }
+        return null;
+    }
+
+    /**
+     * 把每个键在屏幕上的位置报给服务，最后是键盘范围（REGION_KEYBOARD）：按在缝、空位、边距上时分给这块范围里最近的键。
+     * 整块时范围就是面板自己；分裂时左右两半各一块（中间的触控板不在任何一块里，缝只在各自那一半里分）。
+     * 键盘外面的空白、小触控板和它角上的 ⋯ 都不在范围里。只报当前这一层（藏起来的层不在 caps 里）。
      */
     void collectRegions(List<int[]> regions) {
         int[] loc = new int[2];
@@ -289,10 +228,28 @@ final class KeyboardPanel extends LinearLayout {
                     loc[0], loc[1], loc[0] + v.getWidth(), loc[1] + v.getHeight()});
         }
         getLocationOnScreen(loc);
-        regions.add(new int[]{Proto.REGION_KEYBOARD, 0, loc[0], loc[1], loc[0] + getWidth(), loc[1] + getHeight()});
+        for (int[] a : areas()) {
+            regions.add(new int[]{Proto.REGION_KEYBOARD, 0, loc[0] + a[0], loc[1] + a[1], loc[0] + a[2], loc[1] + a[3]});
+        }
     }
 
-    /** 画按下的样子。id 同 Key.id。 */
+    /**
+     * 键盘范围（面板坐标 {左, 上, 右, 下}）：整块时一块，分裂时左右两半各一块。分裂时每半只到这一半最后一行有键的
+     * 那一行下沿（快捷行只有 1 个键时右半那一行没有键，那块不算键盘，免得被分给上一行的空格 / ↵）。
+     * 两半只隔一条缝时各伸到缝的中线；中间放触控板、或者两半被拉开了时两块范围只到各自那一半的边，中间那截什么都不是。
+     * 分流（collectRegions）和面板自己收触摸（keyAt）用的是这同一份。
+     */
+    private int[][] areas() {
+        int w = getWidth(), h = getHeight();
+        if (!split) return new int[][]{{0, 0, w, h}};
+        KeyRows.Row[] rows = rows();
+        // 两半只隔一条缝：两块范围各伸到缝的中线（KeyRows.areaEnd / areaStart）；拉开了的只到各自那一半的边
+        int end = seam ? KeyRows.areaEnd(w, middle) : KeyRows.leftEnd(w, middle);
+        int start = seam ? KeyRows.areaStart(w, middle) : KeyRows.rightStart(w, middle);
+        return new int[][]{{0, 0, end, KeyRows.halfBottom(rows, h, false)}, {start, 0, w, KeyRows.halfBottom(rows, h, true)}};
+    }
+
+    /** 画按下的样子。id 同 Key.id（分裂时的两个空格同一个 id，服务转来的按下两个一起画）。 */
     void showPressed(int id, boolean pressed) {
         for (Cap c : caps) {
             if (c.key.id == id) {
@@ -300,6 +257,28 @@ final class KeyboardPanel extends LinearLayout {
                 preview(c, pressed);
             }
         }
+    }
+
+    /**
+     * 服务刚接管触摸屏：系统再也收不到面板上正按着的手指的抬起了，面板自己按下的键先松开（不算点击），
+     * 画回松开的样子、收起放大提示。不松的话服务的虚拟键盘一直按着，系统里不停连发。
+     */
+    void releaseTouches() {
+        dropTouches();
+    }
+
+    /**
+     * 换了主题 / 按键边框开关：所有键帽（含藏着的层）作废上次画的样子，当前显示的马上按新主题重画，藏着的等显示时再画；🌐 重新去色。
+     */
+    void applyTheme() {
+        for (Cap c : capOf.values()) {
+            c.look = -1;
+            if (c.key.id == GLOBE_BUTTON_ID) {
+                c.view.getPaint().setColorFilter(grayEmoji());
+                c.view.invalidate();
+            }
+        }
+        refreshLabels();
     }
 
     /** 所有键松开的样子、收起放大提示（服务断了，它转来的按下等不到松开）。 */
@@ -328,26 +307,80 @@ final class KeyboardPanel extends LinearLayout {
     /** 重建底行和快捷行（换主机、换快捷行）；功能行和中间三层不动。 */
     private void rebuildBottom() {
         dropTouches();
-        for (View row : bottomRows) removeView(row);
-        bottomRows.clear();
-        bottom.clear();
-        bottomRows.add(addRow(this, apple ? BOTTOM_APPLE : BOTTOM, bottom));
-        if (shortcuts.length > 0) bottomRows.add(addRow(this, shortcuts, bottom));
+        for (Cap c : bottomCaps) {
+            removeView(c.view);
+            capOf.remove(c.key);
+        }
+        bottomCaps.clear();
+        bottomRows = KeyRows.bottomRows(apple, shortcuts);
+        addCaps(bottomRows, bottomCaps);
         showLayer();
     }
 
-    /** 显示当前层：别的层藏起来（GONE，不占地方、不量），当前显示的键换成这一层的，键帽和高亮跟上。 */
-    private void showLayer() {
-        for (int l = 0; l < middles.length; l++) middles[l].setVisibility(l == layer ? VISIBLE : GONE);
-        caps.clear();
-        caps.addAll(top);
-        caps.addAll(middleCaps.get(layer));
-        caps.addAll(bottom);
-        refreshLabels();
+    /** 给 rows 里（两种布局）还没有键帽的键建键帽（先藏着），记进 list（可以是 null）。 */
+    private void addCaps(KeyRows.Row[] rows, List<Cap> list) {
+        for (KeyRows.Row row : rows) {
+            for (Key[] part : new Key[][]{row.whole, row.left, row.right}) {
+                for (Key key : part) {
+                    if (key.spacer() || capOf.containsKey(key)) continue;
+                    // 一个字（含 🌐 这种占两个 char 的）用大字，多个字的键名用小字
+                    boolean oneChar = key.label.codePointCount(0, key.label.length()) <= 1;
+                    TextView v = Style.keyButton(getContext(), oneChar ? 18 : 13);
+                    if (key.id == GLOBE_BUTTON_ID) v.getPaint().setColorFilter(grayEmoji());   // 🌐 是彩色 emoji，去色调暗，和别的键一个色调
+                    v.setVisibility(GONE);
+                    addView(v);
+                    Cap c = new Cap(key, v, KeyRows.functionKey(key, isShortcut(key)));
+                    capOf.put(key, c);
+                    if (list != null) list.add(c);
+                }
+            }
+        }
+    }
+
+    /** 是不是快捷行里的键（快捷行的键一律当功能键上色）。 */
+    private boolean isShortcut(Key key) {
+        for (Key s : shortcuts) if (s == key) return true;
+        return false;
+    }
+
+    /** 当前层、当前布局下的所有行：功能行、中间四行、底行（+ 快捷行）。 */
+    private KeyRows.Row[] rows() {
+        return KeyRows.rows(menuKey, layer, bottomRows);
     }
 
     /**
-     * 键要换掉了（换层、重建底行）：面板自己收的手指按着的键先松开；所有键画回松开的样子、收起放大提示
+     * 三层各自的全部行（功能行按 menu 带不带 ⋯、底行和快捷行用现在的）：KeyboardScreen 量尺寸时交给 KeyboardPlan，
+     * 算小红点嵌在键里能多大（每一层的键都不能被占掉太多）。
+     */
+    KeyRows.Row[][] layers(boolean menu) {
+        return KeyRows.layers(menu, bottomRows);
+    }
+
+    /**
+     * 小红点嵌在键里时按得到的范围（面板坐标 {左, 上, 右, 下}；没嵌在键里是 null，KeyboardScreen 量尺寸时设）：
+     * 面板自己收触摸时，按在这块里的手指不算任何键（{@link KeyFingers#pick} 的 holes）。平时红点的 view 叠在面板上面、先收到这些手指，
+     * 这里是兜底，规则和分流一样（分流时红点的区域排在键前面）。
+     */
+    void setStickHole(int[] hole) {
+        stickHole = hole == null ? null : hole.clone();
+    }
+
+    /**
+     * 显示当前层、当前布局：这时该显示的键 VISIBLE，别的 GONE（不占地方、不量），当前显示的键换成这些，键帽和高亮跟上。
+     * 显示的键没变的子 view 不动（setVisibility 同值什么都不做）。
+     */
+    private void showLayer() {
+        caps.clear();
+        for (Key key : KeyRows.keys(rows(), split)) caps.add(capOf.get(key));
+        IdentityHashMap<Cap, Boolean> shown = new IdentityHashMap<>();
+        for (Cap c : caps) shown.put(c, Boolean.TRUE);
+        for (Cap c : capOf.values()) c.view.setVisibility(shown.containsKey(c) ? VISIBLE : GONE);
+        refreshLabels();
+        requestLayout();
+    }
+
+    /**
+     * 键要换掉了（换层、重建底行、分裂 / 合拢）：面板自己收的手指按着的键先松开；所有键画回松开的样子、收起放大提示
      * （服务转来的按下等不到这些键的松开了，藏起来的层下次显示时也不该还按着）。
      */
     private void dropTouches() {
@@ -358,22 +391,27 @@ final class KeyboardPanel extends LinearLayout {
         }
     }
 
-    /** 加一行键到 parent，键记进 list（空位不记），返回这一行。 */
-    private LinearLayout addRow(LinearLayout parent, Key[] row, List<Cap> list) {
-        LinearLayout line = new LinearLayout(getContext());
-        for (Key key : row) {
-            // 一个字（含 🌐 这种占两个 char 的）用大字，多个字的键名用小字
-            boolean oneChar = key.label.codePointCount(0, key.label.length()) <= 1;
-            TextView v = Style.button(getContext(), oneChar ? 18 : 13);
-            if (key.id == GLOBE_BUTTON_ID) v.getPaint().setColorFilter(GRAY_EMOJI);   // 🌐 是彩色 emoji，去色调暗，和别的键一个色调
-            LayoutParams p = new LayoutParams(0, LayoutParams.MATCH_PARENT, key.weight);
-            p.setMargins(gap, gap, gap, gap);
-            if (key.id == Key.SPACER) v.setVisibility(View.INVISIBLE);
-            else list.add(new Cap(key, v));
-            line.addView(v, p);
+    // ═══════════ 摆放 ═══════════
+
+    @Override
+    protected void onMeasure(int widthSpec, int heightSpec) {
+        int w = MeasureSpec.getSize(widthSpec);
+        int h = MeasureSpec.getSize(heightSpec);
+        setMeasuredDimension(w, h);
+        for (KeyRows.Placed p : KeyRows.place(rows(), w, h, split, middle, gap)) {
+            Cap c = capOf.get(p.key);
+            c.left = p.left;
+            c.top = p.top;
+            c.right = Math.max(p.left, p.right);
+            c.bottom = Math.max(p.top, p.bottom);
+            c.view.measure(MeasureSpec.makeMeasureSpec(c.right - c.left, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(c.bottom - c.top, MeasureSpec.EXACTLY));
         }
-        parent.addView(line, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1));
-        return line;
+    }
+
+    @Override
+    protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        for (Cap c : caps) c.view.layout(c.left, c.top, c.right, c.bottom);
     }
 
     /** 键帽文字和高亮：只改文字真变了的键（开着自动缩字号，setText 要重新排版、试字号），样子没变的键不重画。 */
@@ -387,14 +425,14 @@ final class KeyboardPanel extends LinearLayout {
 
     private String label(Key key) {
         String label = key.label;
-        if ((modifiers & SHIFT) != 0 && key.shifted != null) label = key.shifted;
+        if ((modifiers & KeyRows.SHIFT) != 0 && key.shifted != null) label = key.shifted;
         // 跟着系统语言的键名
         if (key.id == 0x2C) label = getContext().getString(R.string.key_space);
         if (key.id == 0xE0) label = apple ? "⌃" : "Ctrl";
         if (key.id == 0xE2) label = apple ? "⌥" : "Alt";
         if (key.id == 0xE3) label = apple ? "⌘" : "Super";
         if (key.id == SYMBOLS_BUTTON_ID) {
-            label = layer == LAYER_SYMBOLS ? "ABC" : getContext().getString(R.string.key_symbols);
+            label = layer == KeyRows.LAYER_SYMBOLS ? "ABC" : getContext().getString(R.string.key_symbols);
         }
         return label;
     }
@@ -409,23 +447,22 @@ final class KeyboardPanel extends LinearLayout {
     /** 字符键：键帽只有一个字的字母、数字、符号。修饰键、⇧ ⌫ ↵、空格、F 键、快捷行不放大。 */
     private boolean isCharKey(Cap c) {
         Key key = c.key;
-        if (key.special) return false;
-        for (Key s : shortcuts) if (s == key) return false;
+        if (key.special || isShortcut(key)) return false;
         String t = c.view.getText().toString();
         return t.length() == 1 && "⇧⌫↵".indexOf(t) < 0;
     }
 
-    /** 高亮（换层键、锁定的修饰键）和按下的样子；和上次画的一样就不动（Style.look 每次都新建背景）。 */
+    /** 高亮（换层键、锁定的修饰键）和按下的样子，功能键用主题的功能键颜色；和上次画的一样就不动（Style.keyLook 每次都新建背景）。 */
     private void look(Cap c, boolean pressed) {
         int id = c.key.id;
-        boolean active = (id == SYMBOLS_BUTTON_ID && layer == LAYER_SYMBOLS)
-                || (id == FN_BUTTON_ID && layer == LAYER_FN)
+        boolean active = (id == SYMBOLS_BUTTON_ID && layer == KeyRows.LAYER_SYMBOLS)
+                || (id == FN_BUTTON_ID && layer == KeyRows.LAYER_FN)
                 || (id >= 0xE0 && id <= 0xE3 && (modifiers & (1 << (id - 0xE0))) != 0);
         c.pressed = pressed;
         int state = (active ? 2 : 0) | (pressed ? 1 : 0);
         if (state == c.look) return;
         c.look = state;
-        Style.look(c.view, active, pressed);
+        Style.keyLook(c.view, c.fn, active, pressed);
     }
 
     // ═══════════ 键自己收触摸（服务没接管、没走本地分流时） ═══════════
@@ -437,10 +474,10 @@ final class KeyboardPanel extends LinearLayout {
     }
 
     /**
-     * 每根手指按下时定键（包含的键优先，缝、空位、边距分给最近的键，规则同分流 TouchRouter.nearestKey），
-     * 抬起时松开它自己那个键；ACTION_CANCEL 全部松开。以前各键自己收触摸：第一根手指按在缝里时，同一次手势里
-     * 后来的手指全被吞掉、缝里那个键要等所有手指抬起才松开；第一根按在键 A、第二根按在缝里时，A 收到的是
-     * "多指中的一根抬起"，被忽略，A 一直按着。
+     * 每根手指按下时定键（包含的键优先，缝、空位、边距分给这一半里最近的键，规则同分流 TouchRouter.nearestKey），
+     * 抬起时松开它自己那个键；ACTION_CANCEL 全部松开。分裂时按在中间（触控板那一截）的手指、按在嵌着的小红点上的手指不算任何键。
+     * 以前各键自己收触摸：第一根手指按在缝里时，同一次手势里后来的手指全被吞掉、缝里那个键要等所有手指抬起才松开；
+     * 第一根按在键 A、第二根按在缝里时，A 收到的是"多指中的一根抬起"，被忽略，A 一直按着。
      */
     @SuppressLint("ClickableViewAccessibility")
     @Override
@@ -450,7 +487,7 @@ final class KeyboardPanel extends LinearLayout {
             case MotionEvent.ACTION_POINTER_DOWN: {
                 int i = e.getActionIndex();
                 int index = keyAt(e.getX(i), e.getY(i));
-                if (index < 0) break;   // 在键盘范围外（多指时别处的手指也可能派到这里）
+                if (index < 0) break;   // 不在键盘范围里（分裂时的中间、多指时派到这里的别处手指）
                 int old = fingers.down(e.getPointerId(i), index);
                 if (old != KeyFingers.NONE) release(old, false);
                 press(index);
@@ -479,28 +516,22 @@ final class KeyboardPanel extends LinearLayout {
     /** 面板坐标 (x, y) 该算哪个键（caps 的下标），范围外 / 没有键返回 -1。 */
     private int keyAt(float x, float y) {
         TouchRouter.Region[] rs = new TouchRouter.Region[caps.size()];
-        int[] at = new int[2];
         for (int i = 0; i < rs.length; i++) {
-            Cap c = caps.get(i);
-            offsetInPanel(c.view, at);
+            View v = caps.get(i).view;   // 键帽是面板的直接子 view，位置就是面板坐标
             // 编号直接用下标（只在这里用，不是 Key.id）
-            rs[i] = new TouchRouter.Region(c.key.special ? Proto.REGION_BUTTON : Proto.REGION_KEY, i,
-                    at[0], at[1], at[0] + c.view.getWidth(), at[1] + c.view.getHeight());
+            rs[i] = new TouchRouter.Region(caps.get(i).key.special ? Proto.REGION_BUTTON : Proto.REGION_KEY, i,
+                    v.getLeft(), v.getTop(), v.getRight(), v.getBottom());
         }
-        TouchRouter.Region area = new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, 0, 0, getWidth(), getHeight());
-        TouchRouter.Region r = KeyFingers.pick(rs, area, x, y);
+        int[][] as = areas();
+        TouchRouter.Region[] areas = new TouchRouter.Region[as.length];
+        for (int i = 0; i < as.length; i++) {
+            areas[i] = new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, as[i][0], as[i][1], as[i][2], as[i][3]);
+        }
+        int[] h = stickHole;
+        TouchRouter.Region[] holes = h == null ? new TouchRouter.Region[0]
+                : new TouchRouter.Region[]{new TouchRouter.Region(Proto.REGION_STICK, Proto.STICK_ID, h[0], h[1], h[2], h[3])};
+        TouchRouter.Region r = KeyFingers.pick(rs, areas, holes, x, y);
         return r == null ? -1 : r.id;
-    }
-
-    /** v 的左上角在面板里的位置：一层层加上父视图的位置（面板里没有滚动、没有平移）。 */
-    private void offsetInPanel(View v, int[] out) {
-        int x = 0, y = 0;
-        for (View p = v; p != this; p = (View) p.getParent()) {
-            x += p.getLeft();
-            y += p.getTop();
-        }
-        out[0] = x;
-        out[1] = y;
     }
 
     /** 先发键，再震动、画按下的样子（震动是一次 binder 调用，画背景也要时间，别让报文等它们）。 */

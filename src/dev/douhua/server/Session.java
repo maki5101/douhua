@@ -7,6 +7,7 @@ import android.view.KeyEvent;
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.FileDescriptor;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
@@ -18,6 +19,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+import dev.douhua.ConfigCodec;
 import dev.douhua.GestureEngine;
 import dev.douhua.Proto;
 import dev.douhua.TouchRouter;
@@ -32,7 +34,10 @@ import dev.douhua.TouchRouter;
  *
  * 线程：命令线程（douhua-session，每条连接一个）读 App 的消息；监管线程负责独占和读触摸；
  * 实体键线程（douhua-keys）负责独占和读音量键（{@link #superviseKeys}；电源键从不独占）；
- * 定时器线程跑轻点拖动的等待和切键盘焦点。router 只在持有 lock 时访问。
+ * 定时器线程跑轻点拖动的等待、惯性滚动的每一帧和切键盘焦点（router 的定时器撤掉 / 被取代后，已经到点、在等锁的那次不调，见 {@link OneShotTimer}）；节拍线程（douhua-tick）在小红点按着时按固定间隔推它（{@link #startTicks}）。
+ * router 只在持有 lock 时访问。
+ * 惯性滚动转着时：释放触摸屏（TouchReader 的 finally → router.releaseAll）、会话结束、换参数（setConfig）都走 engine.cancel 停下；
+ * 看到任何一根手指按下（含分屏透传归系统的）也停。
  *
  * 实体键的独占条件和触摸屏一样（{@link #wanted}），另外要 App 发过 CMD_HARD_KEYS、至少要截一个键、按键注入可用、
  * 没在来电响铃 / 通话中（{@link CallState}）；
@@ -42,27 +47,41 @@ import dev.douhua.TouchRouter;
  * 被新连接顶掉（{@link #kick}，见 {@link SessionPolicy}）。三条路收尾一样，只有被顶掉的不恢复方向锁定
  * （原值留给下一个会话，见 {@link RotationLock}）。新旧会话会短暂并存：同一时刻只有一个能独占触摸屏
  * （{@link TouchGrabLock}），新会话等旧会话收完尾才建自己的虚拟设备。
+ *
+ * 分屏 / 小窗（桌面模式，App 报的窗口没占满整块屏）：照样独占整块触摸屏，按每根手指按下的位置分（{@link TouchSplit}）：
+ * 豆花窗口里的交给 TouchRouter，窗口外的、从系统手势带按下的注入回系统（{@link Passthrough}）。透传不可用时分屏下不独占
+ * （{@link #passBlock}），触摸交还系统、触控板暂停。注入出去的每个 DOWN 在所有退出路径上都配 CANCEL
+ * （释放独占：TouchReader 的 onStop；会话结束：{@link Passthrough#close}；服务兜底退出前：{@link Passthrough#cancelBeforeExit}）。
  */
 final class Session implements TouchRouter.Output, TouchReader.Listener {
     /** App 发来的布局，整体替换、不改内部。 */
     static final class Layout {
-        static final Layout INACTIVE = new Layout(false, false, -1, 0, 0, 0, new TouchRouter.Region[0]);
+        static final Layout INACTIVE = new Layout(false, false, -1, 0, 0, 0, TouchSplit.Window.FULL, new TouchRouter.Region[0]);
 
         final boolean active;
         /** 蓝牙模式：鼠标键盘报文发回 App，不写虚拟设备（见 Proto.CMD_LAYOUT）。 */
         final boolean relay;
+        /** width / height 是整块屏（当前方向）的尺寸，不是豆花窗口的。 */
         final int displayId, rotation, width, height;
+        /** 豆花窗口在屏上的位置、占没占满、系统手势带宽度（分屏透传用）。 */
+        final TouchSplit.Window window;
         final TouchRouter.Region[] regions;
 
         Layout(boolean active, boolean relay, int displayId, int rotation, int width, int height,
-               TouchRouter.Region[] regions) {
+               TouchSplit.Window window, TouchRouter.Region[] regions) {
             this.active = active;
             this.relay = relay;
             this.displayId = displayId;
             this.rotation = rotation;
             this.width = width;
             this.height = height;
+            this.window = window;
             this.regions = regions;
+        }
+
+        /** 桌面模式下豆花窗口没占满整块屏：要分屏透传。蓝牙模式分屏时 App 不让服务接管（报 inactive），这里不算。 */
+        boolean split() {
+            return !relay && !window.full;
         }
 
         /** 屏幕、方向、尺寸都没变（变了就要重新取换算矩阵）。 */
@@ -76,6 +95,8 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     /** 全服务一把：同一时刻只有一个会话能打开 / 独占实体键设备（和触摸屏那把分开，持有范围从打开到关掉）。 */
     private static final TouchGrabLock KEY_GRAB = new TouchGrabLock();
     /** 全服务一份的方向锁定记录：新旧会话交接时不会互相覆盖。 */
+    /** 服务兜底退出前、会话结束时，最多等注入线程这么久把取消发出去。 */
+    private static final long EXIT_CANCEL_WAIT_MS = 300;
     private static final RotationLock ROTATION = new RotationLock(cmd -> Shell.run(5000, cmd), Server::log);
 
     private final Socket socket;
@@ -120,12 +141,52 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     /** 来电响铃 / 通话中不截实体键；只在实体键线程里用。 */
     private final CallState calls = new CallState();
 
+    /** 分屏透传：哪根手指归系统、把它们注入回去。split 只在监管线程里用。 */
+    private final TouchSplit split = new TouchSplit();
+    private final Passthrough pass;
+    /** 上一次记进日志的"透传不可用、不接管"的原因（同样的不重复记）。 */
+    private String lastNoPass;
+    /** 正在等系统眼里按着的手指抬起（分屏时不能带着它们独占），只在监管线程里用。 */
+    private boolean waitingLift;
+    /**
+     * 分屏时在 dumpsys 之前就不独占地开着的触摸屏和它上面看到的手指（{@link LiftWatch}），等抬起时一直开着；
+     * 独占后由 TouchReader 先读空它。只在监管线程里用。
+     */
+    private FileDescriptor plain;
+    private String plainPath;
+    private LiftWatch watch;
+    /** 上次找到的触摸屏路径和它对应的屏：开 plain 不用先多跑一次 dumpsys。只在监管线程里用。 */
+    private String knownPath;
+    private int knownPathDisplay = -1;
+    /**
+     * 因为"独占前就按着"放开了，App 没收到释放、还以为接管着：再接管时不记日志、不报 GRAB_OK。
+     * 报了别的接管状态（{@link #sendGrab} 里清）、不再需要独占时补报释放就清掉。只在监管线程里用。
+     */
+    private boolean quietRegrab;
+    /**
+     * TouchReader 正在收尾（onStop 之后）：接着报出来的抬起是收尾补的（还按着的手指按抬起处理），不是真的松手——当取消式抬起，
+     * 不起惯性（不然放开触摸屏那一刻手指正在边缘带上划，会白白"放开"震一下，紧接着 releaseAll 又停）。下次接管时清掉。只在监管线程里用。
+     */
+    private boolean stopping;
+
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "douhua-timer");
         t.setDaemon(true);
         return t;
     });
-    private ScheduledFuture<?> pendingTimer;
+    /** TouchRouter 的一次性定时器（轻点拖动的等待、长按、惯性的每一帧）：撤掉 / 取代之后已经在等锁的那次回调不调（见 {@link OneShotTimer}）。 */
+    private final OneShotTimer routerTimer = new OneShotTimer(timer, lock, () -> router.onTimer(SystemClock.uptimeMillis()));
+    /**
+     * 小红点的节拍：单独一个线程，不和定时器线程挤（那边切键盘焦点要等 binder，系统服务卡住时红点会跟着停）。
+     * 桌面模式 8ms 一拍，蓝牙模式（转发）12ms（电脑约 11.25ms 收一次报文，发得更密会挤在一起、被对方当成加速）。
+     */
+    private final ScheduledExecutorService ticker = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "douhua-tick");
+        t.setDaemon(true);
+        return t;
+    });
+    private ScheduledFuture<?> tickTask;
+    static final long TICK_MS = 8, TICK_RELAY_MS = 12;
     private final MouseStats stats;
 
     Session(Socket socket, int uid, Injector injector, boolean debug) throws IOException {
@@ -136,6 +197,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         this.injector = injector;
         this.debug = debug;
         this.stats = debug ? new MouseStats() : null;
+        this.pass = new Passthrough(injector);
     }
 
     /**
@@ -190,17 +252,21 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         if (supervisor != null && supervisor.isAlive() && GRAB.heldBy(this)) {
             Server.log("监管线程 " + SessionPolicy.OLD_SESSION_WAIT_MS / 1000 + " 秒没退出、还占着触摸屏：服务退出，"
                     + "让系统收回触摸屏和虚拟设备（要重新运行 tools/start-server.sh）");
+            pass.cancelBeforeExit(EXIT_CANCEL_WAIT_MS);   // 别在系统里留一根按着的注入手指
             System.exit(3);
         }
         if (keys != null && keys.isAlive() && keysExclusive) {
             Server.log("实体键线程 " + SessionPolicy.OLD_SESSION_WAIT_MS / 1000 + " 秒没退出、还独占着实体键：服务退出，"
                     + "让系统收回音量键（要重新运行 tools/start-server.sh）");
+            pass.cancelBeforeExit(EXIT_CANCEL_WAIT_MS);
             System.exit(3);
         }
         synchronized (lock) {
             router.releaseAll();
         }
+        pass.close(EXIT_CANCEL_WAIT_MS);   // 正常情况下释放独占时已经取消过，这里兜底，并等排着的事件发完
         timer.shutdownNow();
+        ticker.shutdownNow();   // releaseAll 已经停了节拍，这里兜底
         closeDevices();
         if (connected) Server.log("App 已断开，虚拟鼠标和键盘已移除");
         if (connected && !kicked) ROTATION.restore();
@@ -217,6 +283,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         if (GRAB.heldBy(old) || old.keysExclusive) {
             Server.log("旧连接 " + SessionPolicy.OLD_SESSION_WAIT_MS / 1000 + " 秒还没收完尾、还占着触摸屏或实体键：服务退出，"
                     + "让系统收回触摸屏、实体键和虚拟设备（要重新运行 tools/start-server.sh）");
+            old.pass.cancelBeforeExit(EXIT_CANCEL_WAIT_MS);
             System.exit(3);
         }
         old.closeDevices();
@@ -316,9 +383,13 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                     break;
                 case Proto.CMD_LAYOUT: {
                     Layout l = readLayout();
+                    Layout old = layout;
                     synchronized (lock) {
                         router.setRegions(l.regions);
                     }
+                    // 透传判过不可用的，App 回前台、全屏 ↔ 分屏切换时再给一次机会
+                    if ((l.active && !old.active) || l.window.full != old.window.full) pass.retry();
+                    if (l.split() && !l.window.sameAs(old.window)) Server.log("分屏：豆花窗口 " + l.window);
                     layout = l;
                     break;
                 }
@@ -379,24 +450,10 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         }
     }
 
+    /** 换参数 = 换一个引擎：进行中的手势作废，转着的惯性也停。 */
     private void readConfig() throws IOException {
         GestureEngine.Config c = new GestureEngine.Config();
-        c.pointerSpeed = in.readFloat();
-        c.acceleration = in.readFloat();
-        c.scrollStepDp = in.readFloat();
-        c.naturalScroll = in.readUnsignedByte() == 1;
-        c.pinchZoom = in.readUnsignedByte() == 1;
-        c.edgeScroll = in.readUnsignedByte() == 1;
-        c.edgeScrollHorizontal = in.readUnsignedByte() == 1;
-        c.edgeWidthDp = in.readFloat();
-        c.scrollTicks = in.readUnsignedByte();
-        c.longPressDrag = in.readUnsignedByte() == 1;
-        c.longPressMs = in.readInt();
-        c.tapToDrag = in.readUnsignedByte() == 1;
-        c.dragWindowMs = in.readInt();
-        float d = in.readFloat();
-        c.slowFactor = in.readFloat();
-        c.texture = in.readUnsignedByte() == 1;
+        float d = ConfigCodec.read(in, c);
         synchronized (lock) {
             router.setConfig(c, d);
         }
@@ -409,12 +466,17 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         int rotation = in.readUnsignedByte();
         int width = in.readInt();
         int height = in.readInt();
+        boolean full = in.readUnsignedByte() == 1;
+        int winLeft = in.readInt(), winTop = in.readInt(), winRight = in.readInt(), winBottom = in.readInt();
+        int gestLeft = in.readInt(), gestTop = in.readInt(), gestRight = in.readInt(), gestBottom = in.readInt();
+        TouchSplit.Window window = full ? TouchSplit.Window.FULL
+                : new TouchSplit.Window(false, winLeft, winTop, winRight, winBottom, gestLeft, gestTop, gestRight, gestBottom);
         int count = in.readUnsignedShort();
         TouchRouter.Region[] regions = new TouchRouter.Region[count];
         for (int i = 0; i < count; i++) {
             regions[i] = new TouchRouter.Region(in.readUnsignedByte(), in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt());
         }
-        return new Layout(active, relay, displayId, rotation, width, height, regions);
+        return new Layout(active, relay, displayId, rotation, width, height, window, regions);
     }
 
     // ═══════════ 独占触摸屏 ═══════════
@@ -429,40 +491,122 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     }
 
     private void supervise() {
+        try {
+            superviseLoop();
+        } finally {
+            closePlain();
+        }
+    }
+
+    private void superviseLoop() {
         while (alive) {
             Layout l = layout;
             if (!wanted(l)) {
+                endWait();
+                closePlain();
+                // "独占前就按着"放开后 App 还以为接管着：补报释放
+                if (quietRegrab) sendGrab(false, releaseReason(l), "");
                 sleep(100);
                 continue;
             }
+            String noPass = passBlock(l);
+            if (noPass != null) {
+                // 分屏时没法把另一边的触摸注入回去：不独占，触摸整块交还系统（触控板暂停），等布局变了再看
+                endWait();
+                closePlain();
+                if (!noPass.equals(lastNoPass)) Server.log("分屏时透传不可用，不接管触摸屏：" + noPass);
+                lastNoPass = noPass;
+                sendGrab(false, Proto.GRAB_NO_PASSTHROUGH, noPass);
+                waitForChange(l);
+                continue;
+            }
+            lastNoPass = null;
+            if (!l.split()) {
+                endWait();
+                closePlain();   // 全屏不用等抬起
+            }
             TouchDevice dev;
             try {
-                dev = TouchDevice.find(l.displayId);
+                if (l.split()) {
+                    // 分屏时不能带着系统那边按着的手指独占（EVIOCGRAB 不补抬起，按在另一边应用上的那根就一直按着）。
+                    // 先不独占地开着触摸屏（LiftWatch），再跑 dumpsys：dumpsys 之后到独占之间按下的，独占后读 plain 也看得到
+                    if (plain == null) {
+                        String path = knownPathDisplay == l.displayId ? knownPath : null;
+                        if (path == null) path = remember(l.displayId, TouchDevice.find(l.displayId)).path;
+                        plain = Evdev.open(path);
+                        plainPath = path;
+                        watch = new LiftWatch();
+                    }
+                    TouchReader.drain(plain, watch);
+                    if (watch.anyDown() && !watch.forgetIfQuiet(SystemClock.uptimeMillis())) {
+                        // 内核那边看得到按着、还没抬起的手指：不跑 dumpsys，读着 plain 等它抬起
+                        // （3 秒没动静就交给下面 dumpsys 那一道，免得漏看了抬起就永远等下去）
+                        startWait("内核那边看到有手指按着");
+                        LiftWatch w = watch;
+                        TouchReader.watchFor(plain, w, LiftWatch.MAX_WAIT_MS, () -> !w.anyDown() || !alive || layout != l);
+                        continue;
+                    }
+                }
+                dev = remember(l.displayId, TouchDevice.find(l.displayId));   // 每轮现取：顺带看系统眼里还有没有手指按着
+                if (l.split()) {
+                    if (!dev.path.equals(plainPath)) {
+                        closePlain();   // 设备换了编号：按新路径重开
+                        continue;
+                    }
+                    TouchReader.drain(plain, watch);
+                    if (watch.anyDown()) continue;
+                    long now = SystemClock.uptimeMillis();
+                    long w = watch.onPressed(dev.pressed, now);
+                    if (w == LiftWatch.STALE) {
+                        Server.log("分屏：系统记着 " + dev.pressed + " 根手指按着，但内核那边 " + watch.waited(now)
+                                + "ms 没动静，当作旧状态（多半是之前独占时吞掉了抬起），接管");
+                    } else if (w > 0) {
+                        // 退避（150ms 起翻倍、封顶 1 秒）：dumpsys input 持着输入系统的锁转储，别拖慢用户正在摸的另一边应用
+                        startWait("系统眼里这块触摸屏还有 " + dev.pressed + " 根手指按着");
+                        TouchReader.watchFor(plain, watch, w, () -> !alive || layout != l);
+                        continue;
+                    }
+                }
             } catch (TouchDevice.NotFound e) {
+                endWait();
+                closePlain();
                 sendGrab(false, Proto.GRAB_NO_TOUCHSCREEN, String.valueOf(l.displayId));
                 waitForChange(l);
                 continue;
             } catch (IOException e) {
+                endWait();
+                closePlain();
                 sendGrab(false, Proto.GRAB_FAILED, e.getMessage());
                 waitForChange(l);
                 continue;
             }
+            endWait();
             // 同一时刻只有一个会话能独占：被顶掉的旧会话还没放手时在这里等（每 100ms 再看一眼还要不要独占）。
             // 持有范围从打开触摸屏之前到关掉之后
             if (!GRAB.acquire(this, () -> wanted(layout) && layout.sameScreen(l))) continue;
             grabDevice = dev;
             grabLayout = l;
+            boolean quiet = quietRegrab;
+            int result = TouchReader.STOPPED;
             try {
-                // 切了模式（DeX ↔ 蓝牙）也重新接管：按着的键在原来那一路上松开，不会一半写虚拟设备、一半发回 App
-                TouchReader.run(dev, this,
-                        () -> wanted(layout) && layout.sameScreen(l) && layout.relay == l.relay,
+                // 切了模式（本机 ↔ 蓝牙）也重新接管：按着的键在原来那一路上松开，不会一半写虚拟设备、一半发回 App。
+                // 分屏时读到独占前就按着的手指就马上放开（见 TouchReader.run）
+                result = TouchReader.run(dev, plain, watch, this,
+                        () -> keepGrab(l),
+                        () -> layout.split(),
                         () -> {
+                            split.clear();
+                            stopping = false;
+                            pass.start(l.displayId);
                             grabbed = true;
+                            if (quiet) return;   // "独占前就按着"放开后又接上：App 那边一直以为接管着，不重复记、不重复报
                             Server.log("已接管触摸屏：" + dev + (l.relay ? "（蓝牙模式，报文发回 App）" : ""));
                             sendGrab(true, Proto.GRAB_OK, "");
                             // 切键盘焦点是一次 binder 调用，挪到定时器线程：已独占、还没进读循环的这段时间不检查独占条件，
-                            // 系统服务卡住时不能把监管线程一起卡住（破坏"100ms 内释放"）
-                            if (!l.relay) {
+                            // 系统服务卡住时不能把监管线程一起卡住（破坏"100ms 内释放"）。
+                            // 分屏 / 小窗时不切：焦点跟着用户点哪边走（点窗口外注入的 DOWN 不带 NO_FOCUS_CHANGE），
+                            // 重新接管时切回外接屏会把焦点从用户刚点过的另一边应用抢走
+                            if (!l.relay && !l.split()) {
                                 try {
                                     timer.execute(() -> focusExternal(l.displayId));
                                 } catch (RejectedExecutionException ignored) {
@@ -479,9 +623,31 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                     router.releaseAll();
                 }
                 GRAB.release(this);
+                // 独占期间 plain 收不到事件，记的状态作废；RACED 时独占描述符一个事件都没读，plain 还准，留着等那根手指抬起
+                if (result != TouchReader.RACED) closePlain();
             }
-            if (grabbed) {
-                grabbed = false;
+            if (result == TouchReader.RACED) {
+                Server.log("分屏：dumpsys 之后、独占之前有根手指按下（系统收到了它的按下），一个独占事件都没读就放开，等它抬起");
+                continue;   // 下一轮 plain 上看得到那根手指，报 GRAB_WAIT_LIFT、等它抬起
+            }
+            if (!grabbed) continue;
+            grabbed = false;
+            if (result == TouchReader.PRE_GRAB) {
+                // 放开让系统收到它的抬起。dumpsys 不一定拦得住它（系统没见过它的开头时不算按着、格式读不出来时不拦），
+                // 下一轮可能又接管、又认出它：限频，App 那边不报（一直当接管着），日志只记第一次
+                if (!quietRegrab) {
+                    Server.log("已释放触摸屏（分屏：有根手指在独占前就按着，放开让系统收到它的抬起；"
+                            + "它抬起前反复接管 / 放开不再记，也不报给 App）");
+                }
+                quietRegrab = true;
+                sleep(150);
+                continue;
+            }
+            String noPassNow = passBlock(layout);
+            if (noPassNow != null && wanted(layout)) {
+                // 透传中途不可用（注入被拒 / 出错 / 卡住）：下一轮循环开头会记日志、报给 App
+                Server.log("已释放触摸屏（分屏透传不可用）");
+            } else {
                 int why = releaseReason(l);
                 Server.log("已释放触摸屏（原因 " + why + "）");
                 sendGrab(false, why, "");
@@ -489,8 +655,35 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         }
     }
 
+    /** 开始 / 继续等系统那边的手指抬起：只在刚开始等时记日志、报 GRAB_WAIT_LIFT。没独占，屏幕照常归系统。 */
+    private void startWait(String why) {
+        if (!waitingLift) {
+            Server.log("分屏：" + why + "，等抬起再接管");
+            sendGrab(false, Proto.GRAB_WAIT_LIFT, "");
+        }
+        waitingLift = true;
+    }
+
+    private void endWait() {
+        waitingLift = false;
+        if (watch != null) watch.stopWaiting();
+    }
+
+    private TouchDevice remember(int displayId, TouchDevice dev) {
+        knownPath = dev.path;
+        knownPathDisplay = displayId;
+        return dev;
+    }
+
+    private void closePlain() {
+        if (plain != null) Evdev.close(plain);
+        plain = null;
+        plainPath = null;
+        watch = null;
+    }
+
     /**
-     * 接管触摸屏时，把键盘输入的目标切到外接屏（DeX），不然在手机屏上打开豆花后打的字会送到手机屏、
+     * 接管触摸屏时，把键盘输入的目标切到外接屏，不然在手机屏上打开豆花后打的字会送到手机屏、
      * 卡住整个输入队列，见 {@link DexFocus}。没接外接屏就不动。
      */
     private void focusExternal(int appDisplay) {
@@ -499,6 +692,21 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
             if (DexFocus.moveTo(id)) Server.log("键盘输入切到外接屏 " + id);
             return;
         }
+    }
+
+    /**
+     * 独占着的时候每轮（≤ 100ms）问一次还要不要接着独占：独占条件照旧、屏幕没变、模式没变，
+     * 分屏时透传还能用（顺手查注入线程是不是卡住了）。
+     */
+    private boolean keepGrab(Layout l) {
+        Layout now = layout;
+        pass.checkStuck(SystemClock.uptimeMillis());
+        return wanted(now) && now.sameScreen(l) && now.relay == l.relay && passBlock(now) == null;
+    }
+
+    /** 分屏时透传不可用的原因（这时不该独占）；全屏、蓝牙模式、透传能用时为 null。 */
+    private String passBlock(Layout l) {
+        return l.split() ? pass.unavailable(l.displayId) : null;
     }
 
     /** Proto.GRAB_*。 */
@@ -680,9 +888,33 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         return ScreenRotation.apply(x, y, l.rotation, naturalW, naturalH);
     }
 
+    // 分屏时归系统的手指（split 记着）走 pass，其余照旧给 router。归属按下时定，抬起才忘。
+
     @Override
     public void onDown(int slot, float rawX, float rawY, long t) {
         float[] p = toScreen(rawX, rawY);
+        Layout l = layout;
+        TouchSplit.Window w = l.split() ? l.window : TouchSplit.Window.FULL;
+        // 手势带里的点落在豆花的键、按钮上就归豆花（轻点交给系统的话会被发回豆花窗口、又被 App 吞掉，按键就丢了）
+        boolean own = false;
+        if (w.inGestureBand(p[0], p[1])) {
+            synchronized (lock) {
+                own = router.onTarget(p[0], p[1]);
+            }
+        }
+        int to = split.down(slot, p[0], p[1], w, own);
+        if (to != TouchSplit.ROUTER) {
+            // 碰屏幕任何地方惯性都马上停，按在另一边应用上的手指也算（这根照样注入给系统）
+            synchronized (lock) {
+                router.stopSpin(true);
+            }
+            pass.down(slot, p[0], p[1], t, to == TouchSplit.SYSTEM_IN_WINDOW);
+            if (debug) {
+                Server.log(String.format(Locale.ROOT, "按下 #%d (%.0f,%.0f) 方向 %d → 系统（分屏透传%s）", slot, p[0], p[1],
+                        grabLayout.rotation, to == TouchSplit.SYSTEM_IN_WINDOW ? "，手势带，不挪焦点" : ""));
+            }
+            return;
+        }
         TouchRouter.Region r;
         synchronized (lock) {
             r = router.down(slot, p[0], p[1], t);
@@ -696,6 +928,10 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     @Override
     public void onMove(int slot, float rawX, float rawY) {
         float[] p = toScreen(rawX, rawY);
+        if (split.isSystem(slot)) {
+            pass.move(slot, p[0], p[1]);
+            return;
+        }
         synchronized (lock) {
             router.move(slot, p[0], p[1]);
         }
@@ -703,6 +939,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
 
     @Override
     public void onFrame(long t) {
+        pass.frame(t);
         synchronized (lock) {
             router.frame(t);
         }
@@ -710,22 +947,44 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
 
     @Override
     public void onUp(int slot, long t) {
+        if (split.up(slot)) {
+            pass.up(slot, t);
+            return;
+        }
         synchronized (lock) {
-            router.up(slot, t);
+            router.up(slot, t, stopping);
         }
     }
 
+    @Override
+    public void onCancel(int slot, long t) {
+        if (split.up(slot)) {
+            // 系统那边整条流取消（带 FLAG_CANCELED）；别的还按着的系统侧手指作废到抬起
+            pass.cancelAll(t);
+            return;
+        }
+        synchronized (lock) {
+            router.up(slot, t, true);   // TouchRouter 那一路照旧当抬起，只是不起惯性（手掌、丢数据不是"拨"）
+        }
+    }
+
+    @Override
+    public void onStop(long t) {
+        stopping = true;
+        pass.cancelAll(t);
+    }
+
     // ═══════════ 分流结果（调用方持有 lock） ═══════════
-    // 去哪一路按最近一次接管时的布局：DeX 模式写虚拟设备，蓝牙模式发回 App。接管结束后的松开（releaseAll）也走同一路。
+    // 去哪一路按最近一次接管时的布局：桌面模式写虚拟设备，蓝牙模式发回 App。接管结束后的松开（releaseAll）也走同一路。
 
     @Override
     public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
         if (stats != null) stats.add(dx, dy);
         if (grabLayout.relay) {
-            short x = (short) Math.max(Short.MIN_VALUE + 1, Math.min(Short.MAX_VALUE, dx));
-            short y = (short) Math.max(Short.MIN_VALUE + 1, Math.min(Short.MAX_VALUE, dy));
+            // 滚轮是 1/120 格，App 按蓝牙主机设的倍率换算成计数（协议 18 起 i16）
+            short x = clamp16(dx), y = clamp16(dy), w = clamp16(wheel), h = clamp16(pan);
             send(new byte[]{(byte) Proto.MSG_MOUSE, (byte) buttons, (byte) (x >> 8), (byte) x, (byte) (y >> 8), (byte) y,
-                    (byte) Math.max(-127, Math.min(127, wheel)), (byte) Math.max(-127, Math.min(127, pan))});
+                    (byte) (w >> 8), (byte) w, (byte) (h >> 8), (byte) h});
             return;
         }
         try {
@@ -733,6 +992,18 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         } catch (IOException e) {
             Server.log("写虚拟鼠标失败：" + e.getMessage());
         }
+    }
+
+    private static short clamp16(int v) {
+        return (short) Math.max(Short.MIN_VALUE + 1, Math.min(Short.MAX_VALUE, v));
+    }
+
+    /** 调试：边缘滚动松手的速度，校准"多快算拨"用（服务 --debug 时记）。 */
+    @Override
+    public void edgeRelease(float speedDpPerMs, float spinPerSecond) {
+        if (!debug) return;
+        Server.log(String.format(Locale.ROOT, "边缘松手 %.2fdp/ms → %s", speedDpPerMs,
+                spinPerSecond > 0 ? String.format(Locale.ROOT, "惯性 %.0f 格/秒", spinPerSecond) : "没起惯性"));
     }
 
     @Override
@@ -774,27 +1045,46 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
 
     @Override
     public void schedule(long delayMs) {
-        cancelSchedule();
-        try {
-            pendingTimer = timer.schedule(() -> {
-                synchronized (lock) {
-                    router.onTimer(SystemClock.uptimeMillis());
-                }
-            }, delayMs, TimeUnit.MILLISECONDS);
-        } catch (RejectedExecutionException ignored) {
-            // 会话已经收尾、定时器停了（监管线程比收尾晚退出时）
-        }
+        routerTimer.schedule(delayMs);
     }
 
     @Override
     public void cancelSchedule() {
-        if (pendingTimer != null) pendingTimer.cancel(false);
-        pendingTimer = null;
+        routerTimer.cancel();
+    }
+
+    /** 小红点按着：按固定节拍推（调用方持有 lock）。释放触摸屏 → router.releaseAll → stopTicks，所以放开之后不会还在推光标。 */
+    @Override
+    public void startTicks() {
+        if (tickTask != null) return;
+        long period = grabLayout.relay ? TICK_RELAY_MS : TICK_MS;
+        try {
+            tickTask = ticker.scheduleAtFixedRate(() -> {
+                synchronized (lock) {
+                    router.onTick(SystemClock.uptimeMillis());
+                }
+            }, period, period, TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException ignored) {
+            // 会话已经收尾、节拍线程停了
+        }
+    }
+
+    @Override
+    public void stopTicks() {
+        if (tickTask != null) tickTask.cancel(false);
+        tickTask = null;
+    }
+
+    @Override
+    public void note(String s) {
+        Server.log(s);
     }
 
     // ═══════════ 发给 App ═══════════
 
+    /** 只在监管线程里调。 */
     private void sendGrab(boolean isGrabbed, int reason, String detail) {
+        if (!isGrabbed) quietRegrab = false;
         synchronized (out) {
             try {
                 out.writeByte(Proto.MSG_GRAB);

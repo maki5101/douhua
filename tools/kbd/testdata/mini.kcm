@@ -1,0 +1,40 @@
+# gen_layouts.py --selftest 用的小样本，照 AOSP packages/InputDevices/res/raw/*.kcm 的写法手写（不是真布局）。
+
+type OVERLAY
+
+map key 86 PLUS             # < > |
+
+key Q {
+    label:                              'Q'
+    base:                               'q'
+    shift, capslock:                    'Q'
+    ralt:                               '@'
+}
+
+key GRAVE {
+    label:                              '^'
+    base:                               '̂'
+    shift:                              '°'
+}
+
+key BACKSLASH {
+    label:                              '#'
+    base:                               '#'
+    shift:                              '\''
+    ralt:                               none
+}
+
+key PLUS {
+    label:                              '<'
+    base:                               '<'
+    shift:                              '>'
+    ralt:                               '|'
+    shift+ralt:                         '—'
+}
+
+key MINUS {
+    label:                              '\\'
+    base:                               '\\'
+    alt:                                'ß'
+    ralt:                               'x'
+}

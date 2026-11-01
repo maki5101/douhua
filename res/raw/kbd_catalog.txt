@@ -1,0 +1,5 @@
+# kbd_catalog.txt：豆花儿实体键盘的布局清单。自动生成（tools/kbd/gen_layouts.py，手写的部分在 tools/kbd/catalog.json），勿手改。
+# 每行：id、shape、shapes、kpdl、name_mac、name_win、name_linux、name_android（tab 分隔）。shape = 默认形状，shapes = 能选的形状，
+# kpdl = 小键盘小数点（NumLock 开着）出的字（取自 xkb），name_* = 各家主机设置里这个布局叫什么（mac / win 是 CLDR 里的旧名，android 凭记忆）。
+us	ansi	ansi,iso	.	U.S.	US	English (US)	English (US)
+de	iso	iso	,	German	German	German	German

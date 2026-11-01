@@ -49,6 +49,28 @@ public final class KeyboardSnapTest {
         KeyboardSnap.apply(raw, out, KeyboardSnap.MOVE, S, S);
         near(raw[0], 0.06f, "手指位置 raw 不被改（继续拖能拖过吸附点）");
 
+        // ── 分裂键盘（左半格子，KeyboardSnap.applySplit）──
+        hit = KeyboardSnap.applySplit(new float[]{0.015f, 0.2f, 0.3f, 0.8f}, out, KeyboardSnap.LEFT, S, S);
+        near(out[0], 0f, "分裂：外侧边靠近屏幕边吸到贴边");
+        check((hit & KeyboardSnap.AT_LEFT) != 0, "分裂：报告贴边");
+        hit = KeyboardSnap.applySplit(new float[]{0.05f, 0.2f, 0.49f, 0.8f}, out, KeyboardSnap.RIGHT, S, S);
+        near(out[2], 0.5f, "分裂：内侧边靠近合拢的位置吸过去（两半只隔一条缝）");
+        check((hit & KeyboardSnap.CENTER) != 0, "分裂：报告合拢");
+        hit = KeyboardSnap.applySplit(new float[]{0.05f, 0.2f, 0.45f, 0.8f}, out, KeyboardSnap.RIGHT, S, S);
+        near(out[2], 0.45f, "分裂：内侧边离合拢远就不吸");
+        check(hit == 0, "分裂：没吸");
+        hit = KeyboardSnap.applySplit(new float[]{0.05f, 0.31f, 0.3f, 0.99f}, out, KeyboardSnap.MOVE, S, S);
+        near(out[3], 1f, "分裂：拖中间靠近底边吸到底");
+        near(out[3] - out[1], 0.68f, "分裂：拖中间高度不变");
+        near(out[0], 0.05f, "分裂：拖中间左右不动（不吸居中、不吸贴边）");
+        KeyboardSnap.applySplit(new float[]{0.05f, 0.01f, 0.3f, 0.7f}, out, KeyboardSnap.TOP, S, S);
+        near(out[1], 0f, "分裂：上边吸到顶");
+        KeyboardSnap.applySplit(new float[]{0.05f, 0.2f, 0.3f, 0.985f}, out, KeyboardSnap.BOTTOM, S, S);
+        near(out[3], 1f, "分裂：下边吸到底");
+        raw = new float[]{0.015f, 0.2f, 0.3f, 0.8f};
+        KeyboardSnap.applySplit(raw, out, KeyboardSnap.LEFT, S, S);
+        near(raw[0], 0.015f, "分裂：手指位置 raw 不被改");
+
         System.err.println("键盘吸附：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }

@@ -1,0 +1,112 @@
+# kbd_win.txt：豆花儿实体键盘的键帽字，主机是 Windows（CLDR 的 Windows 10 数据）。自动生成，勿手改。
+# 生成：python3 tools/kbd/gen_layouts.py（数据源、版本、校验见 tools/kbd/sources.json；格式见 tools/kbd/README.md「数据格式」）。
+# 每行：HID 用法码（十六进制，PC 惯例的位置）、普通、Shift、AltGr、AltGr+Shift；空 = 没有字，\* = 死键，\\ = 反斜杠，\uXXXX = 看不见的字。
+# 数据：Unicode CLDR keyboards（老平台数据，最后一版在 release-43，44 起删了） release-43（https://github.com/unicode-org/cldr/tree/release-43/keyboards）。
+# Copyright © 1991-2023 Unicode, Inc.
+# 许可：Unicode License（CLDR 43 发布时用的 Unicode, Inc. License Agreement – Data Files and Software，条款见 https://www.unicode.org/copyright.html；全文随开源许可页一起放）
+#
+#!platform win
+#!source cldr release-43
+#!file cldr windows/_platform.xml c73b915742ef0a9640646314864954db09efc905a4754dd6536a69319272f331
+#!file cldr windows/de-t-k0-windows.xml 37568b0cd7984fc8181724da89b850f43514240767bde8d8cb647db2ff5a2607
+#!file cldr windows/en-t-k0-windows.xml 3a5b8bb3931a5672cec7b271be1746de27de9e3c6c6677158859f114ce557a0b
+
+@us
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	@
+20	3	#
+21	4	$
+22	5	%
+23	6	^
+24	7	&
+25	8	*
+26	9	(
+27	0	)
+2d	-	_
+2e	=	+
+2f	[	{
+30	]	}
+31	\\	|
+33	;	:
+34	'	"
+35	`	~
+36	,	<
+37	.	>
+38	/	?
+64	\\	|
+
+@de
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M	µ
+11	n	N
+12	o	O
+13	p	P
+14	q	Q	@
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	z	Z
+1d	y	Y
+1e	1	!
+1f	2	"	²
+20	3	§	³
+21	4	$
+22	5	%
+23	6	&
+24	7	/	{
+25	8	(	[
+26	9	)	]
+27	0	=	}
+2d	ß	?	\\	ẞ
+2e	\*´	\*`
+2f	ü	Ü
+30	+	*	~
+31	#	'
+33	ö	Ö
+34	ä	Ä
+35	\*^	°
+36	,	;
+37	.	:
+38	-	_
+64	<	>	|

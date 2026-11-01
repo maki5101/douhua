@@ -40,6 +40,44 @@ public final class KeyFingersTest {
             }
         }
 
+        // ── 分裂键盘：两块范围，中间是触控板那一截 ──
+        // 左半 0–100：键 L [10,90)×[10,90)；右半 200–300：键 R [210,290)×[10,90)；100–200 不在任何范围里
+        TouchRouter.Region[] halves = {
+                new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, 0, 0, 100, 100),
+                new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, 200, 0, 300, 100),
+        };
+        TouchRouter.Region[] lr = {
+                new TouchRouter.Region(Proto.REGION_KEY, 0, 10, 10, 90, 90),
+                new TouchRouter.Region(Proto.REGION_KEY, 1, 210, 10, 290, 90),
+        };
+        check(KeyFingers.pick(lr, halves, 50, 50).id == 0, "分裂：按在左键上");
+        check(KeyFingers.pick(lr, halves, 98, 50).id == 0, "分裂：左半靠中间的边距归左半的键");
+        check(KeyFingers.pick(lr, halves, 202, 50).id == 1, "分裂：右半靠中间的边距归右半的键");
+        check(KeyFingers.pick(lr, halves, 150, 50) == null, "分裂：中间（触控板那一截）不算任何键");
+        check(KeyFingers.pick(lr, halves, 105, 50) == null, "分裂：离左键更近但不在任何范围里，也不算");
+
+        // ── 嵌在键里的小红点（洞）：洞里的点不算任何键（连底下的键角、缝里离得近的键也不分），洞外和没洞时一模一样 ──
+        // 洞 [90,130)×[40,70)：压着 A 的右下角、B 的左下角、S 的上沿那一截，还有 A、B 之间的缝
+        TouchRouter.Region[] whole = {AREA};
+        TouchRouter.Region[] holes = {new TouchRouter.Region(Proto.REGION_STICK, Proto.STICK_ID, 90, 40, 130, 70)};
+        int inHole = 0;
+        boolean holeOk = true;
+        for (float x = 0; x < 230; x += 1) {
+            for (float y = 0; y < 100; y += 1) {
+                TouchRouter.Region got = KeyFingers.pick(KEYS, whole, holes, x, y);
+                if (holes[0].contains(x, y)) {
+                    inHole++;
+                    holeOk &= got == null;
+                } else {
+                    holeOk &= got == KeyFingers.pick(KEYS, whole, x, y);
+                }
+            }
+        }
+        check(holeOk && inHole == 40 * 30, "洞里 " + inHole + " 个点都不算键，洞外和没洞时一样");
+        check(KeyFingers.pick(KEYS, whole, holes, 95, 45) == null, "按在 A 被洞盖住的角上：不算 A");
+        check(KeyFingers.pick(KEYS, whole, holes, 85, 45).id == A, "洞外一点的 A 照样是 A");
+        check(KeyFingers.pick(KEYS, whole, new TouchRouter.Region[0], 95, 45).id == A, "没有洞时那一角是 A");
+
         // ── 第一根按在缝里，第二根按在键上：各自按下、各自松开（以前第二根被吞、缝里的键等全部抬起才松） ──
         KeyFingers f = new KeyFingers();
         check(f.down(0, pick(105, 30)) == KeyFingers.NONE, "手指 0 按在缝里（分给 A）");

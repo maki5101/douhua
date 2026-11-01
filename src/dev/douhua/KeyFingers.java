@@ -7,7 +7,7 @@ import java.util.Arrays;
  * 分别记，抬起只松开它自己那个键，别的手指按着的不受影响。纯 Java（离线测）。
  *
  * 按下时定键（{@link #pick}）：包含这个点的键优先；按在缝、空位、边距上分给最近的键——规则就是分流用的
- * {@link TouchRouter#nearestKey}，这里只是在面板自己的坐标里调它。
+ * {@link TouchRouter#nearestKey}，这里只是在面板自己的坐标里调它。嵌在键里的小红点那块不算任何键（pick 的 holes）。
  */
 final class KeyFingers {
     static final int NONE = -1;
@@ -29,6 +29,29 @@ final class KeyFingers {
         if (!area.contains(x, y)) return null;
         for (TouchRouter.Region r : keys) if (r.contains(x, y)) return r;
         return TouchRouter.nearestKey(keys, area, x, y);
+    }
+
+    /**
+     * 键盘有几块范围时（分裂键盘左右两半各一块）：落在哪块范围里就在那一块里定键（缝只分给这一块里的键，
+     * 同分流 TouchRouter.hit）；哪块都不在（分裂时中间的触控板那一截）返回 null。
+     */
+    static TouchRouter.Region pick(TouchRouter.Region[] keys, TouchRouter.Region[] areas, float x, float y) {
+        for (TouchRouter.Region a : areas) {
+            if (a.contains(x, y)) return pick(keys, a, x, y);
+        }
+        return null;
+    }
+
+    /**
+     * 同上，再加几块"洞"（嵌在键里的小红点）：落在洞里的手指不算任何键——连压在洞底下的键角也不算、缝里离得近的键也不分给它，
+     * 同分流（红点的区域排在键前面，TouchRouter.hit 先命中它）。洞外的点和没有洞时一模一样。
+     */
+    static TouchRouter.Region pick(TouchRouter.Region[] keys, TouchRouter.Region[] areas, TouchRouter.Region[] holes,
+                                   float x, float y) {
+        for (TouchRouter.Region hole : holes) {
+            if (hole.contains(x, y)) return null;
+        }
+        return pick(keys, areas, x, y);
     }
 
     /**

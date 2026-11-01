@@ -21,7 +21,10 @@ final class Prefs {
             "all_apps", "none", "none", "none", "none",
     };
 
-    /** 左侧按钮条里可增减的按钮（最上面固定"退出""设置"、最下面固定"收起"，不在这里），最多这么多个。 */
+    /**
+     * "自定义按键"（左边一列，原来的左侧按钮条）里可增减的按钮，最多这么多个。2026-11-01 起条上不再有写死的"退出""设置""收起"
+     * （都进了触控板顶上的 ⋯ 菜单），整列显示不显示由设置里的开关定（{@link #customKeys}，默认关）。
+     */
     static final int MAX_SLOTS = 12;
     private static final String[] SLOT_DEFAULTS = {
             "rotate", "keyboard", "numpad", "back", "copy", "paste", "undo", "hold_left",
@@ -180,12 +183,59 @@ final class Prefs {
         c.tapToDrag = getBool("tap_drag", c.tapToDrag);
         c.dragWindowMs = getInt("drag_ms", c.dragWindowMs);
         c.texture = getBool("texture", c.texture);
+        c.inertia = getBool(INERTIA, c.inertia);
+        c.inertiaTauMs = ScrollInertia.tauMs(inertiaDamping());
+        c.inertiaMinSpeed = getFloat(INERTIA_SPEED, c.inertiaMinSpeed);
+        c.smoothScroll = smoothScroll();
+        c.stickSpeed = getFloat(STICK_SPEED, c.stickSpeed);
+        c.stickTap = getBool(STICK_TAP, c.stickTap);
+        c.stickInertia = getBool(STICK_INERTIA, c.stickInertia);
         return c;
+    }
+
+    /** 小红点：灵敏度（倍数，默认 1.0）、轻点红点 = 左键（默认开）、负惯性（默认开）。 */
+    static final String STICK_SPEED = "stick_speed", STICK_TAP = "stick_tap", STICK_INERTIA = "stick_inertia";
+    /** 灵敏度滑块的范围。 */
+    static final float STICK_SPEED_MIN = 0.3f, STICK_SPEED_MAX = 3.0f, STICK_SPEED_STEP = 0.1f;
+    /** 触控板上沿 / 下沿的三键条（开关，默认关）和放哪边（下标：0 下沿、1 上沿，默认下沿）。主界面和键盘页的触控板都管。 */
+    static final String PAD_KEYS = "pad_mouse_keys", PAD_KEYS_POS = "pad_mouse_keys_pos";
+    static final int[] PAD_KEYS_POS_LABELS = {R.string.mouse_keys_bottom, R.string.mouse_keys_top};
+
+    /** 三键条：KeyboardPlan.KEYS_OFF / KEYS_BOTTOM / KEYS_TOP。 */
+    int padKeys() {
+        if (!getBool(PAD_KEYS, false)) return KeyboardPlan.KEYS_OFF;
+        return getInt(PAD_KEYS_POS, 0) == 1 ? KeyboardPlan.KEYS_TOP : KeyboardPlan.KEYS_BOTTOM;
+    }
+
+    /** 惯性滚动（开关，默认开）、阻尼档位（1–10，默认 ScrollInertia.DEFAULT_LEVEL）、多快算拨（dp/ms，默认 0.6）。 */
+    static final String INERTIA = "inertia", INERTIA_DAMPING = "inertia_damping", INERTIA_SPEED = "inertia_speed";
+    /** 连续滚动（开关，默认关）。蓝牙模式下它还决定注册哪份描述符（BtHid.descriptorChanged）。 */
+    static final String SMOOTH_SCROLL = "smooth_scroll";
+    /** "多快算拨"滑块的范围（dp/ms）：0.2 约 3 厘米/秒（慢慢滚一松手也会溜），2.0 约 32 厘米/秒（要使劲甩）。 */
+    static final float INERTIA_SPEED_MIN = 0.2f, INERTIA_SPEED_MAX = 2.0f, INERTIA_SPEED_STEP = 0.1f;
+
+    int inertiaDamping() {
+        return Math.max(1, Math.min(ScrollInertia.LEVELS, getInt(INERTIA_DAMPING, ScrollInertia.DEFAULT_LEVEL)));
+    }
+
+    boolean smoothScroll() {
+        return getBool(SMOOTH_SCROLL, false);
+    }
+
+    /**
+     * 惯性"放开" / "刹住"的波形（Haptics.SPIN_*，-1 = 默认）：只在调试版的设置里挑，正式包一律用默认（MainActivity.applyPrefs 判断）。
+     */
+    int spinStyle(boolean start) {
+        return getInt(start ? "spin_start_style" : "spin_catch_style", -1);
+    }
+
+    void setSpinStyle(boolean start, int style) {
+        putInt(start ? "spin_start_style" : "spin_catch_style", style);
     }
 
     // ═══════════ 连接方式 ═══════════
 
-    /** 连接方式：false = DeX（这台手机的外接屏，靠服务），true = 蓝牙（手机当蓝牙键盘鼠标，连电脑、平板、电视）。 */
+    /** 连接方式：false = 本机（服务造虚拟鼠标键盘，控制这台手机和它接的屏幕），true = 蓝牙（手机当蓝牙键盘鼠标，连电脑、平板、电视）。 */
     boolean btMode() {
         return sp.getBoolean("bt_mode", false);
     }
@@ -248,10 +298,16 @@ final class Prefs {
         sp.edit().putString("kb_sc_" + index, actionId).apply();
     }
 
-    /** 按钮条收起后触控板角上可自定义的小按钮（左上、右上、右下；左下的 ☰ 固定）。 */
-    static final int CORNER_COUNT = 3;
-    static final int[] CORNER_LABELS = {R.string.corner_tl, R.string.corner_tr, R.string.corner_br};
-    private static final String[] CORNER_DEFAULTS = {"exit", "rotate", "keyboard"};
+    /**
+     * 主界面触控板四个角上的小按钮（下标：左上、右上、右下、左下），一直显示（设成"无"的不显示）。
+     * 以前左下是固定的 ☰（按钮条收起后回到按钮条的入口），只有按钮条收起时才有角上的按钮；2026-11-01 起四个角都能设，
+     * 左下默认数字键盘，另外三个的默认值不变（以前改过的照旧）。
+     */
+    static final int CORNER_COUNT = 4;
+    static final int[] CORNER_LABELS = {R.string.corner_tl, R.string.corner_tr, R.string.corner_br, R.string.corner_bl};
+    /** 设置页里按什么顺序列（左上、右上、左下、右下，按看的顺序）。 */
+    static final int[] CORNER_ORDER = {0, 1, 3, 2};
+    private static final String[] CORNER_DEFAULTS = {"exit", "rotate", "keyboard", "numpad"};
 
     String corner(int index) {
         return sp.getString("corner" + index, CORNER_DEFAULTS[index]);
@@ -261,32 +317,127 @@ final class Prefs {
         sp.edit().putString("corner" + index, actionId).apply();
     }
 
-    /** 键盘工具栏（收起 / 调整）放在下面。 */
-    boolean keyboardToolbarBottom() {
-        return getBool("kb_toolbar_bottom", false);
+    /** 键盘布局：KeyboardPlan.MODE_*（自动 / 分裂 / 合并），不分横竖屏。 */
+    int keyboardLayoutMode() {
+        return KeyboardPlan.validMode(getInt("kb_layout", KeyboardPlan.MODE_AUTO));
     }
 
-    void setKeyboardToolbarBottom(boolean bottom) {
-        putBool("kb_toolbar_bottom", bottom);
+    void setKeyboardLayoutMode(int mode) {
+        putInt("kb_layout", mode);
     }
 
-    /** 左侧按钮条收起了（触控板四角放小按钮）。 */
-    boolean stripHidden() {
-        return getBool("strip_hidden", false);
+    /**
+     * 键盘页的指点设备（⋯ 菜单里"指点"轮换）：KeyboardPlan.POINTER_PAD（小触控板，默认）/ POINTER_STICK（小红点）/ POINTER_NONE（关）。
+     * 没存过时照上一版的"触控板：开 / 关"（kb_pad）：关 → 关，其余 → 触控板。
+     */
+    int keyboardPointer() {
+        if (sp.contains("kb_pointer")) return KeyboardPlan.validPointer(getInt("kb_pointer", KeyboardPlan.POINTER_PAD));
+        return getBool("kb_pad", true) ? KeyboardPlan.POINTER_PAD : KeyboardPlan.POINTER_NONE;
     }
 
-    void setStripHidden(boolean hidden) {
-        putBool("strip_hidden", hidden);
+    void setKeyboardPointer(int pointer) {
+        sp.edit().putInt("kb_pointer", pointer).remove("kb_pad").apply();
+    }
+
+    /** 主界面的配色（Theme.id，设置 → 外观）；默认纯黑（以前的样子）。 */
+    String theme() {
+        return sp.getString("theme", Theme.DEFAULT.id);
+    }
+
+    void setTheme(String id) {
+        sp.edit().putString("theme", id).apply();
+    }
+
+    /**
+     * 设置页上次停在哪一页（SettingsActivity.TAB_*）。只是看到哪儿了、不算设置，"恢复默认"跟着清掉也无妨：
+     * 那个按钮就在"通用"页，清掉后默认也是"通用"，看起来没区别，所以 resetAll 不特意留它。
+     */
+    String settingsTab() {
+        return sp.getString("settings_tab", SettingsActivity.TAB_GENERAL);
+    }
+
+    void setSettingsTab(String id) {
+        sp.edit().putString("settings_tab", id).apply();
+    }
+
+    /** 键帽画边框（Gboard 的同名开关）；默认开。 */
+    boolean keyBorders() {
+        return getBool("key_borders", true);
+    }
+
+    void setKeyBorders(boolean on) {
+        putBool("key_borders", on);
+    }
+
+    // ═══════════ 触控板背景图（设置 → 外观；文件在 files/padbg/，见 PadImage，怎么摆见 PadFit） ═══════════
+
+    /** 文件名（files/padbg/ 下，空 = 没设）、是不是动图（只用来提示"只显示第一帧"）、不透明度（百分比）、宽 / 高的触控板分开设。 */
+    static final String PAD_BG_FILE = "pad_bg_file", PAD_BG_ANIMATED = "pad_bg_animated", PAD_BG_ALPHA = "pad_bg_alpha",
+            PAD_BG_SPLIT = "pad_bg_split";
+
+    /** 现在的全部设置（一份快照）。主界面两块触控板、设置页的预览都照它画。 */
+    PadFit.Settings padBg() {
+        return new PadFit.Settings(padBgFile(), getBool(PAD_BG_ANIMATED, false), getInt(PAD_BG_ALPHA, PadFit.ALPHA_DEFAULT),
+                getBool(PAD_BG_SPLIT, false), padBgLook(false), padBgLook(true));
+    }
+
+    String padBgFile() {
+        return sp.getString(PAD_BG_FILE, "");
+    }
+
+    /** 导入成功（PadImage 在后台线程调）：记下新文件名。 */
+    void setPadBgFile(String file, boolean animated) {
+        sp.edit().putString(PAD_BG_FILE, file).putBoolean(PAD_BG_ANIMATED, animated).apply();
+    }
+
+    /** "移除图片"、文件不在了：只清文件名，显示方式这些留着（再选一张图还是原来的摆法）。 */
+    void clearPadBgFile() {
+        sp.edit().remove(PAD_BG_FILE).remove(PAD_BG_ANIMATED).apply();
+    }
+
+    void setPadBgAlpha(int pct) {
+        putInt(PAD_BG_ALPHA, pct);
+    }
+
+    /** 一套"怎么摆"：tall = 高的触控板那套（分开设时才用；没分开设时宽的那套就是唯一的一套）。 */
+    PadFit.Look padBgLook(boolean tall) {
+        String s = tall ? "_tall" : "";
+        return new PadFit.Look(getInt("pad_bg_fit" + s, PadFit.FIT_COVER), getFloat("pad_bg_fx" + s, 0.5f),
+                getFloat("pad_bg_fy" + s, 0.5f), getInt("pad_bg_scale" + s, PadFit.SCALE_DEFAULT));
+    }
+
+    void setPadBgLook(boolean tall, PadFit.Look l) {
+        String s = tall ? "_tall" : "";
+        sp.edit().putInt("pad_bg_fit" + s, l.fit).putFloat("pad_bg_fx" + s, l.fx).putFloat("pad_bg_fy" + s, l.fy)
+                .putInt("pad_bg_scale" + s, l.scalePct).apply();
+    }
+
+    /** 宽 / 高分开设：刚打开时把现在那套复制给"高的"，打开那一下画面不变。 */
+    void setPadBgSplit(boolean on) {
+        if (on && !getBool(PAD_BG_SPLIT, false)) setPadBgLook(true, padBgLook(false));
+        putBool(PAD_BG_SPLIT, on);
+    }
+
+    /**
+     * "自定义按键"（左边一列）显示不显示：默认关（用户 2026-11-01：默认界面只剩触控板和四个角）。新键名，不读以前的 strip_hidden
+     * （以前默认显示按钮条，升级上来的也照新默认关；以前存的槽位照旧，打开就是原来那些）。
+     */
+    static final String CUSTOM_KEYS = "custom_keys";
+
+    boolean customKeys() {
+        return getBool(CUSTOM_KEYS, false);
     }
 
     // ═══════════ 键盘大小和位置（横竖屏各一份） ═══════════
 
-    /** 键盘在可用区域里的位置 {左, 上, 右, 下}，0–1。默认竖屏占下面七成，横屏占满。 */
-    float[] keyboardRect(boolean landscape) {
+    /**
+     * 用户调过的合并键盘位置 {左, 上, 右, 下}（可用区域的 0–1）；没调过（或恢复默认了）返回 null，
+     * 由 KeyboardPlan.defaultRect 按窗口给默认位置（竖屏占下面七成，横屏占满，宽窗口靠左三分之二）。
+     */
+    float[] savedKeyboardRect(boolean landscape) {
         String p = landscape ? "kb_land_" : "kb_port_";
-        float[] def = landscape ? new float[]{0, 0, 1, 1} : new float[]{0, 0.3f, 1, 1};
-        return new float[]{getFloat(p + "l", def[0]), getFloat(p + "t", def[1]),
-                getFloat(p + "r", def[2]), getFloat(p + "b", def[3])};
+        if (!sp.contains(p + "l")) return null;
+        return new float[]{getFloat(p + "l", 0), getFloat(p + "t", 0), getFloat(p + "r", 1), getFloat(p + "b", 1)};
     }
 
     void setKeyboardRect(boolean landscape, float[] r) {
@@ -296,6 +447,26 @@ final class Prefs {
 
     void resetKeyboardRect(boolean landscape) {
         String p = landscape ? "kb_land_" : "kb_port_";
+        sp.edit().remove(p + "l").remove(p + "t").remove(p + "r").remove(p + "b").apply();
+    }
+
+    /**
+     * 用户调过的分裂键盘：左半格子 {左, 上, 右, 下}（可用区域的 0–1，右边量到两半中间那条线，0.5 = 两半只隔一条缝；
+     * 右半是镜像，见 KeyboardPlan）；没调过（或恢复默认了）返回 null，用默认的（三分之一 / 往中间伸满）。不影响合并的那份。
+     */
+    float[] savedSplitRect(boolean landscape) {
+        String p = landscape ? "kb_split_land_" : "kb_split_port_";
+        if (!sp.contains(p + "l")) return null;
+        return new float[]{getFloat(p + "l", 0), getFloat(p + "t", 0), getFloat(p + "r", 0.5f), getFloat(p + "b", 1)};
+    }
+
+    void setSplitRect(boolean landscape, float[] r) {
+        String p = landscape ? "kb_split_land_" : "kb_split_port_";
+        sp.edit().putFloat(p + "l", r[0]).putFloat(p + "t", r[1]).putFloat(p + "r", r[2]).putFloat(p + "b", r[3]).apply();
+    }
+
+    void resetSplitRect(boolean landscape) {
+        String p = landscape ? "kb_split_land_" : "kb_split_port_";
         sp.edit().remove(p + "l").remove(p + "t").remove(p + "r").remove(p + "b").apply();
     }
 

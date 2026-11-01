@@ -14,8 +14,19 @@ final class TouchDevice {
     final String path;
     /** 屏幕 x = a·rawX + b·rawY + c；屏幕 y = d·rawX + e·rawY + f */
     final float a, b, c, d, e, f;
+    /**
+     * 取 dumpsys 那一刻系统（InputReader）眼里这块触摸屏按着几根手指（"Last Cooked Touch: pointerCount=N"，悬停的笔不算）；
+     * -1 = 读不出来。分屏透传时大于 0 就先不独占：独占开始时按着的真手指系统永远等不到它抬起（EVIOCGRAB 不补抬起），
+     * 它按在另一边的应用上，那个应用就一直收着一个按住的触摸。
+     */
+    final int pressed;
 
     TouchDevice(String name, String path, float[] m) {
+        this(name, path, m, -1);
+    }
+
+    TouchDevice(String name, String path, float[] m, int pressed) {
+        this.pressed = pressed;
         this.name = name;
         this.path = path;
         this.a = m[0];
@@ -75,7 +86,7 @@ final class TouchDevice {
                 String block = readerPart.substring(start, more ? m.start() : readerPart.length());
                 if (isTouchscreen(block) && viewport.matcher(block).find()) {
                     float[] matrix = rawToDisplay(block);
-                    if (matrix != null) return new TouchDevice(name, pathOf(hubPart, name), matrix);
+                    if (matrix != null) return new TouchDevice(name, pathOf(hubPart, name), matrix, pressedIn(block));
                 }
             }
             if (!more) break;
@@ -88,6 +99,29 @@ final class TouchDevice {
     private static boolean isTouchscreen(String block) {
         Matcher s = Pattern.compile("(?m)^\\s+Sources: (.*)$").matcher(block);
         return s.find() && s.group(1).contains("TOUCHSCREEN");
+    }
+
+    private static final Pattern COOKED = Pattern.compile("Last Cooked Touch: pointerCount=(\\d+)");
+
+    /**
+     * TouchInputMapper::dump 的 "Last Cooked Touch: pointerCount=N"，后面 N 行每根一行（带 isHovering=）；悬停的不算。
+     * 格式照 AOSP android16-qpr2-release 的 TouchInputMapper.cpp，没在三星真机的输出上核对过；读不出来返回 -1（不拦接管）。
+     */
+    static int pressedIn(String block) {
+        Matcher m = COOKED.matcher(block);
+        if (!m.find()) return -1;
+        int count;
+        try {
+            count = Integer.parseInt(m.group(1));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+        String[] lines = block.substring(m.end()).split("\n");
+        int pressed = count;
+        for (int i = 1; i <= count && i < lines.length; i++) {
+            if (lines[i].contains("isHovering=true")) pressed--;
+        }
+        return pressed;
     }
 
     /** "RawToDisplay Transform:" 后面两行就是矩阵的前两行。 */

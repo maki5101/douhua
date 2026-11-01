@@ -6,18 +6,22 @@ import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 /**
- * 把按键直接注入到指定屏幕（DeX 那块）。只有 shell / root 身份有这个权限，所以放在服务里。
+ * 把按键直接注入到指定屏幕（外接屏那块）。只有 shell / root 身份有这个权限，所以放在服务里。
  * 用的都是隐藏 API，靠反射调用；app_process 起的进程不受隐藏 API 限制。
  *
  * 输入服务的代理用到时才取、失败就重取：系统框架重启后旧代理全死了。以前构造时取一次，
  * 之后整个服务都不能注入按键（InputManagerGlobal 是进程单例，里面的代理死了就一直是死的）。
  * 首选直接问 ServiceManager 要 IInputManager（见 {@link SystemServices}）；这个系统版本没有这个接口或方法时，
  * 退回原来的单例写法。
+ *
+ * 触摸注入（分屏透传，{@link #motion}）另用一把锁和一份代理：读触摸的那一路由 {@link Passthrough} 的注入线程调，
+ * 系统服务卡住时卡住的只是那个线程，不连带按键注入（实体键补发）一起排队。
  */
 final class Injector {
     private static final int INJECT_MODE_ASYNC = 0;
@@ -38,6 +42,14 @@ final class Injector {
     private Object inputManager;
     private Method injectInputEvent;
 
+    /** 取不到 MotionEvent.setDisplayId 就没法把触摸注入到指定的屏，透传永远不可用，原因记在 motionBroken。 */
+    private final Method motionSetDisplayId;
+    private final String motionBroken;
+    private final Object motionLock = new Object();
+    /** 触摸注入用的那一份代理（只在 motionLock 里碰）。 */
+    private Object motionManager;
+    private Method motionInject;
+
     Injector() {
         Method m = null;
         String why = null;
@@ -48,6 +60,65 @@ final class Injector {
         }
         setDisplayId = m;
         broken = why;
+        m = null;
+        why = null;
+        try {
+            m = MotionEvent.class.getMethod("setDisplayId", int.class);
+        } catch (NoSuchMethodException e) {
+            why = "MotionEvent.setDisplayId（" + e + "）";
+        }
+        motionSetDisplayId = m;
+        motionBroken = why;
+    }
+
+    /** 触摸注入能不能用：能就返回 null，不能返回原因（只看反射得到的东西在不在，不真注入）。 */
+    String motionStatus() {
+        return motionBroken;
+    }
+
+    /**
+     * 注入一个触摸事件到 displayId 那块屏（当前方向的屏幕坐标），异步模式：入队就返回，不等目标应用处理。
+     * 返回系统收没收：false = 被拒（Android 16 起注入流不自洽时就是这样，不抛异常）。代理死了照按键那样重取一次再试。
+     */
+    boolean motion(int displayId, InjectStream.Event e) throws ReflectiveOperationException {
+        if (motionBroken != null) throw new NoSuchMethodException(motionBroken);
+        int n = e.ids.length;
+        MotionEvent.PointerProperties[] props = new MotionEvent.PointerProperties[n];
+        MotionEvent.PointerCoords[] coords = new MotionEvent.PointerCoords[n];
+        for (int i = 0; i < n; i++) {
+            props[i] = new MotionEvent.PointerProperties();
+            props[i].id = e.ids[i];
+            props[i].toolType = MotionEvent.TOOL_TYPE_FINGER;
+            coords[i] = new MotionEvent.PointerCoords();
+            coords[i].x = e.xs[i];
+            coords[i].y = e.ys[i];
+            coords[i].pressure = 1f;
+            coords[i].size = 1f;
+        }
+        // 设备号随便填：系统把注入事件的设备号一律改成 -1（VIRTUAL_KEYBOARD_ID）
+        MotionEvent ev = MotionEvent.obtain(e.downTime, e.eventTime, e.action, n, props, coords, 0, 0, 1f, 1f,
+                0, 0, InputDevice.SOURCE_TOUCHSCREEN, e.flags);
+        try {
+            motionSetDisplayId.invoke(ev, displayId);
+            synchronized (motionLock) {
+                try {
+                    if (motionManager == null) {
+                        Object[] got = fetch();
+                        motionInject = (Method) got[1];
+                        motionManager = got[0];
+                    }
+                    return (Boolean) motionInject.invoke(motionManager, ev, INJECT_MODE_ASYNC);
+                } catch (InvocationTargetException | RuntimeException ex) {
+                    motionManager = null;
+                    Object[] got = fetch();
+                    motionInject = (Method) got[1];
+                    motionManager = got[0];
+                    return (Boolean) motionInject.invoke(motionManager, ev, INJECT_MODE_ASYNC);
+                }
+            }
+        } finally {
+            ev.recycle();
+        }
     }
 
     /** 现在能不能注入：能就返回 null，不能返回原因（每次连上时随 hello 告诉 App）。 */
@@ -117,10 +188,16 @@ final class Injector {
 
     private void ensure() throws ReflectiveOperationException {
         if (inputManager != null) return;
+        Object[] got = fetch();
+        injectInputEvent = (Method) got[1];
+        inputManager = got[0];
+    }
+
+    /** 现取输入服务的代理和注入方法：{代理, injectInputEvent}。 */
+    private static Object[] fetch() throws ReflectiveOperationException {
         try {
             Object im = SystemServices.get("input", IFACE);
-            injectInputEvent = Class.forName(IFACE).getMethod("injectInputEvent", InputEvent.class, int.class);
-            inputManager = im;
+            return new Object[]{im, Class.forName(IFACE).getMethod("injectInputEvent", InputEvent.class, int.class)};
         } catch (ClassNotFoundException | NoSuchMethodException e) {
             // 这个系统版本的 IInputManager 不是这个样子：退回 InputManagerGlobal（14 起）/ InputManager 单例。
             // 单例里的代理在框架重启后恢复不了，那时只能重启服务
@@ -133,8 +210,7 @@ final class Injector {
                 cls = Class.forName("android.hardware.input.InputManager");
                 im = cls.getDeclaredMethod("getInstance").invoke(null);
             }
-            injectInputEvent = cls.getMethod("injectInputEvent", InputEvent.class, int.class);
-            inputManager = im;
+            return new Object[]{im, cls.getMethod("injectInputEvent", InputEvent.class, int.class)};
         }
     }
 }

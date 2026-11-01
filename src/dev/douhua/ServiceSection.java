@@ -27,7 +27,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 设置页最上面一节"豆花儿服务"：手机自己拉起服务要满足的每一项，实时显示有没有满足，没满足的给一句说明和一个直达系统页面的按钮；
+ * 设置页"通用"页最上面一节"豆花儿服务"：手机自己拉起服务要满足的每一项，实时显示有没有满足，没满足的给一句说明和一个直达系统页面的按钮；
  * 配对的分步引导（含公共网络别选"始终允许"）、自动启动开关和退避说明、常驻提醒（无线调试开着时提醒关掉）。
  *
  * 各项怎么判断（都不要位置权限）：
@@ -376,9 +376,9 @@ final class ServiceSection implements SelfStart.Listener {
         openDeveloper(PREF_WIRELESS);
     }
 
-    /** 给通知用：打开设置页并转去无线调试那一页（见 {@link #EXTRA_OPEN_WIRELESS}）。 */
+    /** 给通知用：打开设置页（停在"通用"页，从系统设置回来看得到这一节）并转去无线调试那一页（见 {@link #EXTRA_OPEN_WIRELESS}）。 */
     static Intent openWirelessIntent(Context c) {
-        return new Intent(c, SettingsActivity.class)
+        return SettingsActivity.serviceIntent(c)
                 .putExtra(EXTRA_OPEN_WIRELESS, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
     }

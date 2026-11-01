@@ -16,7 +16,7 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 16;
+    public static final int VERSION = 18;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
 
@@ -29,12 +29,19 @@ public final class Proto {
     /**
      * 手势参数：pointerSpeed:f32, acceleration:f32, scrollStepDp:f32, naturalScroll:u8, pinchZoom:u8, edgeScroll:u8,
      * edgeScrollHorizontal:u8, edgeWidthDp:f32, scrollTicks:u8, longPressDrag:u8, longPressMs:i32,
-     * tapToDrag:u8, dragWindowMs:i32, density:f32（每 dp 多少像素）, slowFactor:f32, texture:u8（移动时的颗粒震动）。
+     * tapToDrag:u8, dragWindowMs:i32, density:f32（每 dp 多少像素）, slowFactor:f32, texture:u8（移动时的颗粒震动），
+     * inertia:u8（惯性滚动）, inertiaTauMs:i32（阻尼）, inertiaMinSpeed:f32（多快算拨，dp/ms）, smoothScroll:u8（连续滚动），
+     * stickSpeed:f32（小红点灵敏度）, stickTap:u8（轻点红点 = 左键）, stickInertia:u8（小红点负惯性）。
+     * 最后七项是协议 18 加的。编解码只在 {@link ConfigCodec} 一处（App、服务、自测共用）。
      */
     public static final int CMD_CONFIG = 4;
     /**
-     * 界面布局：active:u8, relay:u8, displayId:i32, rotation:u8, width:i32, height:i32, count:u16,
-     * 然后 count 个区域 {type:u8, id:i32, left:i32, top:i32, right:i32, bottom:i32}（type 是 REGION_*），坐标是屏幕像素。
+     * 界面布局：active:u8, relay:u8, displayId:i32, rotation:u8, width:i32, height:i32,
+     * full:u8, winLeft:i32, winTop:i32, winRight:i32, winBottom:i32, gestLeft:i32, gestTop:i32, gestRight:i32, gestBottom:i32,
+     * count:u16, 然后 count 个区域 {type:u8, id:i32, left:i32, top:i32, right:i32, bottom:i32}（type 是 REGION_*），坐标是屏幕像素。
+     * width / height 是整块屏（当前方向）的尺寸。full = 豆花窗口占满整块屏；win* = 豆花窗口在屏上的范围（右、下不含）；
+     * gest* = 贴着窗口四条边的系统手势带宽度（窗口的 systemGestures 插图）。协议 17 起有 full 到 gestBottom 这一段：
+     * 桌面模式下没占满（分屏 / 小窗）时，服务把按在窗口外、手势带里的手指注入回系统（分屏透传，见 server.TouchSplit）。
      * 键盘面板的整块范围（{@link #REGION_KEYBOARD}）排在它的键后面。
      * active=1 时服务接管这块屏的触摸屏。relay=1（蓝牙模式）时分流出的鼠标、键盘报文不写手机自己的虚拟设备，
      * 发回 App（{@link #MSG_MOUSE} / {@link #MSG_KEYBOARD}），由 App 从蓝牙发出去。
@@ -49,7 +56,10 @@ public final class Proto {
      * （和系统导航栏的旋转建议按钮做的一样）；连接断开时恢复原来的方向锁定。
      */
     public static final int CMD_ROTATE = 8;
-    /** 滚一格（动作"滚轮向上 / 向下"）：wheel:i8（正 = 向上）。按住连续滚的节奏由 App 定，一格发一次。 */
+    /**
+     * 滚一格（动作"滚轮向上 / 向下"）：wheel:i8（格数，正 = 向上）。按住连续滚的节奏由 App 定，一格发一次。
+     * 服务里换成 1/120 格（Hid.WHEEL_UNIT）再按主机倍率出；转着的惯性先停。
+     */
     public static final int CMD_WHEEL = 9;
     /**
      * 保活：没有负载。App 的连接线程空闲 {@link #PING_INTERVAL_MS} 就发一个，只表示"连接还活着"。
@@ -71,7 +81,7 @@ public final class Proto {
      * 协议 15 起去掉了电源那一个字节（14 是 5 个字节）。
      */
     public static final int CMD_HARD_KEYS = 12;
-    /** 按住 / 松开鼠标左键：down:u8。DeX 模式下实体键按住配了"左键"时用，和 REGION_HOLD_LEFT 共用服务里的计数。 */
+    /** 按住 / 松开鼠标左键：down:u8。桌面模式下实体键按住配了"左键"时用，和 REGION_HOLD_LEFT 共用服务里的计数。 */
     public static final int CMD_HOLD_LEFT = 13;
 
     public static final int REGION_PAD = 0;
@@ -91,6 +101,21 @@ public final class Proto {
      * 会当成按钮 id 0（按钮条的"退出"），所以加它时协议升到了 14。
      */
     public static final int REGION_KEYBOARD = 4;
+    /**
+     * 小红点（模拟 ThinkPad TrackPoint，键盘页 ⋯ 菜单里"指点"选小红点时才有）：id = {@link #STICK_ID}。
+     * 按住往哪边推光标就往哪边走、推得越远越快（TouchRouter → TrackPoint，按节拍发）。协议 18 起。
+     */
+    public static final int REGION_STICK = 5;
+    /**
+     * 三个鼠标键（选小红点时键盘最下面那排、或者触控板上沿 / 下沿的三键条）：id = {@link #MOUSE_BUTTON_ID_BASE} | 鼠标键位
+     * （BUTTON_LEFT / RIGHT / MIDDLE）。左 / 右键按住就按住；中键按着时推红点 / 单指划触控板 = 滚动，一格都没滚过就松开 = 中键单击。
+     * 左键和 REGION_HOLD_LEFT、CMD_HOLD_LEFT 共用服务里的计数。协议 18 起。
+     */
+    public static final int REGION_MOUSE_BUTTON = 6;
+    /** 三个鼠标键的按钮编号基数（| 键位）；要小于 KEY_ID_BASE（App 把 ≥ KEY_ID_BASE 的编号都当键盘键）。 */
+    public static final int MOUSE_BUTTON_ID_BASE = 0x800;
+    /** 小红点的按钮编号（只用来让 App 画按下的样子）。 */
+    public static final int STICK_ID = 0x810;
     public static final int KEY_ID_BASE = 0x10000;
 
     public static final long HEARTBEAT_INTERVAL_MS = 1000;
@@ -117,7 +142,7 @@ public final class Proto {
     public static final int HELLO_OK = 1;
     /** 另一个连接正在用服务、而且还在说话：服务发完这条就关掉这条连接，App 照常每秒重试。message 为空。 */
     public static final int HELLO_BUSY = 2;
-    /** 震动：kind:u8（GestureEngine.HAPTIC_*）。 */
+    /** 震动：kind:u8（GestureEngine.HAPTIC_*；协议 18 起多了惯性的"放开" 6、"刹住" 7）。 */
     public static final int MSG_HAPTIC = 0x81;
     /** 三指 / 四指手势：fingers:u8, kind:u8（GestureEngine.GESTURE_*）。 */
     public static final int MSG_GESTURE = 0x82;
@@ -139,9 +164,19 @@ public final class Proto {
     public static final int GRAB_FAILED = 5;
     public static final int GRAB_DISCONNECTED = 6;
     public static final int GRAB_RELEASED = 7;
+    /** 分屏 / 小窗时没法把另一边的触摸注入回系统：不独占，触摸交还系统（触控板暂停）；detail = 原因原文。 */
+    public static final int GRAB_NO_PASSTHROUGH = 8;
+    /**
+     * 分屏 / 小窗时系统眼里这块触摸屏还有手指按着（多半按在另一边的应用上）：等全部抬起再接管，这之前触摸归系统、触控板暂停
+     * （这时独占，系统永远等不到那根手指抬起）。
+     */
+    public static final int GRAB_WAIT_LIFT = 9;
     /** 锁定中的修饰键：mask:u8（HID 修饰键位：1 Ctrl、2 Shift、4 Alt、8 Win）。点一下修饰键锁定，打完下一个键自动解开。 */
     public static final int MSG_MODIFIERS = 0x85;
-    /** 转发的鼠标报文（relay 模式）：buttons:u8, dx:i16, dy:i16, wheel:i8, pan:i8。 */
+    /**
+     * 转发的鼠标报文（relay 模式）：buttons:u8, dx:i16, dy:i16, wheel:i16, pan:i16。wheel / pan 是 1/120 格（Hid.WHEEL_UNIT），
+     * App 按蓝牙主机设的倍率换算成计数（Hid.WheelOut）。协议 18 以前是 i8 的格数。
+     */
     public static final int MSG_MOUSE = 0x86;
     /** 转发的键盘报文（relay 模式）：HID 键盘报文原样 8 字节（修饰键位、保留、6 个键）。 */
     public static final int MSG_KEYBOARD = 0x87;

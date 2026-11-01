@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # 打字测试的分析（tools/type-log.sh 记下的一次，tools/type-analyze.sh 调）。
 # 输入：clock.txt（对时）、phone.log（logcat，标签 douhua-keys 的 L/K/p/u 行，格式见 TouchRouter.Trace）、
-#      typing.json（网页记的每句目标、开始 / 结束时间、电脑收到的每个按键）；DeX 模式（页面开在手机上）多一个空文件 dex。
+#      typing.json（网页记的每句目标、开始 / 结束时间、电脑收到的每个按键）；用 --desktop（旧名 --dex）记的（页面开在手机上）多一个空文件 dex。
 # 做法：手机的触点按时间分到句子里；每句按手机实际判定的键重放编辑（⌫ 删掉最后一个字），最终的字和目标做编辑距离对齐 →
 #   对 / 按错没改（替换）/ 按空（目标里有、没打出来）/ 多打；被 ⌫ 删掉的字按"打它之前的字对应到目标哪里"推出想打的字 →
 #   按错改过 / 删掉的对字。误按率 =（按空 + 按错没改 + 按错改过）/ 目标字数。
@@ -220,7 +220,7 @@ def analyze(d, quiet=False):
     off, rtt = clock_offset(os.path.join(d, 'clock.txt'))
     presses = parse_phone(os.path.join(d, 'phone.log'), off)
     page = json.load(open(os.path.join(d, 'typing.json')))
-    page_off = off if os.path.exists(os.path.join(d, 'dex')) else 0.0   # 页面开在 DeX（手机）上：它的时间也是手机的时钟
+    page_off = off if os.path.exists(os.path.join(d, 'dex')) else 0.0   # 页面开在手机（含它接的外接屏）上：它的时间也是手机的时钟
     sentences = [s for s in page.get('sentences', []) if s.get('end') is not None]
     total = dict.fromkeys(['对', '按错没改', '按错改过', '按空', '按空有触点', '多打', '删掉的对字'], 0)
     target_chars = lost = extra = mismatched = 0

@@ -19,22 +19,37 @@ fi
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 # 只编译不依赖 Android 的部分：手势识别、触摸分流、HID 报文、多点触控解码、触摸屏查找、空中鼠标、
-# 键盘面板自己收触摸时的多指定键（KeyFingers）、
+# 键盘面板自己收触摸时的多指定键（KeyFingers）、键位和分裂键盘的分行 / 摆放（KeyRows）、键盘界面怎么摆（KeyboardPlan）、
+# 分屏透传的分流和注入流拼装（TouchSplit、InjectStream）、
 # 服务的会话交接部件（独占锁、顶替策略、方向锁定、心跳和释放原因）、日志限频、带超时的子进程、实体键（设备挑选、判断状态机）、
+# TouchRouter 的一次性定时器（OneShotTimer：撤掉 / 取代后在等锁的那次不调）、
 # 打字测试的重放（KeyReplay）、adb 无线配对的密码学（SPAKE2 / HKDF / AES-GCM，向量取自 BoringSSL）、
-# 豆花自己连 adbd 的协议（消息帧、adb 公钥格式、自签证书、配对 / 连接客户端）和拉起服务的 shell 命令、自动启动的退避规则
+# 豆花自己连 adbd 的协议（消息帧、adb 公钥格式、自签证书、配对 / 连接客户端）和拉起服务的 shell 命令、自动启动的退避规则、
+# 主界面的十八套配色（槽位齐全、对比度、小红点的红）、
+# 惯性滚动的物理（ScrollInertia）、连续滚动的描述符 / 滚轮倍率换算、CMD_CONFIG 编解码（HidTest）、uhid 的 GET / SET_REPORT（UhidEvents）、
+# 小红点（TrackPoint：速度曲线、负惯性、积分、轻点、颗粒、中键滚动）、
+# 触控板背景图怎么摆（PadFit：五种显示方式、焦点、吸附、平铺相位、按形状挑设置、解码多大）、
+# 主机实测扫描许发哪些键、一段怎么拆成拍（KeyScan）
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \
     src/dev/douhua/Proto.java src/dev/douhua/GestureEngine.java \
+    src/dev/douhua/ScrollInertia.java src/dev/douhua/ConfigCodec.java \
     src/dev/douhua/Hid.java src/dev/douhua/TouchRouter.java \
+    src/dev/douhua/TrackPoint.java test/dev/douhua/TrackPointTest.java \
+    test/dev/douhua/HidTest.java src/dev/douhua/server/UhidEvents.java \
     src/dev/douhua/server/MtDecoder.java src/dev/douhua/server/TouchDevice.java \
     src/dev/douhua/server/ScreenRotation.java src/dev/douhua/KeyboardSnap.java \
     src/dev/douhua/server/TouchGrabLock.java src/dev/douhua/server/SessionPolicy.java \
     src/dev/douhua/server/RotationLock.java src/dev/douhua/server/LogThrottle.java \
     src/dev/douhua/server/Shell.java src/dev/douhua/server/GrabCondition.java \
     src/dev/douhua/server/KeyDevices.java src/dev/douhua/server/HardKeyGate.java \
+    src/dev/douhua/server/TouchSplit.java src/dev/douhua/server/InjectStream.java \
+    src/dev/douhua/server/LiftWatch.java src/dev/douhua/server/OneShotTimer.java \
+    test/dev/douhua/server/PassthroughTest.java \
     test/dev/douhua/GestureEngineTest.java test/dev/douhua/server/ServerPartsTest.java \
     test/dev/douhua/KeyboardSnapTest.java test/dev/douhua/TouchRouterTest.java \
     src/dev/douhua/KeyFingers.java test/dev/douhua/KeyFingersTest.java \
+    src/dev/douhua/KeyRows.java test/dev/douhua/KeyRowsTest.java \
+    src/dev/douhua/KeyboardPlan.java test/dev/douhua/KeyboardPlanTest.java \
     src/dev/douhua/HardKeys.java src/dev/douhua/AirPointer.java \
     test/dev/douhua/AirMouseTest.java \
     tools/typelog/KeyReplay.java \
@@ -46,17 +61,33 @@ trap 'rm -rf "$OUT"' EXIT
     src/dev/douhua/adb/PairingClient.java src/dev/douhua/adb/AdbConnection.java \
     test/dev/douhua/adb/AdbProtocolTest.java \
     src/dev/douhua/ServerCommands.java test/dev/douhua/ServerCommandsTest.java \
-    src/dev/douhua/AutoStartBackoff.java test/dev/douhua/AutoStartBackoffTest.java
+    src/dev/douhua/AutoStartBackoff.java test/dev/douhua/AutoStartBackoffTest.java \
+    src/dev/douhua/Theme.java test/dev/douhua/ThemeTest.java \
+    src/dev/douhua/PadFit.java test/dev/douhua/PadFitTest.java \
+    src/dev/douhua/KeyScan.java test/dev/douhua/KeyScanTest.java
 "$JDK/bin/java" -cp "$OUT" dev.douhua.GestureEngineTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.HidTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.server.ServerPartsTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.server.PassthroughTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyboardSnapTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.TouchRouterTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.TrackPointTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyFingersTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.KeyRowsTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.KeyboardPlanTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.AirMouseTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.adb.AdbCryptoTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.adb.AdbProtocolTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.ServerCommandsTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.AutoStartBackoffTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.ThemeTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.PadFitTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.KeyScanTest
 # 打字测试的分析（tools/typelog/analyze.py）：造一份小日志测对齐和分类，再用真正的 TouchRouter 重放它导出的触点
 python3 tools/typelog/analyze.py --selftest "$OUT/typelog"
 "$JDK/bin/java" -cp "$OUT" KeyReplay "$OUT/typelog/replay.txt" check
+# 实体键盘的键帽数据（tools/kbd/，不联网）：生成器的解析规则（小样本；本机有 libxkbcommon 和 xkb 数据时顺带测 xkb 取字，没有就跳过）、
+# 生成好的 res/raw/kbd_*.txt（来源和 sources.json 一致、不变量、抽查值）、主机实测扫描的分析（拿生成的数据造假主机）
+python3 tools/kbd/gen_layouts.py --selftest
+python3 tools/kbd/check_tables.py
+python3 tools/kbd/compare.py --selftest

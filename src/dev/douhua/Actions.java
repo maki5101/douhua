@@ -10,8 +10,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 所有能自定义的位置共用的动作清单：左侧按钮条、触控板四角的小按钮、三指 / 四指手势、键盘最下面一排。
- * 加新动作只在这里加一行；id 存进设置，改名不能改 id。
+ * 所有能自定义的位置共用的动作清单："自定义按键"（左边一列）、触控板四角的小按钮、三指 / 四指手势、键盘最下面一排、音量键、
+ * 空中鼠标页的格子。加新动作只在这里加一行；id 存进设置，改名不能改 id。
+ * 以前的"收起 / 显示左侧按钮条"（toggle_strip）2026-11-01 删了：那一列改叫自定义按键、开关只在设置里；存过它的位置按"无"处理。
  *
  * 另有"自定义组合键"：id 形如 "combo:263:Ctrl+C"（见 {@link #combo}），任何位置都能放。
  */
@@ -24,17 +25,17 @@ final class Actions {
          * 和真键盘按下一样，发给当前有焦点的窗口。放在键盘那排时按住不放会连发。
          */
         HID,
-        /** 往 DeX 屏幕注入一个系统按键（返回、主屏这类键盘上没有的键）。code = KeyEvent 键码，meta = 修饰键。 */
+        /** 往外接屏（没接外接屏时是当前焦点所在的屏）注入一个系统按键（返回、主屏这类键盘上没有的键）。code = KeyEvent 键码，meta = 修饰键。 */
         KEY,
         /** 点一下鼠标键（code = Proto.BUTTON_*）。 */
         CLICK,
-        /** 按住期间鼠标左键一直按着（只在左侧按钮上有意义；放在别处等同单击）。 */
+        /** 按住期间鼠标左键一直按着（只在按钮、音量键这类能按住的地方有意义；手势这类只能点一下的地方等同单击）。 */
         HOLD_LEFT,
         /** 滚轮（code = +1 向上 / -1 向下）：按钮、音量键按住时匀速一格格连续滚；只能点一下的地方（手势、键盘那排）滚一格。 */
         WHEEL,
         /** 打开 / 关闭键盘界面（虚拟 USB 键盘）。 */
         KEYBOARD,
-        /** 打开 / 关闭"贴字"面板：用手机自己的输入法（语音、中文）打字，经剪贴板贴到 DeX。 */
+        /** 打开 / 关闭"贴字"面板：用手机自己的输入法（语音、中文）打字，经剪贴板贴到正在输入的地方。 */
         PHONE_TEXT,
         /** 打开 / 关闭数字键盘。 */
         NUMPAD,
@@ -44,8 +45,6 @@ final class Actions {
         EXIT,
         /** 横竖屏切换。 */
         ROTATE,
-        /** 收起 / 显示左侧按钮条（收起后触控板四角放小按钮）。 */
-        TOGGLE_STRIP,
         /** 进出空中鼠标页面（上面是可设定的大按钮；只在蓝牙模式）。 */
         AIR_MOUSE,
         /** 按住移动：按着时光标跟着手机转动走（放在只能点一下的地方：点一下开、再点一下关）。 */
@@ -116,7 +115,6 @@ final class Actions {
         add("settings", R.string.act_settings, null, R.string.act_settings_s, null, Kind.SETTINGS, 0, 0);
         add("exit", R.string.act_exit, null, R.string.act_exit_s, null, Kind.EXIT, 0, 0);
         add("rotate", R.string.act_rotate, null, R.string.act_rotate_s, null, Kind.ROTATE, 0, 0);
-        add("toggle_strip", R.string.act_toggle_strip, null, R.string.act_toggle_strip_s, null, Kind.TOGGLE_STRIP, 0, 0);
         add("air_mouse", R.string.act_air_mouse, null, R.string.act_air_mouse_s, null, Kind.AIR_MOUSE, 0, 0);
         add("air_move", R.string.act_air_move, null, R.string.act_air_move_s, null, Kind.AIR_MOVE, 0, 0);
         add("air_drag", R.string.act_air_drag, null, R.string.act_air_drag_s, null, Kind.AIR_DRAG, 0, 0);
@@ -129,7 +127,7 @@ final class Actions {
         add("wheel_up", R.string.act_wheel_up, null, R.string.act_wheel_up_s, null, Kind.WHEEL, 1, 0);
         add("wheel_down", R.string.act_wheel_down, null, R.string.act_wheel_down_s, null, Kind.WHEEL, -1, 0);
 
-        // ── 系统 / DeX（键盘上没有的键，注入） ──
+        // ── 系统（键盘上没有的键，注入） ──
         key("back", R.string.act_back, null, R.string.act_back_s, null, KeyEvent.KEYCODE_BACK);
         key("home", R.string.act_home, null, R.string.act_home_s, null, KeyEvent.KEYCODE_HOME);
         key("recents", R.string.act_recents, null, R.string.act_recents_s, null, KeyEvent.KEYCODE_APP_SWITCH);
@@ -191,7 +189,7 @@ final class Actions {
         key("volume_up", R.string.act_volume_up, null, R.string.act_volume_up_s, null, KeyEvent.KEYCODE_VOLUME_UP);
         key("volume_down", R.string.act_volume_down, null, R.string.act_volume_down_s, null, KeyEvent.KEYCODE_VOLUME_DOWN);
         key("mute", R.string.act_mute, null, R.string.act_mute_s, null, KeyEvent.KEYCODE_VOLUME_MUTE);
-        // 苹果键盘上 🌐 那个键：蓝牙发标准的"下一个键盘布局"媒体键，DeX 注入安卓的切换输入法键
+        // 苹果键盘上 🌐 那个键：蓝牙发标准的"下一个键盘布局"媒体键，桌面模式注入安卓的切换输入法键
         key("lang_switch", R.string.act_lang_switch, null, 0, "🌐", KeyEvent.KEYCODE_LANGUAGE_SWITCH);
     }
 

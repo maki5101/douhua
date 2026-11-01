@@ -182,5 +182,7 @@ public class KeyReplay {
         @Override public void modifiers(int latched) { }
         @Override public void schedule(long delayMs) { }
         @Override public void cancelSchedule() { }
+        @Override public void startTicks() { }
+        @Override public void stopTicks() { }
     }
 }

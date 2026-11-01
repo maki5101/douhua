@@ -16,12 +16,22 @@ package dev.douhua;
  * - 轻点一下、马上再按住移动 = 拖动（松手结束）；轻点两下 = 双击
  * - 单指按住不动一会儿（震一下）= 按下左键，接着移动就是拖动，松手结束
  * - 三指 / 四指的轻点和上下左右滑，交给宿主按设置执行
+ * - 惯性滚动（{@link Config#inertia}）：边缘滚动快速一划松手，滚轮接着转、按阻尼慢慢停（{@link ScrollInertia}）；
+ *   转着时碰触控板就"抓住"马上停（这一下不算点击、不起长按，动了照常）。碰屏幕别的地方由宿主调 {@link #stopSpin}。
+ *   双指滚动不带惯性。转的时候用的是引擎唯一那个定时器槽（TIMER_SPIN，每 {@link #SPIN_FRAME_MS} 一帧），
+ *   {@link #cancel}（触摸屏释放、断开、退后台、换参数）一定让它停。
+ * - 连续滚动（{@link Config#smoothScroll}）：不按格，按 1/120 格（{@link Hid#WHEEL_UNIT}）平滑地出，每滚过一格的距离照样咔嗒一下；
+ *   锁着 Ctrl（缩放）时照旧按格。
+ * - 中键按着（三键条 / 键盘最下面那排的中键，宿主调 {@link #setScrollHold}）：单指在触控板上划 = 滚动（ThinkPad 的中键滚动），
+ *   方向"推哪边视野往哪边走"、不跟自然滚动开关，不起长按、不起惯性；单指轻点照旧是左键单击。
+ * - 小红点（{@link TrackPoint}，宿主按节拍推）的移动和滚动经 {@link #externalMove} / {@link #externalScroll} 出，
+ *   按着的鼠标键（引擎自己的 + 外部的）只有这里一份。
  * 一次手势里只要出现过多根手指，就一直按多指处理到全部抬起，避免抬起一根时光标乱跳。
  */
 public final class GestureEngine {
 
     public interface Output {
-        /** buttons 是当前按下状态；dx/dy/wheel/pan 是相对量。 */
+        /** buttons 是当前按下状态；dx/dy 是相对计数；wheel/pan 是相对量，单位 1/120 格（{@link Hid#WHEEL_UNIT}，正 = 往上 / 往右）。 */
         void mouse(int buttons, int dx, int dy, int wheel, int pan);
 
         /** 缩放 steps 格：正 = 放大（手指张开），负 = 缩小。一次开合手势里可能调用多次。 */
@@ -39,6 +49,12 @@ public final class GestureEngine {
         void schedule(long delayMs);
 
         void cancelSchedule();
+
+        /**
+         * 调试用：一次边缘滚动松手时量到的速度（dp/ms，带方向）和起转的速度（格/秒；0 = 没起惯性）。
+         * 服务 --debug 时记进日志，用来校准"多快算拨"（{@link Config#inertiaMinSpeed}）。
+         */
+        default void edgeRelease(float speedDpPerMs, float spinPerSecond) {}
     }
 
     public static final int GESTURE_TAP = 0;
@@ -55,6 +71,10 @@ public final class GestureEngine {
     public static final int HAPTIC_TICK = 4;
     /** 移动光标时的"颗粒"：极轻的一下，模拟摸着不光滑的表面（{@link Config#texture}）。 */
     public static final int HAPTIC_TEXTURE = 5;
+    /** 惯性滚动"放开"：边缘快速一划松手、滚轮接着转。转的时候不震。 */
+    public static final int HAPTIC_SPIN_START = 6;
+    /** 惯性滚动"刹住"：转着时碰了屏幕，马上停。自然停下、按键停、cancel 停都不震。 */
+    public static final int HAPTIC_SPIN_CATCH = 7;
 
     /** 按下点在左右边缘带里（单指上下滑 = 竖向滚动）。 */
     public static final int EDGE_VERTICAL = 1;
@@ -112,6 +132,20 @@ public final class GestureEngine {
         public float multiTapSlopDp = 12f;
         /** 三指 / 四指滑多远算一次滑动。 */
         public float swipeThresholdDp = 48f;
+        /** 惯性滚动：边缘滚动快速一划松手，接着转、慢慢停（双指滚动不带）。 */
+        public boolean inertia = true;
+        /** 惯性的阻尼时间常数 τ（毫秒，ScrollInertia.tauMs 按档位给）：越小停得越快。 */
+        public int inertiaTauMs = ScrollInertia.tauMs(ScrollInertia.DEFAULT_LEVEL);
+        /** 松手时手指沿滚动方向至少这么快（dp/ms）才算"拨"、起惯性；慢慢滚照旧松手就停。 */
+        public float inertiaMinSpeed = 0.6f;
+        /** 连续滚动：按 1/120 格平滑地出，不按格（主机设了分辨率倍率才真平滑，见 Hid.WheelOut）。 */
+        public boolean smoothScroll = false;
+        /** 小红点灵敏度：TrackPoint 的速度曲线整体乘这个（设置里 0.3–3.0）。 */
+        public float stickSpeed = 1.0f;
+        /** 轻点红点 = 左键（TrackPoint 的 press to select）。 */
+        public boolean stickTap = true;
+        /** 小红点的负惯性（起步、停下更利落，见 TrackPoint）。 */
+        public boolean stickInertia = true;
     }
 
     private static final int MAX_POINTERS = 16;
@@ -139,10 +173,33 @@ public final class GestureEngine {
     private static final int TIMER_DOUBLE_UP = 3;
     /** 单指按住不动：到点按下左键，进入拖动。 */
     private static final int TIMER_LONG_PRESS = 4;
+    /** 惯性滚动在转：每帧推进一步。和别的用途在时间上互斥（起转时一定是空的，转着时任何按下都先停它）。 */
+    private static final int TIMER_SPIN = 5;
+
+    /** 惯性每帧隔多久（约 62 帧/秒；蓝牙一个报文约 11.25ms，不会排队）。 */
+    static final int SPIN_FRAME_MS = 16;
+    /** 松手速度：取松手前这么久里首尾两帧的差。 */
+    static final int FLING_WINDOW_MS = 60;
+    /** 最后一帧离松手超过这么久（手指停住了再抬）：不算拨。 */
+    static final int FLING_LAST_GAP_MS = 40;
+    /** 记最近多少帧边缘滚动的位置（240Hz 的触摸屏 60ms 也有 15 帧）。 */
+    private static final int FLING_SAMPLES = 16;
+    /** 连续模式双指滚动：两指一起走了这么远再定锁不锁主方向。 */
+    private static final float AXIS_LOCK_DP = 30f;
 
     private static final int TWO_UNDECIDED = 0;
     private static final int TWO_SCROLL = 1;
     private static final int TWO_PINCH = 2;
+
+    /** 连续模式双指滚动的方向锁：还没定 / 只竖 / 只横 / 两个都要（斜着滚）。 */
+    private static final int AXIS_UNDECIDED = 0;
+    private static final int AXIS_V = 1;
+    private static final int AXIS_H = 2;
+    private static final int AXIS_BOTH = 3;
+    /** scroll() 这一帧先不出哪一轴（攒着）：方向锁还没定时，非主方向那一轴。 */
+    private static final int HOLD_NONE = 0;
+    private static final int HOLD_X = 1;
+    private static final int HOLD_Y = 2;
 
     private final Output out;
     private final Config cfg;
@@ -173,6 +230,38 @@ public final class GestureEngine {
     private boolean zooming;
     /** 本次手势从哪条边缘带开始（EDGE_* 的组合，0 = 不是边缘手势）；两种都有时按实际滑的方向定下来。 */
     private int edgeMode;
+    /** 本次手势一开始抓住了转着的惯性：不算轻点、不起长按（动了照常移动 / 滚动）。 */
+    private boolean caught;
+    /** 本次手势里有手指是被取消的（手掌、丢数据）：松手不起惯性。 */
+    private boolean noFling;
+    /** 边缘滚动：沿滚动方向累计划过的 dp，和最近几帧的（时间, 位置），松手时算速度。 */
+    private float edgeTravel;
+    private final long[] flingT = new long[FLING_SAMPLES];
+    private final float[] flingPos = new float[FLING_SAMPLES];
+    private int flingCount, flingHead;
+    /** 连续模式下"每滚过一格的距离咔嗒一下"：上一下咔嗒之后出了多少单位（带方向，来回抖不会一直响）。 */
+    private int tickAccX, tickAccY;
+    /** 连续模式双指滚动的方向锁（AXIS_*）。 */
+    private int twoAxis;
+
+    // ── 惯性（转着 = timerAction == TIMER_SPIN） ──
+    /** 速度大小（格/秒）、方向（+1 / -1，同松手前手指的走向）、竖还是横。 */
+    private double spinSpeed;
+    private int spinSign;
+    private boolean spinVertical;
+    /** 上一帧推进到的时间、起转时间（15 秒兜底）。 */
+    private long spinLast, spinStart;
+    /** 宿主告诉的：Ctrl 按着（键盘锁了 Ctrl、自带 Ctrl 的键按着、开合缩放中）。Ctrl + 滚轮是缩放：不起惯性、连续模式照旧按格。 */
+    private boolean ctrlHeld;
+
+    // ── 中键滚动（宿主告诉中键按着没有） ──
+    private boolean scrollHold;
+    /** 本次手势里有过中键滚动的帧：松手不起惯性。 */
+    private boolean holdUsed;
+    /** 正在中键滚动（上一帧就是）：没在的话这一帧从头算方向锁。 */
+    private boolean holdScrolling;
+    /** 这一段中键滚动手指走了多远（dp，带方向，定方向锁用）。 */
+    private float holdTx, holdTy;
 
     // ── 跨手势：轻点拖动、双击 ──
     private int timerAction = TIMER_NONE;
@@ -284,10 +373,19 @@ public final class GestureEngine {
         long dt = Math.max(1, t - lastFrameTime);
         lastFrameTime = t;
 
+        boolean holdFrame = maxFingers == 1 && scrollHold && !longDrag && !dragging;
+        if (!holdFrame) holdScrolling = false;
         if (maxFingers == 1 && longDrag) {
             pointer(dx, dy, dt);   // 长按后移动 = 拖动（左键按着）
+        } else if (holdFrame) {
+            // 中键按着：单指划 = 滚动（边缘带里按下的也是，不起惯性）；同边缘滚动，挪出轻点的容差才开始，轻点照旧是单击
+            if (moved) holdScroll(dx, dy);
+            else holdScrolling = false;
         } else if (maxFingers == 1 && edgeMode != 0) {
-            if (moved) edgeScroll(dx, dy);
+            if (moved) {
+                edgeScroll(dx, dy);
+                recordFling(t);
+            }
         } else if (maxFingers == 1) {
             pointer(dx, dy, dt);
             if (!dragging && external == 0) texture(dx, dy, t);   // 拖动时有持续轻震，颗粒会打断它
@@ -299,14 +397,20 @@ public final class GestureEngine {
     }
 
     public void up(int id, long t) {
+        up(id, t, false);
+    }
+
+    /** canceled：这根手指是被取消的（手掌、丢数据）：照旧当抬起收尾，但这次手势松手不起惯性。 */
+    public void up(int id, long t, boolean canceled) {
         if (id < 0 || id >= MAX_POINTERS || !active[id]) return;
+        if (canceled) noFling = true;
         active[id] = false;
         activeCount--;
         if (activeCount > 0) return;
         finishGesture(t);
     }
 
-    /** 系统取消了触摸、或触摸屏被释放：松开一切，不算点击。 */
+    /** 系统取消了触摸、或触摸屏被释放：松开一切，不算点击。转着的惯性也停（不震）。 */
     public void cancel() {
         for (int i = 0; i < MAX_POINTERS; i++) active[i] = false;
         activeCount = 0;
@@ -316,6 +420,8 @@ public final class GestureEngine {
         if (dragging || longDrag) out.haptic(HAPTIC_DRAG_END);
         dragging = false;
         longDrag = false;
+        scrollHold = false;
+        holdScrolling = false;
         endZoom();
         // 只靠 external 按着的键（实体键按住的"左键"，CMD_HOLD_LEFT）也要发松开
         boolean held = (buttons | external) != 0;
@@ -344,9 +450,73 @@ public final class GestureEngine {
                     out.haptic(HAPTIC_DRAG_START);
                 }
                 break;
+            case TIMER_SPIN:
+                spinStep(t);
+                break;
             default:
                 break;
         }
+    }
+
+    /**
+     * 惯性转着时停下（宿主在屏幕别的地方看到按下时调：键、按钮、"左键"、空白处、分屏透传归系统的手指都算）。
+     * feedback = 震一下"刹住"（跟"滚动咔嗒"开关走）。返回刚才在不在转。按在触控板上的不用调，{@link #down} 自己抓。
+     */
+    public boolean stopSpin(boolean feedback) {
+        if (timerAction != TIMER_SPIN) return false;
+        out.cancelSchedule();
+        timerAction = TIMER_NONE;
+        if (feedback && cfg.scrollTicks != TICKS_OFF) out.haptic(HAPTIC_SPIN_CATCH);
+        return true;
+    }
+
+    /** 惯性在转（测试用）。 */
+    boolean spinning() {
+        return timerAction == TIMER_SPIN;
+    }
+
+    /** Ctrl 按着没有（宿主每次修饰键变了都告诉）：按着时不起惯性、转着的马上停（不然转着的滚轮接上 Ctrl 就成了缩放）、连续模式照旧按格。 */
+    public void setCtrlHeld(boolean held) {
+        ctrlHeld = held;
+        if (held) stopSpin(false);
+    }
+
+    /**
+     * 中键按着没有（宿主在三键条 / 键盘最下面那排的中键第一个按下、最后一个松开时告诉）。按着时单指在触控板上划 = 滚动、不起长按；
+     * 手势进行到一半按下 / 松开也行，从下一帧起换。
+     */
+    public void setScrollHold(boolean on) {
+        if (on == scrollHold) return;
+        scrollHold = on;
+        if (on && timerAction == TIMER_LONG_PRESS) {   // 按着中键不起长按拖动
+            out.cancelSchedule();
+            timerAction = TIMER_NONE;
+        }
+    }
+
+    /** 中键按着吗（测试用）。 */
+    boolean scrollHold() {
+        return scrollHold;
+    }
+
+    /** 现在按着的鼠标键（引擎自己的 | 外部的）：小红点按着键时不发颗粒（是拖动，有持续轻震）。 */
+    int heldButtons() {
+        return buttons | external;
+    }
+
+    /** 这一刻滚动按连续模式出吗（锁着 Ctrl 时照旧按格）：小红点的中键滚动照这个出。 */
+    boolean smoothNow() {
+        return smooth();
+    }
+
+    /** 小红点推出来的光标位移（计数），按着的键照带。 */
+    public void externalMove(int dx, int dy) {
+        if (dx != 0 || dy != 0) out.mouse(buttons | external, dx, dy, 0, 0);
+    }
+
+    /** 小红点中键滚动出来的滚轮（1/120 格，正 = 往上 / 往右），按着的键照带。 */
+    public void externalScroll(int wheel, int pan) {
+        if (wheel != 0 || pan != 0) out.mouse(buttons | external, 0, 0, wheel, pan);
     }
 
     /** 外部按住 / 松开某个键（左侧按钮条用）。 */
@@ -361,14 +531,17 @@ public final class GestureEngine {
         out.mouse(buttons | external, 0, 0, 0, 0);
     }
 
-    /** 滚轮滚 n 格（正 = 向上），按着的键照带（动作"滚轮向上 / 向下"用）。 */
+    /** 滚轮滚 n 格（正 = 向上），按着的键照带（动作"滚轮向上 / 向下"用）。转着的惯性先停（相当于手又摸到了滚轮），不震。 */
     public void wheel(int n) {
-        out.mouse(buttons | external, 0, 0, n, 0);
+        stopSpin(false);
+        out.mouse(buttons | external, 0, 0, n * Hid.WHEEL_UNIT, 0);
     }
 
     // ═══════════ 内部 ═══════════
 
     private void startGesture(long t, int edge) {
+        // 转着的惯性：碰触控板 = 抓住，马上停、"刹住"震一下；这次手势不算轻点、不起长按（不然抓一下就点到了光标底下的东西）
+        caught = stopSpin(true);
         gestureStart = t;
         edgeMode = edge;
         lastFrameTime = t;
@@ -378,10 +551,17 @@ public final class GestureEngine {
         textureDist = 0;
         velocity = -1;
         scrollAccX = scrollAccY = 0;
+        tickAccX = tickAccY = 0;
+        twoAxis = AXIS_UNDECIDED;
+        edgeTravel = 0;
+        flingCount = 0;
+        noFling = false;
         swipeAccX = swipeAccY = 0;
         swipeFired = false;
         twoMode = TWO_UNDECIDED;
         secondTouch = false;
+        holdUsed = false;
+        holdScrolling = false;
         switch (timerAction) {
             case TIMER_RELEASE_TAP:
                 out.cancelSchedule();
@@ -408,7 +588,7 @@ public final class GestureEngine {
         }
         timerAction = TIMER_NONE;
         longDrag = false;
-        if (cfg.longPressDrag && !secondTouch) {
+        if (cfg.longPressDrag && !secondTouch && !caught && !scrollHold) {
             timerAction = TIMER_LONG_PRESS;
             out.schedule(cfg.longPressMs);
         }
@@ -426,9 +606,13 @@ public final class GestureEngine {
             out.haptic(HAPTIC_DRAG_END);
             return;
         }
+        if (maxFingers == 1 && edgeMode != 0 && moved && !holdUsed) {
+            fling(t);   // 边缘滚动松手：够快就起惯性（动过了，不会是轻点）。中键滚动过的不起
+            return;
+        }
         long duration = t - gestureStart;
         int limit = maxFingers == 1 ? cfg.tapMaxMs : cfg.tapMaxMs + 50;
-        boolean isTap = !moved && duration <= limit;
+        boolean isTap = !moved && duration <= limit && !caught;
 
         if (secondTouch) {
             secondTouch = false;
@@ -508,7 +692,7 @@ public final class GestureEngine {
             }
         }
         if (twoMode == TWO_SCROLL) {
-            scroll(dx, dy);
+            lockedScroll((p[0] + p[2]) / 2 - twoStartX, (p[1] + p[3]) / 2 - twoStartY, dx, dy, cfg.naturalScroll);
         } else if (twoMode == TWO_PINCH) {
             int steps = (int) ((dist - pinchCounted) / cfg.pinchStepDp);
             if (steps != 0) {
@@ -517,6 +701,49 @@ public final class GestureEngine {
                 out.zoom(steps);
             }
         }
+    }
+
+    /**
+     * 两个方向都能滚的滚动（双指滚动、中键滚动）：tx / ty 是这一段手指一共走了多远（定方向锁用），dx / dy 是这一帧的。
+     * 连续模式：手指不可能纯竖，另一轴每帧都带出一点点，内容会横着抖。走过 AXIS_LOCK_DP 时一个方向占到 2 倍以上
+     * 就锁住它（像 Mac 的"轨道"），斜着滚的不锁；没定之前先只出主方向，另一轴攒着（锁定后丢掉、不锁就补出来）。按格模式不用：攒不满一格。
+     */
+    private void lockedScroll(float tx, float ty, float dx, float dy, boolean natural) {
+        int hold = HOLD_NONE;
+        if (smooth()) {
+            if (twoAxis == AXIS_UNDECIDED && Math.hypot(tx, ty) >= AXIS_LOCK_DP) {
+                float ax = Math.abs(tx), ay = Math.abs(ty);
+                twoAxis = ay >= 2 * ax ? AXIS_V : ax >= 2 * ay ? AXIS_H : AXIS_BOTH;
+            }
+            if (twoAxis == AXIS_V) {
+                dx = 0;
+                scrollAccX = 0;
+            } else if (twoAxis == AXIS_H) {
+                dy = 0;
+                scrollAccY = 0;
+            } else if (twoAxis == AXIS_UNDECIDED) {
+                hold = Math.abs(ty) >= Math.abs(tx) ? HOLD_X : HOLD_Y;
+            }
+        }
+        scroll(dx, dy, false, hold, natural);
+    }
+
+    /**
+     * 中键按着时单指划：滚动，方向"推哪边视野往哪边走"（手指往下 = 往下翻，同拖滚动条 / 推小红点），不跟自然滚动开关。
+     * 刚进中键滚动（这次手势的第一帧，或者中键半路按下）时攒的量、方向锁从头算。
+     */
+    private void holdScroll(float dx, float dy) {
+        if (!holdScrolling) {
+            holdScrolling = true;
+            holdTx = holdTy = 0;
+            scrollAccX = scrollAccY = 0;
+            tickAccX = tickAccY = 0;
+            twoAxis = AXIS_UNDECIDED;
+        }
+        holdUsed = true;
+        holdTx += dx;
+        holdTy += dy;
+        lockedScroll(holdTx, holdTy, dx, dy, false);
     }
 
     private void endZoom() {
@@ -546,8 +773,78 @@ public final class GestureEngine {
             float ty = Math.abs(curY[id] - downY[id]);
             edgeMode = ty >= tx ? EDGE_VERTICAL : EDGE_HORIZONTAL;
         }
-        if (edgeMode == EDGE_VERTICAL) scroll(0, dy);
-        else scroll(dx, 0);
+        float d = edgeMode == EDGE_VERTICAL ? dy : dx;
+        edgeTravel += d;
+        if (edgeMode == EDGE_VERTICAL) scroll(0, d, false, HOLD_NONE);
+        else scroll(d, 0, false, HOLD_NONE);
+    }
+
+    /** 记一帧边缘滚动的位置（松手时算速度用），只留最近 FLING_SAMPLES 帧。 */
+    private void recordFling(long t) {
+        flingT[flingHead] = t;
+        flingPos[flingHead] = edgeTravel;
+        flingHead = (flingHead + 1) % FLING_SAMPLES;
+        if (flingCount < FLING_SAMPLES) flingCount++;
+    }
+
+    /**
+     * 松手速度（dp/ms，带方向）：松手前 FLING_WINDOW_MS 里首尾两帧的差。最后一帧离松手超过 FLING_LAST_GAP_MS（停住了再抬）、
+     * 窗口里不到两帧都当 0。拨到一半反向再松手的，按松手前那一小段的方向算。
+     */
+    private float flingSpeed(long tUp) {
+        if (flingCount < 2) return 0;
+        int newest = (flingHead + FLING_SAMPLES - 1) % FLING_SAMPLES;
+        if (tUp - flingT[newest] > FLING_LAST_GAP_MS) return 0;
+        int oldest = newest;
+        for (int i = 1; i < flingCount; i++) {
+            int k = (newest + FLING_SAMPLES - i) % FLING_SAMPLES;
+            if (tUp - flingT[k] > FLING_WINDOW_MS) break;
+            oldest = k;
+        }
+        long dt = flingT[newest] - flingT[oldest];
+        if (oldest == newest || dt <= 0) return 0;
+        return (flingPos[newest] - flingPos[oldest]) / dt;
+    }
+
+    /**
+     * 边缘滚动松手：开着惯性、不是被取消的、没锁着 Ctrl、够快，就起转。起转速度 = 手指的滚动速度换算成格/秒，不放大
+     * （内容接着手上的劲儿走），截到 ScrollInertia.MAX_SPEED。
+     */
+    private void fling(long t) {
+        float v = flingSpeed(t);
+        boolean go = cfg.inertia && !noFling && !ctrlHeld && cfg.scrollStepDp > 0 && Math.abs(v) >= cfg.inertiaMinSpeed
+                && (edgeMode == EDGE_VERTICAL || edgeMode == EDGE_HORIZONTAL);
+        double speed = go ? Math.min(ScrollInertia.MAX_SPEED, Math.abs(v) / cfg.scrollStepDp * 1000) : 0;
+        out.edgeRelease(v, (float) speed);
+        if (!go) return;
+        spinSpeed = speed;
+        spinSign = v > 0 ? 1 : -1;
+        spinVertical = edgeMode == EDGE_VERTICAL;
+        spinLast = spinStart = t;
+        timerAction = TIMER_SPIN;
+        out.schedule(SPIN_FRAME_MS);
+        if (cfg.scrollTicks != TICKS_OFF) out.haptic(HAPTIC_SPIN_START);
+    }
+
+    /** 惯性推进到 t：按真实经过的时间走（闭式解，定时器晚了也不丢距离），走的格数折成"手指划过的 dp"喂给 scroll（不咔嗒）。 */
+    private void spinStep(long t) {
+        long dt = t - spinLast;
+        if (dt > 0) {
+            spinLast = t;
+            double[] r = ScrollInertia.advance(spinSpeed, dt / 1000.0, cfg.inertiaTauMs / 1000.0);
+            spinSpeed = r[0];
+            float d = (float) (r[1] * cfg.scrollStepDp) * spinSign;
+            if (spinVertical) scroll(0, d, true, HOLD_NONE);
+            else scroll(d, 0, true, HOLD_NONE);
+        }
+        if (spinSpeed <= 0 || t - spinStart >= ScrollInertia.MAX_MS) return;   // 自然停下（或兜底的 15 秒到了）：不震
+        timerAction = TIMER_SPIN;
+        out.schedule(SPIN_FRAME_MS);
+    }
+
+    /** 这一刻按连续模式出（锁着 Ctrl 时照旧按格：Ctrl + 滚轮是缩放，应用的缩放一级一级的，小数格各应用处理不一）。 */
+    private boolean smooth() {
+        return cfg.smoothScroll && !ctrlHeld;
     }
 
     private int firstActive() {
@@ -555,20 +852,50 @@ public final class GestureEngine {
         return 0;
     }
 
-    private void scroll(float dx, float dy) {
+    /**
+     * 手指（或惯性）沿滚动方向划过 dx / dy（dp）：攒着，按格模式攒满 scrollStepDp 出一格（= WHEEL_UNIT 个单位），
+     * 连续模式按 WHEEL_UNIT / scrollStepDp 个单位每 dp 出、余数留着。spin = 惯性推进的：不咔嗒。
+     * hold = 这一帧先不出哪一轴（照攒，见 twoFingers 的方向锁）。
+     */
+    private void scroll(float dx, float dy, boolean spin, int hold) {
+        scroll(dx, dy, spin, hold, cfg.naturalScroll);
+    }
+
+    /** natural = 内容跟着手指走（自然滚动）；中键滚动固定为假（视野跟着手指走）。 */
+    private void scroll(float dx, float dy, boolean spin, int hold, boolean natural) {
         scrollAccX += dx;
         scrollAccY += dy;
-        int stepsY = (int) (scrollAccY / cfg.scrollStepDp);
-        int stepsX = (int) (scrollAccX / cfg.scrollStepDp);
-        scrollAccY -= stepsY * cfg.scrollStepDp;
-        scrollAccX -= stepsX * cfg.scrollStepDp;
-        if (stepsX == 0 && stepsY == 0) return;
+        boolean smooth = smooth();
+        int per = smooth ? Hid.WHEEL_UNIT : 1;   // 一格出几个：按格 1 格，连续 120 个单位
+        int nY = hold == HOLD_Y ? 0 : (int) (scrollAccY * per / cfg.scrollStepDp);
+        int nX = hold == HOLD_X ? 0 : (int) (scrollAccX * per / cfg.scrollStepDp);
+        scrollAccY -= nY * cfg.scrollStepDp / per;
+        scrollAccX -= nX * cfg.scrollStepDp / per;
+        if (nX == 0 && nY == 0) return;
         // 滚轮正值 = 往上滚（内容下移）；横向 AC Pan 正值 = 往右滚（内容左移）。
         // 自然滚动时内容跟着手指走：手指下移 → 内容下移 → 滚轮正。
-        int wheel = cfg.naturalScroll ? stepsY : -stepsY;
-        int pan = cfg.naturalScroll ? -stepsX : stepsX;
+        int unit = smooth ? 1 : Hid.WHEEL_UNIT;
+        int wheel = (natural ? nY : -nY) * unit;
+        int pan = (natural ? -nX : nX) * unit;
         out.mouse(buttons | external, 0, 0, wheel, pan);
-        if (cfg.scrollTicks != TICKS_OFF) out.haptic(HAPTIC_TICK);
+        if (spin || cfg.scrollTicks == TICKS_OFF) return;   // 惯性转的时候不咔嗒（像罗技滚轮自由转时没有段落）
+        if (!smooth) {
+            out.haptic(HAPTIC_TICK);
+            return;
+        }
+        // 连续模式：每滚过一格的距离咔嗒一下（像带棘轮的平滑滚轮）
+        tickAccX += nX;
+        tickAccY += nY;
+        boolean tick = false;
+        if (Math.abs(tickAccY) >= Hid.WHEEL_UNIT) {
+            tickAccY -= tickAccY > 0 ? Hid.WHEEL_UNIT : -Hid.WHEEL_UNIT;
+            tick = true;
+        }
+        if (Math.abs(tickAccX) >= Hid.WHEEL_UNIT) {
+            tickAccX -= tickAccX > 0 ? Hid.WHEEL_UNIT : -Hid.WHEEL_UNIT;
+            tick = true;
+        }
+        if (tick) out.haptic(HAPTIC_TICK);
     }
 
     private void swipe(float dx, float dy) {

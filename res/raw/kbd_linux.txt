@@ -1,0 +1,109 @@
+# kbd_linux.txt：豆花儿实体键盘的键帽字，主机是 Linux（xkb 默认变体，model pc105）。自动生成，勿手改。
+# 生成：python3 tools/kbd/gen_layouts.py（数据源、版本、校验见 tools/kbd/sources.json；格式见 tools/kbd/README.md「数据格式」）。
+# 每行：HID 用法码（十六进制，PC 惯例的位置）、普通、Shift、AltGr（第三级）、AltGr+Shift（第四级）；空 = 没有字，\* = 死键，\\ = 反斜杠，\uXXXX = 看不见的字。
+# 数据：xkeyboard-config（读本机装的，用本机的 libxkbcommon 编译取字） 2.46（https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config），用本机 libxkbcommon 编译取字。
+# Copyright the xkeyboard-config contributors（明细见上游 COPYING / Debian xkb-data 的 copyright 文件）
+# 许可：MIT / HPND 类宽松许可（Debian 标为 Expat、Expat-Open-Group、HPND-sell-variant）：带上版权和许可声明即可再发布
+#
+#!platform linux
+#!source xkb 2.46
+
+@us
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	@
+20	3	#
+21	4	$
+22	5	%
+23	6	^
+24	7	&
+25	8	*
+26	9	(
+27	0	)
+2d	-	_
+2e	=	+
+2f	[	{
+30	]	}
+31	\\	|
+33	;	:
+34	'	"
+35	`	~
+36	,	<
+37	.	>
+38	/	?
+64	<	>
+
+@de
+04	a	A	æ	Æ
+05	b	B	“	‘
+06	c	C	¢	©
+07	d	D	ð	Ð
+08	e	E	€	€
+09	f	F	đ	ª
+0a	g	G	ŋ	Ŋ
+0b	h	H	ħ	Ħ
+0c	i	I	→	ı
+0d	j	J	\*\u0323	\*˙
+0e	k	K	ĸ	&
+0f	l	L	ł	Ł
+10	m	M	µ	º
+11	n	N	”	’
+12	o	O	ø	Ø
+13	p	P	þ	Þ
+14	q	Q	@	Ω
+15	r	R	¶	®
+16	s	S	ſ	ẞ
+17	t	T	ŧ	Ŧ
+18	u	U	↓	↑
+19	v	V	„	‚
+1a	w	W	ſ	§
+1b	x	X	«	‹
+1c	z	Z	←	¥
+1d	y	Y	»	›
+1e	1	!	¹	¡
+1f	2	"	²	⅛
+20	3	§	³	£
+21	4	$	¼	¤
+22	5	%	½	⅜
+23	6	&	¬	⅝
+24	7	/	{	⅞
+25	8	(	[	™
+26	9	)	]	±
+27	0	=	}	°
+2d	ß	?	\\	¿
+2e	\*´	\*`	\*¸	\*˛
+2f	ü	Ü	\*¨	\*˚
+30	+	*	~	¯
+31	#	'	’	\*˘
+33	ö	Ö	\*˝	\*\u0323
+34	ä	Ä	\*^	\*ˇ
+35	\*^	°	′	″
+36	,	;	·	×
+37	.	:	…	÷
+38	-	_	–	—
+64	<	>	|	\*\u0331

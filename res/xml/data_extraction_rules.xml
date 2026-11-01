@@ -3,7 +3,8 @@
   备份 / 换机迁移时不带的东西（清单里 allowBackup="false" 从 targetSdk 31 起只关云备份，换机直传（三星 Smart Switch 等）照样搬，要靠这份规则）：
   - files/adb/：adb 私钥（AndroidKeyStore 里的包装密钥不跟着走，搬过去也解不开，只会让新手机显示"已配对"却起不来服务）；
   - selfstart.xml：配对、启动的状态（"已配对"标记、上次结果、无线调试是不是豆花开的）。
-  其余设置（按钮、手势、键盘位置……）照常可以迁移。
+  其余设置（按钮、手势、键盘位置……）照常可以迁移；files/padbg/（触控板背景图，用户自己选的图）也照常迁移，
+  新手机上文件不在就当没设（PadImage 清掉 Prefs 里的文件名）。
 -->
 <data-extraction-rules>
     <cloud-backup>

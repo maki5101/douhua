@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>豆花儿按键扫描</title>
+<style>
+  :root { --bg: #121212; --fg: #e8e8e8; --dim: #8a8f94; --btn: #2a2f35; --accent: #8ab4f8; --ok: #4cd964; --warn: #ffb74d; --bad: #ff8a80; --line: #33383e; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 24px; margin: 4px 0; }
+  button { background: var(--btn); color: var(--fg); border: 1px solid #444; border-radius: 8px; padding: 10px 16px; font-size: 17px; cursor: pointer; }
+  button.go { border-color: var(--ok); }
+  ol { margin: 0; padding-left: 1.4em; } li { margin: 4px 0; }
+  .dim { color: var(--dim); font-size: 15px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  #pill { border-radius: 999px; padding: 2px 12px; font-size: 15px; border: 1px solid #444; color: var(--dim); }
+  #msg { min-height: 1.5em; color: var(--warn); }
+  #msg.ok { color: var(--ok); }
+  textarea { width: 100%; box-sizing: border-box; height: 64px; background: #1c1f23; color: var(--fg); border: 2px solid var(--line); border-radius: 8px; font: 28px/1.3 ui-monospace, monospace; padding: 6px 10px; resize: none; }
+  textarea:focus { border-color: var(--accent); outline: none; }
+  #log { font: 16px/1.6 ui-monospace, "DejaVu Sans Mono", monospace; white-space: pre; overflow: hidden; }
+  .y { color: var(--ok); } .n { color: var(--bad); } .q { color: var(--dim); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>豆花儿：主机实测扫描</h1>
+  <div id="intro">
+    <p id="who"></p>
+    <ol id="steps"></ol>
+    <p class="dim">豆花儿会按顺序发每个键（普通、Shift、再按需扫第三层），每个键后面跟一个空格、一个 Tab，这个页面记下主机实际出了什么字。
+      页面一失去焦点就暂停、叫手机停下。中途想停点"结束并保存"，已经扫过的照样能分析。</p>
+    <div class="row"><button id="start" class="go">开始</button></div>
+  </div>
+  <div id="run" class="hidden">
+    <div class="row"><span id="pill"></span><span style="flex:1"></span>
+      <button id="resume" class="go hidden">继续</button><button id="force" class="hidden">照样扫第三层</button><button id="finish">结束并保存</button></div>
+    <div id="msg"></div>
+    <textarea id="ta" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              placeholder="扫描中光标要一直在这里"></textarea>
+    <div id="log"></div>
+  </div>
+</main>
+<script>
+"use strict";
+// 记的东西给 tools/kbd/compare.py：records[i] = {i, ev, text}。ev 是这一步收到的事件：
+//   {t:"d", key, code, kc, mods, ag}（keydown；mods = Ctrl 1 | Shift 2 | Alt 4 | Meta 8，ag = AltGraph 按着）、
+//   {t:"i", it, data}（beforeinput）、{t:"cs"/"cu"/"ce", data}（输入法组合开始 / 更新 / 结束，死键在 Mac / iPad 上走这条）；
+// text = 这一步结束（收到 Tab）时框里的字（扫的键 + 空格；死键是"死键 + 空格"组合出来的字）。
+const $ = id => document.getElementById(id);
+const base = location.pathname.endsWith("/") ? location.pathname : location.pathname + "/";
+let plan = null, cur = 0, sentTo = 0, reqFrom = -1, reqSeq = 0, running = false, forced = false, finished = false;
+let bucket = [], records = [], deadline = 0, watchdog = 0, lines = [];
+
+function post(path, body) {
+  return fetch(base + path, { method: "POST", body: JSON.stringify(body || {}) }).then(r => r.json()).catch(e => ({ error: String(e) }));
+}
+function msg(text, ok) { $("msg").textContent = text || ""; $("msg").className = ok ? "ok" : ""; }
+function step() { return plan.steps[cur]; }
+
+function render() {
+  const s = plan.steps[Math.min(cur, plan.steps.length - 1)];
+  $("pill").textContent = `第 ${Math.min(cur + 1, plan.steps.length)} / ${plan.steps.length} 步 · ${plan.layers[s.layer]}`;
+  $("log").innerHTML = lines.slice(-10).join("\n");
+}
+
+function show(c) { return c === "" ? "（没字）" : c === " " ? "␣" : c.replace(/ /g, "⍽"); }
+function got(rec) {   // 粗看：第一个不是修饰键 / 空格 / Tab 的 keydown；死键看组合结果。精确的判断在 compare.py
+  const kd = rec.ev.filter(e => e.t === "d" && !["Shift", "Alt", "AltGraph", "Control", "Meta", "CapsLock", "Tab", " "].includes(e.key));
+  const ce = rec.ev.filter(e => e.t === "ce" && e.data);
+  const dead = kd.length && kd[0].key === "Dead" || ce.length > 0;
+  let ch = dead ? (ce.length ? ce[ce.length - 1].data : rec.text.replace(/ $/, "")) : (kd.length && [...kd[0].key].length === 1 ? kd[0].key : rec.text.replace(/ $/, ""));
+  return { ch, dead, code: kd.length ? kd[0].code : "" };
+}
+function logLine(s, rec) {
+  const g = got(rec);
+  const exps = [s.exp, s.expIso].filter(e => e).map(e => e[0] + (e[1] ? "（死键）" : ""));
+  const ok = s.exp === null ? null : exps.includes(g.ch + (g.dead ? "（死键）" : ""));
+  const cls = ok === null ? "q" : ok ? "y" : "n";
+  const exp = s.exp === null ? "—" : [...new Set(exps)].join(" 或 ");
+  lines.push(`<span class="${cls}">${String(s.i + 1).padStart(3)} ${s.label.padEnd(6)} ${plan.layers[s.layer].padEnd(6)} 期望 ${escapeHtml(exp)}  收到 ${escapeHtml(show(g.ch))}${g.dead ? "（死键）" : ""}</span>`);
+}
+function escapeHtml(t) { return t.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+function mods(e) { return (e.ctrlKey ? 1 : 0) | (e.shiftKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0); }
+
+const ta = $("ta");
+ta.addEventListener("keydown", e => {
+  const ag = e.getModifierState && e.getModifierState("AltGraph");
+  if (e.key === "Tab" || e.key === "Enter") e.preventDefault();
+  // 不是 Mac 时，单按 Alt（不是 AltGr）+ 键在浏览器里是菜单快捷键：拦掉（字照样记在 key 里）
+  else if (plan && plan.platform !== "mac" && e.altKey && !ag && !e.ctrlKey) e.preventDefault();
+  if (!running) return;
+  bucket.push({ t: "d", key: e.key, code: e.code, kc: e.keyCode, mods: mods(e), ag: !!ag });
+  if (e.key === "Tab") finishStep();
+});
+ta.addEventListener("beforeinput", e => { if (running) bucket.push({ t: "i", it: e.inputType, data: e.data }); });
+for (const [ev, t] of [["compositionstart", "cs"], ["compositionupdate", "cu"], ["compositionend", "ce"]])
+  ta.addEventListener(ev, e => { if (running) bucket.push({ t, data: e.data }); });
+ta.addEventListener("blur", () => { if (running) pause("页面失去了焦点（点到别处了？），暂停了，手机也停了。点\"继续\"从第 " + (cur + 1) + " 步接着来。"); });
+document.addEventListener("visibilitychange", () => { if (document.hidden && running) pause("页面切到后台了，暂停了。回来点\"继续\"。"); });
+
+function finishStep() {
+  const s = step();
+  const rec = { i: cur, ev: bucket, text: ta.value };
+  records[cur] = rec;
+  logLine(s, rec);
+  bucket = [];
+  ta.value = "";
+  cur++;
+  deadline = Date.now() + plan.stepMs + 2500;
+  render();
+  if (cur >= plan.steps.length) { done(true); return; }
+  if (cur >= sentTo) next();
+}
+
+// 扫第三层之前（Windows / Linux / 安卓）：普通层大多对得上才往下扫。主机布局没设对时右 Alt 可能只是 Alt，Alt + 字母会碰到菜单快捷键
+function baseOk() {
+  let n = 0, hit = 0;
+  for (const s of plan.steps) {
+    if (s.layer !== 0 || !s.exp || s.exp[1] || !records[s.i]) continue;
+    n++;
+    if (got(records[s.i]).ch === s.exp[0]) hit++;
+  }
+  return n === 0 ? 1 : hit / n;
+}
+
+async function next() {
+  if (!running || reqFrom === cur) return;   // 同一段只要一次（重复要的话手机会从头再发一遍这一段，页面就错位了）
+  reqFrom = cur;
+  if (cur === plan.l3Start && plan.checkBeforeL3 && !forced) {
+    const r = baseOk();
+    if (r < 0.8) {
+      running = false;
+      clearInterval(watchdog);
+      $("force").classList.remove("hidden");
+      msg(`普通层只有 ${Math.round(r * 100)}% 对得上：主机的键盘布局多半没设成 ${plan.layoutName}（或者开着输入法）。` +
+          `这时扫第三层，右 Alt 可能只是 Alt，会碰到快捷键。先"结束并保存"看结果；确定没问题再点"照样扫第三层"。`);
+      post("log", { msg: `普通层只有 ${Math.round(r * 100)}% 对得上，第三层先不扫，等人定` });
+      return;
+    }
+  }
+  // 发出去之前就把这一段的终点记上（和 scan_server.send_chunk 同一个规则）：adb 慢时回复还在路上，这一段的头几个 Tab 就到了，
+  // 那时还拿旧的 sentTo 判断会再要一段（起点 cur + 1），手机顶掉旧的从那里重发，后面整段错一位
+  const from = cur, seq = ++reqSeq;
+  sentTo = chunkEnd(from);
+  const r = await post("send", { from });
+  if (!running || seq !== reqSeq) return;   // 等回复期间暂停了，或者这一段已经收完、又要了下一段：这个回复过时了
+  if (r.error) { pause("电脑没能叫手机发键：" + r.error + "。看终端；修好后点\"继续\"。", true); return; }
+  sentTo = r.to;   // 以电脑那边为准（正常和 chunkEnd 一样）
+  deadline = Date.now() + plan.stepMs + 2500 + 1500;   // 第一步多给 adb 的时间
+}
+
+// from 开始的一段到哪（不含）：最多 plan.chunk 个，不跨进第三层（第三层另起一段，先核主机布局）
+function chunkEnd(from) {
+  let end = Math.min(from + plan.chunk, plan.steps.length);
+  if (from < plan.l3Start && plan.l3Start < end) end = plan.l3Start;
+  return end;
+}
+
+function startWatchdog() {
+  clearInterval(watchdog);
+  watchdog = setInterval(() => {
+    if (!running || Date.now() < deadline) return;
+    pause(`第 ${cur + 1} 步等了几秒没收到 Tab：手机没在发（看终端和手机），或者键丢了。点"继续"从第 ${cur + 1} 步重来（这一步收到的作废）。`);
+  }, 250);
+}
+
+function pause(text, noStop) {
+  running = false;
+  clearInterval(watchdog);
+  if (!noStop) post("stop");
+  bucket = [];
+  msg(text);
+  post("log", { msg: text });
+  $("resume").classList.remove("hidden");
+}
+
+function resume() {
+  ta.value = "";
+  bucket = [];
+  ta.focus();
+  $("resume").classList.add("hidden");
+  $("force").classList.add("hidden");
+  msg("");
+  sentTo = cur;
+  reqFrom = -1;
+  // 等焦点落稳再开始记、再要下一段：暂停前已经在路上的键这时到了也不记（不然会算到这一步头上）
+  setTimeout(() => {
+    if (finished) return;
+    if (document.activeElement !== ta) {
+      msg("光标不在框里：点一下框，再点\"继续\"。");
+      $("resume").classList.remove("hidden");
+      return;
+    }
+    ta.value = "";
+    bucket = [];
+    running = true;
+    startWatchdog();
+    deadline = Date.now() + 1e9;
+    next();
+  }, 300);
+}
+
+async function done(complete) {
+  if (finished) return;
+  finished = true;
+  running = false;
+  clearInterval(watchdog);
+  if (!complete) post("stop");
+  await post("save", { records: records.filter(r => r), complete: true, userAgent: navigator.userAgent,
+                       note: complete ? "" : `扫到第 ${cur} 步提前结束` });
+  msg(`结果已存到电脑上（扫了 ${cur} / ${plan.steps.length} 步）。分析：电脑终端里会自动跑 compare.py。`, true);
+  $("resume").classList.add("hidden"); $("force").classList.add("hidden"); $("finish").classList.add("hidden");
+  ta.blur();
+}
+
+$("start").onclick = () => {
+  $("intro").classList.add("hidden");
+  $("run").classList.remove("hidden");
+  render();
+  resume();
+};
+$("resume").onclick = resume;
+$("force").onclick = () => { forced = true; resume(); };
+$("finish").onclick = () => done(false);
+setInterval(() => { if (running) post("save", { records: records.filter(r => r), complete: false, userAgent: navigator.userAgent }); }, 5000);
+
+fetch(base + "plan").then(r => r.json()).then(p => {
+  plan = p;
+  $("who").textContent = `主机：${p.hostName}　布局：${p.layout}（主机设置里叫 ${p.layoutName}）　共 ${p.steps.length} 步` +
+    (p.third ? "" : "（这个布局在这家主机上没有第三层，不扫）");
+  const tips = {
+    ipad: `iPad：设置 → 通用 → 键盘 → 实体键盘，选「${p.layoutName}」（路径凭记忆，iPadOS 版本不同可能不一样）。`,
+    mac: `Mac：系统设置 → 键盘 → 输入法，加「${p.layoutName}」并切过去；弹出"键盘设置助理"就照它说的按 Z 左边那个键。`,
+    linux: `Linux：系统设置里加「${p.layoutName}」（xkb 默认变体）并切过去；fcitx / ibus 切到不带输入法的那个键盘布局。`,
+    win: `Windows：设置 → 时间和语言 → 语言，加「${p.layoutName}」键盘并切过去。`,
+    android: `桌面模式：手机设置 → 实体键盘 → Douhua Keyboard 选「${p.layoutName}」（三星的路径没核）；这个页面开在手机上（分屏或外接屏）。`,
+  };
+  for (const t of [tips[p.host], "关掉主机上的中文 / 日文等输入法（要原样的字）。自动更正、智能标点能关就关。",
+                   "手机上豆花儿开着、连着这台主机；扫描中别碰手机屏幕，键盘上别锁着 Shift / Ctrl。",
+                   "点\"开始\"，光标会落到下面的框里；扫描中别点别处。一般一两分钟扫完。"]) {
+    const li = document.createElement("li"); li.textContent = t; $("steps").appendChild(li);
+  }
+}).catch(e => { $("who").textContent = "读不到扫描计划：" + e; });
+</script>
+</body>
+</html>

@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 
+import dev.douhua.ConfigCodec;
+import dev.douhua.GestureEngine;
 import dev.douhua.Proto;
 
 /**
@@ -44,22 +46,7 @@ public final class TestClient {
             reader.start();
 
             out.writeByte(Proto.CMD_CONFIG);
-            out.writeFloat(2f);
-            out.writeFloat(1f);
-            out.writeFloat(20f);
-            out.writeByte(1);   // 自然滚动
-            out.writeByte(1);   // 开合缩放
-            out.writeByte(1);   // 边缘滚动
-            out.writeByte(1);   // 横向边缘滚动
-            out.writeFloat(28f);   // 边缘带宽度
-            out.writeByte(2);   // 咔嗒：所有滚动
-            out.writeByte(1);   // 长按拖动
-            out.writeInt(450);
-            out.writeByte(1);   // 轻点拖动
-            out.writeInt(220);
-            out.writeFloat(2.625f);
-            out.writeFloat(0.55f);   // 精细移动
-            out.writeByte(0);        // 颗粒震动：关
+            ConfigCodec.write(out, new GestureEngine.Config(), 2.625f);   // 全用默认参数，密度 2.625
             out.writeByte(Proto.CMD_LAYOUT);
             out.writeByte(1);
             out.writeByte(relay ? 1 : 0);
@@ -67,6 +54,8 @@ public final class TestClient {
             out.writeByte(0);
             out.writeInt(1248);
             out.writeInt(1972);
+            out.writeByte(1);   // 窗口占满整块屏（不分屏透传）
+            for (int i = 0; i < 8; i++) out.writeInt(0);   // 窗口范围、系统手势带：占满时不用
             out.writeShort(1);
             out.writeByte(Proto.REGION_PAD);
             out.writeInt(0);
@@ -129,7 +118,7 @@ public final class TestClient {
                         break;
                     case Proto.MSG_MOUSE:
                         Server.log("自测收到 鼠标 键=" + in.readUnsignedByte() + " 位移=(" + in.readShort() + "," + in.readShort()
-                                + ") 滚轮=" + in.readByte() + " 横滚=" + in.readByte());
+                                + ") 滚轮=" + in.readShort() + " 横滚=" + in.readShort() + "（滚轮单位 1/120 格）");
                         break;
                     case Proto.MSG_HARD_KEY:
                         Server.log("自测收到 实体键 " + in.readUnsignedByte() + " 事件 " + in.readUnsignedByte()

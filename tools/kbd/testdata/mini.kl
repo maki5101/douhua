@@ -1,0 +1,7 @@
+# gen_layouts.py --selftest 用的小样本，照 AOSP data/keyboards/Generic.kl 的写法手写。
+key 12    MINUS
+key 16    Q
+key 41    GRAVE
+key 43    BACKSLASH
+key 86    BACKSLASH
+key usage 0x0c0067 FOO                FALLBACK_USAGE_MAPPING

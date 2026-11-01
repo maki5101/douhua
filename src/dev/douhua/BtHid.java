@@ -16,6 +16,7 @@ import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.KeyEvent;
 
@@ -30,6 +31,10 @@ import java.util.Set;
  *
  * 整个进程一份：主界面和设置页都用它，最后一个用的人走了 {@link #GRACE_MS} 后才真的停，
  * 去设置页改个参数、切出去看一眼再回来，连接不断。所有方法和回调都在主线程。
+ *
+ * 连续滚动：描述符跟着设置里的"连续滚动"开关（开着才带滚轮的分辨率倍率，Hid.MOUSE_DESC_HIRES），开关一变就注销、重新注册
+ * （{@link #descriptorChanged}），对方要删掉这台手机重新配对才认新描述符。主机来设倍率就照办（它可能缓存着以前配对时的描述符），
+ * 每次连上先当 ×1、等主机重新设（规范里复位后默认 ×1；Linux 每次连接都重设）。滚轮量的单位是 1/120 格，按倍率换算（Hid.WheelOut）。
  */
 final class BtHid {
     interface Listener {
@@ -76,6 +81,13 @@ final class BtHid {
     private final Runnable retryLater = this::retryConnect;
     private final Runnable registerTimeout = this::onRegisterTimeout;
     private final Runnable connectTimeout = this::onConnectTimeout;
+    private final Runnable reregisterFallback = this::onReregisterTimeout;
+    /** 滚轮单位 → 计数，记着连着的主机设的倍率。 */
+    private final Hid.WheelOut wheelOut = new Hid.WheelOut();
+    /** 上次 registerApp 用的描述符带不带滚轮倍率（和设置对不上就重新注册）。 */
+    private boolean regHires;
+    /** 正在为换描述符注销：注销完（onAppStatusChanged(false)）马上重新注册。 */
+    private boolean reregistering;
 
     private int users;
     private boolean started;
@@ -135,7 +147,7 @@ final class BtHid {
         if (users > 0) start();
     }
 
-    /** 切回 DeX 模式时：立刻停，不等。 */
+    /** 切回桌面模式时：立刻停，不等。 */
     void stopNow() {
         main.removeCallbacks(stopLater);
         stop();
@@ -209,6 +221,8 @@ final class BtHid {
         connected = null;
         connecting = null;
         absRegistered = false;
+        reregistering = false;
+        main.removeCallbacks(reregisterFallback);
         setState(STATE_OFF);
     }
 
@@ -240,10 +254,12 @@ final class BtHid {
     };
 
     private void register() {
+        boolean hires = prefs.smoothScroll();
         BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
                 "Douhua", "Douhua touchpad & keyboard", "Douhua",
-                BluetoothHidDevice.SUBCLASS1_COMBO, Hid.combinedDescriptor(true));
+                BluetoothHidDevice.SUBCLASS1_COMBO, Hid.combinedDescriptor(true, hires));
         absRegistered = true;
+        regHires = hires;
         registering = true;
         setState(STATE_REGISTERING);
         try {
@@ -270,6 +286,43 @@ final class BtHid {
         if (!started || !registering || registered) return;
         Log.w(TAG, "注册蓝牙 HID " + REGISTER_TIMEOUT_MS / 1000 + " 秒没有回话：系统蓝牙卡住了，要重启手机");
         setState(STATE_STUCK);
+    }
+
+    /**
+     * 设置里的"连续滚动"开关变了（设置页切开关时、回到主界面时都调，没变什么都不做）：注册着的就注销、用新描述符重新注册。
+     * 正在注册的等它回话（onAppStatusChanged）再看。对方要删掉这台手机重新配对才认新描述符。
+     */
+    void descriptorChanged() {
+        if (hid == null || reregistering || registering || !registered) return;
+        if (regHires == prefs.smoothScroll()) return;
+        reregister();
+    }
+
+    private void reregister() {
+        Log.i(TAG, "连续滚动开关变了：用" + (prefs.smoothScroll() ? "带" : "不带") + "滚轮倍率的描述符重新注册蓝牙 HID");
+        reregistering = true;
+        connected = null;
+        connecting = null;
+        main.removeCallbacks(connectTimeout);
+        setState(STATE_REGISTERING);
+        main.removeCallbacks(reregisterFallback);
+        main.postDelayed(reregisterFallback, REGISTER_TIMEOUT_MS);
+        try {
+            if (!hid.unregisterApp()) onReregisterTimeout();   // 系统没接：不等回话，直接重新注册
+        } catch (SecurityException e) {
+            reregistering = false;
+            main.removeCallbacks(reregisterFallback);
+            setState(STATE_NO_PERMISSION);
+        }
+    }
+
+    /** 注销了却一直没回话（或系统不接注销）：照样重新注册。 */
+    private void onReregisterTimeout() {
+        main.removeCallbacks(reregisterFallback);
+        if (!reregistering) return;
+        reregistering = false;
+        registered = false;
+        if (started && hid != null) register();
     }
 
     private final BroadcastReceiver stateReceiver = new BroadcastReceiver() {
@@ -299,7 +352,17 @@ final class BtHid {
             registered = isRegistered;
             if (!isRegistered) {
                 connected = null;
+                if (reregistering) {   // 为换描述符注销的：马上用新的重新注册
+                    reregistering = false;
+                    main.removeCallbacks(reregisterFallback);
+                    if (started && hid != null) register();
+                    return;
+                }
                 if (started) setState(STATE_FAILED);
+                return;
+            }
+            if (regHires != prefs.smoothScroll()) {   // 注册的这一会儿开关又变了
+                reregister();
                 return;
             }
             setState(STATE_WAITING);
@@ -313,6 +376,7 @@ final class BtHid {
             if (s == BluetoothProfile.STATE_CONNECTED) {
                 main.removeCallbacks(connectTimeout);
                 mouseButtons = 0;   // 新连上的主机那边什么键都没按着
+                wheelOut.reset();   // 滚轮倍率先当 ×1，等主机重新来设
                 connected = device;
                 connecting = null;
                 prefs.setBtHost(device.getAddress());
@@ -341,10 +405,25 @@ final class BtHid {
             Log.i(TAG, "蓝牙主机 " + deviceName(device) + " 切协议：" + (protocol == 0 ? "boot" : "report") + "（" + protocol + "）");
         }
 
-        /** 对方来要当前报文（有的系统在连上时问一次）：回一帧全零的。 */
+        /**
+         * 对方来要当前报文（有的系统在连上时问一次）：输入报文回一帧全零的；鼠标的 Feature 报告（滚轮倍率）回当前倍率，
+         * 别的 Feature 没有。
+         */
         @Override
         public void onGetReport(BluetoothDevice device, byte type, byte id, int bufferSize) {
             Log.i(TAG, "蓝牙主机 " + deviceName(device) + " 要报文：type=" + type + " id=" + id + " size=" + bufferSize);
+            if (type == BluetoothHidDevice.REPORT_TYPE_FEATURE) {
+                try {
+                    if (id == Hid.REPORT_MOUSE) {
+                        hid.replyReport(device, type, id, new byte[]{(byte) wheelOut.featureByte()});
+                    } else {
+                        hid.reportError(device, BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID);
+                    }
+                } catch (SecurityException ignored) {
+                    // 权限被收回，下次 acquire 会重新检查
+                }
+                return;
+            }
             int size = id == Hid.REPORT_KEYBOARD ? Hid.KEYBOARD_REPORT_SIZE
                     : id == Hid.REPORT_MOUSE ? Hid.MOUSE_REPORT_SIZE
                     : id == Hid.REPORT_CONSUMER ? Hid.CONSUMER_REPORT_SIZE
@@ -362,10 +441,27 @@ final class BtHid {
             }
         }
 
-        /** 对方设置报文（键盘指示灯之类）：照单全收。 */
+        /**
+         * 对方设置报文（键盘指示灯之类）：照单全收。鼠标的 Feature 报告是滚轮倍率：不管注册的是哪份描述符都照办
+         * （主机可能缓存着以前配对时带倍率的描述符），记下、告诉看着的界面（设置页显示这台主机开没开平滑滚动）。
+         */
         @Override
         public void onSetReport(BluetoothDevice device, byte type, byte id, byte[] data) {
             Log.i(TAG, "蓝牙主机 " + deviceName(device) + " 设报文：type=" + type + " id=" + id + " 长度=" + (data == null ? 0 : data.length));
+            if (type == BluetoothHidDevice.REPORT_TYPE_FEATURE && id == Hid.REPORT_MOUSE) {
+                int b = Hid.featureByte(data, Hid.REPORT_MOUSE);
+                if (b >= 0) {
+                    wheelOut.setMultipliers(Hid.multiplierV(b), Hid.multiplierH(b));
+                    Log.i(TAG, "蓝牙主机 " + deviceName(device) + " 设了滚轮倍率：竖 ×" + wheelOut.multV() + " 横 ×" + wheelOut.multH());
+                }
+                try {
+                    hid.reportError(device, b >= 0 ? BluetoothHidDevice.ERROR_RSP_SUCCESS : BluetoothHidDevice.ERROR_RSP_INVALID_PARAM);
+                } catch (SecurityException ignored) {
+                    // 同上
+                }
+                if (b >= 0) setState(state);   // 状态没变，只是让设置页刷新"这台设备开了平滑滚动"
+                return;
+            }
             try {
                 hid.reportError(device, BluetoothHidDevice.ERROR_RSP_SUCCESS);
             } catch (SecurityException ignored) {
@@ -501,11 +597,16 @@ final class BtHid {
         return connected != null && hid != null;
     }
 
+    /** 鼠标一帧：wheel / pan 是 1/120 格（Hid.WHEEL_UNIT），按主机设的倍率换算成计数、超了拆帧。 */
     void sendMouse(int buttons, int dx, int dy, int wheel, int pan) {
         if (!isConnected()) return;
         mouseButtons = buttons;
-        Hid.mouseReport(mouseReport, buttons, dx, dy, wheel, pan);
-        send(Hid.REPORT_MOUSE, mouseReport);
+        wheelOut.mouse(mouseReport, buttons, dx, dy, wheel, pan, SystemClock.uptimeMillis(), r -> send(Hid.REPORT_MOUSE, r));
+    }
+
+    /** 连着的主机设的竖滚轮倍率（×1 = 照旧一格一格，RES_MULT = 平滑滚动开了）；没连着时没意义。 */
+    int hostWheelMultiplier() {
+        return wheelOut.multV();
     }
 
     /** 描述符里有绝对坐标指针（实验开关打开后注册的）。对方要重新配对过才认得。 */

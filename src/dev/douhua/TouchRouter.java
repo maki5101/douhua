@@ -14,13 +14,19 @@ import java.util.Locale;
  * 键盘：按在键与键的缝、第二行两头的空位、外圈边距上（落在 Proto.REGION_KEYBOARD 里却没落在键上），
  * 分给范围里最近的键（{@link #nearestKey}）；按在键上的照旧按矩形判。
  *
- * DeX 模式下跑在服务里（触摸来自独占的触摸屏，输出到 /dev/uhid），蓝牙模式下跑在 App 里
+ * 小红点（Proto.REGION_STICK）：第一根按在红点上的手指交给 {@link TrackPoint}，按着期间请宿主按固定节拍调 {@link #onTick}
+ * （{@link Output#startTicks}），抬起 / 取消 / {@link #releaseAll} / 换参数都停。再来的手指按在红点上不理。
+ * 三个鼠标键（Proto.REGION_MOUSE_BUTTON）：左 / 右键按住就按住（左键和"左键"按钮、{@link #holdLeft} 共用计数）；
+ * 中键按着时推红点 / 单指划触控板 = 滚动（GestureEngine.setScrollHold），最后一个松开时这次一格都没滚过 = 补一次中键单击，
+ * 收尾（releaseAll）不补。
+ *
+ * 桌面模式下跑在服务里（触摸来自独占的触摸屏，输出到 /dev/uhid），蓝牙模式下跑在 App 里
  * （触摸来自 App 自己的窗口，输出到蓝牙），两边只是触摸来源和 {@link Output} 不同。
  * 纯 Java、不加锁：调用方保证同一时刻只有一个线程在调（包括定时器到点的 {@link #onTimer}）。
  */
 public final class TouchRouter implements GestureEngine.Output {
     public interface Output {
-        /** 虚拟鼠标一帧：buttons 是当前按下状态，其余是相对量。 */
+        /** 虚拟鼠标一帧：buttons 是当前按下状态，其余是相对量；wheel / pan 的单位是 1/120 格（Hid.WHEEL_UNIT，换算成计数在 Hid.WheelOut）。 */
         void mouse(int buttons, int dx, int dy, int wheel, int pan);
 
         /** 虚拟键盘状态变了：8 字节键盘报文（只在回调期间有效）。 */
@@ -40,6 +46,20 @@ public final class TouchRouter implements GestureEngine.Output {
         void schedule(long delayMs);
 
         void cancelSchedule();
+
+        /**
+         * 开始按固定节拍调 {@link #onTick}（桌面模式 8ms、蓝牙 12ms，由实现方定）；已经在跑就不动。小红点按着时用。
+         * 和 schedule 是两条独立的路（引擎的轻点拖动 / 长按 / 惯性用 schedule）。不做成 default：忘了实现就静默失效，宁可编译报错。
+         */
+        void startTicks();
+
+        void stopTicks();
+
+        /** 记一行日志（小红点兜底暂停之类，给开发者看）。 */
+        default void note(String s) {}
+
+        /** 调试用，见 GestureEngine.Output#edgeRelease。 */
+        default void edgeRelease(float speedDpPerMs, float spinPerSecond) {}
     }
 
     /**
@@ -98,6 +118,8 @@ public final class TouchRouter implements GestureEngine.Output {
     private static final int KIND_BUTTON = 2;
     private static final int KIND_HOLD = 3;
     private static final int KIND_KEY = 4;
+    private static final int KIND_STICK = 5;
+    private static final int KIND_MOUSE = 6;
 
     private final Output out;
     private final Hid.Keyboard keyboard = new Hid.Keyboard();
@@ -115,7 +137,16 @@ public final class TouchRouter implements GestureEngine.Output {
     private Trace trace;
     /** 上次记下的键盘布局（同样的布局重报时不重复记）。 */
     private String tracedLayout;
+    /** 按着的左键：REGION_HOLD_LEFT、三键条 / 键盘最下面那排的左键、holdLeft（实体键）共用。 */
     private int holds;
+    /** 按着的右键、中键（三键条 / 键盘最下面那排）。 */
+    private int rightHolds, middleHolds;
+    /** 中键这次按着期间滚过（出过滚轮）：松开时不补中键单击。 */
+    private boolean middleScrolled;
+    /** 小红点：哪个 slot 按着它（-1 = 没有），宿主的节拍开着没有。 */
+    private final TrackPoint stick = new TrackPoint(new StickOutput());
+    private int stickSlot = -1;
+    private boolean ticking;
     /** 点一下锁定的修饰键。 */
     private int latched;
     /** 开合缩放期间按住的 Ctrl。 */
@@ -131,8 +162,10 @@ public final class TouchRouter implements GestureEngine.Output {
 
     /** 新的手势参数：换一个引擎，进行中的手势作废。density = 每 dp 多少像素。 */
     public void setConfig(GestureEngine.Config c, float density) {
-        if (engine != null) engine.cancel();
+        if (engine != null) engine.cancel();   // 转着的惯性也停
         engine = new GestureEngine(this, c);
+        engine.setCtrlHeld((modifierMask() & Hid.MOD_CTRL) != 0);
+        stick.setConfig(c);
         this.density = density > 0 ? density : 1;
         clearSlots();
     }
@@ -156,6 +189,15 @@ public final class TouchRouter implements GestureEngine.Output {
         Region r = rectHit(x, y);
         if (r != null && r.type == Proto.REGION_KEYBOARD) return nearestKey(regions, r, x, y);
         return r;
+    }
+
+    /**
+     * 这一点落在键、按钮、"左键"、键盘范围（缝里，分给最近的键）、小红点、三个鼠标键上——不是触控板、也不是空白处。只读，不改任何状态。
+     * 服务分屏透传时用：豆花窗口里系统手势带上的点，落在这些上就归豆花，只有触控板和空白处交给系统认手势。
+     */
+    public boolean onTarget(float x, float y) {
+        Region r = rectHit(x, y);
+        return r != null && r.type != Proto.REGION_PAD;
     }
 
     /** 只看矩形：第一个包含这个点的区域（键盘范围也照样返回）。 */
@@ -194,14 +236,20 @@ public final class TouchRouter implements GestureEngine.Output {
 
     // ═══════════ 触摸（屏幕像素） ═══════════
 
-    /** 返回按到的区域（调试日志用），没按到任何区域返回 null。 */
+    /**
+     * 返回按到的区域（调试日志用），没按到任何区域返回 null。
+     * 惯性转着时碰屏幕任何地方都马上停：触控板上的由引擎自己"抓住"（这一下不算点击）；别处的这一下照常生效，
+     * 停的时候震一下"刹住"，按在键上的不震（键自己会"嗒"）。
+     */
     public Region down(int slot, float x, float y, long t) {
         if (slot < 0 || slot >= SLOTS) return null;
         Region r = hit(x, y);
+        if (engine != null && (r == null || r.type != Proto.REGION_PAD)) engine.stopSpin(r == null || r.type != Proto.REGION_KEY);
         lastX[slot] = x;
         lastY[slot] = y;
         slotRegion[slot] = r;
-        slotTraced[slot] = trace != null && engine != null && traceDown(slot, x, y, r, t);
+        // 按在嵌在键里的小红点上（红点范围在键盘范围里面）不是按键，不记：触点记录只记键盘上的按键
+        slotTraced[slot] = trace != null && engine != null && (r == null || r.type != Proto.REGION_STICK) && traceDown(slot, x, y, r, t);
         if (r == null || engine == null) {
             slotKind[slot] = KIND_NONE;
             return r;
@@ -219,7 +267,23 @@ public final class TouchRouter implements GestureEngine.Output {
             }
             case Proto.REGION_HOLD_LEFT:
                 slotKind[slot] = KIND_HOLD;
-                if (holds++ == 0) engine.setExternalButtons(Proto.BUTTON_LEFT);
+                if (holds++ == 0) applyExternal();
+                out.button(r.id, Proto.BUTTON_DOWN);
+                break;
+            case Proto.REGION_STICK:
+                if (stickSlot >= 0) {   // 红点上已经有一根手指了：再来的不理
+                    slotKind[slot] = KIND_NONE;
+                    break;
+                }
+                slotKind[slot] = KIND_STICK;
+                stickSlot = slot;
+                stick.down(x / density, y / density, t);
+                out.button(r.id, Proto.BUTTON_DOWN);
+                startTicks();
+                break;
+            case Proto.REGION_MOUSE_BUTTON:
+                slotKind[slot] = KIND_MOUSE;
+                mouseButton(r.id & MOUSE_MASK, true, false);
                 out.button(r.id, Proto.BUTTON_DOWN);
                 break;
             case Proto.REGION_KEY:
@@ -243,14 +307,24 @@ public final class TouchRouter implements GestureEngine.Output {
         lastX[slot] = x;
         lastY[slot] = y;
         if (slotKind[slot] == KIND_PAD && engine != null) engine.move(slot, x / density, y / density);
+        else if (slotKind[slot] == KIND_STICK) stick.move(x / density, y / density);
     }
 
     /** 一帧触摸报完（所有手指的位置都更新了）。 */
     public void frame(long t) {
         if (engine != null) engine.endFrame(t);
+        if (stickSlot >= 0 && stick.frame(t)) startTicks();   // 太久没动暂停了的红点又动了：接着发
     }
 
     public void up(int slot, long t) {
+        up(slot, t, false);
+    }
+
+    /**
+     * canceled：被取消的手指（手掌、丢数据、服务释放触摸屏时补报的抬起）照旧当抬起，只是这次手势松手不起惯性
+     * （见 GestureEngine#up(int, long, boolean)）、红点轻点不算左键、中键不补单击。
+     */
+    public void up(int slot, long t, boolean canceled) {
         if (slot < 0 || slot >= SLOTS) return;
         int kind = slotKind[slot];
         Region r = slotRegion[slot];
@@ -263,13 +337,23 @@ public final class TouchRouter implements GestureEngine.Output {
         if (engine == null) return;
         switch (kind) {
             case KIND_PAD:
-                engine.up(slot, t);
+                engine.up(slot, t, canceled);
                 break;
             case KIND_HOLD:
                 if (--holds <= 0) {
                     holds = 0;
-                    engine.setExternalButtons(0);
+                    applyExternal();
                 }
+                out.button(r.id, Proto.BUTTON_UP);
+                break;
+            case KIND_STICK:
+                stickSlot = -1;
+                stopTicks();
+                stick.up(t, canceled);   // 轻点 = 左键（被取消的不算）
+                out.button(r.id, Proto.BUTTON_UP);
+                break;
+            case KIND_MOUSE:
+                mouseButton(r.id & MOUSE_MASK, false, canceled);
                 out.button(r.id, Proto.BUTTON_UP);
                 break;
             case KIND_BUTTON: {
@@ -291,43 +375,126 @@ public final class TouchRouter implements GestureEngine.Output {
         if (engine != null) engine.onTimer(t);
     }
 
+    /**
+     * 节拍到了（宿主在 {@link Output#startTicks} 之后按固定间隔调）：小红点按到 t 为止积分、出位移或滚轮。
+     * 红点没按着（迟到的节拍）什么都不出；太久没事件暂停了就停节拍。
+     */
+    public void onTick(long t) {
+        if (engine == null || stickSlot < 0) {
+            stopTicks();
+            return;
+        }
+        if (!stick.tick(t, middleHolds > 0, engine.heldButtons() != 0, engine.smoothNow())) {
+            boolean was = ticking;   // 停了以后还在路上的节拍不再记
+            stopTicks();
+            if (was) out.note("小红点按着但 " + TrackPoint.IDLE_PAUSE_MS / 1000 + " 秒没收到这根手指的事件：先停节拍，再动就接着");
+        }
+    }
+
     /** 点一下鼠标键（动作"右键""中键"之类）。 */
     public void click(int button) {
         if (engine != null) engine.click(button);
     }
 
     /**
-     * 按住 / 松开鼠标左键，和 {@link Proto#REGION_HOLD_LEFT} 共用 {@link #holds} 计数（DeX 模式下实体键按住配了"左键"时用）。
+     * 按住 / 松开鼠标左键，和 {@link Proto#REGION_HOLD_LEFT} 共用 {@link #holds} 计数（桌面模式下实体键按住配了"左键"时用）。
      * 第一个按下时按住左键，最后一个松开时清零；减到 0 以下截在 0。{@link #releaseAll} / {@link #clearSlots} 会把计数归零，
      * 这时若实体键还按着，之后的松开减到 0 以下也不会出错。
      */
     public void holdLeft(boolean down) {
         if (engine == null) return;
         if (down) {
-            if (holds++ == 0) engine.setExternalButtons(Proto.BUTTON_LEFT);
+            if (holds++ == 0) applyExternal();
         } else if (--holds <= 0) {
             holds = 0;
-            engine.setExternalButtons(0);
+            applyExternal();
         }
     }
 
-    /** 滚轮滚 n 格（正 = 向上）。 */
+    private static final int MOUSE_MASK = Proto.BUTTON_LEFT | Proto.BUTTON_RIGHT | Proto.BUTTON_MIDDLE;
+
+    /**
+     * 三键条 / 键盘最下面那排的鼠标键按下 / 松开（mask 是 Proto.BUTTON_*）。左 / 右：第一个按下时按住、最后一个松开时放开。
+     * 中键：不直接按，按着期间是滚动（引擎的单指滚动、红点的滚动模式）；最后一个松开时这次没滚过就补一次中键单击，
+     * 被取消的（canceled：手掌、丢数据、服务收尾补报的抬起）不补——同 releaseAll，收尾不补中键单击（Linux 上中键单击 = 粘贴）。
+     */
+    private void mouseButton(int mask, boolean down, boolean canceled) {
+        if (mask == Proto.BUTTON_LEFT) {
+            if (down) {
+                if (holds++ == 0) applyExternal();
+            } else if (--holds <= 0) {
+                holds = 0;
+                applyExternal();
+            }
+        } else if (mask == Proto.BUTTON_RIGHT) {
+            if (down) {
+                if (rightHolds++ == 0) applyExternal();
+            } else if (--rightHolds <= 0) {
+                rightHolds = 0;
+                applyExternal();
+            }
+        } else if (mask == Proto.BUTTON_MIDDLE) {
+            if (down) {
+                if (middleHolds++ == 0) {
+                    middleScrolled = false;
+                    engine.setScrollHold(true);
+                }
+            } else if (--middleHolds <= 0) {
+                middleHolds = 0;
+                engine.setScrollHold(false);
+                if (!middleScrolled && !canceled) engine.click(Proto.BUTTON_MIDDLE);   // 按下时已经"嗒"过，补的单击不再震
+            }
+        }
+    }
+
+    /** 外部按住的鼠标键（左键计数、右键计数）告诉引擎。 */
+    private void applyExternal() {
+        engine.setExternalButtons((holds > 0 ? Proto.BUTTON_LEFT : 0) | (rightHolds > 0 ? Proto.BUTTON_RIGHT : 0));
+    }
+
+    private void startTicks() {
+        if (ticking) return;
+        ticking = true;
+        out.startTicks();
+    }
+
+    private void stopTicks() {
+        if (!ticking) return;
+        ticking = false;
+        out.stopTicks();
+    }
+
+    /** 滚轮滚 n 格（正 = 向上）。转着的惯性先停。 */
     public void wheel(int n) {
         if (engine != null) engine.wheel(n);
     }
 
-    /** 按下 / 松开一个键（key = HID 用法码 | 自带修饰键 << 8，同 Proto.REGION_KEY）。界面自己收到的键、动作里的组合键走这里。 */
+    /**
+     * 惯性转着时停下（不在转就什么都不做）。feedback = 震一下"刹住"。服务看到按在 TouchRouter 以外的手指（分屏透传归系统的）、
+     * App 收到不归本地分流的按下时调：碰屏幕任何地方都马上停。
+     */
+    public void stopSpin(boolean feedback) {
+        if (engine != null) engine.stopSpin(feedback);
+    }
+
+    /**
+     * 按下 / 松开一个键（key = HID 用法码 | 自带修饰键 << 8，同 Proto.REGION_KEY）。界面自己收到的键、动作里的组合键走这里。
+     * 按下时转着的惯性静默停（打字说明不滚了，也免得 Ctrl / Super 在转的中途接上）。
+     */
     public void key(int key, boolean down) {
+        if (down && engine != null) engine.stopSpin(false);
         if (down) keyDown(key);
         else keyUp(key);
     }
 
-    /** 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开。触摸屏被释放、连接断开时调。 */
+    /**
+     * 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开、小红点停（节拍停）、中键不补单击。触摸屏被释放、连接断开时调。
+     */
     public void releaseAll() {
         if (engine != null) engine.cancel();
         for (int s = 0; s < SLOTS; s++) {
             if (slotRegion[s] == null) continue;
-            if (slotKind[s] == KIND_BUTTON || slotKind[s] == KIND_HOLD) {
+            if (slotKind[s] == KIND_BUTTON || slotKind[s] == KIND_HOLD || slotKind[s] == KIND_STICK || slotKind[s] == KIND_MOUSE) {
                 out.button(slotRegion[s].id, Proto.BUTTON_UP);
             } else if (slotKind[s] == KIND_KEY) {
                 out.button(Proto.KEY_ID_BASE + slotRegion[s].id, Proto.BUTTON_UP);
@@ -338,6 +505,7 @@ public final class TouchRouter implements GestureEngine.Output {
         latched = 0;
         zoomCtrl = false;
         chordKeys.clear();
+        if (engine != null) engine.setCtrlHeld(false);
         if (keyboard.releaseAll()) sendKeyboard();
         if (hadLatched) out.modifiers(0);
     }
@@ -349,6 +517,12 @@ public final class TouchRouter implements GestureEngine.Output {
             slotTraced[s] = false;
         }
         holds = 0;
+        rightHolds = 0;
+        middleHolds = 0;
+        middleScrolled = false;
+        stick.cancel();
+        stickSlot = -1;
+        stopTicks();
     }
 
     // ═══════════ 键盘触点记录 ═══════════
@@ -439,9 +613,16 @@ public final class TouchRouter implements GestureEngine.Output {
     }
 
     private void applyModifiers() {
+        int mask = modifierMask();
+        if (engine != null) engine.setCtrlHeld((mask & Hid.MOD_CTRL) != 0);   // Ctrl 按着：不起惯性、连续模式照旧按格（是缩放）
+        if (keyboard.setModifiers(mask)) sendKeyboard();
+    }
+
+    /** 虚拟键盘现在该按着的修饰键：锁定的、自带修饰键的键带的、开合缩放的 Ctrl。 */
+    private int modifierMask() {
         int chords = 0;
         for (int k : chordKeys) chords |= (k >> 8) & 0xFF;
-        if (keyboard.setModifiers(latched | chords | (zoomCtrl ? Hid.MOD_CTRL : 0))) sendKeyboard();
+        return latched | chords | (zoomCtrl ? Hid.MOD_CTRL : 0);
     }
 
     private void sendKeyboard() {
@@ -454,17 +635,19 @@ public final class TouchRouter implements GestureEngine.Output {
     @Override
     public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
         lastButtons = buttons;
+        if (middleHolds > 0 && (wheel != 0 || pan != 0)) middleScrolled = true;   // 中键按着时滚过（红点、触控板都算）
         out.mouse(buttons, dx, dy, wheel, pan);
     }
 
-    /** 缩放 = 按住 Ctrl 滚滚轮（浏览器、DeX、电脑上通用的缩放方式）。 */
+    /** 缩放 = 按住 Ctrl 滚滚轮（浏览器、安卓、电脑上通用的缩放方式）。连续滚动开着也按整格（应用的缩放本来就一级一级的）。 */
     @Override
     public void zoom(int steps) {
+        if (middleHolds > 0) middleScrolled = true;
         if (!zoomCtrl) {
             zoomCtrl = true;
             applyModifiers();
         }
-        out.mouse(lastButtons, 0, 0, steps, 0);
+        out.mouse(lastButtons, 0, 0, steps * Hid.WHEEL_UNIT, 0);
     }
 
     @Override
@@ -492,5 +675,33 @@ public final class TouchRouter implements GestureEngine.Output {
     @Override
     public void cancelSchedule() {
         out.cancelSchedule();
+    }
+
+    @Override
+    public void edgeRelease(float speedDpPerMs, float spinPerSecond) {
+        out.edgeRelease(speedDpPerMs, spinPerSecond);
+    }
+
+    /** 小红点的输出：位移、滚轮经引擎出（按着的鼠标键照带），轻点 = 引擎点一下左键。 */
+    private final class StickOutput implements TrackPoint.Output {
+        @Override
+        public void move(int dx, int dy) {
+            if (engine != null) engine.externalMove(dx, dy);
+        }
+
+        @Override
+        public void scroll(int wheel, int pan) {
+            if (engine != null) engine.externalScroll(wheel, pan);
+        }
+
+        @Override
+        public void click() {
+            if (engine != null) engine.click(Proto.BUTTON_LEFT);
+        }
+
+        @Override
+        public void haptic(int kind) {
+            out.haptic(kind);
+        }
     }
 }

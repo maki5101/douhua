@@ -119,22 +119,33 @@ final class Link {
         offer(ByteBuffer.allocate(2).put((byte) Proto.CMD_WHEEL).put((byte) n));
     }
 
+    /** 手势参数（编解码在 ConfigCodec，服务那边读的是同一份）。 */
     void config(GestureEngine.Config c, float density) {
-        offer(ByteBuffer.allocate(41).put((byte) Proto.CMD_CONFIG)
-                .putFloat(c.pointerSpeed).putFloat(c.acceleration).putFloat(c.scrollStepDp)
-                .put((byte) (c.naturalScroll ? 1 : 0)).put((byte) (c.pinchZoom ? 1 : 0)).put((byte) (c.edgeScroll ? 1 : 0))
-                .put((byte) (c.edgeScrollHorizontal ? 1 : 0)).putFloat(c.edgeWidthDp).put((byte) c.scrollTicks)
-                .put((byte) (c.longPressDrag ? 1 : 0)).putInt(c.longPressMs)
-                .put((byte) (c.tapToDrag ? 1 : 0))
-                .putInt(c.dragWindowMs).putFloat(density).putFloat(c.slowFactor).put((byte) (c.texture ? 1 : 0)));
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        java.io.DataOutputStream d = new java.io.DataOutputStream(bytes);
+        try {
+            d.writeByte(Proto.CMD_CONFIG);
+            ConfigCodec.write(d, c, density);
+        } catch (IOException impossible) {
+            return;   // 写内存不会出错
+        }
+        if (connected) queue.offer(bytes.toByteArray());
     }
 
-    /** regions 每项是 {type, id, left, top, right, bottom}，屏幕像素。relay = 蓝牙模式，报文发回来由 App 发出去。 */
-    void layout(boolean active, boolean relay, int displayId, int rotation, int width, int height, List<int[]> regions) {
-        ByteBuffer b = ByteBuffer.allocate(18 + regions.size() * 21);
+    /**
+     * regions 每项是 {type, id, left, top, right, bottom}，屏幕像素。relay = 蓝牙模式，报文发回来由 App 发出去。
+     * width / height 是整块屏的尺寸；full = 窗口占满整块屏；window = 窗口在屏上的 {left, top, right, bottom}；
+     * gestures = 贴着窗口四条边的系统手势带宽度 {left, top, right, bottom}（分屏透传用，见 Proto.CMD_LAYOUT）。
+     */
+    void layout(boolean active, boolean relay, int displayId, int rotation, int width, int height,
+                boolean full, int[] window, int[] gestures, List<int[]> regions) {
+        ByteBuffer b = ByteBuffer.allocate(51 + regions.size() * 21);
         b.put((byte) Proto.CMD_LAYOUT).put((byte) (active ? 1 : 0)).put((byte) (relay ? 1 : 0))
                 .putInt(displayId).put((byte) rotation)
-                .putInt(width).putInt(height).putShort((short) regions.size());
+                .putInt(width).putInt(height).put((byte) (full ? 1 : 0));
+        for (int v : window) b.putInt(v);
+        for (int v : gestures) b.putInt(v);
+        b.putShort((short) regions.size());
         for (int[] r : regions) {
             b.put((byte) r[0]).putInt(r[1]).putInt(r[2]).putInt(r[3]).putInt(r[4]).putInt(r[5]);
         }
@@ -161,7 +172,7 @@ final class Link {
                 .put((byte) (volDownTap ? 1 : 0)).put((byte) (volDownHold ? 1 : 0)));
     }
 
-    /** 经服务的虚拟鼠标按住 / 松开左键（DeX 模式下实体键按住配了"左键"时）。 */
+    /** 经服务的虚拟鼠标按住 / 松开左键（桌面模式下实体键按住配了"左键"时）。 */
     void holdLeft(boolean down) {
         offer(ByteBuffer.allocate(2).put((byte) Proto.CMD_HOLD_LEFT).put((byte) (down ? 1 : 0)));
     }
@@ -298,8 +309,8 @@ final class Link {
                             int buttons = in.readUnsignedByte();
                             int dx = in.readShort();
                             int dy = in.readShort();
-                            int wheel = in.readByte();
-                            int pan = in.readByte();
+                            int wheel = in.readShort();   // 1/120 格（协议 18 起）
+                            int pan = in.readShort();
                             main.post(() -> listener.onRelayMouse(buttons, dx, dy, wheel, pan));
                             break;
                         }

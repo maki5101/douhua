@@ -1,0 +1,48 @@
+{
+  "_说明": "gen_layouts.py 用的原始数据源。原始文件不进仓库：第一次生成时下载到 cache_dir（.cache/ 不进 git），之后每次都按 sha256 核对，对不上就失败。sha256 是 2026-10-31 调研时下载的那份算的。",
+  "cache_dir": ".cache/kbd",
+  "sources": {
+    "cldr": {
+      "name": "Unicode CLDR keyboards（老平台数据，最后一版在 release-43，44 起删了）",
+      "version": "release-43",
+      "url": "https://github.com/unicode-org/cldr/tree/release-43/keyboards",
+      "fetch": "raw",
+      "base_url": "https://raw.githubusercontent.com/unicode-org/cldr/release-43/keyboards/",
+      "copyright": "Copyright © 1991-2023 Unicode, Inc.",
+      "license": "Unicode License（CLDR 43 发布时用的 Unicode, Inc. License Agreement – Data Files and Software，条款见 https://www.unicode.org/copyright.html；全文随开源许可页一起放）",
+      "files": {
+        "osx/_platform.xml": "fd0ef144b5007d135d2bf2f89200e32838f0872f345b9af261f21c8556d899dc",
+        "osx/en-t-k0-osx.xml": "cab0fe06ed01686dab90de012f0145280e999042ca18719a287e4637bdf86b17",
+        "osx/de-t-k0-osx.xml": "f66cf22d23ff8315f12b773de51c51679e3be3a5e48e46d8ab4c70cd80cb31ab",
+        "windows/_platform.xml": "c73b915742ef0a9640646314864954db09efc905a4754dd6536a69319272f331",
+        "windows/en-t-k0-windows.xml": "3a5b8bb3931a5672cec7b271be1746de27de9e3c6c6677158859f114ce557a0b",
+        "windows/de-t-k0-windows.xml": "37568b0cd7984fc8181724da89b850f43514240767bde8d8cb647db2ff5a2607"
+      }
+    },
+    "aosp": {
+      "name": "AOSP frameworks/base 的外接键盘布局（GitHub 镜像 aosp-mirror/platform_frameworks_base，不是 googlesource 官方源）",
+      "version": "按 git blob 钉死（blob id 不随分支变）",
+      "url": "https://github.com/aosp-mirror/platform_frameworks_base",
+      "fetch": "github-blob",
+      "repo": "aosp-mirror/platform_frameworks_base",
+      "copyright": "Copyright (C) 2010-2012 The Android Open Source Project",
+      "license": "Apache License, Version 2.0（http://www.apache.org/licenses/LICENSE-2.0）",
+      "files": {
+        "data/keyboards/Generic.kl": {"blob": "2b0802b54c140d8f3879c04b3da3f332000814b6", "sha256": "c7a26444f42b9544c134b8e829a0e6ddefee03b4684643b373134622bc45fac3"},
+        "packages/InputDevices/res/raw/keyboard_layout_english_us.kcm": {"blob": "da76448ac1d02ca099a3d903d36091ee83234c9a", "sha256": "58b73013a9c12c9d12374f33c0db2c4dbb0f1f245024ef04c76928833576f6c3"},
+        "packages/InputDevices/res/raw/keyboard_layout_german.kcm": {"blob": "1fb0924904f08e7e1a724a50ee089f717c8aec5c", "sha256": "4b962306767b4d06217a851cfeec28f0bbb400baa562f83956b6c24d71a3c5bb"}
+      }
+    },
+    "xkb": {
+      "name": "xkeyboard-config（读本机装的，用本机的 libxkbcommon 编译取字）",
+      "version": "2.46",
+      "url": "https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config",
+      "fetch": "local",
+      "pkgconfig": "/usr/share/pkgconfig/xkeyboard-config.pc",
+      "rules": "/usr/share/X11/xkb/rules/evdev.xml",
+      "library": "libxkbcommon.so.0",
+      "copyright": "Copyright the xkeyboard-config contributors（明细见上游 COPYING / Debian xkb-data 的 copyright 文件）",
+      "license": "MIT / HPND 类宽松许可（Debian 标为 Expat、Expat-Open-Group、HPND-sell-variant）：带上版权和许可声明即可再发布"
+    }
+  }
+}

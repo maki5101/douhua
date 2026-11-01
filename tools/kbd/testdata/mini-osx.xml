@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- gen_layouts.py 自测用的小样本，照 CLDR release-43 keyboards/osx 的写法手写（不是真布局）。 -->
+<keyboard locale="xx-t-k0-osx">
+	<version platform="10.9" number="$Revision$"/>
+	<names>
+		<name value="Mini Mac"/>
+	</names>
+	<keyMap>
+		<map iso="E00" to="^"/> <!-- 死键：transforms 里有 ^ 开头的 -->
+		<map iso="B00" to="&lt;"/>
+		<map iso="D13" to="#"/>
+		<map iso="D01" to="q"/>
+		<map iso="E12" to="^" transform="no"/> <!-- 同一个字，标了 transform="no"：不是死键 -->
+		<map iso="A03" to=" "/>
+	</keyMap>
+	<keyMap modifiers="shift caps+shiftL">
+		<map iso="E00" to="°"/>
+		<map iso="B00" to="&gt;"/>
+		<map iso="D13" to="'"/>
+		<map iso="D01" to="Q"/>
+	</keyMap>
+	<keyMap modifiers="optR+shiftR optL+shiftL+caps?"> <!-- ⌥⇧ 要按 LDML 完整匹配 -->
+		<map iso="D01" to="»"/>
+	</keyMap>
+	<keyMap modifiers="optL+shiftR opt"> <!-- opt 不分左右，盖住 optL -->
+		<map iso="D01" to="«"/>
+		<map iso="E00" to="\u{1C}"/> <!-- 控制字符：丢掉 -->
+		<map iso="B00" to="\u{F8FF}"/>
+	</keyMap>
+	<keyMap modifiers="opt"> <!-- 和上一个重了：先写的那个算 -->
+		<map iso="D01" to="X"/>
+	</keyMap>
+	<keyMap modifiers="caps">
+		<map iso="D01" to="Z"/> <!-- 只按 Caps：四种状态都不匹配 -->
+	</keyMap>
+	<keyMap modifiers="ctrlL+opt?">
+		<map iso="D01" to="\u{11}"/>
+	</keyMap>
+	<transforms type="simple">
+		<transform from="^ " to="^"/>
+		<transform from="^e" to="ê"/>
+	</transforms>
+</keyboard>

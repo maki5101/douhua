@@ -2,7 +2,7 @@ package dev.douhua;
 
 /**
  * 虚拟鼠标和键盘的 HID 报文：描述符、报文格式、键盘按键状态。
- * DeX 模式下服务经 /dev/uhid 造 USB 设备，蓝牙模式下 App 经 BluetoothHidDevice 当蓝牙设备，两边发出去的字节完全一样，
+ * 桌面模式下服务经 /dev/uhid 造 USB 设备，蓝牙模式下 App 经 BluetoothHidDevice 当蓝牙设备，两边发出去的字节完全一样，
  * 蓝牙只是把几个设备合进一个描述符、每帧前面多一个报文编号。纯 Java（离线测试）。
  */
 public final class Hid {
@@ -26,6 +26,16 @@ public final class Hid {
     public static final int REPORT_ABS = 4;
     public static final int ABS_REPORT_SIZE = 5;
     public static final int ABS_MAX = 32767, ABS_CENTER = 16384;
+
+    /**
+     * 滚轮量的单位：一格 = 120（和 Windows、Linux 的高精度滚轮、Android、Moonlight 一个单位）。手势引擎 → 分流 → 服务 / 蓝牙这一路的
+     * wheel / pan 全是这个单位，到最后一步才按主机设的分辨率倍率换算成报文里的计数（{@link WheelOut}）。
+     */
+    public static final int WHEEL_UNIT = 120;
+    /** 分辨率倍率（Resolution Multiplier）的最大值：主机设了，每 1/8 格报一个计数（8 能整除 120；滚轮字段 8 位，一帧最多约 15.9 格）。 */
+    public static final int RES_MULT = 8;
+    /** 带倍率的鼠标描述符里 Feature 报告的长度（竖、横两个倍率各 2 位 + 4 位补齐）。 */
+    public static final int FEATURE_REPORT_SIZE = 1;
 
     /** 鼠标：5 个按键 + 16 位相对 X/Y + 竖向滚轮 + 横向滚轮（AC Pan）。 */
     public static final byte[] MOUSE_DESC = {
@@ -66,6 +76,84 @@ public final class Hid {
             0x75, 0x08,                    //     Report Size (8)
             (byte) 0x95, 0x01,             //     Report Count (1)
             (byte) 0x81, 0x06,             //     Input (Data,Var,Rel)
+            (byte) 0xC0,                   //   End Collection
+            (byte) 0xC0,                   // End Collection
+    };
+
+    /**
+     * 带分辨率倍率的鼠标（连续滚动用）：输入报文和 {@link #MOUSE_DESC} 一个字节都不差（规矩：已有报告的字节排布不能动，
+     * 没重新配对的主机按旧描述符读也照旧）。多出来的只有一个 Feature 报告（不占输入报文的位）：竖滚轮、横滚轮各一个
+     * "Resolution Multiplier"（逻辑 0..1 = 物理 ×1..×8），各自和它管的滚轮包在一个 Logical 集合里（倍率只作用于同一个
+     * Logical 集合里的控件，Linux hid-core 的 hid_apply_multiplier）。主机设成 1（×8）就表示能处理小数格，之后每 1/8 格报一个计数；
+     * 不设（默认 0 = ×1）照旧一格一格。写法照微软 "Enhanced Wheel Support" 和 QEMU 2026 高精度滚轮补丁。
+     * 桌面模式下 uhid 一直用它（服务回应内核的 SET / GET_REPORT，见 server.Uhid）；蓝牙模式跟着"连续滚动"开关（BtHid）。
+     * 不用 4 字节数据的项：蓝牙栈 check_descriptor 把尺寸码 3 当 3 字节走（HidTest 锁住）。
+     */
+    public static final byte[] MOUSE_DESC_HIRES = {
+            0x05, 0x01,                    // Usage Page (Generic Desktop)
+            0x09, 0x02,                    // Usage (Mouse)
+            (byte) 0xA1, 0x01,             // Collection (Application)
+            0x09, 0x01,                    //   Usage (Pointer)
+            (byte) 0xA1, 0x00,             //   Collection (Physical)
+            0x05, 0x09,                    //     Usage Page (Button)
+            0x19, 0x01,                    //     Usage Minimum (1)
+            0x29, 0x05,                    //     Usage Maximum (5)
+            0x15, 0x00,                    //     Logical Minimum (0)
+            0x25, 0x01,                    //     Logical Maximum (1)
+            (byte) 0x95, 0x05,             //     Report Count (5)
+            0x75, 0x01,                    //     Report Size (1)
+            (byte) 0x81, 0x02,             //     Input (Data,Var,Abs)
+            (byte) 0x95, 0x01,             //     Report Count (1)
+            0x75, 0x03,                    //     Report Size (3)
+            (byte) 0x81, 0x01,             //     Input (Const) 补齐到一个字节
+            0x05, 0x01,                    //     Usage Page (Generic Desktop)
+            0x09, 0x30,                    //     Usage (X)
+            0x09, 0x31,                    //     Usage (Y)
+            0x16, 0x01, (byte) 0x80,       //     Logical Minimum (-32767)
+            0x26, (byte) 0xFF, 0x7F,       //     Logical Maximum (32767)
+            0x75, 0x10,                    //     Report Size (16)
+            (byte) 0x95, 0x02,             //     Report Count (2)
+            (byte) 0x81, 0x06,             //     Input (Data,Var,Rel)
+            (byte) 0xA1, 0x02,             //     Collection (Logical)：竖滚轮和它的倍率
+            0x09, 0x48,                    //       Usage (Resolution Multiplier)
+            0x15, 0x00,                    //       Logical Minimum (0)
+            0x25, 0x01,                    //       Logical Maximum (1)
+            0x35, 0x01,                    //       Physical Minimum (1)
+            0x45, 0x08,                    //       Physical Maximum (8)
+            0x75, 0x02,                    //       Report Size (2)
+            (byte) 0x95, 0x01,             //       Report Count (1)
+            (byte) 0xB1, 0x02,             //       Feature (Data,Var,Abs)
+            0x35, 0x00,                    //       Physical Minimum (0) 复位，别让后面的输入项继承 1..8
+            0x45, 0x00,                    //       Physical Maximum (0)
+            0x09, 0x38,                    //       Usage (Wheel)
+            0x15, (byte) 0x81,             //       Logical Minimum (-127)
+            0x25, 0x7F,                    //       Logical Maximum (127)
+            0x75, 0x08,                    //       Report Size (8)
+            (byte) 0x95, 0x01,             //       Report Count (1)
+            (byte) 0x81, 0x06,             //       Input (Data,Var,Rel)
+            (byte) 0xC0,                   //     End Collection
+            (byte) 0xA1, 0x02,             //     Collection (Logical)：横滚轮和它的倍率
+            0x09, 0x48,                    //       Usage (Resolution Multiplier)
+            0x15, 0x00,                    //       Logical Minimum (0)
+            0x25, 0x01,                    //       Logical Maximum (1)
+            0x35, 0x01,                    //       Physical Minimum (1)
+            0x45, 0x08,                    //       Physical Maximum (8)
+            0x75, 0x02,                    //       Report Size (2)
+            (byte) 0x95, 0x01,             //       Report Count (1)
+            (byte) 0xB1, 0x02,             //       Feature (Data,Var,Abs)
+            0x35, 0x00,                    //       Physical Minimum (0)
+            0x45, 0x00,                    //       Physical Maximum (0)
+            0x75, 0x04,                    //       Report Size (4)
+            (byte) 0x95, 0x01,             //       Report Count (1)
+            (byte) 0xB1, 0x01,             //       Feature (Const) 补齐到一个字节
+            0x05, 0x0C,                    //       Usage Page (Consumer)
+            0x0A, 0x38, 0x02,              //       Usage (AC Pan)
+            0x15, (byte) 0x81,             //       Logical Minimum (-127)
+            0x25, 0x7F,                    //       Logical Maximum (127)
+            0x75, 0x08,                    //       Report Size (8)
+            (byte) 0x95, 0x01,             //       Report Count (1)
+            (byte) 0x81, 0x06,             //       Input (Data,Var,Rel)
+            (byte) 0xC0,                   //     End Collection
             (byte) 0xC0,                   //   End Collection
             (byte) 0xC0,                   // End Collection
     };
@@ -168,12 +256,19 @@ public final class Hid {
      * 不是顺序的问题；这个顺序在 iPad、Linux 上都验过，就留着。顺序不影响报文编号和格式，换顺序不用重新配对。
      */
     public static byte[] combinedDescriptor() {
-        return combinedDescriptor(false);
+        return combinedDescriptor(false, false);
     }
 
-    /** absolute = 末尾再加绝对坐标指针（报告 ID 4）。前面 1/2/3 的字节一个都不变，没重新配对的主机照旧能用。 */
     public static byte[] combinedDescriptor(boolean absolute) {
-        byte[] m = withReportId(MOUSE_DESC, REPORT_MOUSE);
+        return combinedDescriptor(absolute, false);
+    }
+
+    /**
+     * absolute = 末尾再加绝对坐标指针（报告 ID 4）。前面 1/2/3 的字节一个都不变，没重新配对的主机照旧能用。
+     * hiresWheel = 鼠标用带分辨率倍率的描述符（{@link #MOUSE_DESC_HIRES}；Feature 报告也是 ID 2，和输入报告同号不同类型）。
+     */
+    public static byte[] combinedDescriptor(boolean absolute, boolean hiresWheel) {
+        byte[] m = withReportId(hiresWheel ? MOUSE_DESC_HIRES : MOUSE_DESC, REPORT_MOUSE);
         byte[] k = withReportId(KEYBOARD_DESC, REPORT_KEYBOARD);
         byte[] c = withReportId(CONSUMER_DESC, REPORT_CONSUMER);
         byte[] a = absolute ? withReportId(ABS_POINTER_DESC, REPORT_ABS) : new byte[0];
@@ -222,6 +317,115 @@ public final class Hid {
 
     private static int clamp(int v, int limit) {
         return Math.max(-limit, Math.min(limit, v));
+    }
+
+    // ═══════════ 滚轮的分辨率倍率 ═══════════
+
+    /** 两个倍率（×1 / ×8）→ Feature 报告的那一个字节：位 0–1 竖、位 2–3 横（0 = ×1，1 = ×8），位 4–7 补齐。 */
+    public static int multiplierByte(int vertical, int horizontal) {
+        return (vertical > 1 ? 1 : 0) | (horizontal > 1 ? 1 : 0) << 2;
+    }
+
+    /** Feature 字节里的竖滚轮倍率（1 或 RES_MULT；2、3 超出逻辑范围，当 ×1）。 */
+    public static int multiplierV(int b) {
+        return (b & 3) == 1 ? RES_MULT : 1;
+    }
+
+    public static int multiplierH(int b) {
+        return ((b >> 2) & 3) == 1 ? RES_MULT : 1;
+    }
+
+    /**
+     * 主机设的 Feature 报告数据 → 那一个字节；认不出返回 -1。蓝牙栈（AOSP bta_hd_set_report_act）把类型和报告编号剥掉再交给 App，
+     * 数据就是报告本身；两个字节、第一个正好是 id 的当作还带着编号（别家改过蓝牙栈也认）。uhid 那边没有报告编号，传 id = -1：
+     * 内核的 __hid_request 给没编号的报告也在最前面留一个编号字节（0），uhid 原样转来，所以两个字节、第一个是 0 时取第二个。
+     */
+    public static int featureByte(byte[] data, int id) {
+        if (data == null || data.length == 0) return -1;
+        int lead = id >= 0 ? id : 0;
+        if (data.length >= 2 && (data[0] & 0xFF) == lead) return data[1] & 0xFF;
+        return data[0] & 0xFF;
+    }
+
+    /** 逐帧收报文的（UhidMouse 写 /dev/uhid，BtHid 发蓝牙）。 */
+    public interface ReportSink<E extends Exception> {
+        void send(byte[] report) throws E;
+    }
+
+    /**
+     * 滚轮量 → 报文里的计数：引擎这一路的单位是 1/120 格（{@link #WHEEL_UNIT}），主机设了倍率 ×8 就每 15 个单位一个计数、
+     * 没设（×1）就攒满 120 出一格；除不尽的余数留到下一帧。按格滚（总是 120 的倍数）余数永远是 0，和以前一个字节都不差。
+     * 主机设了倍率后缩放、"滚轮向上 / 向下"、按格模式也全按倍率换算（不然一设倍率这些就慢了 8 倍）。
+     * 余数在方向变了、或停了 {@link #REMAINDER_RESET_MS} 时清掉：不然低精度主机上留着的半格，下次轻轻一碰就出一格。
+     * 一帧超过 ±127 计数就拆成几帧，只有第一帧带位移。不加锁：调用方（UhidMouse、BtHid）保证同一时刻只有一个线程在调。
+     */
+    public static final class WheelOut {
+        public static final long REMAINDER_RESET_MS = 300;
+        private int multV = 1, multH = 1;
+        private int remV, remH;
+        private long lastV, lastH;
+        /** 上一帧发出去的按键（设备刚建好 / 主机刚连上时什么都没按着）。 */
+        private int lastButtons;
+
+        /** 主机设的倍率（1 或 RES_MULT）。换了倍率余数作废。 */
+        public void setMultipliers(int vertical, int horizontal) {
+            multV = vertical == RES_MULT ? RES_MULT : 1;
+            multH = horizontal == RES_MULT ? RES_MULT : 1;
+            remV = remH = 0;
+        }
+
+        /** 回到 ×1（设备复位、蓝牙新连上一台：规范里复位后默认 ×1，等主机重新来设）。 */
+        public void reset() {
+            setMultipliers(1, 1);
+            lastButtons = 0;
+        }
+
+        public int multV() {
+            return multV;
+        }
+
+        public int multH() {
+            return multH;
+        }
+
+        /** 主机来问时回的 Feature 字节。 */
+        public int featureByte() {
+            return multiplierByte(multV, multH);
+        }
+
+        /** 一帧鼠标（wheelUnits / panUnits 是 1/120 格）：换算、拆帧，逐帧写进 report 交给 sink。now 是毫秒时间（清余数用）。 */
+        public <E extends Exception> void mouse(byte[] report, int buttons, int dx, int dy, int wheelUnits, int panUnits,
+                                                long now, ReportSink<E> sink) throws E {
+            int w = 0, p = 0;
+            if (wheelUnits != 0) {
+                if (now - lastV >= REMAINDER_RESET_MS || (remV != 0 && (remV > 0) != (wheelUnits > 0))) remV = 0;
+                lastV = now;
+                int total = remV + wheelUnits;
+                int step = WHEEL_UNIT / multV;   // 一个计数多少单位：×8 时 15，×1 时 120
+                w = total / step;                // 向零取整
+                remV = total - w * step;
+            }
+            if (panUnits != 0) {
+                if (now - lastH >= REMAINDER_RESET_MS || (remH != 0 && (remH > 0) != (panUnits > 0))) remH = 0;
+                lastH = now;
+                int total = remH + panUnits;
+                int step = WHEEL_UNIT / multH;
+                p = total / step;
+                remH = total - p * step;
+            }
+            // 这一帧只攒了余数、别的都没变（计数是 0、没有位移、按键和上一帧一样）：不用发，等于以前不满一格就不出报文
+            if (w == 0 && p == 0 && dx == 0 && dy == 0 && buttons == lastButtons && (wheelUnits != 0 || panUnits != 0)) return;
+            lastButtons = buttons;
+            do {
+                int fw = clamp(w, 127);
+                int fp = clamp(p, 127);
+                mouseReport(report, buttons, dx, dy, fw, fp);
+                sink.send(report);
+                w -= fw;
+                p -= fp;
+                dx = dy = 0;
+            } while (w != 0 || p != 0);
+        }
     }
 
     /** 虚拟键盘当前按着什么：修饰键位 + 最多 6 个键（和真键盘一样，第 7 个键按不下去）。 */

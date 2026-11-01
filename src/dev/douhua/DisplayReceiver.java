@@ -45,7 +45,7 @@ public final class DisplayReceiver extends BroadcastReceiver {
         nm.createNotificationChannel(new NotificationChannel(CHANNEL, context.getString(R.string.notif_channel),
                 NotificationManager.IMPORTANCE_HIGH));
 
-        // 在手机屏上打开豆花（从 DeX 的通知栏点也一样，不会开到 DeX 屏上去）
+        // 在手机屏上打开豆花（从外接屏上的通知栏点也一样，比如三星 DeX 的，不会开到外接屏上去）
         Intent open = new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         ActivityOptions options = ActivityOptions.makeBasic().setLaunchDisplayId(Display.DEFAULT_DISPLAY);
         PendingIntent pi = PendingIntent.getActivity(context, id, open,

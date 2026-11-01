@@ -9,9 +9,10 @@ import android.Manifest;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.hardware.display.DisplayManager;
 import android.media.AudioManager;
 import android.os.Bundle;
@@ -26,6 +27,7 @@ import android.util.TypedValue;
 import android.view.Display;
 import android.view.Gravity;
 import android.view.InputDevice;
+import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.OrientationEventListener;
@@ -47,32 +49,34 @@ import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 /**
  * 主界面有两屏：
- * - 触控板屏：左边一竖条按钮（左手拇指够得着），右边是触控板，可以展开数字键盘；
- * - 键盘屏：整屏是外接键盘（大小位置可调），键盘上方空出来的地方是小触控板。
- * 整个界面纯黑，只有按钮和触控板的暗灰边框。
+ * - 触控板屏：默认只有触控板 + 四个角上的小按钮（可自定义）+ 顶上正中的 ⋯（键盘 / 设置 / 旋转 / 退出），可以展开数字键盘；
+ *   "自定义按键"（原来的左侧按钮条，设置里打开，默认关）开着时左边多一竖条按钮（左手拇指够得着）；
+ * - 键盘屏：整屏是外接键盘（大小位置可调），键盘旁边空出来的地方是小触控板，⋯ 同样在它顶上正中。
+ * 两屏的 ⋯ 菜单是同一份（{@link MenuLayer}，盖在最上面）。颜色跟设置里的主题（默认纯黑，只有按钮和触控板的暗灰边框）。
  *
  * 两种连接方式，界面、手势、动作都一样，区别只在触摸谁来收、键盘鼠标发到哪：
- * - DeX：豆花在前台时，服务独占这块屏的触摸屏，按这里报上去的区域位置分流（{@link TouchRouter}），
+ * - 桌面模式：豆花在前台时，服务独占这块屏的触摸屏，按这里报上去的区域位置分流（{@link TouchRouter}），
  *   鼠标键盘发给虚拟 USB 设备，再把按钮事件、震动、三指四指手势发回来，这里负责画面和执行动作。
  *   服务没接管时（"贴字"面板打开、服务没连上），按钮和键按普通方式响应触摸。
- * - 蓝牙：鼠标键盘经 {@link BtHid} 发给配对的电脑 / 平板 / 电视。服务开着时和 DeX 一样由服务独占触摸屏、分流
+ * - 蓝牙：鼠标键盘经 {@link BtHid} 发给配对的电脑 / 平板 / 电视。服务开着时和桌面模式一样由服务独占触摸屏、分流
  *   （系统的下拉通知栏、上滑回桌面、侧滑返回都碰不到），只是报文发回这里（relay），由这里从蓝牙发出去；
  *   服务没开或没接管时，这里自己收触摸（{@link #dispatchTouchEvent}），交给同一个 TouchRouter 分流。
  *
- * 窗口平时设成"不可获得焦点"，DeX 里的窗口不会因为碰了手机屏而变成未激活。"贴字"面板打开时、没有外接屏时允许，
+ * 窗口平时设成"不可获得焦点"，外接屏上的窗口不会因为碰了手机屏而变成未激活。"贴字"面板打开时、没有外接屏时允许，
  * 见 {@link #updateFocusable}。
  */
 public final class MainActivity extends Activity
         implements Link.Listener, KeyboardPanel.Listener, KeyboardScreen.Listener, DisplayManager.DisplayListener,
         BtHid.Listener, AirMouse.Host {
 
-    /** 按钮条收起后，触控板四角的小按钮（左上、右上、右下可自定义；左下 ☰ 固定，是回到按钮条和设置的入口）。 */
+    /** 主界面触控板四角的小按钮（下标同 Prefs.corner：左上、右上、右下、左下，都可自定义，一直显示；以前左下是固定的 ☰）。 */
     private static final int CORNER_BASE_ID = 500;
-    /** 空中鼠标页上的按钮（其它按钮编号：0–15、300–302、400–403、500–503、600 起、0x10000 起）。 */
+    /** 空中鼠标页上的按钮（其它按钮编号：0–11 自定义按键、300–303 键盘的特殊键、400–413 ⋯ 和菜单、500–503 角上、600 起键盘最下面一排、0x800 起鼠标键 / 小红点、0x10000 起键）。 */
     private static final int AIR_EXIT_ID = 700;
     private static final int AIR_CENTER_ID = 701;
     /** 空中鼠标页的圆钮：点一下（不到 HardKeys.HOLD_MS 就松开）回正中，按住移动。 */
@@ -87,14 +91,38 @@ public final class MainActivity extends Activity
             android.view.Gravity.TOP | android.view.Gravity.LEFT, android.view.Gravity.TOP | android.view.Gravity.RIGHT,
             android.view.Gravity.BOTTOM | android.view.Gravity.RIGHT, android.view.Gravity.BOTTOM | android.view.Gravity.LEFT,
     };
-    /** 键盘屏工具栏的按钮编号。 */
-    private static final int KB_CLOSE_ID = 400;
-    private static final int KB_ADJUST_ID = 401;
-    private static final int KB_RESET_ID = 402;
-    private static final int KB_TOOLBAR_POS_ID = 403;
-    /** 左侧按钮条的区域编号：0 = 退出，1 = 旋转，2 = 设置，之后是可设定的位置。 */
-    /** 按钮条最上面固定的；下面是 Prefs 里可增减的按钮，最下面固定"收起"。 */
-    private static final String[] FIXED_ACTIONS = {"exit", "settings"};
+    /** 键盘屏：小触控板顶上正中的 ⋯（触控板没摆出来时 ⋯ 是功能行上的键，KeyboardPanel.MENU_BUTTON_ID）。 */
+    private static final int KB_MENU_ID = 400;
+    /** 键盘屏 ⋯ 菜单才有的四项：收起键盘、调整大小、布局（自动 / 分裂 / 合并轮换）、指点（触控板 / 小红点 / 关轮换）。 */
+    private static final int KB_CLOSE_ID = 401;
+    private static final int KB_ADJUST_ID = 402;
+    private static final int KB_LAYOUT_ID = 403;
+    private static final int KB_POINTER_ID = 404;
+    /** 菜单开着时盖住整页的"点外面关菜单"（排在菜单项、菜单底板后面）。 */
+    private static final int MENU_OUTSIDE_ID = 405;
+    /** 调整模式那条栏：完成、恢复默认。 */
+    private static final int KB_DONE_ID = 406;
+    private static final int KB_RESET_ID = 407;
+    /** 菜单底板（项与项之间、四周的边）：按了什么都不做，不当"点外面"。 */
+    private static final int MENU_PANEL_ID = 408;
+    /** 主界面触控板顶上正中的 ⋯。 */
+    private static final int PAD_MENU_ID = 409;
+    /** 主界面 ⋯ 菜单才有的"键盘"（打开键盘屏），两屏都有的设置、旋转、退出（同 Actions 的 settings / rotate / exit）。 */
+    private static final int MENU_KEYBOARD_ID = 410;
+    private static final int MENU_SETTINGS_ID = 411;
+    private static final int MENU_ROTATE_ID = 412;
+    private static final int MENU_EXIT_ID = 413;
+    /**
+     * ⋯ 菜单里的项，按显示的顺序（常用的在前、退出最后）：主界面 = 键盘、设置、旋转、退出；
+     * 键盘屏 = 收起键盘、调整大小、布局、指点、设置、旋转、退出。不是这一屏的项打开菜单时 GONE（{@link #onMenuScreen}）。
+     */
+    private static final int[] MENU_IDS = {
+            MENU_KEYBOARD_ID, KB_CLOSE_ID, KB_ADJUST_ID, KB_LAYOUT_ID, KB_POINTER_ID, MENU_SETTINGS_ID, MENU_ROTATE_ID, MENU_EXIT_ID,
+    };
+    private static final int[] MENU_LABELS = {
+            R.string.act_keyboard, R.string.kb_close, R.string.kb_adjust, R.string.kb_layout_auto, R.string.kb_pointer_pad,
+            R.string.act_settings, R.string.act_rotate, R.string.act_exit,
+    };
     /** 数字键盘：标签和 HID 用法码。 */
     private static final String[][] NUMPAD_LABELS = {
             {"7", "8", "9", "⌫"},
@@ -115,6 +143,7 @@ public final class MainActivity extends Activity
         @Override
         public void run() {
             link.heartbeat();
+            checkWindowMoved();   // 兜底：万一挪窗口不走布局遍历，最多晚 1 秒对上
             main.postDelayed(this, Proto.HEARTBEAT_INTERVAL_MS);
         }
     };
@@ -123,23 +152,63 @@ public final class MainActivity extends Activity
     private DisplayManager displays;
     private float density;
 
+    /** 整个界面的根（页面底色跟主题）。 */
+    private FrameLayout root;
+    /** 界面现在是按哪套主题、按键边框开没开上的色（{@link #applyTheme}：设置里改了才重新上色）。 */
+    private Theme shownTheme;
+    private boolean shownBorders;
     private TrackpadView pad;
+    /** 四角的小按钮（下标同 Prefs.corner）。 */
     private final List<TextView> cornerButtons = new ArrayList<>();
+    /** 主界面触控板顶上正中的 ⋯（PadStack 摆）。 */
+    private TextView padMenuButton;
+    /** 触控板背景图（设置 → 外观）：两块触控板共用一份，后台解码。 */
+    private PadImage padImage;
+    /** 角上的小按钮现在按"在图上"上的样子吗（垫不透明的触控板底色）：图来了 / 没了才重新上样子。 */
+    private boolean cornersOnImage;
     private LinearLayout right;
     private LinearLayout mainRow;
     private KeyboardScreen keyboardScreen;
     private TrackpadView miniPad;
-    private final List<TextView> kbToolbar = new ArrayList<>();
+    /** 键盘页的小红点、三个鼠标键（选小红点时键盘最下面那排或者小触控板的三键条，同一组）；主界面触控板的三键条和装它的那层。 */
+    private TrackPointView kbStick;
+    private MouseKeys kbMouseKeys;
+    private MouseKeys padMouseKeys;
+    private PadStack padStack;
+    /** 分流报来按着几根手指的鼠标键（下标 0 左、1 右、2 中）：两组三键条一起画按下的样子。 */
+    private final int[] mouseKeysHeld = new int[3];
+    /** 键盘屏触控板顶上的 ⋯、调整模式那条栏的两个按钮。 */
+    private TextView kbMenuButton;
+    private TextView kbDone, kbReset;
+    /** ⋯ 菜单（两屏共用一份，根视图最上面一层）：底板、项（下标同 MENU_IDS）、盖住整页的"点外面"。 */
+    private MenuLayer menuLayer;
+    private View menuOutside;
+    private final List<TextView> menuItems = new ArrayList<>();
+    private final int[] anchorLoc = new int[2];
+    /** 菜单开着时返回（手势 / 导航键）先关菜单。 */
+    private final OnBackInvokedCallback closeMenu = () -> setMenu(false);
+    private boolean menuBack;
     /** 键盘最下面一排的动作（下标 = 位置）。 */
     private final List<Actions.Action> keyboardRow = new ArrayList<>();
+    /** "自定义按键"（左边一列，原来的左侧按钮条）：设置里打开才显示，见 {@link #applyCustomKeys}。 */
     private ButtonStrip strip;
     private LinearLayout textBar;
     private EditText input;
+    /**
+     * 输入框原来的光标、选择把手（左 / 中 / 右）和选中高亮：窗口是系统深色主题，这些是它的青绿色（#80CBC4），
+     * 在浅色主题的米色底上看不清，所以纯黑以外按主题重新着色（{@link #tintInput}）；换回纯黑时装回原来的，和以前一模一样。
+     */
+    private Drawable inputCursor, inputHandleLeft, inputHandle, inputHandleRight;
+    private int inputHighlight;
+    /** 贴字面板上的按钮（发送、⌫、↵、Tab、收起），换主题时重新上色。 */
+    private final List<TextView> textBarButtons = new ArrayList<>();
     private LinearLayout numpad;
     private KeyboardPanel keyboard;
-    /** 下标就是区域编号。 */
+    /** 自定义按键，下标就是区域编号（= Prefs.slot 的下标）。 */
     private final List<TextView> stripButtons = new ArrayList<>();
     private final List<TextView> numpadButtons = new ArrayList<>();
+    /** 数字键盘上 View 自己收触摸时正按着的键（桌面模式服务没接管时）：服务接管那一刻要替它们松开，见 {@link #releaseNumpad}。 */
+    private final List<View> numpadHeld = new ArrayList<>();
     private final List<Integer> numpadUsages = new ArrayList<>();
 
     private boolean resumed;
@@ -161,6 +230,21 @@ public final class MainActivity extends Activity
     private boolean statusPress;
     private boolean grabbed;
     private String grabMessage = "";
+    /** 豆花的窗口占满整块屏（不在分屏 / 小窗里），pushLayout 时更新；不占满时不让服务独占触摸屏，见 {@link #serverActive}。 */
+    private boolean windowFull = true;
+    /**
+     * 豆花是系统里最上面那个 resumed 的 Activity（onTopResumedActivityChanged）。别的应用以弹出式小窗浮在全屏豆花上面时
+     * 豆花照样 resumed、窗口也照样占满，只有这个会变假。只在蓝牙模式、没接外接屏时用，见 {@link #ownsScreen}。
+     */
+    private boolean topResumed = true;
+    /**
+     * 报区域那一刻窗口左上角在屏幕上的位置。本地分流按它把窗口坐标换成屏幕坐标：和区域用的是同一时刻的位置，
+     * 小窗被拖走（只挪位置不改大小，不会重新布局、不重报区域）后触点和区域照样对得上。
+     */
+    private final int[] layoutOrigin = new int[2];
+    /** 上次报给服务的手势带宽度（左 / 上 / 右 / 下，像素，上边含小窗的标题栏），{@link #dispatchTouchEvent} 认"窗口范围过时了"用。 */
+    private final int[] reportedBand = new int[4];
+    private final int[] tmpLoc = new int[2];
     // ── 蓝牙模式 ──
     private boolean btMode;
     private BtHid bt;
@@ -213,7 +297,7 @@ public final class MainActivity extends Activity
         }
     };
     // ── 音量键：[键][0 = 点一下, 1 = 按住]，null = 没设，不截。蓝牙模式下 App 自己收（hardKeys），
-    // DeX 模式下由服务独占按键设备、判断好发来（onHardKey(int, int)） ──
+    // 桌面模式下由服务独占按键设备、判断好发来（onHardKey(int, int)） ──
     private final Actions.Action[][] hardKeyActions = new Actions.Action[2][2];
     private final HardKeys hardKeys = new HardKeys(new HardKeysOutput());
     private final Runnable[] hardKeyTimers = {
@@ -222,7 +306,7 @@ public final class MainActivity extends Activity
     };
     /** 服务发来、开始了还没结束的按住（下标 = 键，值 = 开始时的动作）：断开、暂停、服务放开实体键时补结束，不会重复。 */
     private final Actions.Action[] serverHeld = new Actions.Action[2];
-    /** DeX 模式下实体键经服务按着左键的来源：第一个按下、最后一个松开时才发 CMD_HOLD_LEFT。 */
+    /** 桌面模式下实体键经服务按着左键的来源：第一个按下、最后一个松开时才发 CMD_HOLD_LEFT。 */
     private final java.util.Set<Integer> serverLeftSources = new java.util.HashSet<>();
     private AudioManager audio;
     /**
@@ -243,11 +327,17 @@ public final class MainActivity extends Activity
         setAirMode(false);
     };
     private String btDevice = "";
-    /** 蓝牙模式下的触摸分流（DeX 模式下这件事在服务里做）。 */
+    /** 蓝牙模式下的触摸分流（桌面模式下这件事在服务里做）。 */
     private final TouchRouter local = new TouchRouter(new LocalOutput());
     private final Runnable localTimer = () -> local.onTimer(SystemClock.uptimeMillis());
     /** 这次手势由 local 分流（按下时定，一直到全部抬起）。 */
     private boolean localGesture;
+    /** 这次手势是服务注入回系统的（分屏透传），见 {@link #dispatchTouchEvent}。 */
+    private boolean injectedGesture;
+    /** 这次注入回来的手势按在 decor 自带的标题栏上：整次交给 decor（拖动、关闭小窗）。 */
+    private boolean injectedCaption;
+    /** 上次报给服务时 decor 自带标题栏的高度（窗口坐标，和报的上边手势带同一时刻）；全屏时 0。 */
+    private int reportedDecorCap;
     /** 蓝牙模式下拦住系统的返回手势：从屏幕边缘横划移光标时不能把豆花关掉（要走有"退出"按钮）。 */
     private final OnBackInvokedCallback swallowBack = () -> { };
     private boolean backSwallowed;
@@ -268,8 +358,21 @@ public final class MainActivity extends Activity
         bt = BtHid.get(this);
         selfStart = SelfStart.get(this);
         air = new AirMouse(this, bt, prefs, this);
-        // 只在可调试包里有：adb 让手机发任意位移（量回正中用）、开键盘触点日志（打字测试用）
-        debugMoves = DebugMoves.register(this, bt, this::onKeyLogChanged);
+        // 只在可调试包里有：adb 让手机发任意位移（量回正中用）、开键盘触点日志（打字测试用）、逐键发给主机（实体键盘布局的实测扫描）
+        debugMoves = DebugMoves.register(this, bt, this::onKeyLogChanged, new DebugMoves.KeySink() {
+            @Override
+            public String notReady() {
+                if (btMode && !bt.isConnected()) return "蓝牙没连着主机";
+                if (!btMode && !link.isConnected()) return "桌面模式没连上服务（键经服务的虚拟键盘发）";
+                if (latchedMods != 0) return "键盘上锁着修饰键（先点一下解开，不然第一个键会带着它）";
+                return null;
+            }
+
+            @Override
+            public void key(int key, boolean down) {
+                onLocalKey(key, down);
+            }
+        });
         onKeyLogChanged();   // 界面重建时接上还没到期的租期
         density = getResources().getDisplayMetrics().density;
         linkMessage = getString(R.string.status_connecting);
@@ -290,6 +393,10 @@ public final class MainActivity extends Activity
         WindowManager.LayoutParams attrs = w.getAttributes();
         attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
         w.setAttributes(attrs);
+        // 先定主题再建界面：建的时候就是对的颜色，不用先画一遍纯黑再换
+        Style.setTheme(Theme.byId(prefs.theme()), prefs.keyBorders());
+        shownTheme = Style.theme();
+        shownBorders = Style.keyBorders();
         setContentView(buildUi());
     }
 
@@ -300,6 +407,7 @@ public final class MainActivity extends Activity
         linkSeen = false;
         autoStartAsked = false;
         selfStart.addListener(selfStartListener);
+        PadImage.setImportedHook(padBgImported);
         applyPrefs();
         refreshDisplay();
         Display disp = getDisplay();
@@ -320,6 +428,8 @@ public final class MainActivity extends Activity
     protected void onResume() {
         super.onResume();
         resumed = true;
+        yieldFocus = false;   // 重新回到前台：先照常能拿焦点，等焦点被别的应用拿走再让（onWindowFocusChanged）
+        updateFocusable();
         hideSystemBars();
         if (tiltListener.canDetectOrientation()) tiltListener.enable();
         main.post(heartbeat);
@@ -334,7 +444,7 @@ public final class MainActivity extends Activity
         tiltListener.disable();
         haptics.stopHum();
         main.removeCallbacks(heartbeat);
-        local.releaseAll();   // 蓝牙模式：按着的键、鼠标键都松开（DeX 模式下 local 本来就闲着）
+        local.releaseAll();   // 蓝牙模式：按着的键、鼠标键都松开（桌面模式下 local 本来就闲着）
         localGesture = false;
         hardKeys.reset();   // 音量键按住中的先收尾（按住移动 / 拖动 / 左键松开）
         endServerHolds();   // 服务那一路的同理（服务随后放开实体键，发来的结束按住不会再做一次）
@@ -349,6 +459,7 @@ public final class MainActivity extends Activity
     @Override
     protected void onDestroy() {
         if (debugMoves != null) debugMoves.unregister(this);
+        padImage.destroy();
         main.removeCallbacks(keyLogCheck);
         super.onDestroy();
     }
@@ -374,14 +485,19 @@ public final class MainActivity extends Activity
         displays.unregisterDisplayListener(this);
         if (audio != null) audio.removeOnModeChangedListener(audioMode);
         selfStart.removeListener(selfStartListener);
+        PadImage.removeImportedHook(padBgImported);
         super.onStop();
     }
 
     /** 手机自己拉起服务的进度变了（开始启动 / 启动完）：状态字跟着变。 */
     private final SelfStart.Listener selfStartListener = this::updateStatus;
 
+    /** 设置页里选的背景图读取中就回到了主界面（onStart 的 applyPrefs 读到的还是旧图）：导入成功后照新的 Prefs 换上（后台解码，同 applyPrefs）。 */
+    private final Runnable padBgImported = () -> padImage.apply(prefs.padBg(), maxWindowSide());
+
     /** 设置页改完回来：按新设置更新按钮和震动强度，参数发给服务（蓝牙模式下给本地分流）。 */
     private void applyPrefs() {
+        applyTheme();
         btMode = prefs.btMode();
         updateHostKind();
         if (!btMode && airOn) setAirMode(false);
@@ -396,14 +512,19 @@ public final class MainActivity extends Activity
         haptics.setLevel(prefs.haptic());
         haptics.setTickStrength(prefs.tickStrength());
         haptics.setDragHum(prefs.dragHum());
-        applyStripHidden(prefs.stripHidden());
+        boolean tuning = Haptics.tuning(this);   // 惯性"放开 / 刹住"的波形只在调试版里能挑，正式包用默认
+        haptics.setSpinStyles(tuning ? prefs.spinStyle(true) : -1, tuning ? prefs.spinStyle(false) : -1);
+        if (btMode) bt.descriptorChanged();   // "连续滚动"开关变了：蓝牙用新描述符重新注册（对方要重新配对）
         GestureEngine.Config cfg = prefs.engineConfig();
         textureOn = cfg.texture;
         scrollTicksOn = cfg.scrollTicks != GestureEngine.TICKS_OFF;
         float edge = cfg.edgeWidthDp * density;
         pad.setEdgeGuides(edge, cfg.edgeScroll, cfg.edgeScrollHorizontal);
         miniPad.setEdgeGuides(edge, cfg.edgeScroll, cfg.edgeScrollHorizontal);
+        // 背景图：文件换了 / 要的更大才后台重新解（不放进 applyTheme：那个方法主题没变就直接返回）
+        padImage.apply(prefs.padBg(), maxWindowSide());
         rebuildStrip();
+        applyCustomKeys();
         rebuildAirSlots();
         updateActiveButtons();
         keyboardRow.clear();
@@ -414,17 +535,65 @@ public final class MainActivity extends Activity
             TextView b = cornerButtons.get(i);
             b.setText(a.shortLabel(this));
             b.setTag(a);
+            b.setVisibility(a.kind == Actions.Kind.NONE ? View.GONE : View.VISIBLE);   // 设成"无"的角不放按钮（也不报区域）
         }
-        keyboardScreen.setToolbarAtBottom(prefs.keyboardToolbarBottom());
+        // 底部状态字让过下面两个角（下标 2 右下、3 左下）的小按钮（8dp 边距 + 48dp 宽 + 6dp 空）：长的在中间截掉，不压在按钮上
+        boolean bottomCorners = cornerButtons.get(2).getVisibility() == View.VISIBLE || cornerButtons.get(3).getVisibility() == View.VISIBLE;
+        pad.setStatusSide(bottomCorners ? dp(62) : 0);
+        keyboardScreen.setKeyboardLayout(prefs.keyboardLayoutMode());
+        keyboardScreen.setPointer(prefs.keyboardPointer());
+        keyboardScreen.setPadKeys(prefs.padKeys());
+        padStack.setKeys(prefs.padKeys());
+        updateMenuLabels();
         link.config(prefs.engineConfig(), density);
         updateFocusable();
     }
 
     // ═══════════ 界面 ═══════════
 
+    /**
+     * 设置里换了主题 / 按键边框开关：已经建好的界面逐个重新上色（不重建，按着的键、打开的面板都不受影响）。
+     * 按钮条、空中鼠标页的格子 applyPrefs 接着会整条重建，这里不管；触控板、圆钮画的时候现取颜色，只要重画。
+     */
+    private void applyTheme() {
+        Theme t = Theme.byId(prefs.theme());
+        boolean borders = prefs.keyBorders();
+        if (t == shownTheme && borders == shownBorders) return;
+        Style.setTheme(t, borders);
+        shownTheme = t;
+        shownBorders = borders;
+        root.setBackgroundColor(t.bg);
+        airOverlay.setBackgroundColor(t.bg);
+        for (int i = 0; i < numpadButtons.size(); i++) numpadLook(i, numpadHeld.contains(numpadButtons.get(i)));
+        for (TextView b : menuItems) Style.look(b, false, false);
+        for (TextView b : textBarButtons) Style.look(b, false, false);
+        Style.look(kbDone, false, false);
+        Style.look(kbReset, false, false);
+        Style.look(airCenter, false, false);
+        Style.look(airExit, false, false);
+        for (TextView b : cornerButtons) Style.small(b, false, cornersOnImage);
+        Style.bare(kbMenuButton, false);
+        Style.bare(padMenuButton, false);
+        menuLayer.panel().setBackground(Style.border(this, t.accent, t.menuFill));
+        input.setTextColor(t.strong);
+        input.setHintTextColor(t.hint);
+        input.setBackground(Style.border(this, t.border, 0));
+        tintInput(t);
+        airStatus.setTextColor(t.text);
+        airState.setTextColor(t.focus);
+        keyboard.applyTheme();
+        keyboardScreen.applyTheme();
+        pad.invalidate();
+        miniPad.invalidate();
+        kbStick.invalidate();
+        kbMouseKeys.applyTheme();
+        padMouseKeys.applyTheme();
+        airRound.invalidate();
+    }
+
     private View buildUi() {
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.BLACK);
+        root = new FrameLayout(this);
+        root.setBackgroundColor(Style.theme().bg);
         int pad8 = dp(8);
         // 贴边：触摸由服务独占，系统的边缘手势碰不到，不用再给系统栏、刘海留边；只给"贴字"面板的输入法让位
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -432,15 +601,22 @@ public final class MainActivity extends Activity
             v.setPadding(0, 0, 0, ime.bottom);
             return insets;
         });
-        // 横竖屏切换、面板开合、按钮变化都会重新布局；布局一变就把新位置告诉服务
-        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> pushLayout());
+        // 横竖屏切换、面板开合、按钮变化都会重新布局；布局一变就把新位置告诉服务。整棵树摆完了才到这里：
+        // ⋯ 菜单先跟着 ⋯ 挪（只有 ⋯ 那一支重新布局时菜单那一层自己不一定重摆），再报区域
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            menuLayer.place();
+            pushLayout();
+        });
+        // 小窗只挪位置、大小不变时根视图不重新布局（上面那个监听不触发），但窗口会走一次布局遍历：在这里比一下位置，变了才重报。
+        // 不重报的话服务按旧位置分手指：豆花新位置上的触摸全被注入回系统、又被 App 吞掉，整个窗口点不动
+        getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(this::checkWindowMoved);
 
         mainRow = new LinearLayout(this);
         mainRow.setOrientation(LinearLayout.HORIZONTAL);
         root.addView(mainRow, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // ── 左侧按钮条（y 轴）：矮屏自动分列 ──
+        // ── 自定义按键（左边一列，y 轴）：设置里打开才显示，矮屏自动分列 ──
         strip = new ButtonStrip(this, dp(60), dp(52), dp(6));
         mainRow.addView(strip, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -450,58 +626,74 @@ public final class MainActivity extends Activity
         right = new LinearLayout(this);
         right.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
-        rp.leftMargin = pad8;
+        rp.setMarginStart(pad8);   // 和自定义按键之间的缝（从右往左的语言下自定义按键在右边，缝也跟着在右边）
         mainRow.addView(right, rp);
+        applyCustomKeys();
 
         textBar = buildTextBar();
         textBar.setVisibility(View.GONE);
         right.addView(textBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        padImage = new PadImage(this, prefs, this::onPadImageChanged);
         pad = new TrackpadView(this);
+        pad.setImage(padImage);
         numpad = buildNumpad();
         numpad.setVisibility(View.GONE);
-        right.addView(new PadArea(this, buildPadFrame(), numpad, pad8),
+        padMouseKeys = buildMouseKeys();
+        // 触控板顶上正中的 ⋯：同键盘屏，只有暗字、不带框
+        padMenuButton = Style.button(this, 18);
+        padMenuButton.setText("⋯");
+        Style.bare(padMenuButton, false);
+        padMenuButton.setOnTouchListener((v, e) -> localTouch(v, e, PAD_MENU_ID));
+        padStack = new PadStack(this, buildPadFrame(), pad, padMouseKeys, padMenuButton);
+        right.addView(new PadArea(this, padStack, numpad, pad8),
                 new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
-        // ── 键盘屏 ──
-        LinearLayout toolbar = new LinearLayout(this);
-        addToolbarButton(toolbar, getString(R.string.kb_close), KB_CLOSE_ID);
-        addToolbarButton(toolbar, getString(R.string.kb_adjust), KB_ADJUST_ID);
-        addToolbarButton(toolbar, getString(R.string.kb_reset), KB_RESET_ID).setVisibility(View.GONE);
-        addToolbarButton(toolbar, "", KB_TOOLBAR_POS_ID).setVisibility(View.GONE);
-        toolbar.setGravity(Gravity.CENTER);
-        layoutToolbar(false);
+        // ── 键盘屏：键盘 + 小触控板占满整页，⋯ 和调整栏由 KeyboardScreen 摆 ──
         miniPad = new TrackpadView(this);
+        miniPad.setImage(padImage);
         keyboard = new KeyboardPanel(this, this);
         // 键盘和数字键盘按实体键盘排，阿拉伯语这类从右往左的语言下也不镜像
         keyboard.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         numpad.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        keyboardScreen = new KeyboardScreen(this, toolbar, miniPad, keyboard, this);
+        // 触控板顶上正中的 ⋯：只有暗字、不带框
+        kbMenuButton = Style.button(this, 18);
+        kbMenuButton.setText("⋯");
+        Style.bare(kbMenuButton, false);
+        kbMenuButton.setOnTouchListener((v, e) -> localTouch(v, e, KB_MENU_ID));
+        LinearLayout adjustBar = new LinearLayout(this);
+        adjustBar.setGravity(Gravity.CENTER);   // 按钮宽度由 KeyboardScreen 量尺寸时定（窄窗口一起缩）
+        // 栏整块吃掉落在按钮之间、两头空处的触摸：不然往下传给叠在底下的键盘，调整模式里打出字来（同 ⋯ 菜单的底板）
+        adjustBar.setClickable(true);
+        kbDone = addBarButton(adjustBar, R.string.kb_done, KB_DONE_ID);
+        kbReset = addBarButton(adjustBar, R.string.kb_reset, KB_RESET_ID);
+        kbStick = new TrackPointView(this);
+        // 服务连着没接管时（View 自己收触摸）小红点不动，和触控板一样：吃掉触摸就行
+        kbStick.setOnTouchListener((v, e) -> true);
+        kbMouseKeys = buildMouseKeys();
+        keyboardScreen = new KeyboardScreen(this, miniPad, keyboard, kbStick, kbMouseKeys, kbMenuButton, adjustBar, this);
         keyboardScreen.setVisibility(View.GONE);
         root.addView(keyboardScreen, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.addView(buildAirOverlay(), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // ── ⋯ 菜单：两屏共用，盖在最上面（不开时 GONE） ──
+        root.addView(buildMenu(), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return root;
     }
 
-    /** 触控板 + 四角的小按钮（按钮条收起时才显示）。 */
+    /** 触控板 + 四角的小按钮（一直显示；动作、设成"无"时藏起来在 applyPrefs 里定）。按物理左右放，从右往左的语言下也不镜像。 */
     private View buildPadFrame() {
         FrameLayout frame = new FrameLayout(this);
         frame.addView(pad, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        for (int i = 0; i <= Prefs.CORNER_COUNT; i++) {
+        for (int i = 0; i < Prefs.CORNER_COUNT; i++) {
             int id = CORNER_BASE_ID + i;
             TextView b = Style.button(this, 12);
-            b.setTextColor(0xFF5A5A5A);
-            b.setBackground(Style.border(this, 0xFF1E1E1E, 0));
-            if (i == Prefs.CORNER_COUNT) {
-                b.setText("☰");
-                b.setTag(Actions.get("toggle_strip"));
-            }
+            Style.small(b, false, cornersOnImage);
             b.setOnTouchListener((v, e) -> localTouch(v, e, id));
-            b.setVisibility(View.GONE);
             FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(dp(48), dp(40), CORNER_GRAVITY[i]);
             p.setMargins(dp(8), dp(8), dp(8), dp(8));
             frame.addView(b, p);
@@ -510,76 +702,165 @@ public final class MainActivity extends Activity
         return frame;
     }
 
-    /** 收起 / 显示左侧按钮条；收起时触控板四角显示小按钮。 */
-    private void applyStripHidden(boolean hidden) {
-        strip.setVisibility(hidden ? View.GONE : View.VISIBLE);
-        for (TextView b : cornerButtons) b.setVisibility(hidden ? View.VISIBLE : View.GONE);
+    /**
+     * 一排左 / 中 / 右三个鼠标键（键盘页最下面那排和三键条一组、主界面触控板的三键条一组）。服务接管 / 本地分流时按报的区域分流
+     * （Proto.REGION_MOUSE_BUTTON）；服务连着没接管时 View 自己收触摸：轻点 = 点一下这个键（{@link #mouseKeyTouch}），按住拖不了。
+     */
+    private MouseKeys buildMouseKeys() {
+        MouseKeys keys = new MouseKeys(this, dp(4));
+        for (int i = 0; i < 3; i++) {
+            int mask = MouseKeys.MASKS[i];
+            keys.key(i).setOnTouchListener((v, e) -> mouseKeyTouch(v, e, mask));
+        }
+        return keys;
+    }
+
+    /** 服务没接管时三个鼠标键自己收触摸：按下画样子、震，抬起还在键上就点一下这个键（桌面模式经服务，蓝牙模式经本地分流发）。 */
+    private boolean mouseKeyTouch(View v, MotionEvent e, int mask) {
+        int id = Proto.MOUSE_BUTTON_ID_BASE | mask;
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                onButton(id, Proto.BUTTON_DOWN);
+                return true;
+            case MotionEvent.ACTION_UP:
+                onButton(id, Proto.BUTTON_UP);
+                if (e.getX() >= 0 && e.getX() <= v.getWidth() && e.getY() >= 0 && e.getY() <= v.getHeight()) {
+                    if (btMode) local.click(mask);
+                    else link.click(mask);
+                }
+                return true;
+            case MotionEvent.ACTION_CANCEL:
+                onButton(id, Proto.BUTTON_UP);
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * "自定义按键"显示 / 藏起（设置里的开关，默认关；开着但一个按钮都没有也不占地方）。藏起时触控板贴着左边，四个角的小按钮照旧
+     * （以前按钮条和角上的按钮二选一，2026-11-01 起角上的一直在，自定义按键是另加的）。
+     */
+    private void applyCustomKeys() {
+        boolean on = prefs.customKeys() && !stripButtons.isEmpty();
+        strip.setVisibility(on ? View.VISIBLE : View.GONE);
         LinearLayout.LayoutParams rp = (LinearLayout.LayoutParams) right.getLayoutParams();
-        rp.leftMargin = hidden ? 0 : dp(8);
+        int margin = on ? dp(8) : 0;
+        if (rp.getMarginStart() == margin) return;
+        rp.setMarginStart(margin);
         right.setLayoutParams(rp);
     }
 
-    private TextView addToolbarButton(LinearLayout toolbar, String label, int id) {
+    /** 调整栏上的按钮（完成、恢复默认）。 */
+    private TextView addBarButton(LinearLayout bar, int label, int id) {
         TextView b = Style.button(this, 14);
+        // 窄窗口里按钮一个只有六七十 dp 时，法语、德语这类长名字缩到最小字号一行也放不下：准许折两行（自动缩字号会把行数算进去）
+        b.setMaxLines(2);
         b.setText(label);
         b.setOnTouchListener((v, e) -> localTouch(v, e, id));
-        toolbar.addView(b);
-        kbToolbar.add(b);
+        // 宽度、边距由 KeyboardScreen.fitBar 按窗口宽度定：定宽挤在中间、离屏幕边远一点
+        bar.addView(b, new LinearLayout.LayoutParams(dp(104), ViewGroup.LayoutParams.MATCH_PARENT));
         return b;
     }
 
     /**
-     * 键盘工具栏：平时两个按钮定宽、挤在中间，左右都离屏幕边远一点（拿手机的手指常压在边上，以前一个按钮占半个屏宽，
-     * 贴着边很容易误触）；调整模式四个按钮铺满一行。宽度定死不用 wrap_content：按钮字号是自动缩小的，和 wrap_content 不搭。
+     * ⋯ 菜单（两屏共用一份，MenuLayer）：项按 MENU_IDS 的顺序建好，打开时只显示当前那一屏的（{@link #setMenu}）；
+     * 豆花自己画（服务独占触摸屏时 App 收不到手指，PopupMenu / Dialog 用不了）。排法、位置由 MenuLayer 定（贴着 ⋯、不出屏，
+     * 项多窗口矮时压矮 / 分列）。底板可点（服务没接管时挡住底下的"点外面"）。
      */
-    private void layoutToolbar(boolean adjusting) {
-        for (TextView b : kbToolbar) {
-            LinearLayout.LayoutParams p = adjusting
-                    ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1)
-                    : new LinearLayout.LayoutParams(dp(104), ViewGroup.LayoutParams.MATCH_PARENT);
-            int m = dp(adjusting ? 3 : 8);
-            p.setMargins(m, 0, m, 0);
-            b.setLayoutParams(p);
+    private View buildMenu() {
+        menuOutside = new View(this);
+        menuOutside.setOnTouchListener((v, e) -> localTouch(v, e, MENU_OUTSIDE_ID));
+        menuLayer = new MenuLayer(this, menuOutside, this::menuAnchor);
+        ViewGroup panel = menuLayer.panel();
+        panel.setBackground(Style.border(this, Style.theme().accent, Style.theme().menuFill));
+        for (int i = 0; i < MENU_IDS.length; i++) {
+            TextView b = Style.button(this, 15);
+            b.setMaxLines(2);
+            b.setText(MENU_LABELS[i]);
+            int id = MENU_IDS[i];
+            b.setOnTouchListener((v, e) -> localTouch(v, e, id));
+            panel.addView(b);
+            menuItems.add(b);
+        }
+        return menuLayer;
+    }
+
+    /** ⋯ 现在在哪（窗口坐标，MenuLayer 摆菜单时问）：键盘屏开着时是它的 ⋯（触控板顶上或者功能行上），不然是主界面触控板顶上的。 */
+    private boolean menuAnchor(int[] out) {
+        if (keyboardScreen.getVisibility() == View.VISIBLE) {
+            boolean center = keyboardScreen.menuAnchor(out);
+            keyboardScreen.getLocationInWindow(anchorLoc);
+            out[0] += anchorLoc[0];
+            out[1] += anchorLoc[1];
+            out[2] += anchorLoc[0];
+            out[3] += anchorLoc[1];
+            return center;
+        }
+        padMenuButton.getLocationInWindow(anchorLoc);
+        out[0] = anchorLoc[0];
+        out[1] = anchorLoc[1];
+        out[2] = anchorLoc[0] + padMenuButton.getWidth();
+        out[3] = anchorLoc[1] + padMenuButton.getHeight();
+        return true;
+    }
+
+    /** 这一项在这一屏（键盘屏 / 主界面）的菜单里有没有。 */
+    private static boolean onMenuScreen(int id, boolean onKeyboard) {
+        switch (id) {
+            case MENU_KEYBOARD_ID: return !onKeyboard;
+            case KB_CLOSE_ID:
+            case KB_ADJUST_ID:
+            case KB_LAYOUT_ID:
+            case KB_POINTER_ID: return onKeyboard;
+            default: return true;   // 设置、旋转、退出
         }
     }
 
-    /** 按钮条：固定的 + 设置里的若干个 + "收起"。按钮编号就是在条里的下标，设置改了个数就整条重建。 */
+    /** 菜单项编号 → 下标（MENU_IDS），不是菜单项返回 -1。 */
+    private static int menuIndex(int id) {
+        for (int i = 0; i < MENU_IDS.length; i++) if (MENU_IDS[i] == id) return i;
+        return -1;
+    }
+
+    /**
+     * 自定义按键：设置里的若干个（2026-11-01 起没有写死的"退出 / 设置 / 收起"，都进了 ⋯ 菜单）。按钮编号就是下标，
+     * 设置改了个数就整条重建；设成"无"的空着、位置留着。
+     */
     private void rebuildStrip() {
         strip.removeAllViews();
         stripButtons.clear();
-        for (String id : FIXED_ACTIONS) addStripButton(Actions.get(id));
         int n = prefs.slotCount();
         for (int i = 0; i < n; i++) {
             Actions.Action a = Actions.get(prefs.slot(i));
-            addStripButton(a);
-            if (a.kind == Actions.Kind.NONE) stripButtons.get(stripButtons.size() - 1).setVisibility(View.INVISIBLE);
+            TextView b = Style.button(this, 15);
+            int id = stripButtons.size();
+            b.setText(a.shortLabel(this));
+            b.setTag(a);
+            if (a.kind == Actions.Kind.NONE) b.setVisibility(View.INVISIBLE);
+            b.setOnTouchListener((v, e) -> localTouch(v, e, id));
+            stripButtons.add(b);
+            strip.addView(b);
         }
-        addStripButton(Actions.get("toggle_strip"));
     }
 
-    private void addStripButton(Actions.Action fixed) {
-        TextView b = Style.button(this, 15);
-        int id = stripButtons.size();
-        if (fixed != null) {
-            b.setText(fixed.shortLabel(this));
-            b.setTag(fixed);
-        }
-        b.setOnTouchListener((v, e) -> localTouch(v, e, id));
-        stripButtons.add(b);
-        strip.addView(b);
-    }
-
-    /** "贴字"面板：用手机自己的输入法（语音、中文）打一句，经剪贴板贴到 DeX。 */
+    /** "贴字"面板：用手机自己的输入法（语音、中文）打一句，经剪贴板贴到正在输入的地方。 */
     private LinearLayout buildTextBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.VERTICAL);
 
         LinearLayout row1 = new LinearLayout(this);
         input = new EditText(this);
-        input.setTextColor(Style.TEXT_ACTIVE);
-        input.setHintTextColor(0xFF555555);
+        input.setTextColor(Style.theme().strong);
+        input.setHintTextColor(Style.theme().hint);
         input.setHint(R.string.text_hint);
-        input.setBackground(Style.border(this, Style.BORDER, 0));
+        input.setBackground(Style.border(this, Style.theme().border, 0));
+        inputCursor = input.getTextCursorDrawable();
+        inputHandleLeft = input.getTextSelectHandleLeft();
+        inputHandle = input.getTextSelectHandle();
+        inputHandleRight = input.getTextSelectHandleRight();
+        inputHighlight = input.getHighlightColor();
+        tintInput(Style.theme());
         input.setPadding(dp(10), dp(8), dp(10), dp(8));
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         input.setImeOptions(EditorInfo.IME_ACTION_SEND);
@@ -608,6 +889,37 @@ public final class MainActivity extends Activity
         return bar;
     }
 
+    /** 输入框的光标用主题的亮文字色、选择把手和选中高亮用 focus（够 4.5:1 的强调色）；纯黑装回系统原来的。 */
+    private void tintInput(Theme t) {
+        if (t == Theme.DEFAULT) {
+            if (inputCursor != null) input.setTextCursorDrawable(inputCursor);
+            if (inputHandleLeft != null) input.setTextSelectHandleLeft(inputHandleLeft);
+            if (inputHandle != null) input.setTextSelectHandle(inputHandle);
+            if (inputHandleRight != null) input.setTextSelectHandleRight(inputHandleRight);
+            input.setHighlightColor(inputHighlight);
+            return;
+        }
+        GradientDrawable cursor = new GradientDrawable();
+        cursor.setColor(t.strong);
+        cursor.setSize(dp(2), -1);
+        input.setTextCursorDrawable(cursor);
+        Drawable h = tinted(inputHandleLeft, t.focus);
+        if (h != null) input.setTextSelectHandleLeft(h);
+        h = tinted(inputHandle, t.focus);
+        if (h != null) input.setTextSelectHandle(h);
+        h = tinted(inputHandleRight, t.focus);
+        if (h != null) input.setTextSelectHandleRight(h);
+        input.setHighlightColor((t.focus & 0x00FFFFFF) | 0x66000000);
+    }
+
+    /** 原来那个把手的一份副本、染成 color（不直接 mutate 原来的：换回纯黑时要装回没染过的）。 */
+    private Drawable tinted(Drawable original, int color) {
+        if (original == null || original.getConstantState() == null) return null;
+        Drawable d = original.getConstantState().newDrawable(getResources()).mutate();
+        d.setTint(color);
+        return d;
+    }
+
     private LinearLayout buildNumpad() {
         LinearLayout grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
@@ -615,17 +927,21 @@ public final class MainActivity extends Activity
             LinearLayout line = new LinearLayout(this);
             for (int c = 0; c < NUMPAD_LABELS[r].length; c++) {
                 int usage = NUMPAD_USAGES[r][c];
-                TextView b = Style.button(this, 18);
+                TextView b = Style.keyButton(this, 18);
                 b.setText(NUMPAD_LABELS[r][c]);
+                boolean fn = KeyRows.numpadFunctionKey(usage);   // 运算符、⌫、Tab、↵ 用主题的功能键颜色
+                Style.keyLook(b, fn, false, false);
                 b.setOnTouchListener((v, e) -> {
                     int a = e.getActionMasked();
                     if (a == MotionEvent.ACTION_DOWN) {   // 先发键，再震、再画按下的样子
+                        numpadHeld.add(v);
                         onLocalKey(usage, true);
                         keyHaptic();
-                        Style.look(v, false, true);
+                        Style.keyLook(v, fn, false, true);
                     } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
-                        onLocalKey(usage, false);
-                        Style.look(v, false, false);
+                        // 接管时已经替它松开过（releaseNumpad）的，迟到的抬起不再发
+                        if (numpadHeld.remove(v)) onLocalKey(usage, false);
+                        Style.keyLook(v, fn, false, false);
                     }
                     return true;
                 });
@@ -644,6 +960,7 @@ public final class MainActivity extends Activity
         TextView b = Style.button(this, 14);
         b.setText(label);
         b.setPadding(dp(12), dp(10), dp(12), dp(10));
+        textBarButtons.add(b);
         b.setOnClickListener(v -> {
             haptics.play(GestureEngine.HAPTIC_CLICK);
             onClick.onClick(v);
@@ -677,19 +994,38 @@ public final class MainActivity extends Activity
     }
 
     /**
-     * 窗口能不能获得焦点。平时不能（不抢 DeX 的焦点）；两种情况要能：
+     * 窗口能不能获得焦点。平时不能（不抢外接屏的焦点）；两种情况要能：
      * - "贴字"面板开着：输入法要焦点；
      * - 没有外接屏：虚拟键盘的按键只能发到手机屏上，豆花是这块屏的当前应用，窗口却不收焦点，
      *   系统等 5 秒没人接，就弹"豆花没有响应"。
      */
     private void updateFocusable() {
         // 音量键设了动作要收按键：接着外接屏时也让窗口能获得焦点
-        boolean focusable = textBar.getVisibility() == View.VISIBLE || targetDisplay == Display.INVALID_DISPLAY
+        boolean yield = yieldFocus && !btMode && !windowFull;
+        boolean focusable = textBar.getVisibility() == View.VISIBLE || (targetDisplay == Display.INVALID_DISPLAY && !yield)
                 || hardKeysActive();
         if (focusable) {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
         } else {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
+        }
+    }
+
+    /**
+     * 桌面模式分屏 / 小窗时，焦点一旦被别的应用拿走（用户点了另一边的 Moonlight 之类），豆花的窗口就不再拿焦点：
+     * 光标跑到豆花这半边点一下也抢不走，另一边的应用就不会因为丢焦点被系统收回鼠标捕获（用户 2026-10-30：
+     * Moonlight 不抓豆花的鼠标、光标跑出它的边界；推测是焦点被豆花抢了，先这么改，不行再回退）。
+     * 不是一进分屏就不拿：刚开进分屏时豆花是当前应用，窗口要是不收焦点，虚拟键盘的键没人接，5 秒后系统弹"豆花没有响应"。
+     * 回到全屏（pushLayout）、重新回到前台（onResume）时清掉；贴字面板开着时照样临时拿焦点（updateFocusable）。
+     */
+    private boolean yieldFocus;
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus && !btMode && !windowFull && resumed && textBar.getVisibility() != View.VISIBLE && !yieldFocus) {
+            yieldFocus = true;
+            updateFocusable();
         }
     }
 
@@ -712,16 +1048,29 @@ public final class MainActivity extends Activity
     // ═══════════ 告诉服务各区域在哪 ═══════════
 
     /**
-     * 把各区域的位置交给分流的一方：DeX 模式发给服务，蓝牙模式给本地的 TouchRouter。
-     * 服务独占触摸屏的条件之一是 active：豆花在前台、"贴字"面板没开、键盘不在调整模式（拖动要 App 自己收触摸）。
+     * 把各区域的位置交给分流的一方：桌面模式发给服务，蓝牙模式给本地的 TouchRouter。
+     * 服务独占触摸屏的条件之一是 active：豆花在前台、"贴字"面板没开、键盘不在调整模式（拖动要 App 自己收触摸）、
+     * 窗口占满整块屏（{@link #serverActive}）。
      * 蓝牙模式下也一样报，带上 relay：服务接管后把报文发回来（{@link #onRelayMouse}）；本地的 TouchRouter 同时备着，
      * 服务没开、没接管时用。
      */
     private void pushLayout() {
         if (pad == null) return;
+        boolean wasFull = windowFull;
+        windowFull = fillsDisplay();
+        if (windowFull && yieldFocus) {   // 回到全屏：不再让焦点（豆花是这块屏唯一的应用，窗口不收焦点会"没有响应"）
+            yieldFocus = false;
+            updateFocusable();
+        }
+        // 分屏 / 小窗时没让服务锁方向（锁的是整块屏），回到全屏补上选过的方向。同一个方向重复锁一次无害
+        if (!wasFull && windowFull && link.isConnected() && prefs.rotation() >= 0) {
+            Display d = getDisplay();
+            if (d != null) link.rotate(d.getDisplayId(), prefs.rotation());
+        }
         boolean keyboardShown = keyboardScreen.getVisibility() == View.VISIBLE;
         // 键盘在最上面（空中鼠标页上调出来的也是），先看它
         if (keyboardShown ? keyboardScreen.getWidth() == 0 : airOn ? airOverlay.getWidth() == 0 : pad.getWidth() == 0) return;
+        getWindow().getDecorView().getLocationOnScreen(layoutOrigin);
         List<int[]> regions = collectRegions(keyboardShown);
         if (btMode) {
             TouchRouter.Region[] rs = new TouchRouter.Region[regions.size()];
@@ -732,8 +1081,15 @@ public final class MainActivity extends Activity
             local.setRegions(rs);
         }
         updateGestureExclusion();
-        if (link.isConnected()) sendLayout(localActive(), regions);
+        if (link.isConnected()) sendLayout(serverActive(), regions);
         updateStatus();
+    }
+
+    /** 窗口在屏幕上的位置和上次报区域时不一样了（小窗被拖走）：重报。 */
+    private void checkWindowMoved() {
+        if (pad == null) return;
+        getWindow().getDecorView().getLocationOnScreen(tmpLoc);
+        if (tmpLoc[0] != layoutOrigin[0] || tmpLoc[1] != layoutOrigin[1]) pushLayout();
     }
 
     /**
@@ -752,24 +1108,90 @@ public final class MainActivity extends Activity
         Log.i("douhua", "键盘触点调试日志" + (on ? "开" : "关"));
     }
 
-    /** 豆花在前台、"贴字"面板没开、键盘不在调整模式：触摸由分流处理（否则按普通方式交给各个按钮）。 */
+    /**
+     * 豆花在前台、"贴字"面板没开、键盘不在调整模式：触摸由分流处理（否则按普通方式交给各个按钮）。
+     * 只管分流能不能用；分屏 / 小窗里蓝牙模式照样由本地分流收自己窗口里的触摸。让不让服务独占触摸屏另看 {@link #serverActive}。
+     */
     private boolean localActive() {
         return resumed && textBar.getVisibility() != View.VISIBLE && !keyboardScreen.isAdjusting();
     }
 
     /**
+     * 报给服务的 active（服务独占触摸屏、截实体键的条件之一）：分流能用，而且窗口占满整块屏。
+     * 分屏 / 小窗时整块触摸屏一独占，另一边的应用、分隔条、系统手势全碰不到，所以这时不让服务接管：
+     * 服务照"不在前台"那条路释放，蓝牙模式退回本地分流（只收豆花自己的窗口），桌面模式触控板暂停、按钮和键盘照常。
+     */
+    private boolean serverActive() {
+        return localActive() && ownsScreen();
+    }
+
+    /**
+     * 蓝牙模式下豆花独自用着整块屏：窗口占满（{@link #windowFull}），而且是最上面那个 Activity（别的应用的小窗没浮在上面）；
+     * 接着外接屏时窗口不收焦点、本来就不是顶层，不看这一条。不满足就不让服务独占，本地分流只收豆花自己窗口里的触摸。
+     * 桌面模式恒为真：分屏 / 小窗里照样让服务独占整块屏（用户 2026-10-29 实测：Moonlight 在上、豆花在下分屏，不独占的话
+     * 触控板动不了光标——桌面模式下没有本地鼠标那条路；手指点到豆花窗口上，系统还把键盘焦点给了豆花，虚拟键盘打的字被豆花自己吞掉，
+     * 打一个字之后全进不了 Moonlight）。
+     */
+    private boolean ownsScreen() {
+        if (!btMode) return true;
+        if (!windowFull) return false;
+        return targetDisplay != Display.INVALID_DISPLAY || topResumed;
+    }
+
+    /** 别的应用的小窗浮上来 / 关掉（或者用户点回豆花）：重新判断要不要让服务接管。 */
+    @Override
+    public void onTopResumedActivityChanged(boolean top) {
+        super.onTopResumedActivityChanged(top);
+        topResumed = top;
+        pushLayout();
+    }
+
+    /**
+     * 窗口占满整块屏吗：不在多窗口模式（分屏、三星的弹出式视图小窗都算多窗口），窗口范围也等于这块屏能给的最大范围
+     * （兜住别的没占满的情况，比如被系统按比例塞进中间的框）。
+     */
+    private boolean fillsDisplay() {
+        if (isInMultiWindowMode()) return false;
+        WindowManager wm = getWindowManager();
+        return wm.getCurrentWindowMetrics().getBounds().equals(wm.getMaximumWindowMetrics().getBounds());
+    }
+
+    /** 进出分屏 / 小窗：重新判断要不要让服务接管（窗口大小变了的情况布局监听也会报，这里兜住大小没变的）。 */
+    @Override
+    public void onMultiWindowModeChanged(boolean inMultiWindow, Configuration newConfig) {
+        super.onMultiWindowModeChanged(inMultiWindow, newConfig);
+        pushLayout();
+    }
+
+    /**
      * 区域列表，每项 {type, id, left, top, right, bottom}（屏幕像素）；叠在上面的排在前面。
-     * 只报看得见的那一屏：键盘（空中鼠标页上调出来的也是）、空中鼠标页、主界面三组互斥。
+     * 只报看得见的那一屏：⋯ 菜单开着时只有菜单；不然键盘（空中鼠标页上调出来的也是）、空中鼠标页、主界面三组互斥。
      * 键盘开着时连空中鼠标页的也报的话，键盘空隙里看不见的圆钮、格子照样按得到。
      */
     private List<int[]> collectRegions(boolean keyboardShown) {
         List<int[]> regions = new ArrayList<>();
-        if (keyboardShown) {
-            for (int i = 0; i < kbToolbar.size(); i++) {
-                if (kbToolbar.get(i).getVisibility() == View.VISIBLE) {
-                    addRegion(regions, kbToolbar.get(i), Proto.REGION_BUTTON, KB_CLOSE_ID + i);
-                }
+        if (menuLayer.isOpen()) {
+            // ⋯ 菜单开着（主界面、键盘屏一样）：只报这一屏的菜单项、菜单底板，后面一块盖住整页——点在菜单外面只关菜单，
+            // 底下的键、触控板、角上的按钮、自定义按键一个都按不到。
+            // 分屏 / 小窗时"点外面"不覆盖窗口四边的手势带，交给系统认手势（sendLayout 里裁，手势带要到那里才算出来）
+            for (int i = 0; i < menuItems.size(); i++) {
+                TextView b = menuItems.get(i);
+                if (b.getVisibility() == View.VISIBLE) addRegion(regions, b, Proto.REGION_BUTTON, MENU_IDS[i]);
             }
+            addRegion(regions, menuLayer.panel(), Proto.REGION_BUTTON, MENU_PANEL_ID);
+            addRegion(regions, menuOutside, Proto.REGION_BUTTON, MENU_OUTSIDE_ID);
+            return regions;
+        }
+        if (keyboardShown) {
+            if (keyboardScreen.isAdjusting()) {
+                addRegion(regions, kbDone, Proto.REGION_BUTTON, KB_DONE_ID);
+                addRegion(regions, kbReset, Proto.REGION_BUTTON, KB_RESET_ID);
+            }
+            // ⋯ 叠在触控板顶上，排在触控板前面。小红点嵌在键里（压着 g、h、v、b 的角）时必须排在键和键盘范围前面：
+            // 按在红点范围里的归红点，不归底下的键，缝里的点也分不到红点范围里去（TouchRouter.hit 按顺序找第一个）
+            if (keyboardScreen.isMenuButtonShown()) addRegion(regions, kbMenuButton, Proto.REGION_BUTTON, KB_MENU_ID);
+            if (keyboardScreen.isStickShown()) addRegion(regions, kbStick, Proto.REGION_STICK, Proto.STICK_ID);
+            if (keyboardScreen.areMouseKeysShown()) addMouseKeys(regions, kbMouseKeys);
             keyboard.collectRegions(regions);
             if (keyboardScreen.isPadUsable()) addRegion(regions, miniPad, Proto.REGION_PAD, 0);
             return regions;
@@ -785,15 +1207,19 @@ public final class MainActivity extends Activity
             addRegion(regions, airExit, Proto.REGION_BUTTON, AIR_EXIT_ID);
             return regions;
         }
-        // 四角的小按钮叠在触控板上，要排在触控板前面（服务按顺序找第一个命中的区域）
+        // ⋯ 和四角的小按钮叠在触控板上，要排在触控板前面（服务按顺序找第一个命中的区域）；
+        // 窄触控板上 ⋯ 会挨着左上 / 右上角的按钮，⋯ 排最前（画的时候也在最上面）
+        addRegion(regions, padMenuButton, Proto.REGION_BUTTON, PAD_MENU_ID);
         for (int i = 0; i < cornerButtons.size(); i++) {
             TextView b = cornerButtons.get(i);
             if (b.getVisibility() == View.VISIBLE) {
                 addRegion(regions, b, holdLeft(b) ? Proto.REGION_HOLD_LEFT : Proto.REGION_BUTTON, CORNER_BASE_ID + i);
             }
         }
+        if (padStack.keysShown()) addMouseKeys(regions, padMouseKeys);
         addRegion(regions, pad, Proto.REGION_PAD, 0);
-        for (int id = 0; id < stripButtons.size(); id++) {
+        // 自定义按键：整列藏着时（设置里关着，默认）一个都不报（按钮自己的 visibility 还是 VISIBLE）
+        for (int id = 0; strip.getVisibility() == View.VISIBLE && id < stripButtons.size(); id++) {
             TextView b = stripButtons.get(id);
             if (b.getVisibility() != View.VISIBLE || !(b.getTag() instanceof Actions.Action)) continue;
             addRegion(regions, b, holdLeft(b) ? Proto.REGION_HOLD_LEFT : Proto.REGION_BUTTON, id);
@@ -806,16 +1232,69 @@ public final class MainActivity extends Activity
         return regions;
     }
 
+    /**
+     * 报给服务：尺寸是整块屏的（服务按它把触摸屏坐标转到当前方向；分屏时窗口比屏小，以前报窗口大小，横过来就转错），
+     * 再带上窗口在屏上的范围（和区域同一时刻、同一套坐标：layoutOrigin + 根视图大小）、占没占满、
+     * 贴着窗口边的系统手势带宽度（窗口的 systemGestures 插图）——桌面模式分屏时服务据此把另一边的、手势带里的手指注入回系统。
+     */
     private void sendLayout(boolean active, List<int[]> regions) {
         Display d = getDisplay();
-        Rect bounds = getWindowManager().getCurrentWindowMetrics().getBounds();
+        Rect screen = getWindowManager().getMaximumWindowMetrics().getBounds();
+        View root = getWindow().getDecorView();
+        int[] window = {layoutOrigin[0], layoutOrigin[1], layoutOrigin[0] + root.getWidth(), layoutOrigin[1] + root.getHeight()};
+        WindowInsets wi = root.getRootWindowInsets();
+        Insets g = wi != null ? wi.getInsets(WindowInsets.Type.systemGestures()) : Insets.NONE;
+        int top = g.top;
+        if (!windowFull) {
+            // 小窗的标题栏（拖动、最小化、关闭）也算上边的手势带、归系统，不然接管期间小窗拖不动、关不掉。两种画法都兜住：
+            // WM Shell 画在任务范围内的（captionBar 插图），和 decor 里自带的（老式 DecorCaptionView / 三星：内容视图比 decor 低一截）。
+            // 全屏时服务不看手势带，不算（前提：全屏时内容视图顶边和 decor 顶边对齐）
+            int capTop = wi != null ? wi.getInsets(WindowInsets.Type.captionBar()).top : 0;
+            top = Math.max(top, Math.max(capTop, decorCapOf()));
+        }
+        // decor 自带的标题栏是豆花窗口里的 View：注入回来的手指按在这一截时要交给它（dispatchTouchEvent），不能吞掉
+        reportedDecorCap = windowFull ? 0 : decorCapOf();
+        reportedBand[0] = g.left;
+        reportedBand[1] = top;
+        reportedBand[2] = g.right;
+        reportedBand[3] = g.bottom;
+        if (!windowFull) {
+            // 分屏 / 小窗时 ⋯ 菜单的"点外面"裁掉四边的手势带（含标题栏）：带里是空白处，照透传规则交给系统认手势（返回、回桌面、拖小窗）。
+            // 系统没认成手势、注入回豆花窗口的，dispatchTouchEvent 里 injectedGesture 那条吞掉，菜单留着。菜单项、底板是真按钮，不裁
+            int il = window[0] + reportedBand[0], it = window[1] + reportedBand[1];
+            int ir = window[2] - reportedBand[2], ib = window[3] - reportedBand[3];
+            for (Iterator<int[]> i = regions.iterator(); i.hasNext(); ) {
+                int[] r = i.next();
+                if (r[1] != MENU_OUTSIDE_ID) continue;
+                r[2] = Math.max(r[2], il);
+                r[3] = Math.max(r[3], it);
+                r[4] = Math.min(r[4], ir);
+                r[5] = Math.min(r[5], ib);
+                if (r[2] >= r[4] || r[3] >= r[5]) i.remove();
+            }
+        }
         link.layout(active, btMode, d != null ? d.getDisplayId() : Display.DEFAULT_DISPLAY, d != null ? d.getRotation() : 0,
-                bounds.width(), bounds.height(), regions);
+                screen.width(), screen.height(), windowFull, window, reportedBand.clone(), regions);
+    }
+
+    /** decor 里自带的标题栏有多高（内容视图比 decor 低的那一截，老式 DecorCaptionView / 三星小窗）；没有为 0。 */
+    private int decorCapOf() {
+        View content = findViewById(android.R.id.content);
+        if (content == null) return 0;
+        content.getLocationOnScreen(tmpLoc);
+        return Math.max(0, tmpLoc[1] - layoutOrigin[1]);
     }
 
     /** "左键"按钮：鼠标左键由分流直接按住 / 松开（REGION_HOLD_LEFT），和触控板的手势合在一起算拖动。 */
     private static boolean holdLeft(View b) {
         return b.getTag() instanceof Actions.Action && ((Actions.Action) b.getTag()).kind == Actions.Kind.HOLD_LEFT;
+    }
+
+    /** 三个鼠标键各报一块（id = MOUSE_BUTTON_ID_BASE | 键位）。 */
+    private static void addMouseKeys(List<int[]> regions, MouseKeys keys) {
+        for (int i = 0; i < 3; i++) {
+            addRegion(regions, keys.key(i), Proto.REGION_MOUSE_BUTTON, Proto.MOUSE_BUTTON_ID_BASE | MouseKeys.MASKS[i]);
+        }
     }
 
     private static void addRegion(List<int[]> regions, View v, int type, int id) {
@@ -852,29 +1331,58 @@ public final class MainActivity extends Activity
             if (down) keyHaptic();
             keyboard.showPressed(key, down);
             for (int i = 0; i < numpadButtons.size(); i++) {
-                if (numpadUsages.get(i) == key) Style.look(numpadButtons.get(i), false, down);
+                if (numpadUsages.get(i) == key) numpadLook(i, down);
             }
             return;
         }
         if (id == KeyboardPanel.SYMBOLS_BUTTON_ID || id == KeyboardPanel.FN_BUTTON_ID || id == KeyboardPanel.GLOBE_BUTTON_ID
-                || (id >= KeyboardPanel.ROW_ACTION_BASE_ID && id < KeyboardPanel.ROW_ACTION_BASE_ID + keyboardRow.size())) {
+                || id == KeyboardPanel.MENU_BUTTON_ID || (id >= KeyboardPanel.ROW_ACTION_BASE_ID && id < KeyboardPanel.ROW_ACTION_BASE_ID + keyboardRow.size())) {
             if (down) onKeyHaptic(id, true);
             keyboard.showPressed(id, down);
             if (action == Proto.BUTTON_TAP) onSpecialKey(id);
             return;
         }
+        if (id == Proto.STICK_ID) {   // 小红点：只画样子（轻点的"嗒"由分流在轻点成立时发）
+            kbStick.setPressedLook(down);
+            return;
+        }
+        if (id >= Proto.MOUSE_BUTTON_ID_BASE && id < Proto.MOUSE_BUTTON_ID_BASE + 8) {
+            mouseKeyButton(id - Proto.MOUSE_BUTTON_ID_BASE, down);
+            return;
+        }
         if (id >= CORNER_BASE_ID && id < CORNER_BASE_ID + cornerButtons.size()) {
             TextView b = cornerButtons.get(id - CORNER_BASE_ID);
-            b.setBackground(Style.border(this, 0xFF1E1E1E, down ? Style.PRESSED : 0));
+            Style.small(b, down, cornersOnImage);
             buttonAction((Actions.Action) b.getTag(), action, AirMouse.SRC_CORNER + id - CORNER_BASE_ID);
             return;
         }
-        if (id >= KB_CLOSE_ID && id <= KB_TOOLBAR_POS_ID) {
-            TextView b = kbToolbar.get(id - KB_CLOSE_ID);
-            Style.look(b, id == KB_ADJUST_ID && keyboardScreen.isAdjusting(), down);
+        if (id == KB_MENU_ID || id == PAD_MENU_ID) {
+            Style.bare(id == KB_MENU_ID ? kbMenuButton : padMenuButton, down);
             if (action == Proto.BUTTON_TAP) {
                 haptics.play(GestureEngine.HAPTIC_CLICK);
-                onToolbar(id);
+                setMenu(!menuLayer.isOpen());
+            }
+            return;
+        }
+        if (id == MENU_OUTSIDE_ID) {
+            if (!down) setMenu(false);   // 抬起时关（按下就关的话，这次手势剩下的部分会落到新报的区域上）
+            return;
+        }
+        if (id == MENU_PANEL_ID) return;
+        int menuIndex = menuIndex(id);
+        if (menuIndex >= 0) {
+            Style.look(menuItems.get(menuIndex), false, down);
+            if (action == Proto.BUTTON_TAP && menuLayer.isOpen()) {
+                haptics.play(GestureEngine.HAPTIC_CLICK);
+                onMenuItem(id);
+            }
+            return;
+        }
+        if (id == KB_DONE_ID || id == KB_RESET_ID) {
+            Style.look(id == KB_DONE_ID ? kbDone : kbReset, false, down);
+            if (action == Proto.BUTTON_TAP && keyboardScreen.isAdjusting()) {
+                haptics.play(GestureEngine.HAPTIC_CLICK);
+                onAdjustBar(id);
             }
             return;
         }
@@ -1003,10 +1511,17 @@ public final class MainActivity extends Activity
         }
     }
 
-    /** 滚一格：DeX 模式交给服务的虚拟鼠标；蓝牙模式直接发，带上两路按着的键。 */
+    /**
+     * 滚一格：桌面模式、蓝牙模式下服务接管着（转发）时交给服务的分流（服务那边转着的惯性先停，转发模式下报文照常发回来由蓝牙发）；
+     * 蓝牙模式下服务没接管时直接发（滚轮单位 1/120 格），带上两路按着的键，本地分流转着的惯性先停。
+     */
     private void wheel(int n) {
-        if (btMode) bt.sendMouse(touchButtons | air.buttons(), 0, 0, n, 0);
-        else link.wheel(n);
+        if (btMode && !(grabbed && link.isConnected())) {
+            local.stopSpin(false);
+            bt.sendMouse(touchButtons | air.buttons(), 0, 0, n * Hid.WHEEL_UNIT, 0);
+        } else {
+            link.wheel(n);
+        }
         if (scrollTicksOn) haptics.play(GestureEngine.HAPTIC_TICK);
     }
 
@@ -1017,7 +1532,7 @@ public final class MainActivity extends Activity
     }
 
     /**
-     * 实体键按住"左键"：蓝牙模式经空中指针那一路发；DeX 模式鼠标在服务里，经服务的虚拟鼠标按住（CMD_HOLD_LEFT，
+     * 实体键按住"左键"：蓝牙模式经空中指针那一路发；桌面模式鼠标在服务里，经服务的虚拟鼠标按住（CMD_HOLD_LEFT，
      * 和屏幕上的"左键"按钮共用服务里的计数）。
      */
     private void holdLeft(int source, boolean down) {
@@ -1030,6 +1545,31 @@ public final class MainActivity extends Activity
         else serverLeftSources.remove(source);
         boolean now = !serverLeftSources.isEmpty();
         if (now != was) link.holdLeft(now);
+    }
+
+    /**
+     * 三个鼠标键按下 / 松开（鼠标键本身由分流按，这里只管样子和震动）：左键和"左键"按钮一样（"嗒" + 持续轻震，松开停震再"嗒"，
+     * 共用计数）；右键、中键按下"嗒"一下（右键按住拖少见，不嗡）。中键滚动的咔嗒由分流发。两组三键条一起画（只有一组看得见）。
+     */
+    private void mouseKeyButton(int mask, boolean down) {
+        int i = mask == Proto.BUTTON_LEFT ? 0 : mask == Proto.BUTTON_RIGHT ? 1 : mask == Proto.BUTTON_MIDDLE ? 2 : -1;
+        if (i < 0) return;
+        if (!down && mouseKeysHeld[i] == 0) return;   // 收尾时已经清过（接管、断开），迟到的松开不再震
+        mouseKeysHeld[i] = Math.max(0, mouseKeysHeld[i] + (down ? 1 : -1));
+        int pressed = (mouseKeysHeld[0] > 0 ? Proto.BUTTON_LEFT : 0) | (mouseKeysHeld[1] > 0 ? Proto.BUTTON_RIGHT : 0)
+                | (mouseKeysHeld[2] > 0 ? Proto.BUTTON_MIDDLE : 0);
+        kbMouseKeys.setPressedMask(pressed);
+        padMouseKeys.setPressedMask(pressed);
+        if (mask == Proto.BUTTON_LEFT) holdLeftFeedback(down);   // 自己按计数（还有别的来源按着左键就接着嗡）
+        else if (down) haptics.play(GestureEngine.HAPTIC_CLICK);
+    }
+
+    /** 三个鼠标键、小红点都画回松开的样子（接管 / 断开时，等不到它们的松开了）。 */
+    private void clearMouseKeys() {
+        java.util.Arrays.fill(mouseKeysHeld, 0);
+        kbMouseKeys.setPressedMask(0);
+        padMouseKeys.setPressedMask(0);
+        kbStick.setPressedLook(false);
     }
 
     /** "左键"按着 = 拖动中：按下"嗒"一下再持续轻震，松开停震再"嗒"一下。屏幕上的"左键"按钮、音量键都是这一套。 */
@@ -1067,7 +1607,7 @@ public final class MainActivity extends Activity
         main.postDelayed(r, LEFT_FOLLOW_DELAY_MS);
     }
 
-    /** 两路里还按着左键没有（蓝牙模式才知道；DeX 模式下左键的状态在服务那边）。 */
+    /** 两路里还按着左键没有（蓝牙模式才知道；桌面模式下左键的状态在服务那边）。 */
     private boolean leftHeld() {
         return btMode && ((touchButtons | air.buttons()) & Proto.BUTTON_LEFT) != 0;
     }
@@ -1107,13 +1647,15 @@ public final class MainActivity extends Activity
         else link.hidKey(key, down);
     }
 
-    /** 键盘上的"符" / "Fn" / 🌐，和快捷行里不是键盘组合键的动作。 */
+    /** 键盘上的"符" / "Fn" / 🌐 / ⋯，和快捷行里不是键盘组合键的动作。 */
     @Override
     public void onSpecialKey(int id) {
         if (id == KeyboardPanel.SYMBOLS_BUTTON_ID || id == KeyboardPanel.FN_BUTTON_ID) {
             keyboard.onLayerButton(id);
         } else if (id == KeyboardPanel.GLOBE_BUTTON_ID) {
             run(Actions.get("lang_switch"));
+        } else if (id == KeyboardPanel.MENU_BUTTON_ID) {
+            setMenu(!menuLayer.isOpen());
         } else if (id >= KeyboardPanel.ROW_ACTION_BASE_ID) {
             int i = id - KeyboardPanel.ROW_ACTION_BASE_ID;
             if (i < keyboardRow.size()) run(keyboardRow.get(i));
@@ -1125,9 +1667,10 @@ public final class MainActivity extends Activity
     /** 键盘屏开 / 关。空中鼠标页上调出来时键盘盖在页面上面，空中鼠标暂停（见 {@link #airPaused}），收起回到页面。 */
     private void setKeyboardScreen(boolean on) {
         boolean was = keyboardScreen.getVisibility() == View.VISIBLE;
+        setMenu(false);   // 菜单是上一屏的（两屏的项不一样）
         if (on) {
             closeTextBar();
-            keyboardScreen.setRect(prefs.keyboardRect(keyboardScreen.isLandscape()));
+            loadKeyboardRects();
         } else {
             setAdjusting(false);
         }
@@ -1142,24 +1685,70 @@ public final class MainActivity extends Activity
         pushLayout();
     }
 
-    private void onToolbar(int id) {
-        boolean landscape = keyboardScreen.isLandscape();
+    /**
+     * ⋯ 菜单开 / 关（两屏触控板顶上的 ⋯、功能行上的 ⋯ 键、点外面、返回、换屏都走这里）。键盘调整模式里、空中鼠标页上（没有 ⋯）不开。
+     * 打开时只显示当前那一屏的项（{@link #onMenuScreen}）。开着时区域只报菜单（collectRegions），
+     * 返回先关菜单（OnBackInvokedCallback，优先于蓝牙模式吞返回的那个）。
+     */
+    private void setMenu(boolean on) {
+        boolean keyboardShown = keyboardScreen.getVisibility() == View.VISIBLE;
+        if (on && (keyboardShown ? keyboardScreen.isAdjusting() : airOn)) return;
+        if (on == menuLayer.isOpen()) return;
+        if (on) {
+            for (int i = 0; i < MENU_IDS.length; i++) {
+                menuItems.get(i).setVisibility(onMenuScreen(MENU_IDS[i], keyboardShown) ? View.VISIBLE : View.GONE);
+            }
+        }
+        menuLayer.setOpen(on);
+        keyboardScreen.setMenuOpen(on);   // 键盘屏开着菜单时不画按键放大提示
+        for (TextView b : menuItems) Style.look(b, false, false);
+        Style.bare(kbMenuButton, false);
+        Style.bare(padMenuButton, false);
+        if (on != menuBack) {
+            if (on) {
+                getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, closeMenu);
+            } else {
+                getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(closeMenu);
+            }
+            menuBack = on;
+        }
+        updateMenuLabels();
+        pushLayout();
+    }
+
+    /** 菜单项被点了：布局轮换时菜单不关（好连着点到想要的那种），其余关了菜单再做。 */
+    private void onMenuItem(int id) {
         switch (id) {
+            case MENU_KEYBOARD_ID:
+                setKeyboardScreen(true);   // 里面关菜单
+                break;
+            case MENU_SETTINGS_ID:
+            case MENU_ROTATE_ID:
+            case MENU_EXIT_ID:
+                // 同 Actions 里的 settings / rotate / exit（照按钮条上"设置"的做法打开设置页）；"嗒"已经震过，不再 fire
+                setMenu(false);
+                run(Actions.get(id == MENU_SETTINGS_ID ? "settings" : id == MENU_ROTATE_ID ? "rotate" : "exit"));
+                break;
             case KB_CLOSE_ID:
-                setKeyboardScreen(false);
+                setKeyboardScreen(false);   // 里面关菜单
                 break;
             case KB_ADJUST_ID:
-                setAdjusting(!keyboardScreen.isAdjusting());
+                setAdjusting(true);   // 里面关菜单
                 break;
-            case KB_RESET_ID:
-                prefs.resetKeyboardRect(landscape);
-                keyboardScreen.setRect(prefs.keyboardRect(landscape));
+            case KB_LAYOUT_ID: {
+                // 分裂 / 合拢时按着的键、放大提示、按下的样子由 KeyboardPanel.setSplit 收掉；菜单跟着 ⋯ 挪，区域随重新布局报上去
+                int mode = KeyboardPlan.nextMode(prefs.keyboardLayoutMode());
+                prefs.setKeyboardLayoutMode(mode);
+                keyboardScreen.setKeyboardLayout(mode);
+                updateMenuLabels();
                 break;
-            case KB_TOOLBAR_POS_ID: {
-                boolean bottom = !prefs.keyboardToolbarBottom();
-                prefs.setKeyboardToolbarBottom(bottom);
-                keyboardScreen.setToolbarAtBottom(bottom);
-                updateToolbarLabels();
+            }
+            case KB_POINTER_ID: {
+                // 触控板 → 小红点 → 关；⋯ 可能跟着换地方，关菜单
+                int pointer = KeyboardPlan.nextPointer(prefs.keyboardPointer());
+                prefs.setKeyboardPointer(pointer);
+                keyboardScreen.setPointer(pointer);
+                setMenu(false);
                 break;
             }
             default:
@@ -1167,27 +1756,56 @@ public final class MainActivity extends Activity
         }
     }
 
-    /** 调整模式：服务释放触摸屏，拖动由 App 自己收。 */
+    /** 调整栏：完成 = 退出调整模式；恢复默认只恢复眼下这种布局的（分裂 / 合并各一份），回到按窗口给的默认位置。 */
+    private void onAdjustBar(int id) {
+        if (id == KB_DONE_ID) {
+            setAdjusting(false);
+            return;
+        }
+        boolean landscape = keyboardScreen.isLandscape();
+        if (keyboardScreen.isSplit()) {
+            prefs.resetSplitRect(landscape);
+            keyboardScreen.setSplitRect(null);
+        } else {
+            prefs.resetKeyboardRect(landscape);
+            keyboardScreen.setRect(null);
+        }
+    }
+
+    /**
+     * 调整模式：服务释放触摸屏，拖动由 App 自己收。分裂时两半对称着调（KeyboardScreen）。
+     * 临时出现一条"完成 / 恢复默认"，触控板角上的 ⋯ 藏起来；菜单先关掉。
+     */
     private void setAdjusting(boolean on) {
+        if (on) setMenu(false);
         keyboardScreen.setAdjusting(on);
-        kbToolbar.get(KB_RESET_ID - KB_CLOSE_ID).setVisibility(on ? View.VISIBLE : View.GONE);
-        kbToolbar.get(KB_TOOLBAR_POS_ID - KB_CLOSE_ID).setVisibility(on ? View.VISIBLE : View.GONE);
-        layoutToolbar(on);
-        updateToolbarLabels();
-        for (TextView b : kbToolbar) Style.look(b, b == kbToolbar.get(1) && on, false);
+        Style.look(kbDone, false, false);
+        Style.look(kbReset, false, false);
         updateStatus();
         pushLayout();
     }
 
-    private void updateToolbarLabels() {
-        kbToolbar.get(KB_ADJUST_ID - KB_CLOSE_ID).setText(keyboardScreen.isAdjusting() ? R.string.kb_done : R.string.kb_adjust);
-        kbToolbar.get(KB_TOOLBAR_POS_ID - KB_CLOSE_ID).setText(
-                prefs.keyboardToolbarBottom() ? R.string.kb_toolbar_up : R.string.kb_toolbar_down);
+    /** 菜单里"布局""指点"两项写着当前选的。 */
+    private void updateMenuLabels() {
+        int mode = prefs.keyboardLayoutMode();
+        menuItems.get(menuIndex(KB_LAYOUT_ID)).setText(mode == KeyboardPlan.MODE_SPLIT ? R.string.kb_layout_split
+                : mode == KeyboardPlan.MODE_MERGE ? R.string.kb_layout_merge : R.string.kb_layout_auto);
+        int pointer = prefs.keyboardPointer();
+        menuItems.get(menuIndex(KB_POINTER_ID)).setText(pointer == KeyboardPlan.POINTER_STICK ? R.string.kb_pointer_stick
+                : pointer == KeyboardPlan.POINTER_NONE ? R.string.kb_pointer_off : R.string.kb_pointer_pad);
     }
 
     @Override
-    public void onKeyboardRectChanged(boolean landscape, float[] rect) {
-        prefs.setKeyboardRect(landscape, rect);
+    public void onKeyboardRectChanged(boolean landscape, boolean split, float[] rect) {
+        if (split) prefs.setSplitRect(landscape, rect);
+        else prefs.setKeyboardRect(landscape, rect);
+    }
+
+    /** 横竖屏各有一份合并、一份分裂的键盘大小位置。 */
+    private void loadKeyboardRects() {
+        boolean landscape = keyboardScreen.isLandscape();
+        keyboardScreen.setRect(prefs.savedKeyboardRect(landscape));
+        keyboardScreen.setSplitRect(prefs.savedSplitRect(landscape));
     }
 
     @Override
@@ -1201,9 +1819,32 @@ public final class MainActivity extends Activity
         Display disp = getDisplay();
         if (disp != null) air.setRotation(disp.getRotation());
         // 横竖屏各有一份键盘大小
-        if (keyboardScreen.getVisibility() == View.VISIBLE) {
-            keyboardScreen.setRect(prefs.keyboardRect(keyboardScreen.isLandscape()));
-        }
+        if (keyboardScreen.getVisibility() == View.VISIBLE) loadKeyboardRects();
+        // Fold 展开、挪到外接屏：窗口最大能有多大变了，背景图要的比手上的大 5% 以上就重新解
+        padImage.setMaxSide(maxWindowSide());
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        // 进程退到后台了：放掉背景图的位图（最多约 32MB），下次 onStart 的 applyPrefs 重新解。去设置页（UI_HIDDEN）不放，回来不闪
+        if (level >= TRIM_MEMORY_BACKGROUND) padImage.release();
+    }
+
+    /** 窗口最大可能的长边（像素）：背景图按它解码，画在任何形状的触控板上都不用再放大。 */
+    private int maxWindowSide() {
+        Rect b = getWindowManager().getMaximumWindowMetrics().getBounds();
+        return Math.max(b.width(), b.height());
+    }
+
+    /** 背景图来了 / 没了 / 设置变了：两块触控板重画；"有没有图"变了给角上的小按钮换底（⋯ 的底由触控板自己垫）。 */
+    private void onPadImageChanged() {
+        pad.imageChanged();
+        miniPad.imageChanged();
+        boolean on = padImage.shown();
+        if (on == cornersOnImage) return;
+        cornersOnImage = on;
+        for (TextView b : cornerButtons) Style.small(b, false, on);
     }
 
     @Override
@@ -1279,12 +1920,6 @@ public final class MainActivity extends Activity
             case ROTATE:
                 rotate();
                 break;
-            case TOGGLE_STRIP: {
-                boolean hidden = !prefs.stripHidden();
-                prefs.setStripHidden(hidden);
-                applyStripHidden(hidden);
-                break;
-            }
             case AIR_MOUSE:
                 // 键盘盖着空中鼠标页时 = 收起键盘回到空中鼠标页（人看到的是键盘，多半是想回去，不是退出）
                 if (airPaused()) setKeyboardScreen(false);
@@ -1304,7 +1939,7 @@ public final class MainActivity extends Activity
         }
     }
 
-    /** 键盘上没有的系统键：DeX 模式注入到 DeX 屏，蓝牙模式发对应的媒体键（没有通用媒体键的提示一下）。 */
+    /** 键盘上没有的系统键：桌面模式注入到外接屏（没接外接屏就发给当前焦点），蓝牙模式发对应的媒体键（没有通用媒体键的提示一下）。 */
     private void key(int keyCode, int meta) {
         if (!btMode) {
             link.key(targetDisplay, keyCode, meta);
@@ -1355,7 +1990,9 @@ public final class MainActivity extends Activity
         }
         prefs.setRotation(target);
         if (link.isConnected()) {
-            link.rotate(d.getDisplayId(), target);
+            // 分屏 / 小窗时只记下选的方向：服务锁的是整块屏，另一边的应用会跟着转；回到全屏时 pushLayout 补上
+            if (fillsDisplay()) link.rotate(d.getDisplayId(), target);
+            else toast(R.string.rotate_split);
         } else if (btMode) {
             // 没有服务：只能请求系统转。一般手机管用；三星外屏这类"忽略 App 方向请求"的屏转不了
             requestOrientationSelf(target);
@@ -1383,6 +2020,7 @@ public final class MainActivity extends Activity
     }
 
     private void openTextBar() {
+        setMenu(false);
         showPanel(null);
         if (keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);
         textBar.setVisibility(View.VISIBLE);
@@ -1454,7 +2092,10 @@ public final class MainActivity extends Activity
             requestOrientationSelf(-1);   // 方向交给服务
             link.config(prefs.engineConfig(), density);
             Display d = getDisplay();
-            if (prefs.rotation() >= 0 && d != null) link.rotate(d.getDisplayId(), prefs.rotation());
+            // 锁方向锁的是整块屏：分屏 / 小窗时不锁，免得另一边的应用跟着转（回到全屏时 pushLayout 补上）。
+            // 这里直接问 fillsDisplay，windowFull 可能还没被 pushLayout 更新过；顺手记下，pushLayout 就不会再补一次
+            windowFull = fillsDisplay();
+            if (prefs.rotation() >= 0 && d != null && windowFull) link.rotate(d.getDisplayId(), prefs.rotation());
             if (keyLogOn) link.trace(true);   // 服务每条连接默认不记
             sendHardKeys();
             pushLayout();
@@ -1481,7 +2122,7 @@ public final class MainActivity extends Activity
                 }
                 // 键盘同理：服务收尾时先关连接再松键，那份全零报文发不过来，主机那头锁住的修饰键、按着的键会一直按着
                 if (btMode) bt.sendKeyboard(new byte[Hid.KEYBOARD_REPORT_SIZE]);
-                // 屏幕按钮的滚轮经服务转来；蓝牙模式下音量键的不归服务（DeX 模式下服务截的音量键上面 endServerHolds 已收尾）
+                // 屏幕按钮的滚轮经服务转来；蓝牙模式下音量键的不归服务（桌面模式下服务截的音量键上面 endServerHolds 已收尾）
                 if (wheelSource >= AirMouse.SRC_ROUND) stopWheel();
                 air.releaseFrom(AirMouse.SRC_ROUND);   // 屏幕按钮按住的空中移动 / 拖动同理
                 leftFollowPending.entrySet().removeIf(e -> {   // 屏幕"左键"等着开始跟随的也作罢（等不到它的松开）
@@ -1495,7 +2136,8 @@ public final class MainActivity extends Activity
                 keyboard.setModifiers(0);
                 if (wasGrabbed) {   // 服务转来的键按下等不到松开了：按下的样子、放大提示收起
                     keyboard.clearPressed();
-                    for (TextView b : numpadButtons) Style.look(b, false, false);
+                    for (int i = 0; i < numpadButtons.size(); i++) numpadLook(i, false);
+                    clearMouseKeys();
                 }
                 if (air.buttons() == 0) haptics.stopHum();   // 收不到"拖动结束"了（空中指针那一路不归服务管）
                 updateActiveButtons();
@@ -1509,11 +2151,15 @@ public final class MainActivity extends Activity
         boolean was = grabbed;
         grabbed = isGrabbed;
         if (isGrabbed && !was && !btMode) {
-            // DeX 模式下没接管时按钮是 View 自己收的（localTouch），接管后系统收不到触摸，按着的按钮等不到松开
+            // 桌面模式下没接管时按钮是 View 自己收的（localTouch），接管后系统收不到触摸，按着的按钮等不到松开
             if (wheelSource >= AirMouse.SRC_ROUND) stopWheel();
             leftHolds = 0;
             haptics.stopHum();
+            clearMouseKeys();   // View 自己收的鼠标键只在抬起时点一下，没按住什么，只要画回去
             updateActiveButtons();
+            // 键盘、数字键盘上自己按下的键同理（分屏 / 小窗回到全屏时手指可能正按在键上）：不松开的话服务的虚拟键盘一直按着、系统里连发
+            keyboard.releaseTouches();
+            releaseNumpad();
         }
         if (!isGrabbed && air.buttons() == 0) haptics.stopHum();
         if (isGrabbed && btMode) {
@@ -1523,6 +2169,21 @@ public final class MainActivity extends Activity
         }
         grabMessage = grabText(reason, detail);
         updateStatus();
+    }
+
+    /** 数字键盘上 View 自己收触摸时按着的键全部松开（经同一路发松开），画回松开的样子。 */
+    private void releaseNumpad() {
+        for (View v : numpadHeld) {
+            int i = numpadButtons.indexOf(v);
+            if (i >= 0) onLocalKey(numpadUsages.get(i), false);
+        }
+        numpadHeld.clear();
+        for (int i = 0; i < numpadButtons.size(); i++) numpadLook(i, false);
+    }
+
+    /** 数字键盘第 i 个键的样子：数字、小数点是普通键，运算符、⌫、Tab、↵ 是功能键（KeyRows.numpadFunctionKey）。 */
+    private void numpadLook(int i, boolean pressed) {
+        Style.keyLook(numpadButtons.get(i), KeyRows.numpadFunctionKey(numpadUsages.get(i)), false, pressed);
     }
 
     /** 服务截住的实体键（已判断好点一下 / 按住）：照蓝牙模式本地那一路执行动作，来源编号 = 键（AirMouse.SRC_VOL_*）。 */
@@ -1600,6 +2261,8 @@ public final class MainActivity extends Activity
             case Proto.GRAB_NO_TOUCHSCREEN: return getString(R.string.grab_no_touchscreen, detail);
             case Proto.GRAB_FAILED: return getString(R.string.grab_failed, detail);
             case Proto.GRAB_RELEASED: return getString(R.string.grab_released);
+            case Proto.GRAB_NO_PASSTHROUGH: return getString(R.string.grab_no_passthrough, detail);
+            case Proto.GRAB_WAIT_LIFT: return getString(R.string.grab_wait_lift);
             default: return "";
         }
     }
@@ -1628,6 +2291,7 @@ public final class MainActivity extends Activity
         targetDisplay = d != null ? d.getDisplayId() : Display.INVALID_DISPLAY;
         targetName = d != null ? d.getName() : "";
         updateFocusable();
+        if (btMode && !topResumed) pushLayout();   // 外接屏接上 / 拔掉会改变"顶层"这个条件算不算（ownsScreen），重新报
         updateStatus();
     }
 
@@ -1641,6 +2305,7 @@ public final class MainActivity extends Activity
             // 蓝牙模式下没开服务是正常配置，不提示；开了却卡住，系统手势就挡不住了，要告诉用户去重启
             if (selfStarting) s += " · " + getString(R.string.status_self_starting);
             else if (linkStuck) s += " · " + linkMessage;
+            else if (linkOk && !ownsScreen()) s += " · " + getString(R.string.status_split_bt);   // 没开服务时分屏和全屏一样，不提
             ok = btState == BtHid.STATE_CONNECTED;
         } else if (!linkOk) {
             s = selfStarting ? getString(R.string.status_self_starting) : linkMessage;
@@ -1655,8 +2320,9 @@ public final class MainActivity extends Activity
             s = grabMessage.isEmpty() ? getString(R.string.status_taking_over) : grabMessage;
             ok = false;
         } else {
-            s = targetName.isEmpty() ? getString(R.string.status_no_dex) : targetName;
-            if (!linkMessage.isEmpty()) s += " · " + linkMessage;
+            // 分屏 / 小窗时没接外接屏是常态（比如和 Moonlight 分屏），不提示"没找到外接屏"
+            s = !targetName.isEmpty() ? targetName : windowFull ? getString(R.string.status_no_dex) : "";
+            if (!linkMessage.isEmpty()) s = s.isEmpty() ? linkMessage : s + " · " + linkMessage;
             ok = true;
         }
         pad.setStatus(s, ok);
@@ -1667,27 +2333,36 @@ public final class MainActivity extends Activity
     }
 
     /**
-     * 状态字能不能点（点了打开设置页，最上面就是"豆花儿服务"那一节）：服务没开 / 没响应 / 版本不对的时候。
-     * DeX 模式下这时没人接管触摸，触控板本来就不动；蓝牙模式下没开服务是正常配置，只有卡住才算。
+     * 状态字能不能点（点了打开设置页的"通用"页，最上面就是"豆花儿服务"那一节）：服务没开 / 没响应 / 版本不对的时候。
+     * 桌面模式下这时没人接管触摸，触控板本来就不动；蓝牙模式下没开服务是正常配置，只有卡住才算。
      */
     private boolean statusTappable() {
         return btMode ? linkStuck : !linkOk;
     }
 
-    /** 这一下按在可点的状态字上吗（看得见的那块触控板）。和角上看得见的小按钮重叠时归按钮（文字很长时也点得到 ☰）。 */
+    /** 这一下按在可点的状态字上吗（看得见的那块触控板）。和角上看得见的小按钮、⋯ 重叠时归它们（文字很长时也点得到角上的按钮）。 */
     private boolean onStatus(MotionEvent e) {
         if (!statusTappable()) return false;
+        // ⋯ 菜单开着时整页归菜单（点外面关菜单）
+        if (menuLayer.isOpen()) return false;
         float x = e.getRawX(), y = e.getRawY();
         // 只看最上面那一屏：键盘屏盖着主界面（触控板还算"显示着"），空中鼠标页上没有状态字
-        if (keyboardScreen.getVisibility() == View.VISIBLE) return miniPad.statusHit(x, y);
+        if (keyboardScreen.getVisibility() == View.VISIBLE) {
+            if (keyboardScreen.isMenuButtonShown() && hits(kbMenuButton, x, y)) return false;
+            return miniPad.statusHit(x, y);
+        }
         if (airOn) return false;
-        int[] at = new int[2];
+        if (hits(padMenuButton, x, y)) return false;
         for (TextView b : cornerButtons) {
-            if (!b.isShown()) continue;
-            b.getLocationOnScreen(at);
-            if (x >= at[0] && x < at[0] + b.getWidth() && y >= at[1] && y < at[1] + b.getHeight()) return false;
+            if (b.isShown() && hits(b, x, y)) return false;
         }
         return pad.statusHit(x, y);
+    }
+
+    /** 屏幕坐标 (x, y) 落在 v 上吗。 */
+    private boolean hits(View v, float x, float y) {
+        v.getLocationOnScreen(tmpLoc);
+        return x >= tmpLoc[0] && x < tmpLoc[0] + v.getWidth() && y >= tmpLoc[1] && y < tmpLoc[1] + v.getHeight();
     }
 
     // ═══════════ 空中鼠标 ═══════════
@@ -1698,7 +2373,7 @@ public final class MainActivity extends Activity
      */
     private View buildAirOverlay() {
         airOverlay = new FrameLayout(this);
-        airOverlay.setBackgroundColor(Color.BLACK);
+        airOverlay.setBackgroundColor(Style.theme().bg);
         airOverlay.setClickable(true);   // 没有服务、服务没接管时，挡住底下的按钮
         airOverlay.setVisibility(View.GONE);
         LinearLayout col = new LinearLayout(this);
@@ -1709,11 +2384,11 @@ public final class MainActivity extends Activity
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        airStatus = airText("", 14, Style.TEXT);
+        airStatus = airText("", 14, Style.theme().text);
         airStatus.setSingleLine(true);
         airStatus.setEllipsize(TextUtils.TruncateAt.END);
         top.addView(airStatus, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        airState = airText("", 16, 0xFF8AB4F8);
+        airState = airText("", 16, Style.theme().focus);
         airState.setPadding(dp(12), 0, 0, 0);
         top.addView(airState);
         col.addView(top);
@@ -1811,6 +2486,7 @@ public final class MainActivity extends Activity
      */
     private void setAirMode(boolean on) {
         if (on == airOn) return;
+        setMenu(false);   // 空中鼠标页上没有 ⋯（从键盘屏进来的话 setKeyboardScreen 也会关）
         if (on && keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);   // airOn 还是假：普通的收起
         airOn = on;
         updateAirAbs();
@@ -1941,7 +2617,7 @@ public final class MainActivity extends Activity
     }
 
     /**
-     * 告诉服务截哪些音量键（连上时、改设置后、通话状态变了时）。DeX 模式按配置；蓝牙模式 App 自己收，全发 0。
+     * 告诉服务截哪些音量键（连上时、改设置后、通话状态变了时）。桌面模式按配置；蓝牙模式 App 自己收，全发 0。
      * 通话、来电响铃时全发 0，服务全部放开：要能用音量键静音、调通话音量。
      * 只看音频模式：振动 / 静音模式下来电模式不变，那种响铃靠服务自己查 Telecom（server.CallState）。
      */
@@ -1960,7 +2636,7 @@ public final class MainActivity extends Activity
         return audio != null && audio.getMode() != AudioManager.MODE_NORMAL;
     }
 
-    /** 音量键有没有设动作（蓝牙模式才由 App 自己收；DeX 模式下由服务截，窗口照旧不抢 DeX 的焦点）。 */
+    /** 音量键有没有设动作（蓝牙模式才由 App 自己收；桌面模式下由服务截，窗口照旧不抢外接屏的焦点）。 */
     private boolean hardKeysActive() {
         return btMode && (hardKeys.mapped(HardKeys.VOL_UP) || hardKeys.mapped(HardKeys.VOL_DOWN));
     }
@@ -2026,31 +2702,70 @@ public final class MainActivity extends Activity
     @Override
     public boolean dispatchTouchEvent(MotionEvent e) {
         int action = e.getActionMasked();
+        // 惯性滚动（本地分流里转着的）碰屏幕任何地方都马上停：归本地分流的按下由 local.down 停（按在触控板上的那一下不算点击），
+        // 不归它的（注入回来的、点状态字、贴字面板 / 调整键盘时分给按钮的）在这里停
+        boolean press = action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN;
+        // 桌面模式分屏透传：服务把从豆花窗口边上系统手势带里按下、又没落在键 / 按钮上的手指（触控板、空白处）注入回系统
+        // （设备号 -1 = 注入的，带 NO_FOCUS_CHANGE，不会把焦点挪过来），系统认手势之前也会把它发给豆花窗口。整次手势吞掉，
+        // 不然在边上轻点会点到底下的东西。服务接管时豆花本来收不到真的触摸
+        if (action == MotionEvent.ACTION_DOWN) {
+            boolean injected = !btMode && link.isConnected() && e.getDeviceId() == KeyCharacterMap.VIRTUAL_KEYBOARD;
+            // decor 自带的标题栏（拖动、最小化、关闭）是豆花窗口里的 View，注入回来的手指只有交给它才拖得动小窗；
+            // 只有 WM Shell 画在单独窗口里的标题栏（captionBar）不经过这里
+            injectedCaption = injected && !windowFull && e.getY() < reportedDecorCap;
+            injectedGesture = injected && !injectedCaption;
+            // 注入的手指只该落在报过的手势带里；落在窗口中间说明服务手里的窗口范围过时了（小窗挪了没重报）：马上重报，这次照样吞掉
+            if (injectedGesture && !windowFull && insideUnbanded(e.getX(), e.getY())) pushLayout();
+        }
+        if (injectedCaption) {
+            if (press) local.stopSpin(true);
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) injectedCaption = false;
+            return super.dispatchTouchEvent(e);
+        }
+        if (injectedGesture) {
+            if (press) local.stopSpin(true);
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) injectedGesture = false;
+            return true;
+        }
         // 点状态字（服务没开 / 没响应时）：整次手势归它，不当触控板的点击、也不分给按钮
         if (action == MotionEvent.ACTION_DOWN) statusPress = onStatus(e);
         if (statusPress) {
+            if (press) local.stopSpin(true);
             if (action == MotionEvent.ACTION_UP) {
                 statusPress = false;
-                if (onStatus(e)) startActivity(new Intent(this, SettingsActivity.class));
+                if (onStatus(e)) startActivity(SettingsActivity.serviceIntent(this));   // 停在"通用"页（服务那一节在最上面）
             } else if (action == MotionEvent.ACTION_CANCEL) {
                 statusPress = false;
             }
             return true;
         }
         if (action == MotionEvent.ACTION_DOWN) localGesture = btMode && localActive() && local.ready();
-        if (!localGesture) return super.dispatchTouchEvent(e);
+        if (!localGesture) {
+            if (press) local.stopSpin(true);
+            return super.dispatchTouchEvent(e);
+        }
         routeLocal(e);
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) localGesture = false;
         return true;
     }
 
+    /** 窗口坐标 (x, y) 在窗口里、又不在上次报给服务的手势带里。 */
+    private boolean insideUnbanded(float x, float y) {
+        View root = getWindow().getDecorView();
+        if (x < 0 || y < 0 || x >= root.getWidth() || y >= root.getHeight()) return false;
+        return x >= reportedBand[0] && y >= reportedBand[1]
+                && x < root.getWidth() - reportedBand[2] && y < root.getHeight() - reportedBand[3];
+    }
+
     /**
-     * MotionEvent → TouchRouter。区域是屏幕坐标（getLocationOnScreen），触摸也换成屏幕坐标；
+     * MotionEvent → TouchRouter。区域是屏幕坐标（getLocationOnScreen），触摸也换成屏幕坐标：窗口坐标加上报区域那一刻
+     * 窗口的位置（layoutOrigin）。全屏时窗口在 (0, 0)；分屏 / 小窗时窗口不在原点，小窗还可能被拖走而不重报区域，
+     * 用同一时刻的位置，触点和区域才对得上（用 getRawX 的话拖走小窗后会错位）。
      * 系统把一帧帧的触摸攒成一批（历史点），逐帧喂进去，手势引擎看到的和服务读触摸屏时一样细。
      */
     private void routeLocal(MotionEvent e) {
-        float offX = e.getRawX() - e.getX();
-        float offY = e.getRawY() - e.getY();
+        float offX = layoutOrigin[0];
+        float offY = layoutOrigin[1];
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_POINTER_DOWN: {
@@ -2073,7 +2788,9 @@ public final class MainActivity extends Activity
                 break;
             case MotionEvent.ACTION_POINTER_UP:
             case MotionEvent.ACTION_UP:
-                local.up(e.getPointerId(e.getActionIndex()), e.getEventTime());
+                // 带 FLAG_CANCELED 的（系统认出手掌、取消了这一根）：照旧当抬起，只是不起惯性、中键不补单击（同服务那一路）
+                local.up(e.getPointerId(e.getActionIndex()), e.getEventTime(),
+                        (e.getFlags() & MotionEvent.FLAG_CANCELED) != 0);
                 break;
             case MotionEvent.ACTION_CANCEL:
                 local.releaseAll();
@@ -2125,7 +2842,41 @@ public final class MainActivity extends Activity
         public void cancelSchedule() {
             main.removeCallbacks(localTimer);
         }
+
+        @Override
+        public void startTicks() {
+            if (localTicking) return;
+            localTicking = true;
+            ticker.postDelayed(localTick, LOCAL_TICK_MS);
+        }
+
+        @Override
+        public void stopTicks() {
+            localTicking = false;
+            ticker.removeCallbacks(localTick);
+        }
+
+        @Override
+        public void note(String s) {
+            Log.i("douhua", s);
+        }
     }
+
+    /**
+     * 本地分流的小红点节拍（蓝牙模式没开服务时）：12ms 一拍（同空中鼠标的相对位移：电脑约 11.25ms 收一次报文，发得更密会挤在一起、
+     * 被对方当成加速）。用异步 Handler：红点按下时界面在重画，普通消息会被同步屏障挡到下一帧画完（"打字延迟"那条同一个坑）。
+     */
+    private static final long LOCAL_TICK_MS = 12;
+    private final Handler ticker = Handler.createAsync(Looper.getMainLooper());
+    private boolean localTicking;
+    private final Runnable localTick = new Runnable() {
+        @Override
+        public void run() {
+            if (!localTicking) return;
+            local.onTick(SystemClock.uptimeMillis());
+            if (localTicking) ticker.postDelayed(this, LOCAL_TICK_MS);   // onTick 里可能停了
+        }
+    };
 
     @Override
     public void onBtState(int state, String deviceName) {
@@ -2144,7 +2895,7 @@ public final class MainActivity extends Activity
         updateStatus();
     }
 
-    /** 蓝牙连着苹果设备时，修饰键按苹果写法标、内置快捷键按苹果习惯发（⌘C 而不是 Ctrl+C）；DeX 和别的主机照通用的。 */
+    /** 蓝牙连着苹果设备时，修饰键按苹果写法标、内置快捷键按苹果习惯发（⌘C 而不是 Ctrl+C）；桌面模式和别的主机照通用的。 */
     private void updateHostKind() {
         appleHost = btMode && btState == BtHid.STATE_CONNECTED && BtHid.isApple(bt.connectedDevice());
         keyboard.setAppleHost(appleHost);
@@ -2176,7 +2927,7 @@ public final class MainActivity extends Activity
     }
 
     /**
-     * 蓝牙模式下系统的边缘返回手势还在（DeX 模式下触摸被服务独占，系统碰不到）：从左右边缘往里横划移光标会被当成返回。
+     * 蓝牙模式下系统的边缘返回手势还在（桌面模式下触摸被服务独占，系统碰不到）：从左右边缘往里横划移光标会被当成返回。
      * 请系统别在左右两条边上认返回手势；导航栏是"划出才显示"的隐藏状态，系统不限制这块的高度。
      */
     private void updateGestureExclusion() {

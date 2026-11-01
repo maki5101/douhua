@@ -2,14 +2,22 @@ package dev.douhua.server;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
+import dev.douhua.GestureEngine;
 import dev.douhua.Proto;
+import dev.douhua.TouchRouter;
 
 /**
  * 服务端纯 Java 部件的离线测试：多点触控解码（MtDecoder）、从 dumpsys input 里找触摸屏（TouchDevice）、
  * 会话交接用的部件（TouchGrabLock、SessionPolicy、RotationLock）、心跳和释放原因（GrabCondition）、日志限频（LogThrottle）、
- * 带超时的子进程（Shell）、实体键（KeyDevices、HardKeyGate）。
+ * 带超时的子进程（Shell）、实体键（KeyDevices、HardKeyGate）、TouchRouter 的一次性定时器（OneShotTimer，真起一个定时器线程）。
  * 不依赖 Android、不需要 JUnit：tools/test.sh 用电脑上的 JDK 直接编译运行。
  */
 public final class ServerPartsTest {
@@ -26,6 +34,7 @@ public final class ServerPartsTest {
         orderWithinFrame();
         findsCoverTouchscreen();
         findsInnerTouchscreen();
+        pressedFromCookedTouch();
         missingDisplayFails();
         rotationMatchesRealDevice();
         rotationRoundTrip();
@@ -54,6 +63,14 @@ public final class ServerPartsTest {
         gateUnseen();
         gateCooldown();
         gateReleaseAll();
+        uhidGetReport();
+        uhidSetReport();
+        uhidShortAndOther();
+        uhidReplies();
+        oneShotTimerBasics();
+        oneShotTimerStaleWhileWaitingForLock();
+        oneShotTimerChain();
+        staleSpinFrameIsNotLongPress();
 
         System.err.println("服务端部件：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
@@ -261,6 +278,10 @@ public final class ServerPartsTest {
             "            0.3047  0.0000  0.3047",
             "            0.0000  0.4814  0.0000",
             "            0.0000  0.0000  1.0000",
+            "      Last Cooked Button State: 0x00000000",
+            "      Last Cooked Touch: pointerCount=1",
+            "        [0]: id=0, x=620.000, y=300.000, dx=0.000, dy=0.000, pressure=1.000, touchMajor=10.000, touchMinor=9.000, "
+                    + "toolMajor=10.000, toolMinor=9.000, orientation=0.000, tilt=0.000, distance=0.000, toolType=FINGER, isHovering=false",
             "",
             "Input Dispatcher State:",
             "  DispatchEnabled: true");
@@ -272,6 +293,20 @@ public final class ServerPartsTest {
         near(t.mapX(4095, 0), 1248f, "原始 x 0–4095 → 竖屏 x 0–1248");
         near(t.mapY(0, 4095), 1971.3f, "原始 y 0–4095 → 竖屏 y 0–1972");
         check(t.unrotated(), "真机矩阵不含旋转");
+        eq(t.pressed, 1, "系统眼里按着 1 根（Last Cooked Touch）");
+    }
+
+    /** "Last Cooked Touch: pointerCount=N" 后面每根一行；悬停的笔不算按着，读不出来是 -1。格式照 AOSP，没对过三星真机。 */
+    static void pressedFromCookedTouch() throws IOException {
+        eq(TouchDevice.parse(DUMP, 1).pressed, -1, "样本里内屏没有这一行：-1（不拦接管）");
+        eq(TouchDevice.pressedIn("      Last Cooked Touch: pointerCount=0\n"), 0, "没按着：0");
+        eq(TouchDevice.pressedIn(String.join("\n",
+                "      Last Cooked Touch: pointerCount=3",
+                "        [0]: id=0, x=1.000, toolType=FINGER, isHovering=false",
+                "        [1]: id=1, x=2.000, toolType=STYLUS, isHovering=true",
+                "        [2]: id=2, x=3.000, toolType=FINGER, isHovering=false",
+                "      Last Raw Button State: 0x00000000")), 2, "三根里一根是悬停的笔：按着 2 根");
+        eq(TouchDevice.pressedIn("nothing here"), -1, "没有这一行：-1");
     }
 
     static void findsInnerTouchscreen() throws IOException {
@@ -1043,6 +1078,74 @@ public final class ServerPartsTest {
     }
 
     /** releaseAll：透传中按着的音量键补松开、音量按住中发 HOLD_END；组合键补发的按下也补松开。 */
+    // ═══════════ /dev/uhid 的 GET / SET_REPORT（虚拟鼠标的滚轮倍率） ═══════════
+
+    /** 照 uhid.h 的 packed 布局手拼一个内核事件（小端，手机都是小端）。 */
+    static byte[] uhidEvent(int type, int id, int rnum, int rtype, byte[] data) {
+        java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(UhidEvents.EVENT_MAX).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        b.putInt(type).putInt(id).put((byte) rnum).put((byte) rtype);
+        if (data != null) b.putShort((short) data.length).put(data);
+        return b.array();
+    }
+
+    static void uhidGetReport() {
+        byte[] ev = uhidEvent(UhidEvents.GET_REPORT, 0x01020304, 0, UhidEvents.FEATURE_REPORT, null);
+        UhidEvents.Request q = UhidEvents.parse(ev, 10, java.nio.ByteOrder.LITTLE_ENDIAN);
+        check(q != null && q.type == UhidEvents.GET_REPORT, "GET_REPORT 认出来");
+        eq(q.id, 0x01020304, "id 原样（回复要带回去）");
+        eq(q.rtype, UhidEvents.FEATURE_REPORT, "Feature 报告");
+        eq(q.rnum, 0, "报告编号 0（uhid 的描述符没有编号）");
+        check(q.data == null, "GET 没有数据");
+        UhidEvents.Request whole = UhidEvents.parse(ev, ev.length, java.nio.ByteOrder.LITTLE_ENDIAN);
+        check(whole != null && whole.id == 0x01020304, "按整个 uhid_event 的大小读到也一样解");
+    }
+
+    static void uhidSetReport() {
+        byte[] ev = uhidEvent(UhidEvents.SET_REPORT, 7, 0, UhidEvents.FEATURE_REPORT, new byte[]{0x05});
+        UhidEvents.Request q = UhidEvents.parse(ev, ev.length, java.nio.ByteOrder.LITTLE_ENDIAN);
+        check(q != null && q.type == UhidEvents.SET_REPORT, "SET_REPORT 认出来");
+        eq(q.id, 7, "id");
+        eq(q.data.length, 1, "数据 1 字节");
+        eq(q.data[0] & 0xFF, 0x05, "数据：竖横都 ×8");
+        byte[] cut = uhidEvent(UhidEvents.SET_REPORT, 8, 0, UhidEvents.FEATURE_REPORT, new byte[]{1, 2, 3, 4});
+        UhidEvents.Request c = UhidEvents.parse(cut, 14, java.nio.ByteOrder.LITTLE_ENDIAN);
+        eq(c.data.length, 2, "size 说 4 字节、实际只读到 2 字节：按读到的截");
+    }
+
+    static void uhidShortAndOther() {
+        check(UhidEvents.parse(new byte[3], 3, java.nio.ByteOrder.LITTLE_ENDIAN) == null, "连 type 都不够：不认");
+        byte[] get = uhidEvent(UhidEvents.GET_REPORT, 1, 0, 0, null);
+        check(UhidEvents.parse(get, 9, java.nio.ByteOrder.LITTLE_ENDIAN) == null, "GET 不够 10 字节：不认");
+        byte[] set = uhidEvent(UhidEvents.SET_REPORT, 1, 0, 0, new byte[]{1});
+        check(UhidEvents.parse(set, 11, java.nio.ByteOrder.LITTLE_ENDIAN) == null, "SET 不够 12 字节：不认");
+        byte[] start = uhidEvent(UhidEvents.START, 0, 0, 0, null);
+        UhidEvents.Request q = UhidEvents.parse(start, 8, java.nio.ByteOrder.LITTLE_ENDIAN);
+        check(q != null && q.type == UhidEvents.START && q.data == null, "START 之类：只认类型，读掉不管");
+    }
+
+    static void uhidReplies() {
+        java.nio.ByteOrder le = java.nio.ByteOrder.LITTLE_ENDIAN;
+        eq(hex(UhidEvents.getReportReply(0x01020304, 0, new byte[]{0x05}, le)),
+                "0a000000 04030201 0000 0100 05", "GET_REPORT_REPLY：type 10、id、err 0、size 1、数据");
+        eq(hex(UhidEvents.getReportReply(9, UhidEvents.EIO, null, le)),
+                "0a000000 09000000 0500 0000", "GET 失败：err = EIO、不带数据");
+        eq(hex(UhidEvents.setReportReply(7, 0, le)), "0e000000 07000000 0000", "SET_REPORT_REPLY：type 14、id、err 0（10 字节）");
+        eq(hex(UhidEvents.setReportReply(7, UhidEvents.EIO, le)), "0e000000 07000000 0500", "SET 失败：err = EIO");
+    }
+
+    /** 按 4 / 4 / 2 / 2 / 其余 分组的十六进制。 */
+    static String hex(byte[] b) {
+        StringBuilder s = new StringBuilder();
+        int[] groups = {4, 4, 2, 2};
+        int i = 0;
+        for (int g = 0; i < b.length; g++) {
+            int n = g < groups.length ? groups[g] : b.length - i;
+            if (s.length() > 0) s.append(' ');
+            for (int k = 0; k < n && i < b.length; k++) s.append(String.format("%02x", b[i++] & 0xFF));
+        }
+        return s.toString();
+    }
+
     static void gateReleaseAll() {
         GateRec r = new GateRec();
         HardKeyGate g = gate(r);
@@ -1076,6 +1179,207 @@ public final class ServerPartsTest {
         List<String> l = new ArrayList<>();
         for (String s : items) l.add(s);
         return l;
+    }
+
+    // ═══════════ TouchRouter 的一次性定时器（OneShotTimer） ═══════════
+
+    /** 只开一个线程的定时器，记下那个线程（看它是不是卡在锁上）。 */
+    static final class TimerThread {
+        final AtomicReference<Thread> thread = new AtomicReference<>();
+        final ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "test-timer");
+            t.setDaemon(true);
+            thread.set(t);
+            return t;
+        });
+
+        /** 等定时器线程卡在 synchronized 上（到点的那次在等锁），最多 2 秒。 */
+        boolean awaitBlocked() throws InterruptedException {
+            long end = System.nanoTime() + 2_000_000_000L;
+            while (System.nanoTime() < end) {
+                Thread t = thread.get();
+                if (t != null && t.getState() == Thread.State.BLOCKED) return true;
+                Thread.sleep(1);
+            }
+            return false;
+        }
+    }
+
+    static void waitFor(AtomicInteger n, int expected) throws InterruptedException {
+        long end = System.nanoTime() + 2_000_000_000L;
+        while (n.get() < expected && System.nanoTime() < end) Thread.sleep(1);
+    }
+
+    static long nowMs() {
+        return System.nanoTime() / 1_000_000L;
+    }
+
+    static void oneShotTimerBasics() throws Exception {
+        TimerThread tt = new TimerThread();
+        Object lock = new Object();
+        AtomicInteger fired = new AtomicInteger();
+        OneShotTimer timer = new OneShotTimer(tt.exec, lock, fired::incrementAndGet);
+        synchronized (lock) {
+            timer.schedule(5);
+        }
+        waitFor(fired, 1);
+        Thread.sleep(50);
+        eq(fired.get(), 1, "定时器：到点调一次");
+        synchronized (lock) {
+            timer.schedule(30);
+            timer.cancel();
+        }
+        Thread.sleep(100);
+        eq(fired.get(), 1, "定时器：撤掉的不到点");
+        synchronized (lock) {
+            timer.schedule(60_000);
+            timer.schedule(5);
+        }
+        waitFor(fired, 2);
+        Thread.sleep(50);
+        eq(fired.get(), 2, "定时器：再排取代上一次，只到点新的那次");
+        synchronized (lock) {   // 没排着时撤掉：什么都不做（抛了异常这个测试就跑不完）
+            timer.cancel();
+            timer.cancel();
+        }
+        tt.exec.shutdownNow();
+    }
+
+    /** cancel(false) 撤不掉已经到点、卡在锁上的那次：令牌让它拿到锁后认出自己过期了。 */
+    static void oneShotTimerStaleWhileWaitingForLock() throws Exception {
+        TimerThread tt = new TimerThread();
+        Object lock = new Object();
+        AtomicInteger fired = new AtomicInteger();
+        OneShotTimer timer = new OneShotTimer(tt.exec, lock, fired::incrementAndGet);
+        boolean blocked;
+        synchronized (lock) {
+            timer.schedule(0);
+            blocked = tt.awaitBlocked();   // 到点了、卡在锁上
+            timer.cancel();
+            timer.schedule(60_000);        // 撤掉之后又排了一个（引擎只有一个定时器槽）
+        }
+        check(blocked, "定时器：到点的那次卡在锁上");
+        Thread.sleep(100);
+        eq(fired.get(), 0, "定时器：撤掉之后才拿到锁的那次过期了，不调");
+        synchronized (lock) {
+            timer.schedule(0);
+            blocked = tt.awaitBlocked();
+            timer.schedule(0);   // 没撤、直接取代
+        }
+        check(blocked, "定时器：第二次到点也卡在锁上");
+        waitFor(fired, 1);
+        Thread.sleep(50);
+        eq(fired.get(), 1, "定时器：被取代的那次过期、新排的到点，一共一次");
+        tt.exec.shutdownNow();
+    }
+
+    /** 回调里再排（惯性一帧接一帧）接得上；定时器停了再排不抛异常。 */
+    static void oneShotTimerChain() throws Exception {
+        TimerThread tt = new TimerThread();
+        Object lock = new Object();
+        AtomicInteger fired = new AtomicInteger();
+        OneShotTimer[] timer = new OneShotTimer[1];
+        timer[0] = new OneShotTimer(tt.exec, lock, () -> {
+            if (fired.incrementAndGet() < 5) timer[0].schedule(2);
+        });
+        synchronized (lock) {
+            timer[0].schedule(2);
+        }
+        waitFor(fired, 5);
+        Thread.sleep(50);
+        eq(fired.get(), 5, "定时器：回调里再排一帧接一帧，不再排就停");
+        tt.exec.shutdownNow();
+        boolean ok = true;
+        try {
+            synchronized (lock) {
+                timer[0].schedule(0);
+                timer[0].cancel();
+            }
+        } catch (RejectedExecutionException e) {
+            ok = false;
+        }
+        check(ok, "定时器：会话收尾、线程停了之后再排不抛异常");
+    }
+
+    /**
+     * 审查发现的那条（真正的 TouchRouter + GestureEngine）：惯性的一帧到点了、卡在锁上，同一帧里先按键（停了惯性）再按触控板中间
+     * （排上了长按）——那一帧拿到锁时不能被当成长按（左键按下、开始拖动）。
+     */
+    static void staleSpinFrameIsNotLongPress() throws Exception {
+        TimerThread tt = new TimerThread();
+        Object lock = new Object();
+        List<String> log = Collections.synchronizedList(new ArrayList<>());
+        TouchRouter[] router = new TouchRouter[1];
+        OneShotTimer timer = new OneShotTimer(tt.exec, lock, () -> router[0].onTimer(nowMs()));
+        router[0] = new TouchRouter(new TouchRouter.Output() {
+            @Override
+            public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
+                log.add("m" + buttons);
+            }
+
+            @Override
+            public void keyboard(byte[] report) {}
+
+            @Override
+            public void haptic(int kind) {
+                log.add("h" + kind);
+            }
+
+            @Override
+            public void gesture(int fingers, int kind) {}
+
+            @Override
+            public void button(int id, int action) {}
+
+            @Override
+            public void modifiers(int latched) {}
+
+            @Override
+            public void schedule(long delayMs) {
+                timer.schedule(delayMs);
+            }
+
+            @Override
+            public void cancelSchedule() {
+                timer.cancel();
+            }
+
+            @Override
+            public void startTicks() {}
+
+            @Override
+            public void stopTicks() {}
+        });
+        TouchRouter t = router[0];
+        boolean spun, blocked;
+        synchronized (lock) {
+            t.setConfig(new GestureEngine.Config(), 1);
+            t.setRegions(new TouchRouter.Region[]{
+                    new TouchRouter.Region(Proto.REGION_KEY, 0x06, 1000, 300, 1100, 400),
+                    new TouchRouter.Region(Proto.REGION_PAD, 1, 0, 0, 1000, 1000),
+            });
+            long t0 = nowMs() - 200;   // 左边缘带上快速一拨（时间放在过去）
+            t.down(0, 10, 300, t0);
+            for (int i = 1; i <= 8; i++) {
+                t.move(0, 10, 300 + i * 10);
+                t.frame(t0 + i * 8);
+            }
+            t.up(0, t0 + 69);
+            spun = log.contains("h" + GestureEngine.HAPTIC_SPIN_START);
+            blocked = tt.awaitBlocked();   // 惯性的第一帧到点了，卡在锁上
+            long now = nowMs();
+            t.down(1, 1050, 350, now);     // 同一帧：先按键（停了惯性）……
+            t.down(2, 500, 500, now);      // ……再按触控板中间（排上长按）
+            t.frame(now);
+        }
+        check(spun && blocked, "边缘一拨起了惯性，第一帧到点卡在锁上");
+        Thread.sleep(150);   // 远不到长按的时间
+        synchronized (lock) {
+            check(!log.contains("m1") && !log.contains("h" + GestureEngine.HAPTIC_DRAG_START),
+                    "过期的惯性帧不被当成长按：左键没按下、没开始拖动");
+            t.releaseAll();
+        }
+        tt.exec.shutdownNow();
     }
 
     static void near(float actual, float expected, String what) {

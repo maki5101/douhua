@@ -194,7 +194,7 @@ public final class PairingService extends Service {
     // ═══════════ 通知 ═══════════
 
     private Notification.Builder base(String title, String text) {
-        Intent open = new Intent(this, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent open = SettingsActivity.serviceIntent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);   // 停在"通用"页（配对那一节）
         return new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(Icon.createWithBitmap(DisplayReceiver.icon()))
                 .setContentTitle(title)

@@ -94,6 +94,8 @@
     <string name="stick_speed">Pointing stick sensitivity</string>
     <string name="stick_tap">Tap the stick = left click</string>
     <string name="stick_inertia">Snappier start and stop (negative inertia)</string>
+    <string name="lever_speed">Middle-button slide scroll speed</string>
+    <string name="lever_speed_hint">How fast the page scrolls when you slide the finger that\'s on the middle button. Holding the middle button and pushing the stick isn\'t affected.</string>
     <string name="stick_hint">The pointing stick is on the keyboard page: in the ⋯ menu, switch \"Pointer\" to it. Hold and push: the cursor moves that way, faster the further you push, and stops when you let go. Hold the middle button and push the stick (or slide one finger on the touchpad) to scroll the way you push; let go without scrolling for a middle click.</string>
     <string name="mouse_keys">Show left / middle / right buttons on the touchpad (main screen and keyboard page)</string>
     <string name="mouse_keys_pos">Where the buttons go on the touchpad</string>

@@ -86,9 +86,9 @@ final class Style {
         return keyButton(c, textSp, null);
     }
 
-    /** 键帽；corner 不是 null 时右上角另画一个小字（{@link CornerKey}：小红点状态的逗号句号合键，按住 0.4 秒出它）。 */
-    static TextView keyButton(Context c, int textSp, String corner) {
-        TextView b = setup(corner == null ? new TextView(c) : new CornerKey(c, corner), textSp, theme, keyBorders);
+    /** 键帽；pair 不是 null 时主字旁边并排另画一个字（{@link PairKey}：小红点状态的逗号句号合键，按住 0.4 秒出它）。 */
+    static TextView keyButton(Context c, int textSp, String pair) {
+        TextView b = setup(pair == null ? new TextView(c) : new PairKey(c, pair), textSp, theme, keyBorders);
         b.setEllipsize(TextUtils.TruncateAt.END);
         return b;
     }
@@ -185,30 +185,51 @@ final class Style {
     }
 
     /**
-     * 右上角带一个小字的键帽（2026-11-01，小红点状态的逗号句号合键：大字 ","、右上角 "."，照 Gboard 长按候选的惯例放右上角）。
-     * 大字照常（自动缩字号、末尾省略）；小字字号 min(10sp, 键高 × 0.22)、颜色 = 当前字色（对键帽 ≥ 4.5:1 由 ThemeTest 保证）、
-     * 离右边 4dp、离上边 3dp（同实体键盘角上小字的大小）。
+     * 两个字并排的键帽（2026-11-01 晚，小红点状态的逗号句号合键：用户："那个点儿太小了，而且为什么这么靠近边缘？你就直接跟它，把它跟那个逗号并列啊，
+     * 然后把它颜色放浅"；以前是大字 "," + 右上角小字 "."）：主字（TextView 自己的文字，自动缩字号、末尾省略的规矩照旧，只是不由它画）
+     * 和 pair 并排、一样的字号、挨在一起居中（中间隔半个字号宽的空，别糊成 ",."）；主字照当前字色，pair 用浅一档的 Theme.softText
+     * （对键帽 ≥ 3:1，ThemeTest 锁住）。两个字放不下就一起缩（同 FixedKeyboardView.fit，最小 7sp）。上下内边距（被小红点切到时挪字）照算。
      */
-    static final class CornerKey extends TextView {
-        private final String corner;
+    static final class PairKey extends TextView {
+        private final String pair;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-        CornerKey(Context c, String corner) {
+        PairKey(Context c, String pair) {
             super(c);
-            this.corner = corner;
-            paint.setTextAlign(Paint.Align.RIGHT);
+            this.pair = pair;
+            paint.setTextAlign(Paint.Align.LEFT);
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            if (getWidth() <= 0 || getHeight() <= 0) return;
-            paint.setColor(getCurrentTextColor());
-            paint.setTextSize(Math.min(sp(getContext(), 10), getHeight() * 0.22f));
+            // 不调 super.onDraw：主字也由这里画（TextView 画的话会画在正中，和 pair 叠在一起）。背景照常由 View.draw 先画
+            int w = getWidth(), h = getHeight();
+            if (w <= 0 || h <= 0) return;
+            String main = getText().toString();
+            paint.setTypeface(getTypeface());
+            float size = getTextSize();
+            paint.setTextSize(size);
+            float room = w - getPaddingLeft() - getPaddingRight() - 2 * dp(getContext(), 2);
+            float total = paint.measureText(main) + size * PAIR_GAP + paint.measureText(pair);
+            if (total > room && room > 0) {
+                size = Math.max(sp(getContext(), 7), size * room / total);
+                paint.setTextSize(size);
+                total = paint.measureText(main) + size * PAIR_GAP + paint.measureText(pair);
+            }
+            float left = getPaddingLeft() + (w - getPaddingLeft() - getPaddingRight() - total) / 2f;
             Paint.FontMetrics fm = paint.getFontMetrics();
-            canvas.drawText(corner, getScrollX() + getWidth() - dp(getContext(), 4), getScrollY() + dp(getContext(), 3) - fm.ascent, paint);
+            float cy = (getPaddingTop() + h - getPaddingBottom()) / 2f;
+            float base = cy - (fm.ascent + fm.descent) / 2f;
+            float x = getScrollX() + left, y = getScrollY() + base;
+            paint.setColor(getCurrentTextColor());
+            canvas.drawText(main, x, y, paint);
+            paint.setColor(theme.softText);
+            canvas.drawText(pair, x + paint.measureText(main) + size * PAIR_GAP, y, paint);
         }
     }
+
+    /** 两个字并排时中间隔多宽（字号的倍数）。 */
+    static final float PAIR_GAP = 0.5f;
 
     /**
      * 被小红点切掉一块的键帽（照真 ThinkPad：G、H、B 被和红点同心的圆弧切掉）：圆角矩形减去一个圆（Path 的 DIFFERENCE），

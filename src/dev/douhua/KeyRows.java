@@ -61,7 +61,7 @@ final class KeyRows {
 
     /**
      * 一个键。id = HID 用法码 | (自带修饰键 << 8)，或者合并键（Proto.dualKey：点一下 / 按住 0.4 秒出两个字）；SPACER = 空位；切换键用 *_BUTTON_ID。
-     * corner = 键帽右上角的小字（合并键按住出的那个字；null = 没有）。
+     * pair = 和主字并排画的第二个字（合并键按住 0.4 秒出的那个字，画得浅一档，Style.PairKey；null = 没有）。2026-11-01 晚以前叫 corner、画在右上角。
      */
     static final class Key {
         static final int SPACER = -1;
@@ -71,19 +71,19 @@ final class KeyRows {
         final String shifted;
         final float weight;
         final boolean special;
-        final String corner;
+        final String pair;
 
         Key(int id, String label, String shifted, float weight, boolean special) {
             this(id, label, shifted, weight, special, null);
         }
 
-        Key(int id, String label, String shifted, float weight, boolean special, String corner) {
+        Key(int id, String label, String shifted, float weight, boolean special, String pair) {
             this.id = id;
             this.label = label;
             this.shifted = shifted;
             this.weight = weight;
             this.special = special;
-            this.corner = corner;
+            this.pair = pair;
         }
 
         boolean spacer() {
@@ -317,7 +317,8 @@ final class KeyRows {
     private static final Key STICK_SPACE_KEY = wide(0x2C, "Space", STICK_SPACE);
     /**
      * 小红点状态的逗号键（2026-11-01 用户）：点一下 = ","，按住 0.4 秒 = "."（TouchRouter / KeyHolds 判断，按住不连发）；
-     * 键帽大字 ","、右上角小字 "."。占逗号原来的 1 份，主次键帽照 id & 0xFF = 0x36（标点）是普通键。
+     * 键帽上 "," "." 并排、一样大、"." 浅一档（2026-11-01 晚，用户："那个点儿太小了，而且为什么这么靠近边缘？……把它跟那个逗号并列啊，然后把它颜色放浅"；
+     * 以前是大字 ","、右上角小字 "."）。占逗号原来的 1 份，主次键帽照 id & 0xFF = 0x36（标点）是普通键。
      */
     static final Key COMMA_PERIOD = new Key(Proto.dualKey(0x36, 0x37), ",", null, 1, false, ".");
     /**

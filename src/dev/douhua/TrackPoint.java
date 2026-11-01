@@ -64,10 +64,11 @@ final class TrackPoint {
     /** 中键滚动的速度（格 / 秒）：原来 2 / 10 / 40，用户 2026-11-01 嫌慢，整体翻倍。 */
     static final float SCROLL_CRAWL = 4, SCROLL_PLATEAU = 20, SCROLL_MAX = 80;
     /**
-     * 中键滚动杆的滚动速度（格 / 秒）：红点翻倍之前那一组。用户 2026-11-01 试了滚动杆说"这个滚动速度太快了"——手指在键上一划就是二三十 dp，
-     * 照红点那条曲线（还是从按下点量、挪出轻点容差那一下已经在曲线中段）一下就到平台 / 最快。滚动杆的位移从挪出轻点容差那一圈起算（{@link #leverLevel}）。
+     * 中键滚动杆的滚动速度（格 / 秒，设置里的倍数 {@link GestureEngine.Config#leverSpeed} 是 100% 时）。用户 2026-11-01 试了滚动杆说"这个滚动速度太快了"——
+     * 手指在键上一划就是二三十 dp，照红点那条曲线（还是从按下点量、挪出轻点容差那一下已经在曲线中段）一下就到平台 / 最快：先降成 2 / 10 / 40（红点翻倍之前那一组），
+     * 位移从挪出轻点容差那一圈起算（{@link #leverLevel}）；当天晚上又说"还是太快"，再慢一半成 1 / 5 / 20，另加设置里的滑块（25%–200%）。
      */
-    static final float LEVER_CRAWL = 2, LEVER_PLATEAU = 10, LEVER_MAX = 40;
+    static final float LEVER_CRAWL = 1, LEVER_PLATEAU = 5, LEVER_MAX = 20;
     /** 负惯性：增益、滞后的时间常数（毫秒）。 */
     static final float INERTIA_GAIN = 3, INERTIA_TAU_MS = 10;
     /** 一拍最多按这么久积分（主线程 / 定时器卡了一下时不窜）。 */
@@ -220,7 +221,8 @@ final class TrackPoint {
         float u = level(z);
         float ux = dx / dist, uy = dy / dist;   // 方向照按下点量（dist ≥ m > 死区，不会除零）
         if (scroll) {
-            float rate = lever ? curve(u, LEVER_CRAWL, LEVER_PLATEAU, LEVER_MAX) : curve(u, SCROLL_CRAWL, SCROLL_PLATEAU, SCROLL_MAX);
+            // 滚动杆另乘设置里的"中键滑动的滚动速度"（只管它；按住中键推红点照旧只乘灵敏度）
+            float rate = lever ? curve(u, LEVER_CRAWL, LEVER_PLATEAU, LEVER_MAX) * cfg.leverSpeed : curve(u, SCROLL_CRAWL, SCROLL_PLATEAU, SCROLL_MAX);
             float notches = rate * cfg.stickSpeed * dt / 1000f;
             float ax = Math.abs(ux), ay = Math.abs(uy);
             boolean onlyV = ay >= AXIS_DOMINANCE * ax, onlyH = ax >= AXIS_DOMINANCE * ay;
@@ -290,7 +292,7 @@ final class TrackPoint {
         return Math.max(0, dist - slop);
     }
 
-    /** 中键滚动杆离按下点 dist（dp）时每秒滚几格（灵敏度 1、没负惯性），测试和文档用。 */
+    /** 中键滚动杆离按下点 dist（dp）时每秒滚几格（灵敏度 1、中键滑动速度 100%、没负惯性），测试和文档用。 */
     static float leverRate(float dist, float slop) {
         return curve(level(leverLevel(dist, slop)), LEVER_CRAWL, LEVER_PLATEAU, LEVER_MAX);
     }

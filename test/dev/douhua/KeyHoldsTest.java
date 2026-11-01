@@ -279,10 +279,10 @@ public final class KeyHoldsTest {
         fnCombo();
         fnTapWindows();
         fnGlobeTap();
-        fnLatch();
+        fnLock();
         fnLatchedPlainKey();
         fnLatchedPressAgain();
-        fnHoldTooLong();
+        fnHoldLong();
         fnTimerStuck();
         fnReleasedFirst();
         fnPressedBeforeFn();
@@ -1119,7 +1119,7 @@ public final class KeyHoldsTest {
 
     static final int FN = Proto.FN_KEY, FNG = Proto.FN_GLOBE_KEY, PGUP = 0x4B,
             UP = Proto.fnLayerKey(0x52, 0x4B), ONE = Proto.fnLayerKey(0x1E, 0x3A), RCTL = Proto.fnLayerKey(0xE4, 0x65);
-    static final int FN_HELD = Proto.FN_HELD, FN_LATCHED = Proto.FN_LATCHED, FN_ARMED = Proto.FN_ARMED;
+    static final int FN_HELD = Proto.FN_HELD, FN_LATCHED = Proto.FN_LATCHED, FN_ARMED = Proto.FN_ARMED, FN_LOCKED = Proto.FN_LOCKED;
 
     /**
      * Fn 的屏幕：下面一排 Fn（Windows 模式）、fn🌐（Mac 模式）、↑（Fn 层 PgUp）、1（Fn 层 F1）、右 Ctrl（Fn 层 Menu，底层是修饰键）、Shift、a、
@@ -1178,35 +1178,53 @@ public final class KeyHoldsTest {
         check(g.r.globes == 0, "fn🌐 组合过：松开不出 🌐");
     }
 
-    /** Windows 模式单点 Fn：什么都不做（同点一下 Shift），之后的键照旧出底层。 */
+    /**
+     * Windows 模式单点 Fn（协议 22）：单次锁——不发 HID、不震；下一个普通键出 Fn 层、它松开时解开；再下一个回到底层。
+     * 界面：按着时 Fn 层显示，松开后单次锁（FN_LATCHED）照样显示 Fn 层。
+     */
     static void fnTapWindows() {
         H h = new H(FN_REGIONS);
         h.kd(FN, 1000);
         h.ku(FN, 1150);
-        check(h.r.keys.isEmpty() && h.r.globes == 0 && h.r.lastF == 0 && h.r.clicks == 0 && !h.r.keyPending, "单点 Fn：不发 HID、不出 🌐、不锁");
-        eq(h.r.mods, list("0/0/0/fn2", "0/0/0"), "界面：按着时 Fn 层显示，松开回去");
+        check(h.r.keys.isEmpty() && h.r.globes == 0 && h.r.lastF == FN_LATCHED && h.r.clicks == 0 && !h.r.keyPending,
+                "单点 Fn：单次锁，不发 HID、不出 🌐、不震、定时器撤了");
+        eq(h.r.mods, list("0/0/0/fn2", "0/0/0/fn1"), "界面：按着时 Fn 层显示，松开变单次锁");
         h.kd(UP, 1300);
+        check(h.r.lastF == FN_LATCHED && h.lastKeys().equals("[00|4b]"), "单次锁着按 ↑：出 PgUp，按着时照旧锁着");
         h.ku(UP, 1350);
-        eq(h.r.keys, list("[00|52]", "[00|]"), "点过 Fn 以后 ↑ 还是 ↑（点一下不锁）");
+        check(h.r.lastF == 0, "↑ 松开：单次锁解开");
+        h.kd(UP, 1400);
+        h.ku(UP, 1450);
+        eq(h.r.keys, list("[00|4b]", "[00|]", "[00|52]", "[00|]"), "单次锁只管下一个键：PgUp 之后 ↑ 回到 ↑");
+        // 0.4 秒差一点（399ms）：照旧是单次锁
+        H g = new H(FN_REGIONS);
+        g.kd(FN, 1000);
+        g.ku(FN, 1399);
+        check(g.r.lastF == FN_LATCHED && g.r.clicks == 0, "按 399ms 松手：单次锁、不震");
     }
 
-    /** Mac 模式 fn🌐：单点 = 🌐（报 🌐 的点击）；按住 0.4–1 秒锁、不出 🌐；超过 1 秒、组合、被取消、按下时别的键按着都不出 🌐。区域那一路一样。 */
+    /**
+     * Mac 模式 fn🌐：单点 = 🌐（报 🌐 的点击，没有单次锁）；单独按住 0.4 秒起（多久都算）= 永久锁、不出 🌐；组合、被取消、按下时别的键按着都不出 🌐。
+     * 区域那一路一样。
+     */
     static void fnGlobeTap() {
         H h = new H(FN_REGIONS);
         h.kd(FNG, 1000);
         h.ku(FNG, 1200);
-        check(h.r.globes == 1 && h.r.keys.isEmpty() && h.r.lastF == 0 && h.r.clicks == 0, "单点 fn🌐：出 🌐、不发 HID、不锁、不震");
+        check(h.r.globes == 1 && h.r.keys.isEmpty() && h.r.lastF == 0 && h.r.clicks == 0, "单点 fn🌐：出 🌐、不发 HID、不锁（没有单次锁）、不震");
         H g = new H(FN_REGIONS);
         g.kd(FNG, 1000);
         g.to(1400);
-        check(g.r.clicks == 1 && g.r.lastF == (FN_HELD | FN_ARMED), "fn🌐 按住 0.4 秒：震一下、快锁了");
+        check(g.r.clicks == 1 && g.r.lastF == (FN_HELD | FN_ARMED), "fn🌐 按住 0.4 秒：震一下、快永久锁了");
+        check(!g.r.keyPending, "到点以后不再等（没有 1 秒的上限）");
         g.ku(FNG, 1600);
-        check(g.r.globes == 0 && g.r.lastF == FN_LATCHED, "0.4–1 秒松手：锁住 Fn、不出 🌐");
+        check(g.r.globes == 0 && g.r.lastF == FN_LOCKED, "0.6 秒松手：永久锁、不出 🌐");
         H f = new H(FN_REGIONS);
         f.kd(FNG, 1000);
-        f.to(2000);
-        f.ku(FNG, 2200);
-        check(f.r.globes == 0 && f.r.lastF == 0, "按住超过 1 秒：不锁、不出 🌐");
+        f.to(3000);
+        check(f.r.lastF == (FN_HELD | FN_ARMED) && f.r.clicks == 1, "按住 2 秒：一直是快永久锁了（不退回）、只震一次");
+        f.ku(FNG, 3200);
+        check(f.r.globes == 0 && f.r.lastF == FN_LOCKED, "按住超过 1 秒松手：照样永久锁、不出 🌐");
         H e = new H(FN_REGIONS);
         e.kd(FNG, 1000);
         e.kc(FNG, 1100);
@@ -1227,90 +1245,185 @@ public final class KeyHoldsTest {
         check(b.r.globes == 0, "区域那一路被取消的抬起（手掌 / 收尾补报的）：不出 🌐");
     }
 
-    /** 单独按住 0.4–1 秒松手：锁，只管下一个键（打完松开时解开）。 */
-    static void fnLatch() {
+    /** 单独按住 Fn 0.4 秒起松手：永久锁（Fn Lock）——之后每个带 Fn 层的键都出 Fn 层、打多少个键都不解开，再单独点一下 Fn 才解开。 */
+    static void fnLock() {
         H h = new H(FN_REGIONS);
         h.kd(FN, 1000);
         check(h.r.keyPending && h.r.keyDue == 1400, "Fn 按下排 0.4 秒");
         h.to(1400);
-        check(h.r.clicks == 1 && h.r.lastF == (FN_HELD | FN_ARMED), "到 0.4 秒：震一下、快锁了（高亮）");
-        check(h.r.keyPending && h.r.keyDue == 2000, "再排到 1 秒");
+        check(h.r.clicks == 1 && h.r.lastF == (FN_HELD | FN_ARMED), "到 0.4 秒：震一下、快永久锁了");
+        check(!h.r.keyPending, "Fn 快锁了以后不再等（修饰键还要排到 1 秒，Fn 没有上限）");
         h.ku(FN, 1600);
-        check(h.r.lastF == FN_LATCHED && !h.r.keyPending && h.r.keys.isEmpty(), "0.4–1 秒松手：Fn 锁住，定时器撤了，不发 HID");
+        check(h.r.lastF == FN_LOCKED && !h.r.keyPending && h.r.keys.isEmpty(), "松手：永久锁，不发 HID");
         h.kd(UP, 1700);
-        check(h.r.lastF == FN_LATCHED && h.lastKeys().equals("[00|4b]"), "锁着按 ↑：出 PgUp，按着时照旧锁着");
         h.ku(UP, 1750);
-        check(h.r.lastF == 0, "打完一个键（松开时）解开");
-        h.kd(UP, 1800);
-        h.ku(UP, 1850);
-        eq(h.r.keys, list("[00|4b]", "[00|]", "[00|52]", "[00|]"), "锁住只管下一个键：PgUp 之后 ↑ 回到 ↑");
+        h.kd(ONE, 1800);
+        h.ku(ONE, 1850);
+        h.kd(A, 1900);
+        h.ku(A, 1950);
+        h.kd(UP, 2000);
+        h.ku(UP, 2050);
+        check(h.r.lastF == FN_LOCKED, "打了好几个键（有没有 Fn 层的都算）：永久锁照旧");
+        eq(h.r.keys, list("[00|4b]", "[00|]", "[00|3a]", "[00|]", "[00|04]", "[00|]", "[00|4b]", "[00|]"), "永久锁着：↑ 一直出 PgUp、1 出 F1，a 照旧");
+        h.kd(FN, 2200);
+        check(h.r.lastF == (FN_LOCKED | FN_HELD), "锁着时按下 Fn：先不解开（可能当组合用），按着");
+        h.ku(FN, 2300);
+        check(h.r.lastF == 0 && h.r.clicks == 1, "单独按了一下：松手解开，不震");
+        h.kd(UP, 2400);
+        h.ku(UP, 2450);
+        eq(h.lastKeys(), "[00|]", "收尾");
+        eq(h.r.keys.get(h.r.keys.size() - 2), "[00|52]", "解开以后 ↑ 回到 ↑");
     }
 
-    /** 锁着 Fn 时打了没有 Fn 层的键：照样解开（同锁住的修饰键"打完下一个普通键解开"）。 */
+    /** 单次锁着时打了没有 Fn 层的键：照样用掉（同锁住的修饰键"打完下一个普通键解开"）；修饰键按下 / 松开不用掉它（单次锁 → Shift → 1 = Shift+F1）。 */
     static void fnLatchedPlainKey() {
         H h = new H(FN_REGIONS);
-        lock(h, FN, 1000);
-        check(h.r.lastF == FN_LATCHED, "锁住");
+        tap(h, FN, 1000);
+        check(h.r.lastF == FN_LATCHED, "单次锁");
         h.kd(A, 1600);
         h.ku(A, 1650);
         check(h.r.lastF == 0, "打完 a：解开");
         h.kd(UP, 1700);
         h.ku(UP, 1750);
         eq(h.r.keys, list("[00|04]", "[00|]", "[00|52]", "[00|]"), "a 照旧、↑ 回到 ↑");
-        // 锁着时按修饰键不解开（同修饰键的锁定）：Shift 按着再按 1 = Shift+F1
+        // 单次锁着时按修饰键不解开（同修饰键的锁定）：Shift 按着再按 1 = Shift+F1
         H g = new H(FN_REGIONS);
-        lock(g, FN, 1000);
+        tap(g, FN, 1000);
         g.kd(SHIFT, 1600);
         g.kd(ONE, 1650);
         g.ku(ONE, 1700);
         g.ku(SHIFT, 1750);
-        eq(g.r.keys, list("[02|]", "[02|3a]", "[02|]", "[00|]"), "锁着 Fn、按着 Shift 打 1：Shift+F1");
+        eq(g.r.keys, list("[02|]", "[02|3a]", "[02|]", "[00|]"), "单次锁着 Fn、按着 Shift 打 1：Shift+F1");
         check(g.r.lastF == 0 && g.r.lastL == 0, "打完 F1 解开 Fn，Shift 用过不锁");
+        // 单次锁 → 单点 Shift（松开）→ 1：Shift 点过一下、不用掉单次锁，1 照样出 F1
+        H f = new H(FN_REGIONS);
+        tap(f, FN, 1000);
+        f.kd(SHIFT, 1600);
+        f.ku(SHIFT, 1650);
+        check(f.r.lastF == FN_LATCHED, "单点 Shift：单次锁还在");
+        f.kd(ONE, 1700);
+        f.ku(ONE, 1750);
+        eq(f.r.keys, list("[02|]", "[00|]", "[00|3a]", "[00|]"), "之后 1 出 F1");
+        // 单次锁着时按右 Ctrl（底层是修饰键、Fn 层是 Menu）：出 Menu，是普通键，用掉单次锁
+        H e = new H(FN_REGIONS);
+        tap(e, FN, 1000);
+        e.kd(RCTL, 1600);
+        e.ku(RCTL, 1650);
+        eq(e.r.keys, list("[00|65]", "[00|]"), "单次锁着按右 Ctrl：出 Menu");
+        check(e.r.lastF == 0 && e.r.lastL == 0, "Menu 是普通键：用掉单次锁，修饰键不动");
     }
 
-    /** 再点一下锁住的 Fn 也解开：这一下按着时照样是 Fn 层，松手什么都不做（fn🌐 也不出 🌐），按多久都不再锁。 */
+    /**
+     * 锁着（单次或永久）时再单独按一下 Fn：松手解开（这一下按着时照样是 Fn 层），按多久都不再锁、不震（fn🌐 也不出 🌐）；
+     * 锁着时把 Fn 当组合用（按住它打了别的键 / 动了鼠标）：Fn 松手后锁照旧——永久锁一直在，单次锁被那个键用掉。
+     */
     static void fnLatchedPressAgain() {
+        // 单次锁 + 再点一下：解开
         H h = new H(FN_REGIONS);
-        lock(h, FN, 1000);
+        tap(h, FN, 1000);
         h.kd(FN, 1600);
-        check(h.r.lastF == FN_HELD, "按下：解开，按着");
-        h.kd(UP, 1650);
-        h.ku(UP, 1700);
-        h.to(2300);
-        h.ku(FN, 2300);
-        check(h.r.lastF == 0 && h.r.clicks == 1, "按着时照样是 Fn 层；松手不锁、不再震（只有第一次锁时震过）");
-        eq(h.r.keys, list("[00|4b]", "[00|]"), "解开那一下按着时 ↑ 出 PgUp");
+        check(h.r.lastF == (FN_LATCHED | FN_HELD), "单次锁着按下 Fn：按着、单次锁先留着");
+        h.ku(FN, 1700);
+        check(h.r.lastF == 0, "单独点一下：解开（不会又锁一次）");
+        h.kd(UP, 1800);
+        h.ku(UP, 1850);
+        eq(h.r.keys, list("[00|52]", "[00|]"), "之后 ↑ 是 ↑");
+        // 单次锁 + 再按住 2 秒：照样只是解开，不震、不变永久锁
         H g = new H(FN_REGIONS);
-        lock(g, FNG, 1000);
-        g.kd(FNG, 1600);
-        g.ku(FNG, 1700);
-        check(g.r.lastF == 0 && g.r.globes == 0, "锁着时再点一下 fn🌐：解开，不出 🌐");
+        tap(g, FN, 1000);
+        g.kd(FN, 1600);
+        g.to(3600);
+        check(g.r.clicks == 0 && g.r.lastF == (FN_LATCHED | FN_HELD) && !g.r.keyPending, "锁着时按住 2 秒：不震、不快锁了、不排定时器");
+        g.ku(FN, 3600);
+        check(g.r.lastF == 0, "松手解开");
+        // 永久锁 + 再按住 0.6 秒：解开
+        H f = new H(FN_REGIONS);
+        lock(f, FN, 1000);
+        f.kd(FN, 1600);
+        f.to(2200);
+        f.ku(FN, 2200);
+        check(f.r.lastF == 0 && f.r.clicks == 1, "永久锁着再按住 0.6 秒：解开，不再震（只有锁那一下震过）");
+        // fn🌐 永久锁 + 再点一下：解开，不出 🌐
+        H e = new H(FN_REGIONS);
+        lock(e, FNG, 1000);
+        e.kd(FNG, 1600);
+        e.ku(FNG, 1700);
+        check(e.r.lastF == 0 && e.r.globes == 0, "锁着时再点一下 fn🌐：解开，不出 🌐");
+        // 永久锁 + Fn 当组合用（按住 Fn 打 ↑）：PgUp，松开 Fn 后永久锁照旧
+        H d = new H(FN_REGIONS);
+        lock(d, FN, 1000);
+        d.kd(FN, 1600);
+        d.kd(UP, 1650);
+        d.ku(UP, 1700);
+        d.ku(FN, 1750);
+        check(d.r.lastF == FN_LOCKED, "永久锁着按住 Fn 打了 ↑：松开 Fn 后锁照旧");
+        d.kd(UP, 1800);
+        d.ku(UP, 1850);
+        eq(d.r.keys, list("[00|4b]", "[00|]", "[00|4b]", "[00|]"), "两次都出 PgUp");
+        // 永久锁 + 按住 Fn 时点了鼠标：组合，锁照旧
+        H c = new H(FN_REGIONS);
+        lock(c, FN, 1000);
+        c.kd(FN, 1600);
+        c.to(1650);
+        c.t.click(Proto.BUTTON_LEFT);
+        c.ku(FN, 1700);
+        check(c.r.lastF == FN_LOCKED, "永久锁着按住 Fn 点了鼠标：松开 Fn 后锁照旧");
+        // 单次锁 + Fn 当组合用：那个键用掉单次锁（同"下一个普通键"），Fn 松开不另外改
+        H b = new H(FN_REGIONS);
+        tap(b, FN, 1000);
+        b.kd(FN, 1600);
+        b.kd(ONE, 1650);
+        check(b.r.lastF == (FN_LATCHED | FN_HELD), "单次锁着按住 Fn 打 1：按着时单次锁还在");
+        b.ku(ONE, 1700);
+        b.ku(FN, 1750);
+        check(b.r.lastF == 0, "1 松开用掉单次锁、Fn 松开不再锁");
+        eq(b.r.keys, list("[00|3a]", "[00|]"), "出 F1");
+        // 锁着时按下 Fn 那一刻别的键按着：组合的一部分，不解开
+        H a = new H(FN_REGIONS);
+        lock(a, FN, 1000);
+        a.kd(A, 1600);
+        a.kd(FN, 1650);
+        a.ku(FN, 1700);
+        a.ku(A, 1750);
+        check(a.r.lastF == FN_LOCKED, "a 按着时按下 Fn、松开：锁照旧");
     }
 
-    static void fnHoldTooLong() {
+    /** 按住超过 1 秒（修饰键那条"超过 1 秒不锁"对 Fn 不适用）：照样永久锁。 */
+    static void fnHoldLong() {
         H h = new H(FN_REGIONS);
         h.kd(FN, 1000);
         h.to(2000);
-        check(h.r.lastF == FN_HELD && h.r.clicks == 1 && !h.r.keyPending, "1 秒：高亮退回、不再震、不再等");
+        check(h.r.lastF == (FN_HELD | FN_ARMED) && h.r.clicks == 1 && !h.r.keyPending, "1 秒：照旧快永久锁了、只震过一次、不再等");
         h.ku(FN, 2500);
-        check(h.r.lastF == 0, "按住超过 1 秒松手：不锁");
+        check(h.r.lastF == FN_LOCKED, "按住 1.5 秒松手：永久锁");
         h.kd(UP, 2600);
         h.ku(UP, 2650);
-        eq(h.r.keys, list("[00|52]", "[00|]"), "之后 ↑ 是 ↑");
+        eq(h.r.keys, list("[00|4b]", "[00|]"), "之后 ↑ 出 PgUp");
     }
 
-    /** 定时器卡住、一直没到点：松手那一刻照截止时刻算（同修饰键）。 */
+    /** 定时器卡住、一直没到点：松手那一刻照截止时刻算（同修饰键）：过了 0.4 秒就补上（震一下）、永久锁，不管多久。 */
     static void fnTimerStuck() {
         H g = new H(FN_REGIONS);
         g.kd(FN, 1000);
         g.r.keyPending = false;
         g.t.key(FN, Proto.KEY_UP, 2300);
-        check(g.r.lastF == 0 && g.r.clicks == 0, "没到点、松手时已过 1 秒：不锁、不震");
+        check(g.r.lastF == FN_LOCKED && g.r.clicks == 1, "没到点、松手时已过 1 秒：照截止时刻补上（震一下）、永久锁");
         H f = new H(FN_REGIONS);
         f.kd(FN, 1000);
         f.r.keyPending = false;
         f.t.key(FN, Proto.KEY_UP, 1500);
-        check(f.r.lastF == FN_LATCHED && f.r.clicks == 1, "没到点、松手时 0.5 秒：照截止时刻补上（震一下、锁住）");
+        check(f.r.lastF == FN_LOCKED && f.r.clicks == 1, "没到点、松手时 0.5 秒：照截止时刻补上（震一下、永久锁）");
+        H e = new H(FN_REGIONS);
+        e.kd(FN, 1000);
+        e.r.keyPending = false;
+        e.t.key(FN, Proto.KEY_UP, 1300);
+        check(e.r.lastF == FN_LATCHED && e.r.clicks == 0, "没到点、松手时 0.3 秒：单次锁、不震");
+    }
+
+    /** 单点 Fn / fn🌐（按 150ms 松手）。 */
+    static void tap(H h, int key, long t0) {
+        h.kd(key, t0);
+        h.ku(key, t0 + 150);
     }
 
     /** 先松 Fn 再松键：松的是按下时的 Fn 层的码（区域那一路、key() 那一路一样）。 */
@@ -1494,8 +1607,23 @@ public final class KeyHoldsTest {
         eq(e.r.keys, list("[00|4b]", "[00|]", "[00|52]", "[00|]"), "releaseAll 后先按同一个键：重新定码（↑），不跟着之前记的 PgUp");
         H g = new H(FN_REGIONS);
         lock(g, FN, 1000);
+        check(g.r.lastF == FN_LOCKED, "永久锁");
         g.t.releaseAll();
-        check(g.r.lastF == 0, "锁着的 Fn：releaseAll 解开");
+        check(g.r.lastF == 0, "永久锁着的 Fn：releaseAll 解开");
+        g.kd(UP, 2000);
+        g.ku(UP, 2050);
+        eq(g.r.keys.subList(g.r.keys.size() - 2, g.r.keys.size()), list("[00|52]", "[00|]"), "之后 ↑ 是 ↑");
+        H d = new H(FN_REGIONS);
+        tap(d, FN, 1000);
+        check(d.r.lastF == FN_LATCHED, "单次锁");
+        d.t.releaseAll();
+        check(d.r.lastF == 0, "单次锁着的 Fn：releaseAll 解开");
+        H c = new H(FN_REGIONS);   // 锁着时按下 Fn（等着松手解开）、releaseAll：都归零，迟到的松开不出东西
+        lock(c, FN, 1000);
+        c.kd(FN, 1600);
+        c.t.releaseAll();
+        c.ku(FN, 1700);
+        check(c.r.lastF == 0, "锁着时按着 Fn 被 releaseAll：归零，迟到的松开不会又锁上");
         H f = new H(FN_REGIONS);
         f.kd(FNG, 1000);
         f.to(1500);
@@ -1523,19 +1651,33 @@ public final class KeyHoldsTest {
         g.t.setConfig(new GestureEngine.Config(), 1);
         g.kd(UP, 1600);
         g.ku(UP, 1650);
-        eq(g.r.keys, list("[00|4b]", "[00|]"), "锁着的 Fn 照旧锁着");
+        eq(g.r.keys, list("[00|4b]", "[00|]"), "永久锁着的 Fn 照旧锁着");
+        H f = new H(FN_REGIONS);
+        tap(f, FN, 1000);
+        f.t.setConfig(new GestureEngine.Config(), 1);
+        check(f.r.lastF == FN_LATCHED, "单次锁着的 Fn 照旧单次锁着");
+        H e = new H(FN_REGIONS);   // 锁着时按着 Fn（等着松手解开）换参数：松手照样解开
+        lock(e, FN, 1000);
+        e.td(0, col(FN_REGIONS, FN), 1600);
+        e.t.setConfig(new GestureEngine.Config(), 1);
+        e.tu(0, 1700, false);
+        check(e.r.lastF == 0, "锁着时按着 Fn、换参数、松手：照常解开");
     }
 
-    /** CMD_UNLATCH：锁着的 Fn 解开，按着的 Fn 照旧。 */
+    /** CMD_UNLATCH：锁着的 Fn（单次、永久）解开，按着的 Fn 照旧计时。 */
     static void fnUnlatch() {
         H h = new H(FN_REGIONS);
         lock(h, FN, 1000);
         h.to(1600);
         h.t.unlatch(1600);
-        check(h.r.lastF == 0, "锁着的 Fn 解开");
+        check(h.r.lastF == 0, "永久锁着的 Fn 解开");
         h.kd(UP, 1700);
         h.ku(UP, 1750);
         eq(h.r.keys, list("[00|52]", "[00|]"), "之后 ↑ 是 ↑");
+        H d = new H(FN_REGIONS);
+        tap(d, FN, 1000);
+        d.t.unlatch(1200);
+        check(d.r.lastF == 0, "单次锁着的 Fn 解开");
         H g = new H(FN_REGIONS);
         g.kd(FN, 1000);
         g.to(1100);
@@ -1543,7 +1685,14 @@ public final class KeyHoldsTest {
         check(g.r.lastF == FN_HELD, "按着的 Fn 照旧按着");
         g.to(1400);
         g.ku(FN, 1500);
-        check(g.r.lastF == FN_LATCHED, "照常计时、锁住");
+        check(g.r.lastF == FN_LOCKED, "照常计时、永久锁");
+        H c = new H(FN_REGIONS);   // 锁着时按下 Fn（等着松手解开）、中途 unlatch：松手时已经没锁可解，什么都不多做（不会反过来锁上）
+        lock(c, FN, 1000);
+        c.kd(FN, 1600);
+        c.t.unlatch(1650);
+        check(c.r.lastF == FN_HELD, "unlatch：锁没了、Fn 还按着");
+        c.ku(FN, 1700);
+        check(c.r.lastF == 0, "松手：什么都不多做");
     }
 
     /** 按着 Fn 时用了鼠标（点一下 / 滚轮 / 按住左键）：不锁、fn🌐 不出 🌐（同修饰键"用过"）。 */
@@ -1601,18 +1750,20 @@ public final class KeyHoldsTest {
         h.t.onKeyTimer(1100);
         check(h.r.all.size() == n, "早到、重复的：什么都不出");
         h.ku(FN, 1200);
+        check(h.r.lastF == FN_LATCHED, "0.2 秒松手：单次锁");
         n = h.r.all.size();
         h.t.onKeyTimer(1400);
         h.t.onKeyTimer(2000);
         h.t.onKeyTimer(500);
-        check(h.r.all.size() == n && h.r.lastF == 0 && h.r.clicks == 0, "撤掉之后到点的、乱序的：不震、不锁");
+        check(h.r.all.size() == n && h.r.lastF == FN_LATCHED && h.r.clicks == 0, "撤掉之后到点的、乱序的：不震、不变永久锁");
     }
 
     /** 区域那一路和 key() 那一路同样的 Fn 序列：报文、修饰键 / Fn 状态、🌐、震动一模一样。 */
     static void fnPathsAgree() {
-        int[][] seq = {   // {键, 按下时间, 抬起时间, 取消}
+        int[][] seq = {   // {键, 按下时间, 抬起时间, 取消}：永久锁、锁着打键、点 fn🌐 解开、右 Ctrl 锁、单次锁、fn🌐 永久锁、点 Fn 解开、单点 fn🌐 出 🌐、单次锁打 ↑
                 {FN, 1000, 1600, 0}, {UP, 1700, 1750, 0}, {FNG, 1800, 1900, 0}, {RCTL, 2000, 2500, 0}, {ONE, 2600, 2700, 0},
-                {FNG, 2800, 3300, 0}, {UP, 3400, 3450, 1}, {FN, 3500, 3550, 0}, {A, 3600, 3650, 0},
+                {FNG, 2800, 3300, 0}, {UP, 3400, 3450, 1}, {FN, 3500, 3550, 0}, {A, 3600, 3650, 0}, {FNG, 3700, 3800, 0},
+                {FN, 3900, 4000, 0}, {UP, 4050, 4100, 0}, {FN, 4200, 4300, 1},
         };
         H a = new H(FN_REGIONS), b = new H(FN_REGIONS);
         for (int[] s : seq) {
@@ -1623,16 +1774,16 @@ public final class KeyHoldsTest {
             else b.ku(s[0], s[2]);
         }
         // 两根手指交叠：按住 Fn 打 ↑、松 Fn、再松 ↑
-        a.td(0, col(FN_REGIONS, FN), 4000);
-        b.kd(FN, 4000);
-        a.td(1, col(FN_REGIONS, UP), 4100);
-        b.kd(UP, 4100);
-        a.tu(0, 4200, false);
-        b.ku(FN, 4200);
-        a.tu(1, 4300, false);
-        b.ku(UP, 4300);
-        a.to(6000);
-        b.to(6000);
+        a.td(0, col(FN_REGIONS, FN), 5000);
+        b.kd(FN, 5000);
+        a.td(1, col(FN_REGIONS, UP), 5100);
+        b.kd(UP, 5100);
+        a.tu(0, 5200, false);
+        b.ku(FN, 5200);
+        a.tu(1, 5300, false);
+        b.ku(UP, 5300);
+        a.to(7000);
+        b.to(7000);
         eq(a.r.keys, b.r.keys, "两条路的报文一样");
         eq(a.r.mods, b.r.mods, "两条路报给界面的修饰键 / Fn 状态一样");
         check(a.r.clicks == b.r.clicks && a.r.globes == b.r.globes && a.r.globes == 1, "震动、🌐 一样（🌐 只在单点 fn🌐 那一下出一次）");
@@ -1640,14 +1791,16 @@ public final class KeyHoldsTest {
 
     /**
      * 几百组随机序列（Fn、fn🌐、带 Fn 层的键——↑ / 1 / 右 Ctrl、Shift、a、底层就发 PgUp 的键；按下抬起、被取消、两根手指、点鼠标、滚轮、
-     * 乱序的定时器、releaseAll、unlatch），每步查：Fn 锁住和按着不同时出现、快锁了 ⊆ 按着；HID 修饰键字节 = latched | held；
-     * 带 Fn 层的键按下时出的码 = 那一刻 Fn 按着 / 锁着（这个键已经按着就跟着它）定的、最后一根抬起时这个码从报文里消失；
-     * Fn 最后一根抬起时：锁不锁、出不出 🌐 和照规则推的一样（单独、没用过、按住 0.4–1 秒锁；fn🌐 单独点一下出 🌐）；
-     * 震动次数 = 修饰键和 Fn 快锁了的次数；全部抬起后（releaseAll 之前）主机上没有按着的键、修饰键字节 = 锁住的；再 releaseAll 全部归零。
+     * 乱序的定时器、releaseAll、unlatch），旁边跑一份照协议 22 的规矩写的模型（单次锁、永久锁两个开关），每步查：
+     * 报给界面的单次锁 / 永久锁和模型一样、两种锁不同时出现、快永久锁了 ⊆ 按着；HID 修饰键字节 = latched | held；
+     * 带 Fn 层的键按下时出的码 = 那一刻 Fn 按着 / 单次锁 / 永久锁（这个键已经按着就跟着它）定的、最后一根抬起时这个码从报文里消失；
+     * Fn 最后一根抬起时照模型走：没当组合用、没被取消的——锁着就解开，没锁着按住 0.4 秒起就永久锁、不到 0.4 秒 fn🌐 出 🌐 / Fn 单次锁；
+     * 普通键（出的码不是修饰键）松开用掉单次锁、永久锁不动；震动次数 = 修饰键和 Fn 快锁了的次数；
+     * 全部抬起后（releaseAll 之前）主机上没有按着的键、修饰键字节 = 锁住的；再 releaseAll 全部归零。
      */
     static void fnRandomSequences() {
         int[] keys = {FN, FNG, UP, ONE, RCTL, SHIFT, A, PGUP};
-        int steps = 0, latchedSeen = 0, globesSeen = 0, fnLayerSeen = 0, bad = 0;
+        int steps = 0, lockSeen = 0, onceSeen = 0, unlockSeen = 0, globesSeen = 0, fnLayerSeen = 0, bad = 0;
         String firstBad = null;
         for (int seed = 1; seed <= 400; seed++) {
             Random rnd = new Random(seed);
@@ -1655,8 +1808,11 @@ public final class KeyHoldsTest {
             long t = 1000;
             Map<Integer, Integer> count = new HashMap<>();
             Map<Integer, Integer> code = new HashMap<>();
+            // 模型：单次锁、永久锁；这次按下的 Fn 从什么时候按着、是哪一种、按下时锁着没有、当没当组合用
+            boolean once = false, lock = false;
             long fnAt = 0;
-            boolean fnTainted = false;
+            int fnFirst = 0;
+            boolean fnTainted = false, fnWasLocked = false;
             for (int step = 0; step < 150; step++) {
                 steps++;
                 t += rnd.nextInt(5) == 0 ? 300 + rnd.nextInt(900) : rnd.nextInt(120);
@@ -1665,45 +1821,53 @@ public final class KeyHoldsTest {
                 int n = count.getOrDefault(key, 0);
                 int fnHeld = count.getOrDefault(FN, 0) + count.getOrDefault(FNG, 0);
                 String why = null;
-                if (op >= 19) {   // 想锁 Fn / 点 fn🌐：别的都没按着时单独按住一会儿（0.05–1.5 秒）再松
+                if (op >= 19) {   // 别的都没按着时单独按住一会儿（0.05–1.5 秒）再松：单次锁 / 永久锁 / 🌐 / 解开
                     boolean empty = true;
                     for (int v : count.values()) empty &= v == 0;
                     if (!empty) continue;
                     int fk = rnd.nextBoolean() ? FN : FNG;
                     h.to(t);
-                    boolean latchedBefore = (h.r.lastF & FN_LATCHED) != 0;
                     int globes = h.r.globes;
+                    boolean wasLocked = once || lock;
                     h.kd(fk, t);
                     long d = 50 + rnd.nextInt(1450);
                     t += d;
                     h.ku(fk, t);
-                    boolean wantLatch = !latchedBefore && d >= KeyHolds.HOLD_MS && d < KeyHolds.LOCK_MAX_MS;
-                    boolean wantGlobe = !latchedBefore && fk == FNG && d < KeyHolds.HOLD_MS;
-                    boolean gotLatch = (h.r.lastF & FN_LATCHED) != 0, gotGlobe = h.r.globes > globes;
-                    if (wantLatch != gotLatch || wantGlobe != gotGlobe) {
-                        why = "单独按住 " + (fk == FNG ? "fn🌐" : "Fn") + " " + d + "ms：想要" + (wantLatch ? "锁" : "不锁") + (wantGlobe ? "、出 🌐" : "")
-                                + "，实际" + (gotLatch ? "锁了" : "没锁") + (gotGlobe ? "、出了 🌐" : "");
+                    boolean wantGlobe = false;
+                    if (wasLocked) {
+                        once = lock = false;
+                        unlockSeen++;
+                    } else if (d >= KeyHolds.HOLD_MS) {
+                        lock = true;
+                    } else if (fk == FNG) {
+                        wantGlobe = true;
+                    } else {
+                        once = true;
                     }
-                    if (gotLatch) latchedSeen++;
+                    boolean gotGlobe = h.r.globes > globes;
+                    if (wantGlobe != gotGlobe) why = "单独按 " + (fk == FNG ? "fn🌐" : "Fn") + " " + d + "ms：🌐 想要 " + wantGlobe + "，实际 " + gotGlobe;
                     if (gotGlobe) globesSeen++;
                 } else if (op < 9) {   // 按下
                     if (n >= 2) continue;
                     h.to(t);
                     boolean others = false;
                     for (Map.Entry<Integer, Integer> e : count.entrySet()) others |= e.getKey() != key && e.getValue() > 0;
-                    boolean active = (h.r.lastF & (FN_LATCHED | FN_HELD)) != 0, latchedBefore = (h.r.lastF & FN_LATCHED) != 0;
+                    boolean active = fnHeld > 0 || once || lock;
                     if (op < 6) h.kd(key, t);
                     else h.td(n, col(FN_REGIONS, key), t);
                     if (Proto.isFnKey(key)) {
                         if (fnHeld == 0) {
                             fnAt = t;
-                            fnTainted = others || latchedBefore;
+                            fnFirst = key;
+                            fnTainted = others;
+                            fnWasLocked = once || lock;
                         }
                     } else if (fnHeld > 0) {
-                        fnTainted = true;   // 按着 Fn 时按了别的键：用过
+                        fnTainted = true;   // 按着 Fn 时按了别的键：用过（当组合用）
                     }
+                    int want = key;
                     if (Proto.isFnLayerKey(key)) {
-                        int want = n > 0 ? code.get(key) : active ? Proto.fnCode(key) : Proto.fnBase(key);
+                        want = n > 0 ? code.get(key) : active ? Proto.fnCode(key) : Proto.fnBase(key);
                         code.put(key, want);
                         if (want == Proto.fnCode(key)) fnLayerSeen++;
                         boolean ok = KeyHolds.isModifier(want) ? (h.r.lastMods & (1 << (want - 0xE0))) != 0
@@ -1720,22 +1884,38 @@ public final class KeyHoldsTest {
                     if (cancel) h.kc(key, t);
                     else h.ku(key, t);
                     count.put(key, n - 1);
-                    if (Proto.isFnLayerKey(key) && n == 1) {
-                        int c = code.remove(key);
-                        if (!KeyHolds.isModifier(c) && h.lastKeys().matches(".*[| ]" + String.format("%02x", c) + "[] ].*")) {
-                            why = "最后一根松开 " + Integer.toHexString(key) + "：报文里还按着 " + Integer.toHexString(c) + " " + h.lastKeys();
+                    int released = key;
+                    if (Proto.isFnLayerKey(key)) {
+                        released = code.get(key);
+                        if (n == 1) {
+                            code.remove(key);
+                            if (!KeyHolds.isModifier(released) && h.lastKeys().matches(".*[| ]" + String.format("%02x", released) + "[] ].*")) {
+                                why = "最后一根松开 " + Integer.toHexString(key) + "：报文里还按着 " + Integer.toHexString(released) + " " + h.lastKeys();
+                            }
                         }
                     }
+                    // 普通键（出的码不是修饰键、不是 Fn）松开，被取消的也算：用掉单次锁（同锁住的修饰键"打完下一个普通键解开"）
+                    if (!Proto.isFnKey(key) && !KeyHolds.isModifier(released)) once = false;
                     if (Proto.isFnKey(key) && fnHeld == 1) {
                         long d = t - fnAt;
-                        boolean wantLatch = !cancel && !fnTainted && d >= KeyHolds.HOLD_MS && d < KeyHolds.LOCK_MAX_MS;
-                        boolean wantGlobe = !cancel && !fnTainted && key == FNG && d < KeyHolds.HOLD_MS;
-                        boolean gotLatch = (h.r.lastF & FN_LATCHED) != 0, gotGlobe = h.r.globes > globes;
-                        if (wantLatch != gotLatch || wantGlobe != gotGlobe) {
-                            why = "Fn 按了 " + d + "ms" + (fnTainted ? "（用过）" : "") + (cancel ? "（被取消）" : "") + " 松开：想要"
-                                    + (wantLatch ? "锁" : "不锁") + (wantGlobe ? "、出 🌐" : "") + "，实际" + (gotLatch ? "锁了" : "没锁") + (gotGlobe ? "、出了 🌐" : "");
+                        boolean wantGlobe = false;
+                        if (!cancel && !fnTainted) {
+                            if (fnWasLocked) {
+                                once = lock = false;
+                                unlockSeen++;
+                            } else if (d >= KeyHolds.HOLD_MS) {
+                                lock = true;
+                            } else if (fnFirst == FNG) {
+                                wantGlobe = true;
+                            } else {
+                                once = true;
+                            }
                         }
-                        if (gotLatch) latchedSeen++;
+                        boolean gotGlobe = h.r.globes > globes;
+                        if (wantGlobe != gotGlobe) {
+                            why = "Fn 按了 " + d + "ms" + (fnTainted ? "（用过）" : "") + (cancel ? "（被取消）" : "") + (fnWasLocked ? "（按下时锁着）" : "")
+                                    + " 松开：🌐 想要 " + wantGlobe + "，实际 " + gotGlobe;
+                        }
                         if (gotGlobe) globesSeen++;
                     }
                 } else if (op == 16) {   // 鼠标：点一下 / 滚一格
@@ -1749,14 +1929,22 @@ public final class KeyHoldsTest {
                     h.to(t);
                     if (rnd.nextBoolean()) {
                         h.t.unlatch(t);
+                        once = lock = false;
                     } else {
                         h.t.releaseAll();
                         count.clear();
                         code.clear();
+                        once = lock = false;
                     }
                 }
                 R r = h.r;
-                if (why == null && (r.lastF & FN_LATCHED) != 0 && (r.lastF & FN_HELD) != 0) why = "Fn 锁住和按着同时出现";
+                boolean gotOnce = (r.lastF & FN_LATCHED) != 0, gotLock = (r.lastF & FN_LOCKED) != 0;
+                if (gotOnce) onceSeen++;
+                if (gotLock) lockSeen++;
+                if (why == null && (gotOnce != once || gotLock != lock)) {
+                    why = "Fn 的锁：模型 单次 " + once + " / 永久 " + lock + "，报的 " + r.lastF;
+                }
+                if (why == null && gotOnce && gotLock) why = "单次锁和永久锁同时出现";
                 if (why == null && (r.lastF & FN_ARMED) != 0 && (r.lastF & FN_HELD) == 0) why = "Fn 快锁了却没按着";
                 if (why == null && !r.keys.isEmpty() && r.lastMods != (r.lastL | r.lastH)) {
                     why = "HID 修饰键字节 " + Integer.toHexString(r.lastMods) + " ≠ latched | held " + Integer.toHexString(r.lastL | r.lastH);
@@ -1790,8 +1978,10 @@ public final class KeyHoldsTest {
             }
         }
         check(bad == 0, "Fn 随机序列：" + (firstBad == null ? "" : firstBad));
-        check(latchedSeen > 50 && globesSeen > 50 && fnLayerSeen > 200, "随机序列里真锁住过、真出过 🌐、真出过 Fn 层（" + latchedSeen + " / " + globesSeen + " / " + fnLayerSeen + "）");
-        System.err.println("  Fn 随机序列：" + steps + " 步，锁住 " + latchedSeen + " 次、🌐 " + globesSeen + " 次、出 Fn 层 " + fnLayerSeen + " 次");
+        check(lockSeen > 200 && onceSeen > 200 && unlockSeen > 50 && globesSeen > 50 && fnLayerSeen > 200,
+                "随机序列里真单次锁过、真永久锁过、真解开过、真出过 🌐、真出过 Fn 层（" + onceSeen + " / " + lockSeen + " / " + unlockSeen + " / " + globesSeen + " / " + fnLayerSeen + "）");
+        System.err.println("  Fn 随机序列：" + steps + " 步，单次锁着 " + onceSeen + " 步、永久锁着 " + lockSeen + " 步、解开 " + unlockSeen + " 次、🌐 " + globesSeen
+                + " 次、出 Fn 层 " + fnLayerSeen + " 次");
     }
 
     /** 键在 REGIONS 里第几列（Shift 用第一个）。 */

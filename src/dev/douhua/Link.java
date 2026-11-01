@@ -40,7 +40,7 @@ final class Link {
         /**
          * 修饰键的状态（Proto.MSG_MODIFIERS，协议 20 起三样，HID 修饰键位）：latched = 锁住的，held = 有手指按着的，
          * armed = 单独按住到了 0.4 秒、"现在松手就锁"的。界面照 latched | armed 画高亮、照 latched | held 换键帽上的字。
-         * fn = Fn 的同样三样（协议 21，Proto.FN_LATCHED / FN_HELD / FN_ARMED 位）。
+         * fn = Fn 的状态（协议 21 起，Proto.FN_LATCHED 单次锁 / FN_HELD / FN_ARMED 快永久锁了 / FN_LOCKED 永久锁 位，协议 22 改了意思）。
          */
         void onModifiers(int latched, int held, int armed, int fn);
 
@@ -174,6 +174,14 @@ final class Link {
     /** 清掉服务那边锁住的修饰键（Proto.CMD_UNLATCH，不带参数）：进空中鼠标、手柄页时，不然 Ctrl 一直按着、每次点击都成了 Ctrl+点击。 */
     void unlatch() {
         offer(ByteBuffer.allocate(1).put((byte) Proto.CMD_UNLATCH));
+    }
+
+    /**
+     * 请服务把键盘焦点交给这块屏上另一个看得见的应用（Proto.CMD_FOCUS_OTHER，协议 22）：桌面模式分屏 / 小窗里豆花窗口拿着焦点时，
+     * 不然虚拟键盘的键被豆花自己吞掉。什么时候发由 MainActivity 照 FocusHandoff 定。
+     */
+    void focusOther(int displayId) {
+        offer(ByteBuffer.allocate(5).put((byte) Proto.CMD_FOCUS_OTHER).putInt(displayId));
     }
 
     void rotate(int displayId, int rotation) {

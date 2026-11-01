@@ -495,12 +495,12 @@ public final class KeyRowsTest {
         check(b[0].before[0] == b[0].whole[0] && b[0].after[1] == b[0].whole[4], "?123 ↵ 是整行时那两个键帽");
         check(dual == KeyRows.COMMA_PERIOD && dual != b[0].whole[1] && dual.id == Proto.dualKey(0x36, 0x37)
                 && Proto.dualTap(dual.id) == b[0].whole[1].id && Proto.dualHold(dual.id) == b[0].whole[3].id
-                && dual.weight == b[0].whole[1].weight && ".".equals(dual.corner) && !dual.special,
+                && dual.weight == b[0].whole[1].weight && ".".equals(dual.pair) && !dual.special,
                 "合并键：另一个键帽，点一下 = 整行时的 ,、按住 = .，和 , 一样 1 份，右上角小字 .");
         check(right == KeyRows.STICK_SPACE_R && right.id == 0x2C && right != b[0].whole[2] && right.weight == b[0].whole[3].weight,
                 "右边的空格：又一个键帽，同一个 id，占 . 原来的 1 份");
         check(!KeyRows.functionKey(dual, false) && !KeyRows.functionKey(right, false), "合并键、右空格是普通键（主次键帽）");
-        check(b[0].whole[1].corner == null && b[0].whole[3].corner == null, "整行时的 , . 照旧，没有角上小字");
+        check(b[0].whole[1].pair == null && b[0].whole[3].pair == null, "整行时的 , . 照旧，没有并排的第二个字");
         KeyRows.Key sp = b[0].before[2];
         check(sp.id == 0x2C && sp != b[0].whole[2] && sp.weight == KeyRows.STICK_SPACE, "缩短的空格：又一个键帽、平时 1.5 份");
         check(b[1].spread && b[1].before == null && b[1].holed() && b[0].holed(), "快捷行按个数分到两边；底行、快捷行都让位");
@@ -575,7 +575,7 @@ public final class KeyRowsTest {
                         // 底行（2026-11-01 起 ?123 [,.] 空格 │ 空位 │ 空格 ↵）：?123 和合并键照整行时 ?123 , 的宽度、位置；空格从合并键的右边到空位左边；
                         // ↵ 到最右边；右边那个空格从空位右边开始，和 ↵ 按 1 : 1.5 分（份数同以前的 . ↵）
                         KeyRows.Placed sym = find(ps, "?123"), comma = find(ps, ","), space = find(ps, "Space"), dot = findLast(ps, "Space"), enter = find(ps, "↵");
-                        check(comma.key == KeyRows.COMMA_PERIOD && comma.key.id == Proto.dualKey(0x36, 0x37) && ".".equals(comma.key.corner),
+                        check(comma.key == KeyRows.COMMA_PERIOD && comma.key.id == Proto.dualKey(0x36, 0x37) && ".".equals(comma.key.pair),
                                 what + "：逗号的位置是合并键（点一下 , 按住 .，右上角小字 .）");
                         check(dot.key == KeyRows.STICK_SPACE_R && dot.key.id == space.key.id && space.key.id == 0x2C && dot != space,
                                 what + "：右边是第二个空格（另一个键帽、同一个 id）");

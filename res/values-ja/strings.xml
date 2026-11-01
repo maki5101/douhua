@@ -94,6 +94,8 @@
     <string name="stick_speed">スティックの感度</string>
     <string name="stick_tap">スティックをタップ = 左クリック</string>
     <string name="stick_inertia">動き出しと止まりをキビキビ（負の慣性）</string>
+    <string name="lever_speed">中ボタンをなぞるスクロール速度</string>
+    <string name="lever_speed_hint">中ボタンに置いた指を滑らせたときのスクロールの速さ。中ボタンを押したままスティックを倒すときの速さは変わりません。</string>
     <string name="stick_hint">ポインティングスティックはキーボード画面にあります：⋯ メニューで「ポインター」をスティックに切り替えます。押したまま倒した方向にカーソルが動き、遠くまで倒すほど速く、離すと止まります。中ボタンを押したままスティックを倒す（またはタッチパッドを指 1 本でなぞる）と倒した方向にスクロール。スクロールせずに離すと中クリック。</string>
     <string name="mouse_keys">タッチパッドに左 / 中 / 右ボタンを表示（メイン画面とキーボード画面のタッチパッド）</string>
     <string name="mouse_keys_pos">ボタンの位置（タッチパッドの）</string>

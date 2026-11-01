@@ -689,7 +689,7 @@ public final class FixedCompactTest {
      *   Mac 模式 Proto.FN_GLOBE_KEY，带 Fn 层的键 Proto.fnLayerKey(底层, Fn 层)，别的就是用法码；一块面板里每个键的 id 各不相同（indexOfKeyId 对得回来）。
      * ② 分流（真 TouchRouter + 报的区域，服务接管、本地分流）和面板自己收触摸（keyAt → keyId，经 CMD_HID_KEY / local.key）逐点同一个 id。
      * ③ 每个走分流的键：区域那一路（按在段的正中）和 key() 那一路，单按、按住 Fn 再按、先松 Fn 再松，报文、修饰键 / Fn 状态、🌐 一模一样；
-     *   单按出底层的码，按住 Fn 出 Fn 层的码（没有 Fn 层的照旧）；Mac 模式单点 fn🌐 出 🌐（和 TKL Mac 模式的 🌐 键同一个按钮编号），Windows 模式单点 Fn 什么都不出。
+     *   单按出底层的码，按住 Fn 出 Fn 层的码（没有 Fn 层的照旧）；Mac 模式单点 fn🌐 出 🌐（和 TKL Mac 模式的 🌐 键同一个按钮编号），Windows 模式单点 Fn 是单次锁、不发 HID（协议 22 起；协议 21 时什么都不出）。
      */
     static void fnPaths() {
         int[] tally = new int[4];   // 面板、逐点、走分流的键、出了 Fn 层的码
@@ -825,14 +825,34 @@ public final class FixedCompactTest {
                 return k + "：单按 " + alone + "（应为 " + expect(base) + "），按住 Fn " + withFn + "（应为 " + expect(fn) + "）";
             }
         }
-        // Fn 自己单点：Mac 模式出 🌐，Windows 模式什么都不出；两条路一样
+        // Fn 自己单点（协议 22）：Mac 模式出 🌐，Windows 模式单次锁（不发 HID）；两条路一样
         KeyHoldsTest.H a = new KeyHoldsTest.H(real), b = new KeyHoldsTest.H(real);
         touch(a, 0, fc, true, 1000);
         b.kd(fnId, 1000);
         touch(a, 0, fc, false, 1150);
         b.ku(fnId, 1150);
-        if (a.r.globes != (l.mac() ? 1 : 0) || b.r.globes != a.r.globes || !a.r.keys.isEmpty() || !b.r.keys.isEmpty()) {
-            return "单点 Fn：🌐 " + a.r.globes + " / " + b.r.globes + "（" + (l.mac() ? "Mac 模式应出 🌐" : "Windows 模式什么都不出") + "）";
+        int wantF = l.mac() ? 0 : Proto.FN_LATCHED;
+        if (a.r.globes != (l.mac() ? 1 : 0) || b.r.globes != a.r.globes || !a.r.keys.isEmpty() || !b.r.keys.isEmpty()
+                || a.r.lastF != wantF || b.r.lastF != wantF) {
+            return "单点 Fn：🌐 " + a.r.globes + " / " + b.r.globes + "、Fn 状态 " + a.r.lastF + " / " + b.r.lastF
+                    + "（" + (l.mac() ? "Mac 模式应出 🌐、不锁" : "Windows 模式应单次锁、不出 🌐") + "）";
+        }
+        // 单独按住 0.6 秒：两种模式都永久锁、不出 🌐；再点一下解开；两条路一样
+        a = new KeyHoldsTest.H(real);
+        b = new KeyHoldsTest.H(real);
+        touch(a, 0, fc, true, 1000);
+        b.kd(fnId, 1000);
+        a.to(1600);
+        b.to(1600);
+        touch(a, 0, fc, false, 1600);
+        b.ku(fnId, 1600);
+        boolean locked = a.r.lastF == Proto.FN_LOCKED && b.r.lastF == Proto.FN_LOCKED;
+        touch(a, 0, fc, true, 1700);
+        b.kd(fnId, 1700);
+        touch(a, 0, fc, false, 1800);
+        b.ku(fnId, 1800);
+        if (!locked || a.r.lastF != 0 || b.r.lastF != 0 || a.r.globes != 0 || b.r.globes != 0 || !a.r.mods.equals(b.r.mods)) {
+            return "按住 0.6 秒永久锁、再点一下解开：" + a.r.mods + " / " + b.r.mods + "，🌐 " + a.r.globes + " / " + b.r.globes;
         }
         return null;
     }
@@ -956,7 +976,7 @@ public final class FixedCompactTest {
         int plans = 0, bad = 0;
         String first = null;
         for (String sz : NEW) for (String sh : SHAPES) for (String m : MODES) {
-            if (!FixedLayout.available(sh, sz, m)) continue;
+            if (!FixedLayout.available(sh, sz, m) || !FixedLayout.stickAllowed(sz, m)) continue;   // Mac 模式（连苹果紧凑）不给小红点（FixedLayoutTest.stickRule）
             FixedLayout l = layout(sh, sz, m);
             int min = Math.round(32 * l.width);
             for (int w = min; w <= 2600; w += 13) for (int hh : new int[]{150, 230, 300, 475, 704}) for (int k = 0; k < 2; k++) {
@@ -976,8 +996,8 @@ public final class FixedCompactTest {
                 if (why != null && bad++ == 0) first = name(l) + " " + w + "×" + hh + " " + Arrays.toString(saved) + "：" + why;
             }
         }
-        check(bad == 0, "75% / 65% / 苹果紧凑 + 小红点 + 一格 ≥ 32dp ⇒ 有三个鼠标键、中键正对红点：扫了 " + plans + " 种" + (first == null ? "" : "，" + bad + " 种不对，比如 " + first));
-        System.err.println("  75% / 65% / 苹果紧凑 + 小红点的三个鼠标键：" + plans + " 种摆法都有");
+        check(bad == 0, "75% / 65% 的 Windows 模式 + 小红点 + 一格 ≥ 32dp ⇒ 有三个鼠标键、中键正对红点：扫了 " + plans + " 种" + (first == null ? "" : "，" + bad + " 种不对，比如 " + first));
+        System.err.println("  75% / 65% 的 Windows 模式 + 小红点的三个鼠标键：" + plans + " 种摆法都有");
     }
 
     // ── 工具 ──

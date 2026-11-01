@@ -813,17 +813,22 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     }
 
     private void sliderInt(int labelRes, String key, int def, int min, int max, int step) {
+        sliderInt(labelRes, key, def, min, max, step, "");
+    }
+
+    /** 同上，数后面接 unit（"%" 之类；空 = 不接）。存坏了的值（超出范围）显示时截到范围里。 */
+    private void sliderInt(int labelRes, String key, int def, int min, int max, int step, String unit) {
         String label = getString(labelRes);
         TextView title = text("", 16, 0xFFE8E8E8);
         SeekBar bar = new SeekBar(this);
         bar.setMax((max - min) / step);
-        int value = prefs.getInt(key, def);
+        int value = Math.max(min, Math.min(max, prefs.getInt(key, def)));
         bar.setProgress((value - min) / step);
-        title.setText(getString(R.string.value_format, label, String.valueOf(value)));
+        title.setText(getString(R.string.value_format, label, value + unit));
         bar.setOnSeekBarChangeListener(new SimpleSeek(p -> {
             int v = min + p * step;
             prefs.putInt(key, v);
-            title.setText(getString(R.string.value_format, label, String.valueOf(v)));
+            title.setText(getString(R.string.value_format, label, v + unit));
         }));
         list.addView(title);
         list.addView(bar);
@@ -1164,6 +1169,10 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 Prefs.STICK_SPEED_STEP, "%.1f");
         toggle(R.string.stick_tap, Prefs.STICK_TAP, def.stickTap);
         toggle(R.string.stick_inertia, Prefs.STICK_INERTIA, def.stickInertia);
+        // 中键滑动（中键自己当滚动杆）的滚动速度：百分数，只管它（按住中键推红点的不变）
+        sliderInt(R.string.lever_speed, Prefs.LEVER_SPEED, Prefs.LEVER_SPEED_DEFAULT, Prefs.LEVER_SPEED_MIN, Prefs.LEVER_SPEED_MAX,
+                Prefs.LEVER_SPEED_STEP, "%");
+        list.addView(text(getString(R.string.lever_speed_hint), 14, 0xFF9AA0A6));
         list.addView(text(getString(R.string.stick_hint), 14, 0xFF9AA0A6));
 
         LinearLayout box = new LinearLayout(this);

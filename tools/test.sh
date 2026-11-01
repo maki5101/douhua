@@ -24,12 +24,15 @@ trap 'rm -rf "$OUT"' EXIT
 # 分屏透传的分流和注入流拼装（TouchSplit、InjectStream）、
 # 服务的会话交接部件（独占锁、顶替策略、方向锁定、心跳和释放原因）、日志限频、带超时的子进程、实体键（设备挑选、判断状态机）、
 # TouchRouter 的一次性定时器（OneShotTimer：撤掉 / 取代后在等锁的那次不调）、
+# 分屏里豆花拿着键盘焦点时交给另一半（协议 22：服务挑哪个任务 FocusPick、App 什么时候发 FocusHandoff）、
+# ⋯ 菜单按使用频率排（MenuOrder：每一屏显示哪几项、什么顺序）、
 # 打字测试的重放（KeyReplay）、adb 无线配对的密码学（SPAKE2 / HKDF / AES-GCM，向量取自 BoringSSL）、
 # 豆花自己连 adbd 的协议（消息帧、adb 公钥格式、自签证书、配对 / 连接客户端）和拉起服务的 shell 命令、自动启动的退避规则、
 # 主界面的十八套配色（槽位齐全、对比度、小红点的红）、
 # 惯性滚动的物理（ScrollInertia）、连续滚动的描述符 / 滚轮倍率换算、CMD_CONFIG 编解码（HidTest）、uhid 的 GET / SET_REPORT（UhidEvents）、
 # 小红点（TrackPoint：速度曲线、负惯性、积分、轻点、颗粒、中键滚动）、
-# 修饰键 / Caps / 合并键的点一下、按住、锁定，实体键盘的 Fn 层（KeyHolds：真 TouchRouter 跑报文序列，加随机序列查不变量；协议 21 的编码在 ServerPartsTest）、
+# 修饰键 / Caps / 合并键的点一下、按住、锁定，实体键盘的 Fn 层（KeyHolds：真 TouchRouter 跑报文序列，加随机序列查不变量；协议 21 的编码在 ServerPartsTest；
+# 协议 22 起 Fn 点一下单次锁、按住永久锁，随机序列旁边跑一份照新规矩写的模型）、
 # 触控板背景图怎么摆（PadFit：五种显示方式、焦点、吸附、平铺相位、按形状挑设置、解码多大）、
 # 主机实测扫描许发哪些键、一段怎么拆成拍（KeyScan）、
 # 实体键盘第 1B 批（FixedLegends：读 res/raw 的键帽数据、抽查值；FixedLayout / FixedPanel：几何、每区块每行的范围、分流、小红点在真 ThinkPad 的位置、
@@ -53,6 +56,9 @@ trap 'rm -rf "$OUT"' EXIT
     src/dev/douhua/server/KeyDevices.java src/dev/douhua/server/HardKeyGate.java \
     src/dev/douhua/server/TouchSplit.java src/dev/douhua/server/InjectStream.java \
     src/dev/douhua/server/LiftWatch.java src/dev/douhua/server/OneShotTimer.java \
+    src/dev/douhua/server/FocusPick.java test/dev/douhua/server/FocusPickTest.java \
+    src/dev/douhua/FocusHandoff.java test/dev/douhua/FocusHandoffTest.java \
+    src/dev/douhua/MenuOrder.java test/dev/douhua/MenuOrderTest.java \
     test/dev/douhua/server/PassthroughTest.java \
     test/dev/douhua/GestureEngineTest.java test/dev/douhua/server/ServerPartsTest.java \
     test/dev/douhua/KeyboardSnapTest.java test/dev/douhua/TouchRouterTest.java \
@@ -87,6 +93,9 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/java" -cp "$OUT" dev.douhua.HidTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.server.ServerPartsTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.server.PassthroughTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.server.FocusPickTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.FocusHandoffTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.MenuOrderTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyboardSnapTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.TouchRouterTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyHoldsTest

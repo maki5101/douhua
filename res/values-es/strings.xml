@@ -94,6 +94,8 @@
     <string name="stick_speed">Sensibilidad del pointing stick</string>
     <string name="stick_tap">Tocar el stick = clic izquierdo</string>
     <string name="stick_inertia">Arranque y parada más rápidos (inercia negativa)</string>
+    <string name="lever_speed">Velocidad de desplazamiento al deslizar en el botón central</string>
+    <string name="lever_speed_hint">Lo rápido que se desplaza la página al deslizar el dedo apoyado en el botón central. Mantener el botón central y empujar el stick no cambia.</string>
     <string name="stick_hint">El pointing stick está en la página del teclado: en el menú ⋯ cambia «Puntero» al stick. Mantén pulsado y empuja: el cursor va hacia ese lado, más rápido cuanto más empujas, y se detiene al soltar. Mantén el botón central y empuja el stick (o desliza un dedo por el touchpad) para desplazarte hacia ese lado; suelta sin haberte desplazado para un clic central.</string>
     <string name="mouse_keys">Botones izquierdo / central / derecho en el touchpad (pantalla principal y página del teclado)</string>
     <string name="mouse_keys_pos">Posición de los botones en el touchpad</string>

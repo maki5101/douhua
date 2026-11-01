@@ -19,7 +19,11 @@ import dev.douhua.Proto;
  * 再带一个 keys=<4 位 0/1>（音量+点一下、音量+按住、音量−点一下、音量−按住）就一起要求截音量键，
  * 打印服务发来的实体键事件和独占状态；停发心跳后应该收到"截住=0 原因=5"（已放开）。服务找不到触摸屏时实体键照样截（测试机能测）。
  *
- * 用法：app_process / dev.douhua.server.TestClient [displayId] [接管秒数] [relay] [keys=1000]
+ * 再带一个 focus（协议 22）就不接管（布局报 inactive），只发一次 CMD_FOCUS_OTHER，看服务交不交焦点：
+ * 服务日志里有"分屏交焦点（屏幕 N）：…"一行（豆花的任务没拿着焦点时写"不交：焦点已经不在豆花"；服务用 --debug 起时还列出这块屏上的任务）。
+ * 只读地看会交给谁、不真交，用 Server tasks（豆花没拿着焦点时另外说"豆花拿着焦点的话会怎样"）。
+ *
+ * 用法：app_process / dev.douhua.server.TestClient [displayId] [接管秒数] [relay] [keys=1000] [focus]
  */
 public final class TestClient {
     private TestClient() {}
@@ -28,9 +32,11 @@ public final class TestClient {
         int displayId = args.length > 0 ? Integer.parseInt(args[0]) : 0;
         int seconds = args.length > 1 ? Integer.parseInt(args[1]) : 2;
         boolean relay = false;
+        boolean focus = false;
         String keys = null;
         for (int i = 2; i < args.length; i++) {
             if (args[i].equals("relay")) relay = true;
+            if (args[i].equals("focus")) focus = true;
             if (args[i].startsWith("keys=")) keys = args[i].substring(5);
         }
         if (keys != null && !keys.matches("[01]{4}")) {
@@ -48,7 +54,7 @@ public final class TestClient {
             out.writeByte(Proto.CMD_CONFIG);
             ConfigCodec.write(out, new GestureEngine.Config(), 2.625f);   // 全用默认参数，密度 2.625
             out.writeByte(Proto.CMD_LAYOUT);
-            out.writeByte(1);
+            out.writeByte(focus ? 0 : 1);   // focus：不接管触摸屏
             out.writeByte(relay ? 1 : 0);
             out.writeInt(displayId);
             out.writeByte(0);
@@ -66,6 +72,15 @@ public final class TestClient {
             if (keys != null) {
                 out.writeByte(Proto.CMD_HARD_KEYS);
                 for (int i = 0; i < 4; i++) out.writeByte(keys.charAt(i) - '0');
+            }
+            if (focus) {
+                out.writeByte(Proto.CMD_FOCUS_OTHER);
+                out.writeInt(displayId);
+                out.flush();
+                Server.log("自测：已请求把屏幕 " + displayId + " 上的键盘焦点交给另一个应用（不接管触摸屏），结果看服务日志");
+                Thread.sleep(2000);
+                Server.log("自测：断开");
+                return;
             }
             out.flush();
             Server.log("自测：已请求接管屏幕 " + displayId + (keys != null ? "、截实体键 " + keys : "")
@@ -110,7 +125,7 @@ public final class TestClient {
                     case Proto.MSG_GESTURE:
                         Server.log("自测收到 手势 " + in.readUnsignedByte() + "/" + in.readUnsignedByte());
                         break;
-                    case Proto.MSG_MODIFIERS:   // 协议 21：锁住 / 按着 / 快锁了三个字节 + Fn（位：1 锁住、2 按着、4 快锁了）
+                    case Proto.MSG_MODIFIERS:   // 协议 21 起：锁住 / 按着 / 快锁了三个字节 + Fn（位：1 单次锁、2 按着、4 快永久锁了、8 永久锁，协议 22）
                         Server.log("自测收到 修饰键 锁住=" + in.readUnsignedByte() + " 按着=" + in.readUnsignedByte()
                                 + " 快锁了=" + in.readUnsignedByte() + " Fn=" + in.readUnsignedByte());
                         break;

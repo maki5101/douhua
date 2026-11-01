@@ -94,6 +94,8 @@
     <string name="stick_speed">小红点灵敏度</string>
     <string name="stick_tap">轻点红点 = 左键</string>
     <string name="stick_inertia">起停更利落（负惯性）</string>
+    <string name="lever_speed">中键滑动的滚动速度</string>
+    <string name="lever_speed_hint">手指按在中键上滑动时滚得多快；按住中键推红点的速度不受影响。</string>
     <string name="stick_hint">小红点在键盘页：⋯ 菜单里把「指点」换成小红点。按住往哪边推，光标就往哪边走，推得越远越快，松手就停。按住中键推红点（或者在触控板上单指划）= 滚动，推哪边页面往哪边翻；没滚过就松开 = 中键单击。</string>
     <string name="mouse_keys">触控板旁边显示左 / 中 / 右键（主界面和键盘页的触控板）</string>
     <string name="mouse_keys_pos">左 / 中 / 右键放在触控板的</string>

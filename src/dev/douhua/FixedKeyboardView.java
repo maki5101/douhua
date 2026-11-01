@@ -6,6 +6,8 @@ import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.View;
@@ -24,7 +26,8 @@ import java.util.List;
  * 颜色全从当前主题取（Style.theme，主次键帽同 KeyRows.functionKey）；修饰键左右八个都画高亮（锁住的、"现在松手就锁"的），Caps 开着时也亮；
  * 锁住或按着 Shift / 第三层时会出的那个字照常、别的压暗，字母跟着 Caps 换大小写（FixedPanel.upper）；
  * 死键用强调色（activeText，对键帽够 4.5:1）。被小红点切到的键沿圆弧切掉一块，直接用豆花布局那个 Style.CutCap 画（圆角矩形减去圆）。
- * Fn（协议 21，75% / 65% / 苹果紧凑）：Fn 键锁住 / 快锁了时画高亮；Fn 锁住或按着时带 Fn 层的键帽整片换成 Fn 层的字（主次照 Fn 层那个码），
+ * Fn（协议 21，75% / 65% / 苹果紧凑）：Fn 键单次锁时画修饰键那种高亮，永久锁 / 快永久锁了画强调色实底（协议 22，FixedPanel.fnLockLook）；
+ * Fn 锁着（单次或永久）或按着时带 Fn 层的键帽整片换成 Fn 层的字（主次照 Fn 层那个码），
  * 不换层、不重报区域——按下发哪个码由分流按下那一刻定（KeyHolds），这里只画。报的 id、自己收触摸时发的 id 都是 FixedPanel.keyId。
  */
 final class FixedKeyboardView extends View implements KeyboardFace {
@@ -273,8 +276,10 @@ final class FixedKeyboardView extends View implements KeyboardFace {
             boolean fn = model.functionKey(i, fnLayer) && !active;
             boolean down = i < pressed.length && pressed[i];
             // ⋯ 槽：强调色的底 + 反差字、不画边框（同豆花布局的 ⋯ 键，Style.menuKeyLook）。键帽的路径往里缩了半条边框，
-            // 别的键描边时外沿才到键帽的边：⋯ 照样"描边"、只是描成底色，大小和旁边的键一样（按键边框关着时都不描，也一样）
-            boolean menu = KeyRows.menuKey(k.id);
+            // 别的键描边时外沿才到键帽的边：⋯ 照样"描边"、只是描成底色，大小和旁边的键一样（按键边框关着时都不描，也一样）。
+            // Fn 永久锁着 / 快永久锁了（协议 22）画成同样的实底（像亮着的 Fn Lock 灯），单次锁照旧是修饰键那种强调色的边
+            boolean lockLook = model.fnLockLook(i, fnState);
+            boolean menu = KeyRows.menuKey(k.id) || lockLook;
             int fillColor = menu ? (down ? t.menuKeyPressed : t.menuKey)
                     : down ? (fn ? t.fnPressed : t.pressed) : (fn ? t.fnKey : t.key);
             int strokeColor = menu ? fillColor : active ? t.accent : t.border;
@@ -297,12 +302,15 @@ final class FixedKeyboardView extends View implements KeyboardFace {
             }
             int base = menu ? t.menuKeyText : active ? t.activeText : fn ? t.fnText : t.text;
             List<FixedPanel.Glyph> glyphs = model.glyphs(i, mods, capsOn, fnLayer, space);
-            for (int[] b : model.capBoxes(i)) drawGlyphs(canvas, i, b, glyphs, base, t, model.named(i, fnLayer));
+            for (int[] b : model.capBoxes(i)) drawGlyphs(canvas, i, b, glyphs, base, t, model.named(i, fnLayer), lockLook);
         }
     }
 
-    /** 一个键帽上的字：正中 / 上下两层 / 角上小字，被切到的键整块字竖着挪（FixedPanel.shift）、角上小字放离切口最远的角。 */
-    private void drawGlyphs(Canvas canvas, int i, int[] b, List<FixedPanel.Glyph> glyphs, int base, Theme t, boolean named) {
+    /**
+     * 一个键帽上的字：正中 / 上下两层 / 角上小字，被切到的键整块字竖着挪（FixedPanel.shift）、角上小字放离切口最远的角。
+     * solid = 实底的 Fn 键（永久锁）：🌐 照字色剪影画（去色映射是按功能键的底和字算的，画在强调色实底上看不清）。
+     */
+    private void drawGlyphs(Canvas canvas, int i, int[] b, List<FixedPanel.Glyph> glyphs, int base, Theme t, boolean named, boolean solid) {
         float w = b[2] - b[0], h = b[3] - b[1];
         if (w <= 0 || h <= 0) return;
         float shift = model.shift(i);
@@ -317,7 +325,7 @@ final class FixedKeyboardView extends View implements KeyboardFace {
             int color = g.dead ? t.activeText : base;
             if (g.dim) color = (color & 0x00FFFFFF) | ((Math.round(((color >>> 24) & 0xFF) * 0.4f)) << 24);
             text.setColor(color);
-            text.setColorFilter(g.text.equals("🌐") ? emoji : null);
+            text.setColorFilter(!g.text.equals("🌐") ? null : solid ? new PorterDuffColorFilter(base, PorterDuff.Mode.SRC_IN) : emoji);
             switch (g.slot) {
                 case FixedPanel.Glyph.CENTER: {
                     float size = named && g.text.codePointCount(0, g.text.length()) > 1 ? name : big;

@@ -21,7 +21,9 @@ import java.util.function.Function;
  *   kbx_size               tkl（默认）/ full / laptop（笔记本，2026-11-01）/ 75 / 65 / apple（第 3 批：75%、65%、苹果紧凑）：逐级缩的起点
  *                          （放不下就往小换，FixedLayout.ladder），存的值不跟着缩
  *   kbx_mode               win（默认，连 Linux、安卓也用它）/ mac（连 iPad 也用它）
- *   kbx_pointer            键盘页的指点（KeyboardPlan.POINTER_*），和豆花布局的 kb_pointer 分开记：在实体键盘上换成小红点不会把豆花布局也换了
+ *   kbx_pointer            键盘页的指点（KeyboardPlan.POINTER_*），和豆花布局的 kb_pointer 分开记：在实体键盘上换成小红点不会把豆花布局也换了。
+ *                          存着小红点、显示着的那一级不给小红点（FixedLayout.stickAllowed：TKL、全尺寸、Mac 模式，2026-11-01 晚）时照触控板
+ *                          （{@link #pointer(String)}），存的值不动
  *   kbx_<尺寸>_<指点>_<land|port>_<l|t|r|b>   大小位置（键盘区的 0–1，没有 = 默认）：按尺寸 × 指点 × 横竖屏各一份
  *                          （换语言、形状、模式不挪；六种尺寸来回换各回各的；有触控板时避让、没有时不避让，同豆花布局按指点分开记）。
  *                          尺寸是**显示着的**那个（逐级缩成笔记本时取、存的都是 kbx_laptop_…），所以存取都显式给尺寸，不按选的尺寸
@@ -163,8 +165,23 @@ final class Boards {
 
     // ═══════════ 指点、大小位置（实体键盘自己的一份） ═══════════
 
+    /** 存的指点（KeyboardPlan.POINTER_*；显示着的那一级实际用的见 {@link #pointer(String)}）。 */
     int pointer() {
         return KeyboardPlan.validPointer(store.getInt(KEY_POINTER, KeyboardPlan.POINTER_PAD));
+    }
+
+    /**
+     * 显示着 size 这一级（逐级缩）时实际用的指点：存的是小红点、这一级 / 这种模式不给小红点（FixedLayout.stickAllowed）时照触控板，存的值不动
+     * （同 KeyboardPlan.fixedPointer；大小位置也照它存取，用的是触控板那份）。
+     */
+    int pointer(String size) {
+        int p = pointer();
+        return p == KeyboardPlan.POINTER_STICK && !FixedLayout.stickAllowed(size, mode()) ? KeyboardPlan.POINTER_PAD : p;
+    }
+
+    /** ⋯ 菜单"指点"点一下：显示着 size 这一级时从实际用的那个往下轮（不给小红点时跳过它：触控板 ↔ 关）。返回新的，不存（调用方 setPointer）。 */
+    int nextPointer(String size) {
+        return KeyboardPlan.nextPointer(pointer(size), FixedLayout.stickAllowed(size, mode()));
     }
 
     void setPointer(int pointer) {
@@ -180,16 +197,16 @@ final class Boards {
 
     /**
      * size 这个尺寸（显示着的那个，不一定是选的：逐级缩）、现在这种指点状态下存的大小位置 {左, 上, 右, 下}（0–1）；
-     * 没存过返回 null（KeyboardPlan.fixedDefaultRect 按窗口给）。
+     * 没存过返回 null（KeyboardPlan.fixedDefaultRect 按窗口给）。指点按这一级实际用的那个（{@link #pointer(String)}：存着小红点、这一级不给时是触控板那份）。
      */
     float[] savedRect(String size, boolean landscape) {
-        String p = rectKey(size, pointer(), landscape);
+        String p = rectKey(size, pointer(size), landscape);
         if (!store.contains(p + "l")) return null;
         return new float[]{store.getFloat(p + "l", 0), store.getFloat(p + "t", 0), store.getFloat(p + "r", 1), store.getFloat(p + "b", 1)};
     }
 
     void setRect(String size, boolean landscape, float[] r) {
-        String p = rectKey(size, pointer(), landscape);
+        String p = rectKey(size, pointer(size), landscape);
         store.putFloat(p + "l", r[0]);
         store.putFloat(p + "t", r[1]);
         store.putFloat(p + "r", r[2]);
@@ -198,7 +215,7 @@ final class Boards {
 
     /** 调整栏的"恢复默认"：只清 size 这个尺寸（显示着的）、这种指点、这个方向的那份。 */
     void resetRect(String size, boolean landscape) {
-        String p = rectKey(size, pointer(), landscape);
+        String p = rectKey(size, pointer(size), landscape);
         for (String e : new String[]{"l", "t", "r", "b"}) store.remove(p + e);
     }
 

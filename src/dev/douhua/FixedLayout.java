@@ -366,6 +366,23 @@ final class FixedLayout {
     }
 
     /**
+     * 实体键盘这一级能不能用小红点（2026-11-01 晚，用户："超过 78 键的那个模拟就不需要加指点杆了……实在是太丑了……直接关闭这个选项"、
+     * "Mac 键盘的模拟也关掉那个小红点"，问过以后："那就 TKL 和全尺寸都不给，和 Mac 键盘不给，其他都有"）：
+     * 笔记本、75%、65% 的 Windows 模式能；TKL、全尺寸、所有 Mac 模式不能（苹果紧凑只有 Mac 模式，所以也不能）。豆花布局不受影响。
+     * 按**显示着的那一级**算（逐级缩：选 TKL、窗口窄到缩成 75% 时能用；大小位置本来就按显示着的尺寸存）。规则只有这一处：
+     * KeyboardPlan.planFixed（存着小红点、这一级不给时照触控板摆）、Boards.pointer(尺寸)（照触控板那份存取大小位置）、⋯ 菜单"指点"轮换都问它。
+     */
+    static boolean stickAllowed(String size, String mode) {
+        String s = validSize(size);
+        return WIN.equals(validMode(mode)) && (LAPTOP.equals(s) || P75.equals(s) || P65.equals(s));
+    }
+
+    /** 这一块能不能用小红点（{@link #stickAllowed(String, String)}）。 */
+    boolean stickAllowed() {
+        return stickAllowed(size, mode);
+    }
+
+    /**
      * 照字表拼一块（FixedData.ladder 用，逐级缩的每一级各拼一块）：右 Alt 写不写 AltGr 看字表有没有第三层。字表是 null（键帽数据读不出来，或者这个布局这种模式没有那一段）
      * 就不拼、返回 null——KeyboardScreen 拿不到布局就照样显示豆花布局（⋯ 菜单写明），不显示一块出字的键全是空白的实体键盘。
      */

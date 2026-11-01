@@ -594,10 +594,11 @@ public final class HidTest {
         c.stickSpeed = 2.3f;
         c.stickTap = false;
         c.stickInertia = false;
+        c.leverSpeed = 0.35f;
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         ConfigCodec.write(new DataOutputStream(bytes), c, 2.75f);
         byte[] data = bytes.toByteArray();
-        eq(data.length, 56, "CMD_CONFIG 负载 56 字节（协议 17 是 40，加了惯性 / 连续滚动 10 字节、小红点 6 字节）");
+        eq(data.length, 60, "CMD_CONFIG 负载 60 字节（协议 17 是 40，加了惯性 / 连续滚动 10 字节、小红点 6 字节；协议 22 加中键滑动速度 4 字节）");
         GestureEngine.Config d = new GestureEngine.Config();
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(data));
         float density = ConfigCodec.read(in, d);
@@ -606,17 +607,25 @@ public final class HidTest {
         eq(Arrays.asList(d.pointerSpeed, d.acceleration, d.scrollStepDp, d.naturalScroll, d.pinchZoom, d.edgeScroll,
                         d.edgeScrollHorizontal, d.edgeWidthDp, d.scrollTicks, d.longPressDrag, d.longPressMs, d.tapToDrag,
                         d.dragWindowMs, d.slowFactor, d.texture, d.inertia, d.inertiaTauMs, d.inertiaMinSpeed, d.smoothScroll,
-                        d.stickSpeed, d.stickTap, d.stickInertia),
+                        d.stickSpeed, d.stickTap, d.stickInertia, d.leverSpeed),
                 Arrays.asList(c.pointerSpeed, c.acceleration, c.scrollStepDp, c.naturalScroll, c.pinchZoom, c.edgeScroll,
                         c.edgeScrollHorizontal, c.edgeWidthDp, c.scrollTicks, c.longPressDrag, c.longPressMs, c.tapToDrag,
                         c.dragWindowMs, c.slowFactor, c.texture, c.inertia, c.inertiaTauMs, c.inertiaMinSpeed, c.smoothScroll,
-                        c.stickSpeed, c.stickTap, c.stickInertia),
+                        c.stickSpeed, c.stickTap, c.stickInertia, c.leverSpeed),
                 "每一项往返不变");
         GestureEngine.Config def = new GestureEngine.Config();
         check(def.inertia && !def.smoothScroll && def.inertiaMinSpeed == 0.6f
                         && def.inertiaTauMs == ScrollInertia.tauMs(ScrollInertia.DEFAULT_LEVEL),
                 "默认：惯性开、连续滚动关、0.6dp/ms 算拨、阻尼 4 档");
         check(def.stickSpeed == 1.0f && !def.stickTap && def.stickInertia, "默认：小红点灵敏度 1.0、轻点不算左键（2026-11-01 用户要关）、负惯性开");
+        check(def.leverSpeed == 1.0f, "默认：中键滑动速度 100%");
+        // 协议 22 的字段在最后：前 56 个字节和不带它时一模一样（以前的字段一个没挪）
+        byte[] head = java.util.Arrays.copyOf(data, 56);
+        java.io.ByteArrayOutputStream old = new java.io.ByteArrayOutputStream();
+        DataOutputStream o = new DataOutputStream(old);
+        ConfigCodec.write(o, c, 2.75f);
+        check(java.util.Arrays.equals(java.util.Arrays.copyOf(old.toByteArray(), 56), head) && java.nio.ByteBuffer.wrap(data, 56, 4).getFloat() == 0.35f,
+                "leverSpeed 是最后 4 个字节（大端 f32），前面的字段排布不变");
     }
 
     // ═══════════ 惯性的物理 ═══════════

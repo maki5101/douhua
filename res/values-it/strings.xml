@@ -94,6 +94,8 @@
     <string name="stick_speed">Sensibilità del pointing stick</string>
     <string name="stick_tap">Tocco sullo stick = clic sinistro</string>
     <string name="stick_inertia">Partenza e arresto più decisi (inerzia negativa)</string>
+    <string name="lever_speed">Velocità di scorrimento strisciando sul tasto centrale</string>
+    <string name="lever_speed_hint">Quanto velocemente scorre la pagina quando fai scivolare il dito posato sul tasto centrale. Tenere premuto il tasto centrale e spingere lo stick non cambia.</string>
     <string name="stick_hint">Il pointing stick è nella pagina tastiera: nel menu ⋯ imposta «Puntatore» sullo stick. Tieni premuto e spingi: il puntatore va in quella direzione, più veloce quanto più spingi, e si ferma quando lasci. Tieni premuto il tasto centrale e spingi lo stick (o scorri un dito sul touchpad) per scorrere in quella direzione; rilascia senza aver scorso per un clic centrale.</string>
     <string name="mouse_keys">Tasti sinistro / centrale / destro sul touchpad (schermata principale e pagina tastiera)</string>
     <string name="mouse_keys_pos">Posizione dei tasti sul touchpad</string>

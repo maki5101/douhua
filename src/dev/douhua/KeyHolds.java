@@ -29,10 +29,18 @@ import java.util.Map;
  * 锁定被解开（打完普通键、Caps 松开、CMD_UNLATCH）不结算：锁定是给下一个键用的，被先按下的那个键用掉了
  * （锁着 Shift 快打 "I."：I 抬起解开 Shift 时合并键还按着，在那一刻结算会出 "I<"）。
  *
- * Fn（第 3 批，协议 21，实体键盘 75% / 65% / 苹果紧凑；{@link Proto#FN_KEY} / {@link Proto#FN_GLOBE_KEY}）：规矩同修饰键（用户给修饰键定的那套，
- * 方案 design-batch3 §3.1）——按住再按别的键 = 组合（那个键出 Fn 层，松手就回底层、不锁）；单独点一下 Windows 模式什么都不做、Mac 模式 fn🌐 = 🌐
- * （{@link Host#globe}）；单独按住 0.4–1 秒松手锁，只管下一个键（打完下一个普通键松开时解开，再点一下 Fn 也解开）；超过 1 秒高亮退回、松手不锁
- * （fn🌐 也不切输入法）。"用过"、按下时别的键 / 鼠标键按着、被取消、CMD_UNLATCH、releaseAll 都同修饰键。Fn 不发 HID。
+ * Fn（第 3 批，协议 21，实体键盘 75% / 65% / 苹果紧凑；{@link Proto#FN_KEY} / {@link Proto#FN_GLOBE_KEY}）。协议 22 起（2026-11-01 晚，用户：
+ * "fn 没必要跟别的那个功能键一样啊……点一下，就是单次锁，如果点住，就变成永久锁。单次锁就是说，它在摁功能键就自动触发反转，永久锁就是不管他按几个功能键，
+ * 就一直锁住"）不再照修饰键那套：
+ * - 按住 Fn 再按别的键 = 组合（那个键出 Fn 层，松手就回底层），同以前；
+ * - Windows 模式的 Fn 单独点一下（不到 {@link #HOLD_MS}）= **单次锁**（{@link Proto#FN_LATCHED}）：下一个普通键出 Fn 层、它松开时解开
+ *   （同锁住的修饰键"打完下一个普通键解开"；修饰键按下 / 松开不消耗它：单次锁 → Shift → 1 = Shift+F1）；
+ *   Mac 模式的 fn🌐 单独点一下照旧 = 🌐（{@link Host#globe}；它有单独的用途，没有单次锁）；
+ * - 单独按住到 0.4 秒 = **永久锁**（Fn Lock，{@link Proto#FN_LOCKED}）：到点震一下 + {@link Proto#FN_ARMED}（"松手就永久锁"），按多久都算（修饰键那条
+ *   "超过 1 秒不锁"对 Fn 不适用）；之后按多少个键都出 Fn 层，直到再单独按一下 Fn；
+ * - 锁着（单次或永久）时单独再按一下 Fn（点或按住都算）：松手解开，这一下不再锁、fn🌐 也不出 🌐；锁着时把 Fn 当组合用（按住它按了别的键、
+ *   动了鼠标，或者按下那一刻已经有别的键按着）：照旧出 Fn 层，Fn 松手后锁照旧（单次锁照样被那个键用掉：它松开时解开）。
+ * "用过"、按下时别的键 / 鼠标键按着、被取消（不锁、不解开、不出 🌐）同修饰键；CMD_UNLATCH、releaseAll 两种锁都清。Fn 不发 HID。
  * 带 Fn 层的键（{@link Proto#fnLayerKey}）：**按下那一刻**按 Fn 按着或锁着定发 Fn 层的码还是底层的码、记下来，之后完全当那个码处理
  * （底层是修饰键的——Windows 模式右 Ctrl——照样有修饰键的点一下 / 锁）；松开松的是按下时记下的那个（先松 Fn 再松这个键，松的照样是 Fn 层的码）。
  * 同一个带 Fn 层的键已经有手指按着时，后来的手指跟着第一根的码（真键盘上已经按下的键不会再按下一次；面板自己收触摸那条路的 CMD_HID_KEY
@@ -80,8 +88,11 @@ final class KeyHolds {
         void cancel();
     }
 
-    /** 修饰键每一位的阶段：没按着 / 单独按着、还没到 0.4 秒 / 到了、松手就锁 / 这一下绝不锁了（组合过、超过 1 秒、解锁中）。 */
-    private static final int NONE = 0, PENDING = 1, ARMED = 2, SPENT = 3;
+    /**
+     * 修饰键每一位的阶段：没按着 / 单独按着、还没到 0.4 秒 / 到了、松手就锁 / 这一下绝不锁了（组合过、超过 1 秒、解锁中）。
+     * UNLOCK 只给 Fn：锁着（单次或永久）时按下的，松手（没用过、没被取消）就解开；用过了（当组合用）变 SPENT、锁照旧。
+     */
+    private static final int NONE = 0, PENDING = 1, ARMED = 2, SPENT = 3, UNLOCK = 4;
     /** Caps、合并键的阶段（PENDING 同上）：到点了（Caps 切过显示 / 合并键发过 hold 键）/ 结算过了（当点一下发出去了）。 */
     private static final int HELD = 2, DONE = 3;
 
@@ -104,8 +115,12 @@ final class KeyHolds {
     private final int[] modPhase = new int[FN + 1];
     private final long[] modDownAt = new long[FN + 1];
     private int latched;
-    /** Fn 锁住了（只管下一个键）。 */
-    private boolean fnLatched;
+    /** Fn 单次锁（只管下一个普通键；Windows 模式单点 Fn）。 */
+    private boolean fnOnce;
+    /** Fn 永久锁（单独按住 Fn / fn🌐 到 0.4 秒；再单独按一下才解开）。 */
+    private boolean fnLock;
+    /** 这次按下的 Fn 是 Mac 模式的 fn🌐（单点出 🌐，不是单次锁）。 */
+    private boolean fnGlobe;
     /** 按着的带 Fn 层的键：id → 按下那一刻定的码。 */
     private final Map<Integer, FnPress> fnPresses = new HashMap<>();
     /** 按着的 Caps / 合并键（按下的先后）。 */
@@ -151,18 +166,19 @@ final class KeyHolds {
         return m;
     }
 
-    /** Fn 的状态（Proto.FN_LATCHED / FN_HELD / FN_ARMED 位，同 MSG_MODIFIERS 第四个字节）。 */
+    /** Fn 的状态（Proto.FN_LATCHED / FN_HELD / FN_ARMED / FN_LOCKED 位，同 MSG_MODIFIERS 第四个字节）。 */
     int fn() {
         int s = 0;
-        if (fnLatched) s |= Proto.FN_LATCHED;
+        if (fnOnce) s |= Proto.FN_LATCHED;
         if (fnCount() > 0) s |= Proto.FN_HELD;
         if (modPhase[FN] == ARMED) s |= Proto.FN_ARMED;
+        if (fnLock) s |= Proto.FN_LOCKED;
         return s;
     }
 
-    /** Fn 层这时生效吗（带 Fn 层的键现在按下会发 Fn 层的码）：Fn 按着或锁着。 */
+    /** Fn 层这时生效吗（带 Fn 层的键现在按下会发 Fn 层的码）：Fn 按着、单次锁或永久锁着。 */
     boolean fnActive() {
-        return fnCount() > 0 || fnLatched;
+        return fnCount() > 0 || fnOnce || fnLock;
     }
 
     /** 宿主那边挂着定时器没有（测试用）。 */
@@ -189,11 +205,11 @@ final class KeyHolds {
         counts.put(key, n + 1);
         if (Proto.isFnKey(key)) {
             if (fnBefore == 0) {
-                if (fnLatched) {               // 这一下是"解开"：松手什么都不做，按多久都不再锁（按着时照样是 Fn 层）
-                    fnLatched = false;
+                fnGlobe = key == Proto.FN_GLOBE_KEY;
+                if (busy) {                    // 按下时已经有别的键 / 鼠标键按着：组合的一部分，绝不锁、不解开、不出 🌐
                     modPhase[FN] = SPENT;
-                } else if (busy) {             // 按下时已经有别的键 / 鼠标键按着：组合的一部分，绝不锁、不出 🌐
-                    modPhase[FN] = SPENT;
+                } else if (fnOnce || fnLock) { // 锁着时按下：松手（没当组合用、没被取消）就解开，按多久都不再锁（按着时照样是 Fn 层）
+                    modPhase[FN] = UNLOCK;
                 } else {
                     modPhase[FN] = PENDING;
                     modDownAt[FN] = t;
@@ -247,8 +263,17 @@ final class KeyHolds {
             put(key, n - 1);
             if (fnCount() == 0) {
                 int phase = modPhase[FN];
-                if (phase == ARMED && !canceled) fnLatched = true;
-                else if (phase == PENDING && !canceled && key == Proto.FN_GLOBE_KEY) host.globe();   // 单独点一下 fn🌐 = 🌐
+                if (!canceled) {
+                    if (phase == UNLOCK) {            // 锁着时单独按了一下：解开（两种锁）
+                        fnOnce = false;
+                        fnLock = false;
+                    } else if (phase == ARMED) {      // 单独按住到了 0.4 秒：永久锁
+                        fnLock = true;
+                    } else if (phase == PENDING) {    // 单独点一下：fn🌐 = 🌐，Windows 模式的 Fn = 单次锁
+                        if (fnGlobe) host.globe();
+                        else fnOnce = true;
+                    }
+                }
                 modPhase[FN] = NONE;
                 host.modsChanged();
             }
@@ -299,26 +324,31 @@ final class KeyHolds {
         reschedule();
     }
 
-    /** CMD_UNLATCH：清掉全部锁定（HID 里这些位松开，同一位还有手指按着的照旧按着；锁住的 Fn 也解开）；按着的、armed、待定的不动。 */
+    /**
+     * CMD_UNLATCH：清掉全部锁定（HID 里这些位松开，同一位还有手指按着的照旧按着；Fn 的单次锁、永久锁也解开）；按着的、armed、待定的不动
+     * （按着的 Fn 这时在等"松手解开"的话，松手时已经没有锁可解，什么都不多做）。
+     */
     void unlatch(long t) {
         begin(t);
-        if (latched != 0 || fnLatched) {
+        if (latched != 0 || fnOnce || fnLock) {
             latched = 0;
-            fnLatched = false;
+            fnOnce = false;
+            fnLock = false;
             host.modsChanged();
         }
         reschedule();
     }
 
     /**
-     * 全部归零：计数、阶段、锁定（连 Fn）、按着的带 Fn 层的键记的码、待定的 Caps / 合并键丢掉（不发）、Caps 的 60ms 松开不再等，撤掉定时器。
+     * 全部归零：计数、阶段、锁定（连 Fn 的单次锁、永久锁）、按着的带 Fn 层的键记的码、待定的 Caps / 合并键丢掉（不发）、Caps 的 60ms 松开不再等，撤掉定时器。
      * 报文由 TouchRouter 的 keyboard.releaseAll 发。
      */
     void releaseAll() {
         counts.clear();
         Arrays.fill(modPhase, NONE);
         latched = 0;
-        fnLatched = false;
+        fnOnce = false;
+        fnLock = false;
         fnPresses.clear();
         timed.clear();
         capsReleasing = false;
@@ -377,6 +407,14 @@ final class KeyHolds {
         }
         boolean changed = false;
         for (int b = 0; b <= FN; b++) {   // 修饰键八位和 Fn
+            if (b == FN) {   // Fn：到 0.4 秒就是"松手就永久锁"，按多久都算（没有 1 秒的上限；定时器晚到也照样到点、震一下）
+                if (modPhase[FN] == PENDING && t >= modDownAt[FN] + HOLD_MS) {
+                    modPhase[FN] = ARMED;
+                    host.holdReached();
+                    changed = true;
+                }
+                continue;
+            }
             if (modPhase[b] == PENDING && t >= modDownAt[b] + HOLD_MS) {
                 if (t >= modDownAt[b] + LOCK_MAX_MS) {
                     modPhase[b] = SPENT;   // 晚到超过 1 秒（定时器卡住了）：直接当超过 1 秒，不震
@@ -417,13 +455,16 @@ final class KeyHolds {
         }
     }
 
-    /** 按着的修饰键和 Fn（except 这个 id 不算）标"用过"：PENDING / ARMED → SPENT。返回 armed 变了没有（要报界面）。 */
+    /**
+     * 按着的修饰键和 Fn（except 这个 id 不算）标"用过"：PENDING / ARMED → SPENT；Fn 的 UNLOCK（锁着时按下的）也 → SPENT：当组合用了，松手不解开。
+     * 返回 armed 变了没有（要报界面）。
+     */
     private boolean markUsedExcept(int except) {
         boolean armedChanged = false;
         for (int b = 0; b <= FN; b++) {
             if (b == FN ? Proto.isFnKey(except) : 0xE0 + b == except) continue;
             if (modPhase[b] == ARMED) armedChanged = true;
-            if (modPhase[b] == PENDING || modPhase[b] == ARMED) modPhase[b] = SPENT;
+            if (modPhase[b] == PENDING || modPhase[b] == ARMED || modPhase[b] == UNLOCK) modPhase[b] = SPENT;
         }
         return armedChanged;
     }
@@ -454,11 +495,11 @@ final class KeyHolds {
         unlatchAfterKey();
     }
 
-    /** 打完一个普通键：锁住的修饰键、Fn 都解开。 */
+    /** 打完一个普通键：锁住的修饰键、Fn 的单次锁都解开（永久锁不动）。 */
     private void unlatchAfterKey() {
-        if (latched == 0 && !fnLatched) return;
+        if (latched == 0 && !fnOnce) return;
         latched = 0;
-        fnLatched = false;
+        fnOnce = false;
         host.modsChanged();
     }
 
@@ -473,7 +514,7 @@ final class KeyHolds {
         for (int b = 0; b <= FN; b++) {
             long at;
             if (modPhase[b] == PENDING) at = modDownAt[b] + HOLD_MS;
-            else if (modPhase[b] == ARMED) at = modDownAt[b] + LOCK_MAX_MS;
+            else if (modPhase[b] == ARMED && b != FN) at = modDownAt[b] + LOCK_MAX_MS;   // Fn 快锁了没有 1 秒的上限，不再等
             else continue;
             if (!has || at < next) next = at;
             has = true;

@@ -42,6 +42,7 @@ public final class BoardsTest {
         modes(catalog);
         names(catalog);
         batch3(catalog);
+        stickRule(catalog);
         System.err.println("键盘切换 / 状态保留：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -95,8 +96,10 @@ public final class BoardsTest {
         check(b.savedRect(FixedLayout.FULL, true) == null, "全尺寸另一份（换尺寸各回各的）");
         b.setSize(FixedLayout.FULL);
         check(eq4(b.savedRect(tkl, true), r1), "选的尺寸换了，TKL 那份照样在（存取按给的尺寸，不按选的）");
+        b.setPointer(KeyboardPlan.POINTER_NONE);
+        check(b.savedRect(tkl, true) == null, "指点关着另一份（有触控板时避让、没有时不避让）");
         b.setPointer(KeyboardPlan.POINTER_STICK);
-        check(b.savedRect(tkl, true) == null, "小红点另一份（有触控板时避让、没有时不避让）");
+        check(eq4(b.savedRect(tkl, true), r1), "TKL 不给小红点（2026-11-01 晚）：存着小红点也照触控板那份");
         b.setPointer(KeyboardPlan.POINTER_PAD);
         b.setLang("de");
         b.setMode(FixedLayout.MAC);
@@ -126,6 +129,65 @@ public final class BoardsTest {
             }
         }
         check(!Boards.rectKey(FixedLayout.TKL, 0, true).equals(Boards.rectKey(FixedLayout.TKL, 0, false)), "横竖屏键名不同");
+    }
+
+    /**
+     * 实体键盘的小红点只给笔记本、75%、65% 的 Windows 模式（2026-11-01 晚，FixedLayout.stickAllowed）：
+     * 存着小红点、显示着别的尺寸 / Mac 模式时 pointer(尺寸) 照触控板、存的值不动，大小位置照触控板那份存取；⋯ 菜单"指点"轮换跳过小红点。
+     */
+    static void stickRule(List<FixedLegends.Layout> catalog) {
+        String[] allowed = {FixedLayout.LAPTOP, FixedLayout.P75, FixedLayout.P65};
+        for (String size : FixedLayout.ALL_SIZES) for (String mode : new String[]{FixedLayout.WIN, FixedLayout.MAC}) {
+            boolean want = FixedLayout.WIN.equals(mode) && java.util.Arrays.asList(allowed).contains(size);
+            check(FixedLayout.stickAllowed(size, mode) == want, size + " / " + mode + "：" + (want ? "给" : "不给") + "小红点");
+            MapStore s = new MapStore();
+            Boards b = new Boards(s, catalog);
+            b.setMode(mode);
+            b.setPointer(KeyboardPlan.POINTER_STICK);
+            check(b.pointer() == KeyboardPlan.POINTER_STICK, "存的小红点不动");
+            check(b.pointer(size) == (want ? KeyboardPlan.POINTER_STICK : KeyboardPlan.POINTER_PAD), size + " / " + mode + "：显示着时实际用的指点");
+            // 轮换：从实际用的往下，不给时跳过小红点
+            check(b.nextPointer(size) == KeyboardPlan.POINTER_NONE, size + " / " + mode + "：从（实际用的）小红点 / 触控板往下是关");
+            b.setPointer(KeyboardPlan.POINTER_PAD);
+            check(b.nextPointer(size) == (want ? KeyboardPlan.POINTER_STICK : KeyboardPlan.POINTER_NONE),
+                    size + " / " + mode + "：触控板往下" + (want ? "是小红点" : "跳过小红点、是关"));
+            b.setPointer(KeyboardPlan.POINTER_NONE);
+            check(b.nextPointer(size) == KeyboardPlan.POINTER_PAD, size + " / " + mode + "：关往下是触控板");
+            // 一直点"指点"：不给的这一级永远轮不到小红点，给的这一级三样都轮得到
+            java.util.Set<Integer> seen = new java.util.HashSet<>();
+            for (int i = 0; i < 6; i++) {
+                b.setPointer(b.nextPointer(size));
+                seen.add(b.pointer(size));
+            }
+            check(seen.contains(KeyboardPlan.POINTER_STICK) == want && seen.size() == (want ? 3 : 2), size + " / " + mode + "：连点 6 下轮到的 " + seen);
+            // 大小位置：存着小红点、这一级不给时存取的是触控板那份
+            b.setPointer(KeyboardPlan.POINTER_PAD);
+            float[] pad = {0.1f, 0.2f, 0.8f, 1};
+            b.setRect(size, true, pad);
+            b.setPointer(KeyboardPlan.POINTER_STICK);
+            check(want ? b.savedRect(size, true) == null : eq4(b.savedRect(size, true), pad),
+                    size + " / " + mode + "：存着小红点时取的是" + (want ? "小红点自己那份（没存过）" : "触控板那份"));
+            float[] stick = {0, 0.3f, 1, 1};
+            b.setRect(size, true, stick);
+            String key = Boards.rectKey(size, want ? KeyboardPlan.POINTER_STICK : KeyboardPlan.POINTER_PAD, true);
+            check(s.map.get(key + "l") != null && Math.abs((Float) s.map.get(key + "t") - 0.3f) < 1e-6f,
+                    size + " / " + mode + "：存进 " + key + "（" + (want ? "小红点那份" : "不给小红点：触控板那份") + "）");
+            check(eq4(b.savedRects(true).get(size), stick), size + " / " + mode + "：savedRects 给的也是这份");
+            b.resetRect(size, true);
+            boolean padLeft = s.map.containsKey(Boards.rectKey(size, KeyboardPlan.POINTER_PAD, true) + "l");
+            check(b.savedRect(size, true) == null && padLeft == want,
+                    size + " / " + mode + "：恢复默认清的是实际用的那份（" + (want ? "小红点那份，触控板那份还在" : "触控板那份") + "）");
+            check(b.pointer() == KeyboardPlan.POINTER_STICK, "这一路存的指点一直是小红点（没悄悄改）");
+        }
+        // 换模式：存着小红点，Mac 模式下照触控板，换回 Windows 模式小红点回来（同一个尺寸）
+        Boards b = new Boards(new MapStore(), catalog);
+        b.setPointer(KeyboardPlan.POINTER_STICK);
+        b.setMode(FixedLayout.MAC);
+        check(b.pointer(FixedLayout.P75) == KeyboardPlan.POINTER_PAD, "75% Mac 模式：照触控板");
+        b.setMode(FixedLayout.WIN);
+        check(b.pointer(FixedLayout.P75) == KeyboardPlan.POINTER_STICK, "换回 Windows 模式：小红点回来");
+        check(b.pointer(FixedLayout.TKL) == KeyboardPlan.POINTER_PAD && b.pointer(FixedLayout.LAPTOP) == KeyboardPlan.POINTER_STICK,
+                "选 TKL、窗口窄到缩成笔记本：TKL 时照触控板，笔记本时小红点（按显示着的那一级）");
     }
 
     /** 豆花布局的键：Prefs 里 kb_ 开头的全部（含已经不读的旧键）。 */

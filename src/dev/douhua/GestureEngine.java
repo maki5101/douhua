@@ -146,6 +146,11 @@ public final class GestureEngine {
         public boolean stickTap = false;   // 2026-11-01 用户要关（真 ThinkPad 的"按红点 = 点击"也默认关）
         /** 小红点的负惯性（起步、停下更利落，见 TrackPoint）。 */
         public boolean stickInertia = true;
+        /**
+         * 中键滑动（中键自己当滚动杆，TrackPoint 的 lever）的滚动速度倍数：乘到滚动杆那条曲线（TrackPoint.LEVER_*）上，只管它，按住中键推红点的不变
+         * （设置里 25%–200%、步长 5%，默认 100%；协议 22 加的，2026-11-01 晚用户："小红点的中键滑动速度还是太快"）。
+         */
+        public float leverSpeed = 1.0f;
     }
 
     private static final int MAX_POINTERS = 16;

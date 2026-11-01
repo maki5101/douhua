@@ -76,6 +76,7 @@ public final class ServerPartsTest {
         gamepadConfigCodec();
         protocol20();
         protocol21();
+        protocol22();
         staleKeyTimerDoesNothing();
 
         System.err.println("服务端部件：" + checks + " 项检查，" + failures + " 项失败");
@@ -581,12 +582,36 @@ public final class ServerPartsTest {
     }
 
     /**
+     * 协议 22（分屏里豆花拿着键盘焦点时交给另一半）：版本号；CMD_FOCUS_OTHER = 17、不和别的命令撞；不是心跳
+     * （App 主线程卡住时不会发，但连接线程可能把排着的发出去；同保活不算心跳的理由）。
+     */
+    static void protocol22() {
+        check(Proto.VERSION == 22, "协议 22");
+        check(Proto.CMD_FOCUS_OTHER == 17, "CMD_FOCUS_OTHER = 17");
+        int[] cmds = {Proto.CMD_PING, Proto.CMD_KEY, Proto.CMD_CLICK, Proto.CMD_CONFIG, Proto.CMD_LAYOUT, Proto.CMD_HEARTBEAT, Proto.CMD_HID_KEY,
+                Proto.CMD_ROTATE, Proto.CMD_WHEEL, Proto.CMD_TRACE, Proto.CMD_HARD_KEYS, Proto.CMD_HOLD_LEFT, Proto.CMD_GAMEPAD,
+                Proto.CMD_GAMEPAD_CONFIG, Proto.CMD_UNLATCH, Proto.CMD_FOCUS_OTHER};
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        boolean unique = true;
+        for (int v : cmds) unique &= seen.add(v) && v < Proto.MSG_HELLO;
+        check(unique, "命令编号不重复、都比消息编号（0x80 起）小");
+        GrabCondition c = new GrabCondition();
+        long t0 = 300_000;
+        c.onMessage(Proto.CMD_HEARTBEAT, t0);
+        for (long t = t0 + 250; t <= t0 + 3000; t += 250) c.onMessage(Proto.CMD_FOCUS_OTHER, t);
+        check(!c.fresh(t0 + 3000), "只收交焦点的请求：3 秒后照样不新鲜（不算心跳）");
+        // 同一批（协议 22）：MSG_MODIFIERS 第四个字节多一位永久锁，四位互不重叠、一个字节放得下
+        check(Proto.FN_LOCKED == 8 && (Proto.FN_LATCHED | Proto.FN_HELD | Proto.FN_ARMED | Proto.FN_LOCKED) == 0x0F,
+                "Fn 位：8 = 永久锁，四位互不重叠、一个字节放得下");
+    }
+
+    /**
      * 协议 21（实体键盘的 Fn 层）：版本号；MSG_MODIFIERS 第四个字节的 Fn 位；三种键 id（普通键、合并键、Fn 那一段）互不重叠、各认各的、取得回来，
      * 报给 App 的按钮编号（KEY_ID_BASE + id）都还是 ≥ KEY_ID_BASE 的正数；Fn 键自己和带 Fn 层的键分得开；🌐 的按钮编号是 302。
      */
     static void protocol21() {
-        check(Proto.VERSION == 21, "协议 21");
-        check(Proto.FN_LATCHED == 1 && Proto.FN_HELD == 2 && Proto.FN_ARMED == 4, "MSG_MODIFIERS 的 Fn 位：1 锁住、2 按着、4 快锁了");
+        check(Proto.VERSION >= 21, "协议 21 起");
+        check(Proto.FN_LATCHED == 1 && Proto.FN_HELD == 2 && Proto.FN_ARMED == 4, "MSG_MODIFIERS 的 Fn 位：1 锁住（22 起是单次锁）、2 按着、4 快锁了（22 起是快永久锁了）");
         check(Proto.GLOBE_BUTTON_ID == 302 && Proto.GLOBE_BUTTON_ID < Proto.MOUSE_BUTTON_ID_BASE, "🌐 的按钮编号 302（不是键盘键）");
         // 普通键：0–0xFFFF 都不是合并键、不是 Fn 那一段
         boolean plain = true;
@@ -1730,9 +1755,9 @@ public final class ServerPartsTest {
         check(blocked, "按键定时器：fn🌐 0.4 秒到点的那次卡在锁上");
         Thread.sleep(150);
         synchronized (lock) {
-            String armed = "/fn" + (Proto.FN_HELD | Proto.FN_ARMED), latched = "/fn" + Proto.FN_LATCHED;
+            String armed = "/fn" + (Proto.FN_HELD | Proto.FN_ARMED), latched = "/fn" + Proto.FN_LATCHED, locked = "/fn" + Proto.FN_LOCKED;
             boolean bad = log.contains(hold);
-            for (String s : log) bad |= s.endsWith(armed) || s.endsWith(latched);
+            for (String s : log) bad |= s.endsWith(armed) || s.endsWith(latched) || s.endsWith(locked);
             check(!bad && log.contains("globe" + Proto.BUTTON_TAP) && log.get(log.size() - 1).equals("mod0/0/0"),
                     "fn🌐：撤掉之后才拿到锁的那次什么都不做（不震、不快锁、不锁），松开照单点出 🌐：" + log);
             t.releaseAll();

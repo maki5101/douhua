@@ -112,7 +112,7 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
         int left, top, right, bottom;
         /** 被小红点切掉的那块：{圆心 x, 圆心 y, 半径}（键帽自己的坐标）；没被切到是 null。 */
         float[] cut;
-        /** 带角上小字的键（合并键）按着 0.4 秒把放大提示换成角上那个字（{@link #preview}）。 */
+        /** 合并键（并排画着第二个字）按着 0.4 秒把放大提示换成第二个字（{@link #preview}）。 */
         Runnable cornerLater;
 
         Cap(Key key, TextView view, boolean fn) {
@@ -196,7 +196,7 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
     @Override
     public void setKeyState(int latched, int held, int armed, int fn, boolean caps) {   // fn：豆花布局没有实体键盘的 Fn 键，不看
         if (latched == this.latched && held == this.held && armed == this.armed && caps == capsOn) return;
-        // 按着的修饰键松开了：分流照 KeyHolds 的规则先把待定的合并键当点一下结算掉，提示不再换成角上那个字
+        // 按着的修饰键松开了：分流照 KeyHolds 的规则先把待定的合并键当点一下结算掉，提示不再换成第二个字
         if ((this.held & ~held) != 0) settleCorners(-1);
         this.latched = latched;
         this.held = held;
@@ -395,7 +395,7 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
             if (capOf.containsKey(key)) continue;
             // 一个字（含 🌐 这种占两个 char 的）用大字，多个字的键名用小字
             boolean oneChar = key.label.codePointCount(0, key.label.length()) <= 1;
-            TextView v = Style.keyButton(getContext(), oneChar ? 18 : 13, key.corner);   // 合并键右上角另画一个小字
+            TextView v = Style.keyButton(getContext(), oneChar ? 18 : 13, key.pair);   // 合并键：主字旁边并排画第二个字（浅一档）
             if (key.id == GLOBE_BUTTON_ID) v.getPaint().setColorFilter(grayEmoji());   // 🌐 是彩色 emoji，去色调暗，和别的键一个色调
             v.setVisibility(GONE);
             addView(v);
@@ -564,7 +564,7 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
     }
 
     /**
-     * 字符键按下时放大显示（看清按到了哪个），松开收起。合并键（角上有小字）按着 0.4 秒（KeyHolds.HOLD_MS）把提示换成角上那个字：
+     * 字符键按下时放大显示（看清按到了哪个），松开收起。合并键（并排画着第二个字）按着 0.4 秒（KeyHolds.HOLD_MS）把提示换成第二个字（"."）：
      * 只是样子，真正出什么字由分流定（差几毫秒无所谓）。
      */
     private void preview(Cap c, boolean pressed) {
@@ -574,10 +574,10 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
             previewHost.hideKeyPreview(c.view);
         } else if (isCharKey(c)) {
             previewHost.showKeyPreview(c.view, c.view.getText().toString());
-            if (c.key.corner != null) {
+            if (c.key.pair != null) {
                 if (c.cornerLater == null) {
                     c.cornerLater = () -> {
-                        if (previewHost != null && c.pressed) previewHost.showKeyPreview(c.view, c.key.corner);
+                        if (previewHost != null && c.pressed) previewHost.showKeyPreview(c.view, c.key.pair);
                     };
                 }
                 postDelayed(c.cornerLater, KeyHolds.HOLD_MS);
@@ -587,7 +587,7 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
 
     /**
      * 合并键按着、还没到 0.4 秒时分流把它结算了（KeyHolds：别的键按下、按着的修饰键松开之前先当点一下发出逗号，之后按多久都不再出句号）：
-     * 放大提示照旧是逗号，不再到点换成角上那个字。except = 这次按下的键（合并键自己按下不算）；-1 = 都撤。
+     * 放大提示照旧是逗号，不再到点换成第二个字。except = 这次按下的键（合并键自己按下不算）；-1 = 都撤。
      * 只照面板看得到的两件事撤（别的键按下、按着的修饰键少了一位）：开合开始时分流也结算，App 看不到，那时提示照样会换（只是样子）；
      * 被取消的修饰键松开分流不结算，这里分不出来、照样撤（手掌压在 Shift 上这类，少见）。
      */

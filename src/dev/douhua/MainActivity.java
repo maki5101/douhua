@@ -95,11 +95,11 @@ public final class MainActivity extends Activity
     };
     /** 键盘屏：小触控板顶上正中的 ⋯（触控板没摆出来时 ⋯ 是功能行上的键，KeyboardPanel.MENU_BUTTON_ID）。 */
     private static final int KB_MENU_ID = 400;
-    /** 键盘屏 ⋯ 菜单才有的四项：收起键盘、调整大小、布局（自动 / 分裂 / 合并轮换）、指点（触控板 / 小红点 / 关轮换）。 */
-    private static final int KB_CLOSE_ID = 401;
-    private static final int KB_ADJUST_ID = 402;
-    private static final int KB_LAYOUT_ID = 403;
-    private static final int KB_POINTER_ID = 404;
+    /** 键盘屏 ⋯ 菜单才有的四项：收起键盘、调整大小、布局（自动 / 分裂 / 合并轮换）、指点（触控板 / 小红点 / 关轮换）。菜单项的编号、顺序都在 MenuOrder。 */
+    private static final int KB_CLOSE_ID = MenuOrder.KB_CLOSE;
+    private static final int KB_ADJUST_ID = MenuOrder.KB_ADJUST;
+    private static final int KB_LAYOUT_ID = MenuOrder.KB_LAYOUT;
+    private static final int KB_POINTER_ID = MenuOrder.KB_POINTER;
     /** 菜单开着时盖住整页的"点外面关菜单"（排在菜单项、菜单底板后面）。 */
     private static final int MENU_OUTSIDE_ID = 405;
     /** 调整模式那条栏：完成、恢复默认。 */
@@ -110,36 +110,29 @@ public final class MainActivity extends Activity
     /** 主界面触控板顶上正中的 ⋯。 */
     private static final int PAD_MENU_ID = 409;
     /** 主界面 ⋯ 菜单才有的"键盘"（打开键盘屏），两屏都有的设置、旋转、退出（同 Actions 的 settings / rotate / exit）。 */
-    private static final int MENU_KEYBOARD_ID = 410;
-    private static final int MENU_SETTINGS_ID = 411;
-    private static final int MENU_ROTATE_ID = 412;
-    private static final int MENU_EXIT_ID = 413;
+    private static final int MENU_KEYBOARD_ID = MenuOrder.KEYBOARD;
+    private static final int MENU_SETTINGS_ID = MenuOrder.SETTINGS;
+    private static final int MENU_ROTATE_ID = MenuOrder.ROTATE;
+    private static final int MENU_EXIT_ID = MenuOrder.EXIT;
     /** 主界面、键盘屏 ⋯ 菜单里的"手柄"（打开手柄页，只在桌面模式显示）。 */
-    private static final int MENU_GAMEPAD_ID = 414;
-    /** 键盘屏 ⋯ 菜单最上面的"键盘：豆花 / 实体（…）"：点一下在豆花布局和实体键盘之间换，菜单不关（第 1B 批，2026-11-01）。 */
-    private static final int MENU_BOARD_ID = 418;
+    private static final int MENU_GAMEPAD_ID = MenuOrder.GAMEPAD;
+    /** 键盘屏 ⋯ 菜单里的"键盘：豆花 / 实体（…）"：点一下在豆花布局和实体键盘之间换，菜单不关（第 1B 批，2026-11-01）。 */
+    private static final int MENU_BOARD_ID = MenuOrder.BOARD;
     /** 手柄页 ⋯ 菜单才有的：预设（轮换）、返回触控板。 */
-    private static final int GP_PRESET_ID = 415;
-    private static final int GP_BACK_ID = 416;
+    private static final int GP_PRESET_ID = MenuOrder.GP_PRESET;
+    private static final int GP_BACK_ID = MenuOrder.GP_BACK;
     /** 手柄页顶上正中的 ⋯：按住 GP_MENU_HOLD_MS 才开菜单（游戏里拇指乱碰，单击一开菜单区域就只剩菜单）。 */
     private static final int GP_MENU_ID = 417;
     private static final long GP_MENU_HOLD_MS = AIR_EXIT_HOLD_MS;
     /** 菜单在哪一屏（{@link #onMenuScreen}）。 */
-    private static final int SCREEN_MAIN = 0, SCREEN_KEYBOARD = 1, SCREEN_GAMEPAD = 2;
+    private static final int SCREEN_MAIN = MenuOrder.SCREEN_MAIN, SCREEN_KEYBOARD = MenuOrder.SCREEN_KEYBOARD, SCREEN_GAMEPAD = MenuOrder.SCREEN_GAMEPAD;
     /**
-     * ⋯ 菜单里的项，按显示的顺序（常用的在前、退出最后）：主界面 = 键盘、手柄、设置、旋转、退出；
-     * 键盘屏 = 键盘（豆花 / 实体）、收起键盘、调整大小、布局（只在显示豆花布局时）、指点、手柄、设置、旋转、退出；手柄页 = 预设、返回触控板、设置、旋转、退出。
-     * 不是这一屏的项打开菜单时 GONE（{@link #onMenuScreen}）；"手柄"只在桌面模式有。
+     * ⋯ 菜单里的项，按显示的顺序（按使用频率排：设置第一、退出最后、手柄倒数第二，2026-11-01 晚，MenuOrder）：
+     * 主界面 = 设置、键盘、旋转、手柄、退出；键盘屏 = 设置、收起键盘、键盘（豆花 / 实体）、指点、布局（只在显示豆花布局时）、调整大小、旋转、手柄、退出；
+     * 手柄页 = 设置、预设、旋转、返回触控板、退出。不是这一屏的项打开菜单时 GONE（{@link #onMenuScreen}）；"手柄"只在桌面模式有。
+     * 项的字照编号取（{@link #menuLabel}），不靠和这个数组对齐的另一个数组。
      */
-    private static final int[] MENU_IDS = {
-            MENU_KEYBOARD_ID, MENU_BOARD_ID, KB_CLOSE_ID, KB_ADJUST_ID, KB_LAYOUT_ID, KB_POINTER_ID, MENU_GAMEPAD_ID, GP_PRESET_ID, GP_BACK_ID,
-            MENU_SETTINGS_ID, MENU_ROTATE_ID, MENU_EXIT_ID,
-    };
-    private static final int[] MENU_LABELS = {
-            R.string.act_keyboard, R.string.kbd_menu_douhua, R.string.kb_close, R.string.kb_adjust, R.string.kb_layout_auto, R.string.kb_pointer_pad,
-            R.string.act_gamepad_s, R.string.act_gamepad_s, R.string.gp_exit,
-            R.string.act_settings, R.string.act_rotate, R.string.act_exit,
-    };
+    private static final int[] MENU_IDS = MenuOrder.ORDER;
     /** 数字键盘：标签和 HID 用法码。 */
     private static final String[][] NUMPAD_LABELS = {
             {"7", "8", "9", "⌫"},
@@ -894,8 +887,8 @@ public final class MainActivity extends Activity
             b.setMaxLines(2);
             // 缩到最小字号两行还放不下就在末尾写"…"，看得出被截了（"键盘"那一项带着布局名，长的名字 + 逐级缩时会这样，2026-11-01 审查发现）
             b.setEllipsize(TextUtils.TruncateAt.END);
-            b.setText(MENU_LABELS[i]);
             int id = MENU_IDS[i];
+            b.setText(menuLabel(id));
             b.setOnTouchListener((v, e) -> localTouch(v, e, id));
             panel.addView(b);
             menuItems.add(b);
@@ -930,29 +923,33 @@ public final class MainActivity extends Activity
         return true;
     }
 
-    /**
-     * 这一项在这一屏（SCREEN_*）的菜单里有没有。"手柄"只在桌面模式（desktop）有；"布局"在小红点状态（stick）下没有
-     * （小红点固定合并，2026-11-01；选过的布局留着，换回触控板 / 关时照它），显示实体键盘（fixed）时也没有（实体键盘不分裂，"布局"是豆花布局的）。
-     */
+    /** 这一项在这一屏（SCREEN_*）的菜单里有没有（规则在 MenuOrder.onScreen，离线测）。 */
     private static boolean onMenuScreen(int id, int screen, boolean desktop, boolean stick, boolean fixed) {
-        switch (id) {
-            case MENU_KEYBOARD_ID: return screen == SCREEN_MAIN;
-            case MENU_BOARD_ID: return screen == SCREEN_KEYBOARD;
-            case KB_LAYOUT_ID: return screen == SCREEN_KEYBOARD && !stick && !fixed;
-            case KB_CLOSE_ID:
-            case KB_ADJUST_ID:
-            case KB_POINTER_ID: return screen == SCREEN_KEYBOARD;
-            case MENU_GAMEPAD_ID: return screen != SCREEN_GAMEPAD && desktop;
-            case GP_PRESET_ID:
-            case GP_BACK_ID: return screen == SCREEN_GAMEPAD;
-            default: return true;   // 设置、旋转、退出
-        }
+        return MenuOrder.onScreen(id, screen, desktop, stick, fixed);
     }
 
     /** 菜单项编号 → 下标（MENU_IDS），不是菜单项返回 -1。 */
     private static int menuIndex(int id) {
-        for (int i = 0; i < MENU_IDS.length; i++) if (MENU_IDS[i] == id) return i;
-        return -1;
+        return MenuOrder.index(id);
+    }
+
+    /** 菜单项建的时候写的字（"键盘""布局""指点""预设"几项打开时 updateMenuLabels 再按当前状态改）。 */
+    private static int menuLabel(int id) {
+        switch (id) {
+            case MENU_KEYBOARD_ID: return R.string.act_keyboard;
+            case MENU_BOARD_ID: return R.string.kbd_menu_douhua;
+            case KB_CLOSE_ID: return R.string.kb_close;
+            case KB_ADJUST_ID: return R.string.kb_adjust;
+            case KB_LAYOUT_ID: return R.string.kb_layout_auto;
+            case KB_POINTER_ID: return R.string.kb_pointer_pad;
+            case MENU_GAMEPAD_ID:
+            case GP_PRESET_ID: return R.string.act_gamepad_s;
+            case GP_BACK_ID: return R.string.gp_exit;
+            case MENU_SETTINGS_ID: return R.string.act_settings;
+            case MENU_ROTATE_ID: return R.string.act_rotate;
+            case MENU_EXIT_ID: return R.string.act_exit;
+            default: throw new IllegalArgumentException("不是菜单项：" + id);
+        }
     }
 
     /**
@@ -1153,6 +1150,15 @@ public final class MainActivity extends Activity
      */
     private boolean yieldFocus;
 
+    /**
+     * 桌面模式分屏 / 小窗里豆花窗口一拿到键盘焦点，就请服务把焦点交给同一块屏上另一个看得见的应用（Proto.CMD_FOCUS_OTHER，协议 22）：
+     * 不然豆花自己的虚拟键盘、手柄的键送到豆花窗口、被吞掉（2026-11-01 主力机：分屏时从设置页回来，onResume 清掉了 yieldFocus，整块键盘打不出字，
+     * 点一下另一半才好）。交出去以后豆花收到"失去焦点"，照上面的规矩 yieldFocus、不再拿。什么时候发、节流见 {@link FocusHandoff}。
+     * 小窗时也发，服务那边不交（只交给分屏的另一半，server.FocusPick）。
+     */
+    private final FocusHandoff focusHand = new FocusHandoff();
+    private final Runnable focusRetry = this::maybeHandFocus;
+
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
@@ -1160,6 +1166,30 @@ public final class MainActivity extends Activity
             yieldFocus = true;
             updateFocusable();
         }
+        if (!hasFocus) focusHand.focusLost();
+        maybeHandFocus();
+    }
+
+    /**
+     * 豆花窗口拿着焦点、又满足 {@link FocusHandoff#eligible} 的条件时，请服务把焦点交给另一半；隔不够 1 秒就过一会儿再问。
+     * 条件可能变的地方都调它（拿到 / 丢掉焦点、连上 / 断开服务、窗口占满 ↔ 没占满、贴字面板收起、外接屏变了），不满足时撤掉排着的再问。
+     */
+    private void maybeHandFocus() {
+        main.removeCallbacks(focusRetry);
+        if (textBar == null) return;   // 界面还没建
+        boolean ok = FocusHandoff.eligible(!btMode, windowFull, targetDisplay != Display.INVALID_DISPLAY, link.isConnected(),
+                textBar.getVisibility() == View.VISIBLE, resumed);
+        long now = SystemClock.uptimeMillis();
+        long wait = focusHand.decide(hasWindowFocus(), ok, now);
+        if (wait > 0) {
+            main.postDelayed(focusRetry, wait);
+            return;
+        }
+        if (wait != FocusHandoff.NOW) return;
+        Display d = getDisplay();
+        if (d == null) return;
+        link.focusOther(d.getDisplayId());
+        focusHand.sent(now);
     }
 
     /**
@@ -1214,6 +1244,7 @@ public final class MainActivity extends Activity
             yieldFocus = false;
             updateFocusable();
         }
+        if (wasFull != windowFull) maybeHandFocus();   // 拿着焦点进了分屏 / 小窗：交给另一半（回到全屏时撤掉排着的）
         // 分屏 / 小窗时没让服务锁方向（锁的是整块屏），回到全屏补上选过的方向。同一个方向重复锁一次无害
         if (!wasFull && windowFull && link.isConnected() && prefs.rotation() >= 0) {
             Display d = getDisplay();
@@ -1953,9 +1984,11 @@ public final class MainActivity extends Activity
                 break;
             }
             case KB_POINTER_ID: {
-                // 触控板 → 小红点 → 关；⋯ 可能跟着换地方，关菜单。显示的是实体键盘时换它自己那份（Boards），不碰豆花布局的 kb_pointer
+                // 触控板 → 小红点 → 关；⋯ 可能跟着换地方，关菜单。显示的是实体键盘时换它自己那份（Boards），不碰豆花布局的 kb_pointer；
+                // 显示着的那一级不给小红点（TKL、全尺寸、Mac 模式，FixedLayout.stickAllowed）时从实际用的那个往下轮、跳过小红点
                 if (keyboardScreen.isFixedShown()) {
-                    int pointer = KeyboardPlan.nextPointer(boards.pointer());
+                    String fixedSize = fixedSizeShown();   // 量过才显示实体键盘，照理不会是 null；万一是，照存的轮（不跳过）
+                    int pointer = fixedSize != null ? boards.nextPointer(fixedSize) : KeyboardPlan.nextPointer(boards.pointer());
                     boards.setPointer(pointer);
                     keyboardScreen.setFixedPointer(pointer);
                 } else {
@@ -2030,10 +2063,22 @@ public final class MainActivity extends Activity
         else if (level > 0) board.setText(getString(R.string.kbd_menu_stepped, FixedData.shortName(this, boards.spec()),
                 FixedData.sizeName(this, ladder.get(0).size), FixedData.sizeName(this, ladder.get(level).size)));
         else board.setText(getString(R.string.kbd_menu_fixed, FixedData.shortName(this, boards.spec())));
-        int pointer = keyboardScreen.isFixedShown() ? boards.pointer() : prefs.keyboardPointer();
+        // 实体键盘写显示着的那一级实际用的（存着小红点、这一级不给时写"触控板"，Boards.pointer(尺寸)）
+        String fixedSize = keyboardScreen.isFixedShown() ? fixedSizeShown() : null;
+        int pointer = !keyboardScreen.isFixedShown() ? prefs.keyboardPointer() : fixedSize != null ? boards.pointer(fixedSize) : boards.pointer();
         menuItems.get(menuIndex(KB_POINTER_ID)).setText(pointer == KeyboardPlan.POINTER_STICK ? R.string.kb_pointer_stick
                 : pointer == KeyboardPlan.POINTER_NONE ? R.string.kb_pointer_off : R.string.kb_pointer_pad);
         menuItems.get(menuIndex(GP_PRESET_ID)).setText(getString(R.string.gp_preset, GamepadScreen.name(this, prefs.gamepadSpec())));
+    }
+
+    /**
+     * 实体键盘现在显示的那一级是什么尺寸（逐级缩，按上次量的页宽现算，同菜单"键盘"那一项的字）；梯子是空的 / 最小的一级也放不下返回 null。
+     * "指点"那一项的字和轮换按它判断给不给小红点。
+     */
+    private String fixedSizeShown() {
+        List<FixedLayout> ladder = fixedKeyboard.ladder();
+        int level = keyboardScreen.fixedLevelNow();
+        return level >= 0 && level < ladder.size() ? ladder.get(level).size : null;
     }
 
     @Override
@@ -2356,6 +2401,7 @@ public final class MainActivity extends Activity
         updateFocusable();
         updateActiveButtons();
         pushLayout();
+        maybeHandFocus();   // 贴字时豆花拿着焦点：收起后交还另一半，不然接着用豆花键盘打的字被豆花吞掉
     }
 
     /**
@@ -2416,6 +2462,7 @@ public final class MainActivity extends Activity
             if (keyLogOn) link.trace(true);   // 服务每条连接默认不记
             sendHardKeys();
             pushLayout();
+            focusHand.reconnected();   // 新连接：旧连接上发的交焦点请求可能没做完
         } else {
             // 连不上服务（没在跑 / 卡住 / 版本不一致 / 忙）：设置里开着"自动启动服务"就让 SelfStart 看一眼，
             // 该（重）启动就启动；忙（别的连接在用）它会认出服务在跑，什么都不做
@@ -2462,6 +2509,8 @@ public final class MainActivity extends Activity
                 updateActiveButtons();
             }
         }
+        // 从设置页回来时窗口多半先拿到焦点、后连上服务：连上这一刻再问一次（断开时撤掉排着的再问）
+        maybeHandFocus();
         updateStatus();
     }
 
@@ -2622,6 +2671,7 @@ public final class MainActivity extends Activity
         targetDisplay = d != null ? d.getDisplayId() : Display.INVALID_DISPLAY;
         targetName = d != null ? d.getName() : "";
         updateFocusable();
+        maybeHandFocus();   // 外接屏拔掉了、豆花又在分屏里拿着焦点：交给另一半
         if (btMode && !topResumed) pushLayout();   // 外接屏接上 / 拔掉会改变"顶层"这个条件算不算（ownsScreen），重新报
         updateStatus();
     }

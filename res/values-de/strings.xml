@@ -94,6 +94,8 @@
     <string name="stick_speed">Empfindlichkeit des Pointing-Sticks</string>
     <string name="stick_tap">Stick antippen = Linksklick</string>
     <string name="stick_inertia">Knackiger anfahren und stoppen (negative Trägheit)</string>
+    <string name="lever_speed">Scrolltempo beim Wischen auf der mittleren Taste</string>
+    <string name="lever_speed_hint">Wie schnell gescrollt wird, wenn der Finger auf der mittleren Taste gleitet. Mittlere Taste halten und den Stick schieben bleibt unverändert.</string>
     <string name="stick_hint">Der Pointing-Stick ist auf der Tastaturseite: im ⋯-Menü „Zeiger“ auf den Stick umstellen. Gedrückt halten und schieben: Der Zeiger läuft in diese Richtung, je weiter, desto schneller, und stoppt beim Loslassen. Mittlere Taste halten und den Stick schieben (oder mit einem Finger über das Touchpad wischen) scrollt in diese Richtung; ohne zu scrollen loslassen = Mittelklick.</string>
     <string name="mouse_keys">Linke / mittlere / rechte Taste am Touchpad (Hauptbildschirm und Tastaturseite)</string>
     <string name="mouse_keys_pos">Tasten am Touchpad</string>

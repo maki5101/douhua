@@ -457,6 +457,42 @@ public final class TrackPointTest {
         return r;
     }
 
+    /**
+     * 设置里"中键滑动的滚动速度"（Config.leverSpeed，协议 22，2026-11-01 晚）：乘到滚动杆的速率上（25% 慢四倍、200% 快一倍），
+     * 按住中键推红点（红点那一个、scroll = true）不跟它变；默认 100% 是 1 / 5 / 20 格每秒（比以前的 2 / 10 / 40 慢一半）。
+     */
+    static void leverSpeedSetting() {
+        check(TrackPoint.LEVER_CRAWL == 1 && TrackPoint.LEVER_PLATEAU == 5 && TrackPoint.LEVER_MAX == 20, "滚动杆默认 1 / 5 / 20 格每秒（再慢一半）");
+        for (boolean smooth : new boolean[]{false, true}) for (boolean inertia : new boolean[]{false, true}) {
+            String what = "（负惯性" + (inertia ? "开" : "关") + "、" + (smooth ? "连续" : "按格") + "）";
+            GestureEngine.Config base = cfg(inertia);
+            Rec one = leverRun(base, 0, 25, smooth);
+            for (float k : new float[]{0.25f, 0.5f, 1.5f, 2f}) {
+                GestureEngine.Config c = cfg(inertia);
+                c.leverSpeed = k;
+                Rec r = leverRun(c, 0, 25, smooth);
+                check(Math.abs(r.wheel - k * one.wheel) <= Hid.WHEEL_UNIT, "滚动杆 × " + k + "：" + one.wheel + " → " + r.wheel + what);
+                // 按住中键推红点：不跟它变
+                Rec a = new Rec(), b = new Rec();
+                TrackPoint ta = stick(a, base), tb = stick(b, c);
+                for (TrackPoint t : new TrackPoint[]{ta, tb}) {
+                    t.down(0, 0, 0);
+                    t.move(0, 25);
+                    t.frame(0);
+                }
+                for (long now = 8; now <= 1000; now += 8) {
+                    ta.tick(now, true, false, smooth);
+                    tb.tick(now, true, false, smooth);
+                }
+                check(a.wheel == b.wheel && a.wheel != 0, "按住中键推红点不跟中键滑动速度变（× " + k + "）：" + a.wheel + " / " + b.wheel + what);
+            }
+        }
+        // 100% 的量照 leverRate（设置的倍数不进 leverRate）
+        GestureEngine.Config c = cfg(false);
+        Rec r = leverRun(c, 0, 25, false);
+        check(Math.abs(-r.wheel / (float) Hid.WHEEL_UNIT - TrackPoint.leverRate(25, c.tapSlopDp)) <= 1, "100%：1 秒滚的格数照 leverRate（" + (-r.wheel / Hid.WHEEL_UNIT) + "）");
+    }
+
     /** 滚动杆比"按着中键推红点"慢：自己一条曲线（LEVER_*），位移从挪出轻点容差那一圈起算（用户 2026-11-01 嫌滚动杆太快）。 */
     static void leverSlowerThanStick() {
         for (boolean inertia : new boolean[]{false, true}) {
@@ -498,6 +534,7 @@ public final class TrackPointTest {
         Rec twice = leverRun(fast, 0, 15, true);
         Rec once = leverRun(cfg(false), 0, 15, true);
         check(Math.abs(twice.wheel - 2 * once.wheel) <= 2, "滚动杆跟灵敏度：" + once.wheel + " → " + twice.wheel);
+        leverSpeedSetting();
     }
 
     /** 先挪出轻点容差才开始；位移从容差那一圈起算：离按下点容差 + 死区以内不滚，推出去照曲线滚，挪回来就停。 */

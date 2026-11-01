@@ -16,7 +16,12 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 21;
+    /**
+     * 协议版本。22（2026-11-01 晚）：加了 {@link #CMD_FOCUS_OTHER}（分屏里豆花拿着键盘焦点时交给另一半）；
+     * 同一批 CMD_CONFIG 末尾加了中键滑动速度（leverSpeed:f32）、MSG_MODIFIERS 第四个字节多了 {@link #FN_LOCKED}、Fn 换了规矩
+     * （点一下单次锁、按住 0.4 秒永久锁，KeyHolds），都算在 22 里。
+     */
+    public static final int VERSION = 22;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
     /**
@@ -36,8 +41,8 @@ public final class Proto {
      * edgeScrollHorizontal:u8, edgeWidthDp:f32, scrollTicks:u8, longPressDrag:u8, longPressMs:i32,
      * tapToDrag:u8, dragWindowMs:i32, density:f32（每 dp 多少像素）, slowFactor:f32, texture:u8（移动时的颗粒震动），
      * inertia:u8（惯性滚动）, inertiaTauMs:i32（阻尼）, inertiaMinSpeed:f32（多快算拨，dp/ms）, smoothScroll:u8（连续滚动），
-     * stickSpeed:f32（小红点灵敏度）, stickTap:u8（轻点红点 = 左键）, stickInertia:u8（小红点负惯性）。
-     * 最后七项是协议 18 加的。编解码只在 {@link ConfigCodec} 一处（App、服务、自测共用）。
+     * stickSpeed:f32（小红点灵敏度）, stickTap:u8（轻点红点 = 左键）, stickInertia:u8（小红点负惯性）, leverSpeed:f32（中键滑动的滚动速度倍数）。
+     * inertia 到 stickInertia 七项是协议 18 加的，leverSpeed 是协议 22 加的。编解码只在 {@link ConfigCodec} 一处（App、服务、自测共用）。
      */
     public static final int CMD_CONFIG = 4;
     /**
@@ -114,6 +119,16 @@ public final class Proto {
      * 就是给主机一次真单点（Super 打开开始菜单）；也不带 App 记的锁定掩码，那份可能晚一步。不算心跳。
      */
     public static final int CMD_UNLATCH = 16;
+    /**
+     * 把键盘焦点交给这块屏上另一个看得见的应用（协议 22 起）：displayId:i32（豆花窗口所在的屏）。
+     * 桌面模式分屏 / 小窗、没接外接屏时，豆花窗口一拿到键盘焦点（比如从设置页回来、onResume 清掉了 yieldFocus），
+     * 豆花自己的虚拟键盘、手柄的键就送到豆花窗口、被豆花吞掉，整块键盘打不出字（2026-11-01 主力机）。App 这时发它（什么时候发见 FocusHandoff），
+     * 服务在单独的线程（douhua-focus）上列这块屏的任务、挑分屏另一半里最近用过的、看得见的、不是豆花 / 桌面 / SystemUI 的那个，
+     * 调 IActivityTaskManager.setFocusedTask——效果等于用户点了它一下（server.TaskFocus、server.FocusPick）。
+     * 豆花的任务没拿着焦点（请求晚到、用户已经点了别处）、豆花不在分屏里（小窗：交了会把后面的全屏应用挪到小窗上面、盖住豆花）
+     * 或者没找到可交的，什么都不做。不算心跳。
+     */
+    public static final int CMD_FOCUS_OTHER = 17;
 
     public static final int REGION_PAD = 0;
     /** 普通按钮：服务报告按下 / 松开 / 点击，由 App 决定做什么。 */
@@ -159,11 +174,16 @@ public final class Proto {
      */
     public static final int FN_FLAG = 0x40000000;
     /**
-     * 实体键盘 75% / 65% 的 Fn 键（Windows 模式）：按住 = Fn 层，规矩同修饰键（KeyHolds：组合 = 那一下出 Fn 层、单独按住 0.4–1 秒松手锁一个键、
-     * 超过 1 秒不锁），单独点一下什么都不做（同点一下 Shift）。不发 HID（真键盘的 Fn 也不发），只改带 Fn 层的键按下时发哪个码。
+     * 实体键盘 75% / 65% 的 Fn 键（Windows 模式），协议 22 起的规矩（KeyHolds）：按住 Fn 再按别的键 = 那几下出 Fn 层（组合，松手回来、不锁）；
+     * 单独点一下 = 单次锁（下一个普通键出 Fn 层、那个键松开时解开，修饰键不消耗它）；单独按住 0.4 秒 = 永久锁（Fn Lock，没有修饰键那种 1 秒上限，
+     * 之后按多少个键都出 Fn 层）；锁着（单次或永久）时单独再按一下 Fn = 松手解开、这一下不再锁；锁着时把 Fn 当组合用（按住 Fn 打别的键），永久锁照旧，单次锁被那个键用掉。
+     * 不发 HID（真键盘的 Fn 也不发），只改带 Fn 层的键按下时发哪个码。（协议 21 时同修饰键：单独按住 0.4–1 秒锁一个键、单点什么都不做。）
      */
     public static final int FN_KEY = FN_FLAG;
-    /** Mac 模式的 fn🌐（75% / 65% / 苹果紧凑）：同 {@link #FN_KEY}，只是单独点一下 = 🌐（报 {@link #GLOBE_BUTTON_ID} 的点击，和 🌐 键走同一条路）。 */
+    /**
+     * Mac 模式的 fn🌐（75% / 65% / 苹果紧凑）：组合、按住 0.4 秒永久锁、锁着时单独按一下解开同 {@link #FN_KEY}；不同的是单独点一下 = 🌐
+     * （报 {@link #GLOBE_BUTTON_ID} 的点击，和 🌐 键走同一条路）、没有单次锁，锁着时单独按一下只解开、不出 🌐。
+     */
     public static final int FN_GLOBE_KEY = FN_FLAG | 1;
     /** 🌐 的按钮编号（App 的 🌐 键、实体键盘 Mac 模式的 🌐，KeyRows.GLOBE_BUTTON_ID 就是它）：分流对 fn🌐 的单点报这个编号的 BUTTON_TAP。 */
     public static final int GLOBE_BUTTON_ID = 302;
@@ -315,11 +335,16 @@ public final class Proto {
      * 修饰键的状态：latched:u8, held:u8, armed:u8（HID 修饰键位：1 Ctrl、2 Shift、4 Alt、8 Win，右边四个 << 4）, fn:u8（{@link #FN_LATCHED} 等位）。
      * latched = 锁住的（单独按住 0.4–1 秒松手锁，打完下一个键自动解开）；held = 现在有手指按着的；armed = 单独按住到了 0.4 秒、"现在松手就锁"的。
      * App 照 latched | armed 画高亮、照 latched | held 换键帽上的字。协议 20 起三个字节（以前只有 latched 一个）；
-     * 协议 21 起第四个字节是 Fn 的同样三样（实体键盘 75% / 65% / 苹果紧凑）：App 照锁住 | 快锁了画 Fn 键的高亮、照锁住 | 按着把带 Fn 层的键帽整片换成 Fn 层的字。
+     * 协议 21 起第四个字节是 Fn 的状态（实体键盘 75% / 65% / 苹果紧凑）：App 照单次锁画 Fn 键的高亮、照永久锁 | 快永久锁了画强调色实底，
+     * 照单次锁 | 永久锁 | 按着把带 Fn 层的键帽整片换成 Fn 层的字。协议 22 起多了 {@link #FN_LOCKED}，FN_LATCHED / FN_ARMED 的意思跟着 Fn 的新规矩变了（KeyHolds）。
      */
     public static final int MSG_MODIFIERS = 0x85;
-    /** MSG_MODIFIERS 第四个字节的位：Fn 锁住了（只管下一个键）、有手指按着、"现在松手就锁"。 */
-    public static final int FN_LATCHED = 1, FN_HELD = 2, FN_ARMED = 4;
+    /**
+     * MSG_MODIFIERS 第四个字节的位（协议 22 起）：FN_LATCHED = 单次锁（Windows 模式单点 Fn，只管下一个普通键）、FN_HELD = 有手指按着、
+     * FN_ARMED = 单独按住到了 0.4 秒、"现在松手就永久锁"、FN_LOCKED = 永久锁（Fn Lock，再单独按一下 Fn 才解开）。
+     * 协议 21 时 1 是"锁住、只管下一个键"、4 是"0.4–1 秒、现在松手就锁"，没有 8。
+     */
+    public static final int FN_LATCHED = 1, FN_HELD = 2, FN_ARMED = 4, FN_LOCKED = 8;
     /**
      * 转发的鼠标报文（relay 模式）：buttons:u8, dx:i16, dy:i16, wheel:i16, pan:i16。wheel / pan 是 1/120 格（Hid.WHEEL_UNIT），
      * App 按蓝牙主机设的倍率换算成计数（Hid.WheelOut）。协议 18 以前是 i8 的格数。

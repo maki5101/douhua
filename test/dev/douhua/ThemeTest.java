@@ -22,6 +22,7 @@ public final class ThemeTest {
             separable(t);
             stickRed(t);
             menu(t);
+            soft(t);
         }
         helpers();
         if (args.length > 0 && args[0].equals("print")) print();
@@ -250,6 +251,23 @@ public final class ThemeTest {
                 "reachAll：推到头还不够就是那一头的黑");
     }
 
+    /**
+     * 浅一档的字（Theme.softText，逗号句号合键里的 "."，2026-11-01 晚）：每套（含纯黑）对键帽底色、按下的底色都 ≥ 3:1（看得清），
+     * 又比正文浅：对键帽的对比度比正文低、和正文的色差 ≥ 8（并排看一眼分得出深浅）；色调跟着正文（从正文往键帽掺出来的）。
+     */
+    static void soft(Theme t) {
+        int k = t.keyFill();
+        double c = Theme.contrast(t.softText, k), p = Theme.contrast(t.softText, t.pressed);
+        check(c >= Theme.SOFT_RATIO - 1e-9, t.id + "：浅一档的字对键帽 " + fmt(c) + "（要 ≥ 3:1）");
+        // 对按下的底：一般也 ≥ 3:1；只有为了和正文分得出深浅再往淡掺过的（Solarized Dark）会低一点，也不低于 2.5
+        int pressedSafe = Theme.dimmest(k, t.text, Theme.SOFT_RATIO, k, t.pressed);
+        check(p >= Theme.SOFT_RATIO - 1e-9 || (p >= 2.5 && Theme.deltaE(pressedSafe, t.text) < Theme.SOFT_DELTA_E),
+                t.id + "：浅一档的字对按下 " + fmt(p) + "（≥ 3:1；只有按下也够 3:1 的那个和正文分不出深浅、再掺淡过的可以低一点，但 ≥ 2.5）");
+        check(c < Theme.contrast(t.text, k), t.id + "：浅一档的字比正文淡（对键帽 " + fmt(c) + " < " + fmt(Theme.contrast(t.text, k)) + "）");
+        check(Theme.deltaE(t.softText, t.text) >= Theme.SOFT_DELTA_E, t.id + "：浅一档的字和正文分得出深浅（色差 " + fmt(Theme.deltaE(t.softText, t.text)) + "）");
+        check((t.softText >>> 24) == 0xFF, t.id + "：浅一档的字不透明");
+    }
+
     static void print() {
         System.out.println("| 槽位 | " + join(t -> t.id) + " |");
         StringBuilder sep = new StringBuilder("|---|");
@@ -258,7 +276,7 @@ public final class ThemeTest {
         String[] names = {"bg", "key", "text", "border", "pressed", "accent", "activeText", "strong", "padFill", "padBorder",
                 "status", "statusBad", "previewFill", "previewBorder", "previewText", "focus", "ring", "dim", "dimBorder",
                 "hint", "edge", "menuFill", "fnKey", "fnText", "fnPressed", "stick", "menuKey", "menuKeyText", "menuKeyPressed",
-                "menuDots", "shade"};
+                "menuDots", "softText", "shade"};
         for (int i = 0; i < names.length; i++) {
             final int slot = i;
             System.out.println("| " + names[i] + " | " + join(t -> hex(printed(t)[slot])) + " |");
@@ -297,6 +315,9 @@ public final class ThemeTest {
         row("不带框的 ⋯ / 触控板", t -> Theme.contrast(t.menuDots, t.padFill));
         row("不带框的 ⋯ / 页面", t -> Theme.contrast(t.menuDots, t.bg));
         row("不带框的 ⋯ / 按下", t -> Theme.contrast(t.menuDots, t.pressed));
+        row("浅一档的字 / 键帽", t -> Theme.contrast(t.softText, t.keyFill()));
+        row("浅一档的字 / 按下", t -> Theme.contrast(t.softText, t.pressed));
+        row("浅一档的字 / 正文 色差", t -> Theme.deltaE(t.softText, t.text));
     }
 
     // ── 小工具 ──
@@ -326,7 +347,7 @@ public final class ThemeTest {
         return new int[]{t.bg, t.keyFill(), t.text, t.border, t.pressed, t.accent, t.activeText, t.strong, t.padFill,
                 t.padBorder, t.status, t.statusBad, t.previewFill, t.previewBorder, t.previewText, t.focus, t.ring, t.dim,
                 t.dimBorder, t.hint, t.edge, t.menuFill, t.fnFill(), t.fnText, t.fnPressed, t.stick, t.menuKey, t.menuKeyText,
-                t.menuKeyPressed, t.menuDots};
+                t.menuKeyPressed, t.menuDots, t.softText};
     }
 
     private static int[] printed(Theme t) {

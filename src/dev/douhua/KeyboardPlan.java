@@ -116,11 +116,28 @@ final class KeyboardPlan {
 
     /** 点一下菜单里的"指点"：触控板 → 小红点 → 关 → 触控板。认不出的值当触控板。 */
     static int nextPointer(int pointer) {
+        return nextPointer(pointer, true);
+    }
+
+    /**
+     * 同上，stickOk = 这时能不能用小红点（实体键盘显示着 TKL / 全尺寸、Mac 模式时不能，FixedLayout.stickAllowed）：不能时跳过它（触控板 ↔ 关）。
+     * pointer 是显示着的那个（存着小红点、这一级不给时照触控板算，{@link #fixedPointer}）。
+     */
+    static int nextPointer(int pointer, boolean stickOk) {
         switch (validPointer(pointer)) {
-            case POINTER_PAD: return POINTER_STICK;
+            case POINTER_PAD: return stickOk ? POINTER_STICK : POINTER_NONE;
             case POINTER_STICK: return POINTER_NONE;
             default: return POINTER_PAD;
         }
+    }
+
+    /**
+     * 实体键盘这一块实际用的指点：存的是小红点、这一块不给小红点（FixedLayout.stickAllowed：TKL、全尺寸、Mac 模式）时照触控板（协调者 2026-11-01 定：
+     * 关掉的话 ⋯ 没地方放，也不像原来想要的样子）；存的值不动，换回给小红点的那一级 / 模式时小红点回来。layout 是 null 时照存的。
+     */
+    static int fixedPointer(int pointer, FixedLayout layout) {
+        pointer = validPointer(pointer);
+        return pointer == POINTER_STICK && layout != null && !layout.stickAllowed() ? POINTER_PAD : pointer;
     }
 
     static int validPointer(int pointer) {
@@ -596,9 +613,11 @@ final class KeyboardPlan {
      *   红点在真 ThinkPad 的位置（G、H 之间、B 上方，FixedPanel.stickPoint），碰到切口圆的键被切掉一块（一般是 G 的右下、H 的左下、B 的上沿正中），
      *   多大照豆花布局的规则（{@link #placeStickAt} → {@link #stickRadius}，实体键盘只有一层，每个键按字母层的门槛算），嵌不下放键盘外面；
      *   三个鼠标键占空格那一排的中间（FixedPanel.stickHole，空格切成左右两段），中键正对红点（{@link #holeKeys}）。
+     *   只有笔记本、75%、65% 的 Windows 模式给小红点（FixedLayout.stickAllowed，2026-11-01 晚）：别的这里照触控板摆（{@link #fixedPointer}），
+     *   saved 也该是触控板那份（Boards.pointer(尺寸) 照同一条规则取）。
      */
     static Plan planFixed(int pointer, int keys, int w, int h, float[] saved, FixedLayout layout, Sizes s) {
-        pointer = validPointer(pointer);
+        pointer = fixedPointer(pointer, layout);
         if (pointer == POINTER_STICK && !s.stickReady()) pointer = POINTER_NONE;
         boolean padOn = pointer == POINTER_PAD, stickOn = pointer == POINTER_STICK;
         float[] r = saved != null ? fitFixedRect(saved, layout, w, s) : fixedDefaultRect(layout, w, h, padOn, s);

@@ -636,19 +636,33 @@ final class FixedPanel {
     }
 
     /**
-     * 第 i 个键画不画高亮（协议 21 起带 Fn）：Fn 键看 fn 的锁住 | 快锁了（Proto.FN_LATCHED / FN_ARMED）；Fn 层显示着时（fn 带 FN_LATCHED / FN_HELD）
+     * 第 i 个键画不画高亮（协议 21 起带 Fn）：Fn 键只在单次锁（Proto.FN_LATCHED）时画修饰键那种高亮（强调色的边 + 高亮的字），
+     * 永久锁 / 快永久锁了画强调色实底（{@link #fnLockLook}，不算这里的高亮）；Fn 层显示着时（{@link #fnShown}）
      * 带 Fn 层的键画的是 Fn 层那个键，不画底层修饰键的高亮（Windows 模式右 Ctrl 这时写着 ☰）；别的照 {@link #active(FixedLayout.Key, int, boolean)}。
      */
     boolean active(int i, int shown, boolean caps, int fn) {
         FixedLayout.Key k = keys.get(i);
-        if (FixedLayout.fnKey(k)) return (fn & (Proto.FN_LATCHED | Proto.FN_ARMED)) != 0;
+        if (FixedLayout.fnKey(k)) return (fn & Proto.FN_LATCHED) != 0 && !fnLocked(fn);
         if (fnShown(fn) && fnKey(i) != null) return false;
         return active(k, shown, caps);
     }
 
-    /** Fn 层显示着吗（Fn 锁住或按着；Fn 层的字、按下时发 Fn 层的码，同 KeyHolds.fnActive）。 */
+    /**
+     * 第 i 个键是 Fn 键、而且 Fn 永久锁着或者"松手就永久锁"（协议 22，Proto.FN_LOCKED / FN_ARMED）：画成强调色实底 + 反差字（颜色同 ⋯ 键的
+     * Theme.menuKey / menuKeyText / menuKeyPressed——像亮着的 Fn Lock 灯），和单次锁那种"强调色的边"一眼分得开。
+     */
+    boolean fnLockLook(int i, int fn) {
+        return FixedLayout.fnKey(keys.get(i)) && fnLocked(fn);
+    }
+
+    /** Fn 永久锁着或者快永久锁了（Fn 键画实底）。 */
+    static boolean fnLocked(int fn) {
+        return (fn & (Proto.FN_LOCKED | Proto.FN_ARMED)) != 0;
+    }
+
+    /** Fn 层显示着吗（Fn 按着、单次锁或永久锁着；Fn 层的字、按下时发 Fn 层的码，同 KeyHolds.fnActive）。 */
     static boolean fnShown(int fn) {
-        return (fn & (Proto.FN_LATCHED | Proto.FN_HELD)) != 0;
+        return (fn & (Proto.FN_LATCHED | Proto.FN_HELD | Proto.FN_LOCKED)) != 0;
     }
 
     /**

@@ -55,8 +55,9 @@ public final class FixedLayoutTest {
         fits();
         planDefaults();
         defaultsKeepDragLimits();
+        // TKL / 全尺寸 2026-11-01 晚起不给小红点：这一组只查"照触控板摆"（红点的几何在笔记本、75% / 65% 的几组里查）
         stickPlan(SHAPES, SIZES, new int[][]{{751, 475}, {933, 704}, {933, 340}, {1200, 500}, {1800, 800}, {600, 300}, {1000, 380}}, "");
-        stickRouting(SHAPES, new String[]{FixedLayout.TKL}, new int[][]{{933, 704}, {1200, 500}, {751, 475}, {1800, 800}}, "");
+        stickRule();
         // ── 笔记本尺寸、逐级缩（2026-11-01）──
         laptopCounts();
         laptopRows(SHAPES);
@@ -582,10 +583,19 @@ public final class FixedLayoutTest {
                 view = k + " Fn 层出字的 " + f + " 是普通键、放大提示照它的字";
             }
             if (f == null && p.functionKey(i, true) != p.functionKey(i)) view = k + " 没有 Fn 层：主次和平时一样";
+            // 协议 22：单次锁 = 修饰键那种高亮（强调色的边），永久锁 / 快永久锁了 = 实底（fnLockLook，不算高亮），只按着 = 都不画；只在 Fn 键上
             boolean lit = p.active(i, 0, false, Proto.FN_LATCHED), litArmed = p.active(i, 0, false, Proto.FN_HELD | Proto.FN_ARMED),
-                    held = p.active(i, 0, false, Proto.FN_HELD);
-            if (FixedLayout.fnKey(k) ? !(lit && litArmed && !held) : (lit || litArmed || held) && !FixedPanel.active(k, 0, false)) {
-                view = k + " Fn 的高亮只在 Fn 键上、只看锁住 | 快锁了";
+                    litLocked = p.active(i, 0, false, Proto.FN_LOCKED), held = p.active(i, 0, false, Proto.FN_HELD),
+                    unlocking = p.active(i, 0, false, Proto.FN_LOCKED | Proto.FN_HELD);
+            boolean solidOnce = p.fnLockLook(i, Proto.FN_LATCHED), solidArmed = p.fnLockLook(i, Proto.FN_HELD | Proto.FN_ARMED),
+                    solidLocked = p.fnLockLook(i, Proto.FN_LOCKED), solidHeld = p.fnLockLook(i, Proto.FN_HELD),
+                    solidUnlocking = p.fnLockLook(i, Proto.FN_LOCKED | Proto.FN_HELD);
+            if (FixedLayout.fnKey(k) ? !(lit && !litArmed && !litLocked && !held && !unlocking && !solidOnce && solidArmed && solidLocked && !solidHeld && solidUnlocking)
+                    : (lit || litArmed || litLocked || held) && !FixedPanel.active(k, 0, false) || solidArmed || solidLocked) {
+                view = k + " Fn 的样子只在 Fn 键上：单次锁画高亮，永久锁 / 快永久锁了画实底，只按着两样都不画";
+            }
+            if (!FixedPanel.fnShown(Proto.FN_LOCKED) || !FixedPanel.fnShown(Proto.FN_LATCHED) || !FixedPanel.fnShown(Proto.FN_HELD) || FixedPanel.fnShown(0)) {
+                view = "Fn 层显示着 = 单次锁 | 永久锁 | 按着";
             }
             if (k.id >= 0xE0 && k.id <= 0xE7 && !k.special) {
                 int bit = 1 << (k.id - 0xE0);
@@ -831,12 +841,18 @@ public final class FixedLayoutTest {
 
     // ── 小红点：真 ThinkPad 的位置、切口、空格那一排的三个鼠标键 ──
     static void stickPlan(String[] shapes, String[] sizes, int[][] windows, String label) {
-        int embedded = 0, outside = 0, ghb = 0, plans = 0;
+        int embedded = 0, outside = 0, ghb = 0, plans = 0, refused = 0;
         for (String sh : shapes) for (String sz : sizes) for (String m : MODES) for (int[] wh : windows) {
             if (!FixedLayout.available(sh, sz, m)) continue;
             FixedLegends.Table t = glyphTable(sh, m);
             FixedLayout l = FixedLayout.build(sh, sz, m, t.hasThird(), ".");
             if (!KeyboardPlan.fixedFits(l, wh[0], T)) continue;
+            if (!l.stickAllowed()) {   // TKL、全尺寸、Mac 模式不给小红点（2026-11-01 晚）：照触控板摆（stickRule 另外细查）
+                refused++;
+                String why = sameAsPad(l, wh[0], wh[1], null);
+                check(why == null, name(l) + " " + wh[0] + "×" + wh[1] + " 不给小红点：照触控板摆" + (why == null ? "" : "（" + why + "）"));
+                continue;
+            }
             plans++;
             String what = name(l) + " " + wh[0] + "×" + wh[1];
             KeyboardPlan.Plan p = KeyboardPlan.planFixed(KeyboardPlan.POINTER_STICK, KeyboardPlan.KEYS_OFF, wh[0], wh[1], null, l, T);
@@ -902,9 +918,77 @@ public final class FixedLayoutTest {
                 outside++;
             }
         }
-        check(embedded > 0, "有嵌在键里的情况" + label);
-        check(ghb == embedded, "嵌在键里时都切到 G、H、B" + label);
-        System.err.println("  实体键盘小红点" + label + "：" + plans + " 种摆法，嵌在键里 " + embedded + "、放外面 " + outside);
+        if (plans > 0) {
+            check(embedded > 0, "有嵌在键里的情况" + label);
+            check(ghb == embedded, "嵌在键里时都切到 G、H、B" + label);
+        } else {
+            check(refused > 0, "这几种尺寸都不给小红点、真扫过" + label);
+        }
+        System.err.println("  实体键盘小红点" + label + "：" + plans + " 种摆法，嵌在键里 " + embedded + "、放外面 " + outside + "；不给小红点（照触控板摆）" + refused + " 种");
+    }
+
+    /** 存着小红点时的 planFixed 和触控板的一模一样吗（不给小红点的那几级）；一样返回 null，不一样返回哪里不一样。 */
+    static String sameAsPad(FixedLayout l, int w, int h, float[] saved) {
+        for (int keys : new int[]{KeyboardPlan.KEYS_OFF, KeyboardPlan.KEYS_BOTTOM, KeyboardPlan.KEYS_TOP}) {
+            KeyboardPlan.Plan st = KeyboardPlan.planFixed(KeyboardPlan.POINTER_STICK, keys, w, h, saved, l, T);
+            KeyboardPlan.Plan pad = KeyboardPlan.planFixed(KeyboardPlan.POINTER_PAD, keys, w, h, saved, l, T);
+            if (st.stick != null || st.stickAt != KeyboardPlan.STICK_NONE || st.hole != null || st.cut != 0) return "还有红点 / 空位";
+            if (!Arrays.equals(st.keyboard, pad.keyboard) || !Arrays.equals(st.pad, pad.pad) || st.padSide != pad.padSide
+                    || !Arrays.equals(st.keys, pad.keys) || !Arrays.equals(st.middleKey, pad.middleKey) || !Arrays.equals(st.menuArea, pad.menuArea)
+                    || st.menuMargin != pad.menuMargin || !Arrays.equals(st.rect, pad.rect)) {
+                return "三键条 " + keys + " 时键盘 / 触控板 / 三键条 / ⋯ 和触控板的不一样";
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 实体键盘的小红点只给笔记本、75%、65% 的 Windows 模式（2026-11-01 晚，FixedLayout.stickAllowed；用户："TKL 和全尺寸都不给，和 Mac 键盘不给，其他都有"）：
+     * 每种拼得出的 形状 × 尺寸 × 模式 × 窗口 × 默认 / 随机存过的位置——不给的那几级存着小红点时 planFixed 和触控板一模一样（没有红点、空位，触控板、⋯ 照摆），
+     * 给的那几级照旧有红点组（放得下时）；fixedPointer、nextPointer(…, false) 跳过小红点。
+     */
+    static void stickRule() {
+        int refused = 0, given = 0, scanned = 0;
+        Random rnd = new Random(20261103);
+        String first = null;
+        int bad = 0;
+        for (String sz : FixedLayout.ALL_SIZES) for (String sh : SHAPES) for (String m : MODES) {
+            if (!FixedLayout.available(sh, sz, m)) continue;
+            FixedLayout l = FixedLayout.build(sh, sz, m, true, ".");
+            boolean want = FixedLayout.WIN.equals(m) && (FixedLayout.LAPTOP.equals(sz) || FixedLayout.P75.equals(sz) || FixedLayout.P65.equals(sz));
+            check(l.stickAllowed() == want, name(l) + "：" + (want ? "给" : "不给") + "小红点");
+            check(KeyboardPlan.fixedPointer(KeyboardPlan.POINTER_STICK, l) == (want ? KeyboardPlan.POINTER_STICK : KeyboardPlan.POINTER_PAD)
+                            && KeyboardPlan.fixedPointer(KeyboardPlan.POINTER_NONE, l) == KeyboardPlan.POINTER_NONE
+                            && KeyboardPlan.fixedPointer(KeyboardPlan.POINTER_PAD, l) == KeyboardPlan.POINTER_PAD,
+                    name(l) + "：实际用的指点（存着小红点" + (want ? "照用" : "照触控板") + "，别的不变）");
+            int min = Math.round(T.minKey * l.width);
+            for (int w = min; w <= 2600; w += 97) for (int h : new int[]{170, 300, 475, 704}) for (int k = 0; k < 2; k++) {
+                float[] saved = k == 0 ? null : new float[]{rnd.nextFloat() * 0.5f, rnd.nextFloat() * 0.5f, 0, 1};
+                if (saved != null) saved[2] = Math.min(1, saved[0] + 0.3f + rnd.nextFloat() * 0.5f);
+                scanned++;
+                if (!want) {
+                    refused++;
+                    String why = sameAsPad(l, w, h, saved);
+                    if (why != null && bad++ == 0) first = name(l) + " " + w + "×" + h + "：" + why;
+                } else {
+                    KeyboardPlan.Plan p = KeyboardPlan.planFixed(KeyboardPlan.POINTER_STICK, KeyboardPlan.KEYS_OFF, w, h, saved, l, T);
+                    if (p.pad != null || p.menuArea != null) {
+                        if (bad++ == 0) first = name(l) + " " + w + "×" + h + "：给小红点的这一级还摆了触控板";
+                    }
+                    if (p.keys != null && p.hole != null) given++;
+                }
+            }
+        }
+        check(bad == 0, "不给小红点的照触控板摆、给的照旧没有触控板：扫了 " + scanned + " 种" + (first == null ? "" : "，" + bad + " 种不对，比如 " + first));
+        check(refused > 0 && given > 0, "两种都扫到了（不给 " + refused + "、给且有三个鼠标键 " + given + "）");
+        check(KeyboardPlan.nextPointer(KeyboardPlan.POINTER_PAD, false) == KeyboardPlan.POINTER_NONE
+                        && KeyboardPlan.nextPointer(KeyboardPlan.POINTER_NONE, false) == KeyboardPlan.POINTER_PAD
+                        && KeyboardPlan.nextPointer(KeyboardPlan.POINTER_STICK, false) == KeyboardPlan.POINTER_NONE
+                        && KeyboardPlan.nextPointer(KeyboardPlan.POINTER_PAD, true) == KeyboardPlan.POINTER_STICK
+                        && KeyboardPlan.nextPointer(KeyboardPlan.POINTER_PAD) == KeyboardPlan.POINTER_STICK,
+                "⋯ 菜单\"指点\"轮换：不给小红点时 触控板 ↔ 关，给的时候照旧 触控板 → 小红点 → 关");
+        check(KeyboardPlan.fixedPointer(KeyboardPlan.POINTER_STICK, null) == KeyboardPlan.POINTER_STICK, "没有布局时照存的");
+        System.err.println("  实体键盘哪几级给小红点：扫了 " + scanned + " 种（不给、照触控板摆 " + refused + "；给且有三个鼠标键 " + given + "）");
     }
 
     // ── 小红点、三个鼠标键和键的分流逐点核对（同 KeyboardPlanTest.stickRouting）──
@@ -912,7 +996,7 @@ public final class FixedLayoutTest {
         int points = 0, inStick = 0, inTiles = 0, corners = 0, bad = 0;
         String first = null;
         for (String sz : sizes) for (String sh : shapes) for (String m : MODES) for (int[] wh : windows) {
-            if (!FixedLayout.available(sh, sz, m)) continue;
+            if (!FixedLayout.available(sh, sz, m) || !FixedLayout.stickAllowed(sz, m)) continue;   // 不给小红点的几级没有红点可分（stickRule）
             FixedLegends.Table t = glyphTable(sh, m);
             FixedLayout l = FixedLayout.build(sh, sz, m, t.hasThird(), ".");
             KeyboardPlan.Plan p = KeyboardPlan.planFixed(KeyboardPlan.POINTER_STICK, KeyboardPlan.KEYS_OFF, wh[0], wh[1], null, l, T);
@@ -1551,7 +1635,7 @@ public final class FixedLayoutTest {
         Random rnd = new Random(20261101);
         int plans = 0, bad = 0;
         String first = null;
-        for (String sh : SHAPES) for (String m : MODES) {
+        for (String sh : SHAPES) for (String m : new String[]{FixedLayout.WIN}) {   // Mac 模式不给小红点（stickRule）
             FixedLayout l = laptop(sh, m);
             for (int w = 480; w <= 2600; w += 7) for (int h : new int[]{150, 200, 230, 300, 475, 704, 900}) for (int k = 0; k < 3; k++) {
                 float[] saved = k == 0 ? null : new float[]{rnd.nextFloat() * 0.9f, rnd.nextFloat() * 0.5f, 0, 1};

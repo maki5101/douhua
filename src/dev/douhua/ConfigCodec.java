@@ -38,6 +38,8 @@ public final class ConfigCodec {
         out.writeFloat(c.stickSpeed);
         out.writeByte(c.stickTap ? 1 : 0);
         out.writeByte(c.stickInertia ? 1 : 0);
+        // 协议 22 起：中键滑动的滚动速度
+        out.writeFloat(c.leverSpeed);
     }
 
     /** 读进 c（覆盖 c 里的每一项），返回 density。 */
@@ -65,6 +67,7 @@ public final class ConfigCodec {
         c.stickSpeed = in.readFloat();
         c.stickTap = in.readUnsignedByte() == 1;
         c.stickInertia = in.readUnsignedByte() == 1;
+        c.leverSpeed = in.readFloat();
         return density;
     }
 }

@@ -13,11 +13,13 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import dev.douhua.ConfigCodec;
 import dev.douhua.GamepadConfig;
@@ -36,7 +38,8 @@ import dev.douhua.TouchRouter;
  *
  * 线程：命令线程（douhua-session，每条连接一个）读 App 的消息；监管线程负责独占和读触摸；
  * 实体键线程（douhua-keys）负责独占和读音量键（{@link #superviseKeys}；电源键从不独占）；
- * 定时器线程跑轻点拖动的等待、惯性滚动的每一帧、修饰键 / Caps / 合并键按住到点（router 的第二个定时器，keyTimer）和切键盘焦点（router 的定时器撤掉 / 被取代后，已经到点、在等锁的那次不调，见 {@link OneShotTimer}）；节拍线程（douhua-tick）在小红点 / 中键滚动杆按着时按固定间隔推它（{@link #startTicks}）。
+ * 定时器线程跑轻点拖动的等待、惯性滚动的每一帧、修饰键 / Caps / 合并键按住到点（router 的第二个定时器，keyTimer）和切键盘焦点（router 的定时器撤掉 / 被取代后，已经到点、在等锁的那次不调，见 {@link OneShotTimer}）；节拍线程（douhua-tick）在小红点 / 中键滚动杆按着时按固定间隔推它（{@link #startTicks}）；
+ * 交焦点线程（douhua-focus）在分屏里豆花拿着键盘焦点时把焦点交给另一半（{@link Proto#CMD_FOCUS_OTHER}，{@link TaskFocus}，几次 binder，不和定时器挤）。
  * router 只在持有 lock 时访问。
  * 惯性滚动转着时：释放触摸屏（TouchReader 的 finally → router.releaseAll）、会话结束、换参数（setConfig）都走 engine.cancel 停下；
  * 看到任何一根手指按下（含分屏透传归系统的）也停。
@@ -207,6 +210,23 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     });
     private ScheduledFuture<?> tickTask;
     static final long TICK_MS = 8, TICK_RELAY_MS = 12;
+    /**
+     * 交焦点（{@link Proto#CMD_FOCUS_OTHER}）：单独一个线程。一次是 getTasks + setFocusedTask + 再列一次核对，三次 binder；
+     * 不放命令线程（卡住时心跳读不进来，触摸屏会被当成 App 没响应释放）、不放定时器线程（惯性、按键到点不被系统服务拖住），
+     * 更不放读触摸的线程。排着一次没做时再来的只更新屏幕编号、不再排（{@link #focusQueued}）。线程第一次用到才起。
+     */
+    private final ExecutorService focusWorker = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "douhua-focus");
+        t.setDaemon(true);
+        return t;
+    });
+    private final AtomicBoolean focusQueued = new AtomicBoolean();
+    private volatile int focusDisplay;
+    /**
+     * 交焦点的日志：诊断模式每次都记；平时同一条连接里同一行 60 秒内只记一次。每条连接一份（每次从设置页回来都是新连接，
+     * 所以进出一次设置记一行，不跨连接限频——一次进出一行不算刷屏，还看得出每次交没交）。只在 douhua-focus 线程里用。
+     */
+    private final LogThrottle focusLog = new LogThrottle(60_000);
     private final MouseStats stats;
 
     Session(Socket socket, int uid, Injector injector, boolean debug) throws IOException {
@@ -287,6 +307,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         pass.close(EXIT_CANCEL_WAIT_MS);   // 正常情况下释放独占时已经取消过，这里兜底，并等排着的事件发完
         timer.shutdownNow();
         ticker.shutdownNow();   // releaseAll 已经停了节拍，这里兜底
+        focusWorker.shutdownNow();   // 正在做的那一次（几次 binder）做完就结束；排着的不做了
         closeDevices();
         if (connected) Server.log("App 已断开，虚拟鼠标和键盘" + (gamepad != null ? "、手柄" : "") + "已移除");
         if (connected && !kicked) ROTATION.restore();
@@ -495,6 +516,9 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                     synchronized (lock) {
                         router.unlatch(SystemClock.uptimeMillis());   // 锁着的修饰键全部解开，按着的不动
                     }
+                    break;
+                case Proto.CMD_FOCUS_OTHER:
+                    requestFocusOther(in.readInt());   // 协议 22：交给 douhua-focus 线程，命令线程不等 binder
                     break;
                 case Proto.CMD_TRACE: {
                     // 键盘触点写 logcat（和 App 本地分流写的同一个标签、同一种格式），不写服务的日志文件：等于按键记录，不落盘
@@ -780,6 +804,37 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         plain = null;
         plainPath = null;
         watch = null;
+    }
+
+    /**
+     * App 说豆花窗口拿着键盘焦点（桌面模式分屏 / 小窗、没接外接屏）：排到 douhua-focus 线程上交给另一半（小窗时 FocusPick 不交）。
+     * 已经排着一次就只换屏幕编号（做的时候用最新的），不重复排。
+     */
+    private void requestFocusOther(int displayId) {
+        focusDisplay = displayId;
+        if (!focusQueued.compareAndSet(false, true)) return;
+        try {
+            focusWorker.execute(() -> {
+                focusQueued.set(false);
+                handFocus(focusDisplay);
+            });
+        } catch (RejectedExecutionException e) {
+            focusQueued.set(false);   // 会话正在收尾
+        }
+    }
+
+    /** 在 douhua-focus 线程上：挑任务、setFocusedTask、核对（{@link TaskFocus}），记日志。 */
+    private void handFocus(int displayId) {
+        if (!alive) return;
+        TaskFocus.Result r = TaskFocus.handOff(displayId, true);
+        String line = "分屏交焦点（屏幕 " + displayId + "）：" + r.line;
+        if (debug) {
+            Server.log(line);
+            if (r.detail != null) Server.log("这块屏上的任务：\n" + r.detail);
+            return;
+        }
+        String l = focusLog.error(line, SystemClock.uptimeMillis());
+        if (l != null) Server.log(l);
     }
 
     /**

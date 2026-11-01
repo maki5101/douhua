@@ -65,6 +65,11 @@ final class Theme {
      * 对按下的底（pressed，按着时垫的那块）≥ 3:1。有背景图时 ⋯ 下面垫不透明的触控板底色（TrackpadView），所以对 padFill 够就看得清。
      */
     final int menuDots;
+    /**
+     * 浅一档的键帽字（2026-11-01 晚）：豆花布局小红点状态底行逗号句号合键里的 "."（和 "," 并排、一样大，Style.PairKey），
+     * 键帽字往键帽底色掺，掺到对键帽底色和按下的底色还刚好 ≥ 3:1（{@link #SOFT_RATIO}）为止——看得清、又和 "," 分得出深浅。
+     */
+    final int softText;
     /** 贴字面板输入框里的灰色提示字。 */
     final int hint;
     /** 触控板里边缘滚动带的细线。 */
@@ -116,6 +121,7 @@ final class Theme {
         dim = or(s.dim, dimmest(padFill, text, TEXT_RATIO, padFill, bg));
         dimBorder = or(s.dimBorder, blend(padFill, padBorder, 0.45f));
         hint = or(s.hint, dim);
+        softText = soft(keyFill, text, pressed);
         edge = or(s.edge, blend(padFill, padBorder, 0.3f));
         menuFill = or(s.menuFill, blend(bg, accent, 0.08f));
         // ⋯ 用强调色（见字段注释）：键帽形状的底先定，字跟着底挑
@@ -144,6 +150,10 @@ final class Theme {
 
     /** 正文对比度的目标（WCAG AA）。 */
     static final double TEXT_RATIO = 4.5;
+    /** 浅一档的字（{@link #softText}）对键帽、按下的底至少这么多（用户 2026-11-01："把它颜色放浅"；协调者定 ≥ 3:1）。 */
+    static final double SOFT_RATIO = 3;
+    /** 浅一档的字和正文至少差这么多（CIE76 色差，同功能键和键帽的 {@link #FN_DELTA_E}：并排看一眼分得出）。 */
+    static final double SOFT_DELTA_E = 8;
     /** 功能键底色至少掺多少强调色（"一点点颜色"）。 */
     static final float FN_TINT = 0.15f;
     /** 功能键底色和普通键帽、页面底色至少差多少（CIE76 色差；并排看一眼分得出，2.3 左右是刚能察觉）。 */
@@ -251,6 +261,21 @@ final class Theme {
         for (int i = Math.round(FN_TINT * 100); i <= 40; i++) {
             c = blend(keyFill, accent, i / 100f);
             if (deltaE(c, keyFill) >= FN_DELTA_E && deltaE(c, bg) >= FN_DELTA_E) break;
+        }
+        return c;
+    }
+
+    /**
+     * 浅一档的字：从键帽底色往正文掺，取最靠近键帽、对键帽和按下的底都还 ≥ {@link #SOFT_RATIO} 的那个（看得清、比正文淡）；
+     * 正文本来就不亮的主题（Solarized Dark 正文对键帽只有 4.9:1）这样取出来和正文差不多，再往键帽掺到色差 ≥ {@link #SOFT_DELTA_E}
+     * （分得出深浅），但对键帽绝不低于 SOFT_RATIO——这时对按下的底会略低于 3:1（只在手指按着那一下）。
+     */
+    private static int soft(int keyFill, int text, int pressed) {
+        int c = dimmest(keyFill, text, SOFT_RATIO, keyFill, pressed);
+        for (int i = 0; i <= 100 && deltaE(c, text) < SOFT_DELTA_E; i++) {
+            int d = blend(c, keyFill, 0.02f);
+            if (contrast(d, keyFill) < SOFT_RATIO) break;
+            c = d;
         }
         return c;
     }

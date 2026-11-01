@@ -94,6 +94,8 @@
     <string name="stick_speed">Sensibilité du pointing stick</string>
     <string name="stick_tap">Toucher le stick = clic gauche</string>
     <string name="stick_inertia">Démarrage et arrêt plus nets (inertie négative)</string>
+    <string name="lever_speed">Vitesse de défilement en glissant sur le bouton du milieu</string>
+    <string name="lever_speed_hint">Vitesse du défilement quand vous faites glisser le doigt posé sur le bouton du milieu. Maintenir le bouton du milieu en poussant le stick n\'est pas affecté.</string>
     <string name="stick_hint">Le pointing stick est sur la page clavier : dans le menu ⋯, passez « Pointage » au stick. Appuyez et poussez : le pointeur va dans ce sens, d\'autant plus vite que vous poussez loin, et s\'arrête quand vous lâchez. Maintenez le bouton du milieu et poussez le stick (ou glissez un doigt sur le pavé) pour faire défiler dans ce sens ; relâchez sans avoir défilé pour un clic du milieu.</string>
     <string name="mouse_keys">Boutons gauche / milieu / droit sur le pavé (écran principal et page clavier)</string>
     <string name="mouse_keys_pos">Position des boutons sur le pavé</string>

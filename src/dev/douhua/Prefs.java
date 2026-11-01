@@ -190,8 +190,19 @@ final class Prefs {
         c.stickSpeed = getFloat(STICK_SPEED, c.stickSpeed);
         c.stickTap = getBool(STICK_TAP, c.stickTap);
         c.stickInertia = getBool(STICK_INERTIA, c.stickInertia);
+        c.leverSpeed = leverSpeedPct() / 100f;
         return c;
     }
+
+    /** 中键滑动的滚动速度（百分数，设置里的滑块 {@link #LEVER_SPEED_MIN}–{@link #LEVER_SPEED_MAX}、步长 {@link #LEVER_SPEED_STEP}，默认 100）；存坏了截到范围里。 */
+    int leverSpeedPct() {
+        int v = getInt(LEVER_SPEED, LEVER_SPEED_DEFAULT);
+        return Math.max(LEVER_SPEED_MIN, Math.min(LEVER_SPEED_MAX, v));
+    }
+
+    /** 中键滑动的滚动速度（协议 22，2026-11-01 晚）：百分数，25–200、步长 5、默认 100（= TrackPoint.LEVER_* 那条，已经比以前慢一半）。 */
+    static final String LEVER_SPEED = "lever_speed_pct";
+    static final int LEVER_SPEED_MIN = 25, LEVER_SPEED_MAX = 200, LEVER_SPEED_STEP = 5, LEVER_SPEED_DEFAULT = 100;
 
     /** 小红点：灵敏度（倍数，默认 1.0）、轻点红点 = 左键（默认开）、负惯性（默认开）。 */
     static final String STICK_SPEED = "stick_speed", STICK_TAP = "stick_tap", STICK_INERTIA = "stick_inertia";

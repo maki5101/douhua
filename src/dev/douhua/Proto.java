@@ -16,7 +16,7 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 19;
+    public static final int VERSION = 20;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
     /**
@@ -54,8 +54,14 @@ public final class Proto {
     public static final int CMD_LAYOUT = 5;
     /** 心跳：App 主线程每秒一次。服务超过 HEARTBEAT_TIMEOUT_MS 收不到就释放触摸屏。 */
     public static final int CMD_HEARTBEAT = 6;
-    /** 虚拟键盘按键：key:u16（同 REGION_KEY 的 id）, down:u8。服务没接管触摸屏时，App 自己收到键盘区的触摸就发这个。 */
+    /**
+     * 虚拟键盘按键：key:i32（同 REGION_KEY 的 id，含合并键 {@link #dualKey}）, action:u8（{@link #KEY_UP} / {@link #KEY_DOWN} / {@link #KEY_CANCEL}）。
+     * 服务没接管触摸屏时，App 自己收到键盘区的触摸、动作里的组合键就发这个；服务的分流按同一份规则判点一下 / 按住 / 锁（KeyHolds），时间用收到的时刻。
+     * 协议 20 起（以前是 key:u16, down:u8）：i32 是合并键的 id 放不进 16 位；CANCEL 是被取消的手指不能当"点了一下"（不然取消一下就发 Caps / 逗号）。
+     * 不算心跳。
+     */
     public static final int CMD_HID_KEY = 7;
+    public static final int KEY_UP = 0, KEY_DOWN = 1, KEY_CANCEL = 2;
     /**
      * 转屏：displayId:i32, rotation:u8（Surface.ROTATION_*）。服务把这块屏锁定到这个方向
      * （和系统导航栏的旋转建议按钮做的一样）；连接断开时恢复原来的方向锁定。
@@ -100,6 +106,12 @@ public final class Proto {
      * 服务的分流收到后手柄那一路回到中立。不算心跳。
      */
     public static final int CMD_GAMEPAD_CONFIG = 15;
+    /**
+     * 清掉锁住的修饰键（协议 20 起）：不带参数。服务的分流把锁定全部解开（HID 里这些位松开，同一位还有手指按着的照旧按着；快锁了的、待定的不动）。
+     * 进空中鼠标、手柄页时 App 发（不然 Ctrl 一直按着、每次点击都成了 Ctrl+点击）。取代以前"逐个点一下"：现在没锁着的修饰键点一下
+     * 就是给主机一次真单点（Super 打开开始菜单）；也不带 App 记的锁定掩码，那份可能晚一步。不算心跳。
+     */
+    public static final int CMD_UNLATCH = 16;
 
     public static final int REGION_PAD = 0;
     /** 普通按钮：服务报告按下 / 松开 / 点击，由 App 决定做什么。 */
@@ -110,8 +122,29 @@ public final class Proto {
      * 键盘键：id = HID 用法码 | (自带修饰键 << 8)。自带修饰键用 HID 修饰键位（1 Ctrl、2 Shift、4 Alt、8 Win），
      * 比如"@" = 0x1F | (2 << 8)（Shift+2），"复制" = 0x06 | (1 << 8)（Ctrl+C）。服务直接操作虚拟键盘；
      * 报给 App 的按钮编号是 KEY_ID_BASE + id。
+     * 另有合并键（协议 20 起，小红点状态的逗号句号）：id = {@link #dualKey}(点一下的键, 按住 0.4 秒的键)，两个都是上面那种 16 位的键 id。
      */
     public static final int REGION_KEY = 3;
+
+    /**
+     * 合并键的 id：tap | hold << 16（hold ≠ 0 且 ≤ 0x7FFF，id 保持正数）。点一下 = tap，按住 0.4 秒 = hold（只发一次点按），见 KeyHolds。
+     * 报给 App 的按钮编号照旧 KEY_ID_BASE + id（App 只看 ≥ KEY_ID_BASE）。
+     */
+    public static int dualKey(int tap, int hold) {
+        return (tap & 0xFFFF) | (hold & 0x7FFF) << 16;
+    }
+
+    public static boolean isDualKey(int id) {
+        return id > 0xFFFF;
+    }
+
+    public static int dualTap(int id) {
+        return id & 0xFFFF;
+    }
+
+    public static int dualHold(int id) {
+        return (id >>> 16) & 0x7FFF;
+    }
     /**
      * 键盘面板的整块范围（不是键，id 不用、填 0），排在它的键后面。按在这里却没落在任何键上（键间的缝、
      * 第二行两头的空位、外圈边距）时，分给范围里最近的键（TouchRouter.nearestKey）。旧服务不认识它，
@@ -231,7 +264,11 @@ public final class Proto {
      * （这时独占，系统永远等不到那根手指抬起）。
      */
     public static final int GRAB_WAIT_LIFT = 9;
-    /** 锁定中的修饰键：mask:u8（HID 修饰键位：1 Ctrl、2 Shift、4 Alt、8 Win）。点一下修饰键锁定，打完下一个键自动解开。 */
+    /**
+     * 修饰键的状态：latched:u8, held:u8, armed:u8（HID 修饰键位：1 Ctrl、2 Shift、4 Alt、8 Win，右边四个 << 4）。
+     * latched = 锁住的（单独按住 0.4–1 秒松手锁，打完下一个键自动解开）；held = 现在有手指按着的；armed = 单独按住到了 0.4 秒、"现在松手就锁"的。
+     * App 照 latched | armed 画高亮、照 latched | held 换键帽上的字。协议 20 起（以前只有 latched 一个字节）。
+     */
     public static final int MSG_MODIFIERS = 0x85;
     /**
      * 转发的鼠标报文（relay 模式）：buttons:u8, dx:i16, dy:i16, wheel:i16, pan:i16。wheel / pan 是 1/120 格（Hid.WHEEL_UNIT），
@@ -276,6 +313,11 @@ public final class Proto {
      */
     public static final int MSG_GAMEPAD = 0x8A;
     public static final int GAMEPAD_FLAG_RELAY = 1, GAMEPAD_FLAG_FAILED = 0x80;
+    /**
+     * Caps 的显示该翻一下了（协议 20 起）：sent:u8（1 = 这次给主机发了 Caps Lock（点一下），0 = 只切显示（按住 0.4 秒））。
+     * 显示状态只有 App 一份（主机的大写锁定跨连接都在，服务的分流和 App 的本地分流各自 releaseAll，放进哪个都会丢），服务只报"翻一下"。
+     */
+    public static final int MSG_CAPS = 0x8B;
 
     public static final int BUTTON_DOWN = 0;
     /** 松开但不算点击（手指滑出了按钮，或被取消）。 */

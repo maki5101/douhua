@@ -37,7 +37,14 @@ final class Link {
         /** reason 是 Proto.GRAB_*，detail 是屏幕编号或错误原文。 */
         void onGrab(boolean grabbed, int reason, String detail);
 
-        void onModifiers(int mask);
+        /**
+         * 修饰键的状态（Proto.MSG_MODIFIERS，协议 20 起三样，HID 修饰键位）：latched = 锁住的，held = 有手指按着的，
+         * armed = 单独按住到了 0.4 秒、"现在松手就锁"的。界面照 latched | armed 画高亮、照 latched | held 换键帽上的字。
+         */
+        void onModifiers(int latched, int held, int armed);
+
+        /** Caps 的显示该翻一下了（Proto.MSG_CAPS）：sent = 这次给主机发了 Caps Lock（点一下），假 = 只切显示（按住 0.4 秒）。 */
+        void onCaps(boolean sent);
 
         /** 蓝牙模式下服务接管触摸屏时，分流出的鼠标报文（见 Proto.MSG_MOUSE）。 */
         void onRelayMouse(int buttons, int dx, int dy, int wheel, int pan);
@@ -155,9 +162,17 @@ final class Link {
         offer(b);
     }
 
-    /** 服务没接管触摸屏时，键盘区的触摸由 App 收到后转发。 */
-    void hidKey(int usage, boolean down) {
-        offer(ByteBuffer.allocate(4).put((byte) Proto.CMD_HID_KEY).putShort((short) usage).put((byte) (down ? 1 : 0)));
+    /**
+     * 服务没接管触摸屏时，键盘区的触摸、动作里的组合键由 App 收到后转发（协议 20：key:i32，含合并键；action = Proto.KEY_DOWN / KEY_UP / KEY_CANCEL）。
+     * 服务的分流照同一份规则判点一下 / 按住 / 锁（KeyHolds），时间用它收到的时刻。
+     */
+    void hidKey(int key, int action) {
+        offer(ByteBuffer.allocate(6).put((byte) Proto.CMD_HID_KEY).putInt(key).put((byte) action));
+    }
+
+    /** 清掉服务那边锁住的修饰键（Proto.CMD_UNLATCH，不带参数）：进空中鼠标、手柄页时，不然 Ctrl 一直按着、每次点击都成了 Ctrl+点击。 */
+    void unlatch() {
+        offer(ByteBuffer.allocate(1).put((byte) Proto.CMD_UNLATCH));
     }
 
     void rotate(int displayId, int rotation) {
@@ -322,8 +337,15 @@ final class Link {
                             break;
                         }
                         case Proto.MSG_MODIFIERS: {
-                            int mask = in.readUnsignedByte();
-                            main.post(() -> listener.onModifiers(mask));
+                            int latched = in.readUnsignedByte();
+                            int held = in.readUnsignedByte();
+                            int armed = in.readUnsignedByte();
+                            main.post(() -> listener.onModifiers(latched, held, armed));
+                            break;
+                        }
+                        case Proto.MSG_CAPS: {
+                            boolean sent = in.readUnsignedByte() == 1;
+                            main.post(() -> listener.onCaps(sent));
                             break;
                         }
                         case Proto.MSG_MOUSE: {

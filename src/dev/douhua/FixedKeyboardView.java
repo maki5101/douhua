@@ -21,7 +21,8 @@ import java.util.List;
  *
  * 平时触摸由服务处理（按报上去的区域分键）；服务没接管、也没走本地分流时，面板自己收触摸（{@link #onTouchEvent}，按手指编号分给键，
  * 同 KeyboardPanel：KeyFingers + TouchRouter.nearestKey），嵌着的小红点圆、让给三个鼠标键的空位不算任何键。
- * 颜色全从当前主题取（Style.theme，主次键帽同 KeyRows.functionKey）；修饰键左右八个都画高亮；锁住 Shift / 第三层时会出的那个字照常、别的压暗；
+ * 颜色全从当前主题取（Style.theme，主次键帽同 KeyRows.functionKey）；修饰键左右八个都画高亮（锁住的、"现在松手就锁"的），Caps 开着时也亮；
+ * 锁住或按着 Shift / 第三层时会出的那个字照常、别的压暗，字母跟着 Caps 换大小写（FixedPanel.upper）；
  * 死键用强调色（activeText，对键帽够 4.5:1）。被小红点切到的键沿圆弧切掉一块，直接用豆花布局那个 Style.CutCap 画（圆角矩形减去圆）。
  */
 final class FixedKeyboardView extends View implements KeyboardFace {
@@ -31,7 +32,9 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     private final KeyFingers fingers = new KeyFingers();
     private final int gap;
     private final float corner, pad, labelRoom;
-    private int modifiers;
+    /** 换层看的修饰键（latched | held：锁住或按着都换）、高亮看的（latched | armed）、豆花这边显示的大写锁定，见 {@link #setKeyState}。 */
+    private int mods, shown;
+    private boolean capsOn;
     /** 每个键（model.keys 的下标）按着没有。 */
     private boolean[] pressed = new boolean[0];
     /** 每个键的每个键帽（FixedPanel.capBoxes）的形状：按 {@link #applyTheme} 时的边框粗细缩进半条边框（同 GradientDrawable / Style.CutCap）。 */
@@ -80,9 +83,12 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     }
 
     @Override
-    public void setModifiers(int mask) {
-        if (mask == modifiers) return;
-        modifiers = mask;
+    public void setKeyState(int latched, int held, int armed, boolean caps) {
+        int m = latched | held, sh = latched | armed;
+        if (m == mods && sh == shown && caps == capsOn) return;
+        mods = m;
+        shown = sh;
+        capsOn = caps;
         invalidate();
     }
 
@@ -161,7 +167,10 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         invalidate();
     }
 
-    /** 面板自己收的手指按着的键松开（不算点击）、按下的样子和放大提示收掉（换键盘、换 ⋯ / 空位前）。 */
+    /**
+     * 面板自己收的手指按着的键松开（不算点击，KEY_CANCEL）、按下的样子和放大提示收掉（换键盘、换 ⋯ / 空位前）。
+     * 实体键盘没有换层，这几样都是改设置 / 换窗口，不在打字中途，照旧全部当取消（豆花布局换层时按 Key 对象保住还显示着的键）。
+     */
     private void dropTouches() {
         for (int index : fingers.cancel()) release(index, false);
         clearPressed();
@@ -228,16 +237,21 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         for (int i = 0; i < keys.size() && i < paths.length; i++) {
             if (paths[i] == null) continue;
             FixedLayout.Key k = keys.get(i);
-            boolean active = FixedPanel.active(k, modifiers);
+            boolean active = FixedPanel.active(k, shown, capsOn);
             boolean fn = model.functionKey(i) && !active;
             boolean down = i < pressed.length && pressed[i];
-            int fillColor = down ? (fn ? t.fnPressed : t.pressed) : (fn ? t.fnKey : t.key);
-            int strokeColor = active ? t.accent : t.border;
+            // ⋯ 槽：强调色的底 + 反差字、不画边框（同豆花布局的 ⋯ 键，Style.menuKeyLook）。键帽的路径往里缩了半条边框，
+            // 别的键描边时外沿才到键帽的边：⋯ 照样"描边"、只是描成底色，大小和旁边的键一样（按键边框关着时都不描，也一样）
+            boolean menu = KeyRows.menuKey(k.id);
+            int fillColor = menu ? (down ? t.menuKeyPressed : t.menuKey)
+                    : down ? (fn ? t.fnPressed : t.pressed) : (fn ? t.fnKey : t.key);
+            int strokeColor = menu ? fillColor : active ? t.accent : t.border;
+            boolean edge = active || borders;
             float[] cut = model.cut(i);
             if (cut != null && !k.lShape()) {
                 // 被小红点切掉一块：和豆花布局同一个画法（Style.CutCap：圆角矩形减去圆，边框沿圆弧走、外沿对齐键帽的边）
                 int[] b = model.box(i);
-                Style.CutCap cap = new Style.CutCap(corner, active || borders ? strokeW : 0, strokeColor, fillColor,
+                Style.CutCap cap = new Style.CutCap(corner, edge ? strokeW : 0, strokeColor, fillColor,
                         cut[0] - b[0], cut[1] - b[1], cut[2]);
                 cap.setBounds(b[0], b[1], b[2], b[3]);
                 cap.draw(canvas);
@@ -246,11 +260,11 @@ final class FixedKeyboardView extends View implements KeyboardFace {
                 stroke.setColor(strokeColor);
                 for (Path p : paths[i]) {
                     canvas.drawPath(p, fill);
-                    if (active || borders) canvas.drawPath(p, stroke);
+                    if (edge) canvas.drawPath(p, stroke);
                 }
             }
-            int base = active ? t.activeText : fn ? t.fnText : t.text;
-            List<FixedPanel.Glyph> glyphs = model.glyphs(i, modifiers, space);
+            int base = menu ? t.menuKeyText : active ? t.activeText : fn ? t.fnText : t.text;
+            List<FixedPanel.Glyph> glyphs = model.glyphs(i, mods, capsOn, space);
             for (int[] b : model.capBoxes(i)) drawGlyphs(canvas, i, b, glyphs, base, t);
         }
     }
@@ -327,7 +341,7 @@ final class FixedKeyboardView extends View implements KeyboardFace {
             previewHost.hideKeyPreviewToken(token);
             return;
         }
-        String label = model.preview(i, modifiers);
+        String label = model.preview(i, mods, capsOn);
         if (label == null) return;
         int[] b = model.box(i);
         previewHost.showKeyPreviewAt(this, b[0], b[1], b[2], b[3], label, token);
@@ -371,19 +385,19 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     /** 先发键，再震动、画按下的样子（同 KeyboardPanel）。 */
     private void press(int index) {
         FixedLayout.Key k = model.keys().get(index);
-        if (!k.special) listener.onLocalKey(k.id, true);
+        if (!k.special) listener.onLocalKey(k.id, Proto.KEY_DOWN);
         listener.onKeyHaptic(k.id, k.special);
         pressed[index] = true;
         preview(index, true);
         invalidate();
     }
 
-    /** tap = 手指正常抬起（特殊键这时才算点了）；被取消、被顶掉的只松开。 */
+    /** tap = 手指正常抬起（特殊键这时才算点了；键发 KEY_UP）；被取消、被顶掉的发 KEY_CANCEL（修饰键不锁、Caps 什么都不出）。 */
     private void release(int index, boolean tap) {
         if (index < 0 || index >= model.keys().size()) return;
         FixedLayout.Key k = model.keys().get(index);
         if (!k.special) {
-            listener.onLocalKey(k.id, false);
+            listener.onLocalKey(k.id, tap ? Proto.KEY_UP : Proto.KEY_CANCEL);
         } else if (tap) {
             int id = k.id;
             post(() -> listener.onSpecialKey(id));

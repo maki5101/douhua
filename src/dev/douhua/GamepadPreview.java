@@ -69,8 +69,8 @@ final class GamepadPreview extends View {
         if (plan == null || w <= 0) return;
         float k = w / PAGE_W;
         painter.draw(canvas, spec, plan, neutral, theme, borders, k, labels ? 5 * density : 0);
-        if (labels) {   // 顶上正中的 ⋯（手柄页上是个 TextView，这里照样写一个）
-            dots.setColor(theme.status);
+        if (labels) {   // 顶上正中的 ⋯（手柄页上是个 TextView，这里照样写一个；同 Style.bare 用强调色 menuDots）
+            dots.setColor(theme.menuDots);
             dots.setTextSize(18 * k * 1.4f);
             float[] m = plan.menu;
             Paint.FontMetrics fm = dots.getFontMetrics();

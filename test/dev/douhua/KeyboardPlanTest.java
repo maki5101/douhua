@@ -1323,16 +1323,19 @@ public final class KeyboardPlanTest {
                 if (lw < mw || rw < mw) return "左右键比中键窄";
                 float unit = pw / 10f;
                 List<KeyRows.Placed> ps = KeyRows.place(letters, pw, ph, false, KeyRows.MIDDLE_PAD, g, p.hole, p.spread);
-                KeyRows.Placed sp = null, dot = null;
+                // 底行 ?123 [,.] 空格 │ 空位 │ 空格 ↵（2026-11-01：逗号句号合成一个键、右边第二个空格，份数同以前的 , .）
+                KeyRows.Placed sp = null, right = null, dual = null;
                 for (KeyRows.Placed q : ps) {
-                    if (q.key.id == 0x2C) sp = q;
-                    if (q.key.id == 0x37) dot = q;
+                    if (q.key.id == 0x2C && sp == null) sp = q;
+                    else if (q.key.id == 0x2C) right = q;
+                    if (q.key.id == Proto.dualKey(0x36, 0x37)) dual = q;
                 }
-                if (sp == null || dot == null) return "底行少了空格 / .";
+                if (sp == null || right == null || dual == null) return "底行少了空格 / 右空格 / 合并键";
+                if (right.left < p.hole[1] || dual.right > p.hole[0]) return "合并键 / 右空格摆错了边";
                 int spW = sp.right - sp.left + 2 * g;
                 if (spW < Math.round(unit * KeyRows.STICK_SPACE_MIN) - 2) return "空格比 1 份短：" + spW;
                 if (spW > Math.round(unit * KeyRows.STICK_SPACE) + 2) return "空格比 1.5 份长：" + spW;
-                if (p.hole[1] > Math.round(unit * 7.5f)) return "空位右边过了 . 原来的左边（. ↵ 变窄了）";
+                if (p.hole[1] > Math.round(unit * 7.5f)) return "空位右边过了右空格原来的左边（右空格 ↵ 变窄了）";
                 int cx = KeyRows.stickPoint(pw, ph, letters.length)[0];
                 // 第 1 步（对称、够三个 44）；不然是第 2 步（空格最短、右边到 . 原来的左边——碰巧也可能对称，但不到 144 宽）
                 if (p.hole[0] + p.hole[1] == 2 * cx && p.hole[1] - p.hole[0] >= T.holeWidth(T.keyW)) {

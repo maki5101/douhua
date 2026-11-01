@@ -73,6 +73,28 @@ final class KeyFingers {
         return key;
     }
 
+    /**
+     * 键换了下标 / 有的不显示了（面板换层、分裂 / 合拢、⋯ 键、让位、重建底行，2026-11-01）：newIndexOfOld[旧下标] = 新下标（< 0 = 这个键不显示了）。
+     * 查得到的手指改成新下标（抬起时返回新下标，同一个键照样按着）；查不到的清掉，返回它们按着的旧下标（按手指编号排），调用方当取消松开。
+     * 换层时功能行的修饰键 / Caps、底行的合并键 / 空格在各层是同一个键，照旧按着；只有真消失的键松开。
+     */
+    int[] remap(int[] newIndexOfOld) {
+        int n = 0;
+        int[] gone = new int[POINTERS];
+        for (int p = 0; p < POINTERS; p++) {
+            int k = keyOf[p];
+            if (k == NONE) continue;
+            int nk = k >= 0 && k < newIndexOfOld.length ? newIndexOfOld[k] : -1;
+            if (nk >= 0) {
+                keyOf[p] = nk;
+            } else {
+                gone[n++] = k;
+                keyOf[p] = NONE;
+            }
+        }
+        return Arrays.copyOf(gone, n);
+    }
+
     /** 全部作废（ACTION_CANCEL、键要换掉了）：返回还按着的键（按手指编号排），都清掉。 */
     int[] cancel() {
         int n = 0;

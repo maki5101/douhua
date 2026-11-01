@@ -392,16 +392,6 @@ public final class Hid {
         return (mask & (MOD_CTRL | MOD_RCTRL)) != 0;
     }
 
-    /** 修饰键掩码（8 位，左边四个 + 右边四个）里按着的那几个键的用法码（0xE0–0xE7，从低位到高位）。界面替服务解开锁住的修饰键时逐个点一下。 */
-    public static int[] modifierUsages(int mask) {
-        int n = Integer.bitCount(mask & 0xFF);
-        int[] out = new int[n];
-        for (int bit = 0, i = 0; bit < 8; bit++) {
-            if ((mask & (1 << bit)) != 0) out[i++] = 0xE0 + bit;
-        }
-        return out;
-    }
-
     /**
      * 蓝牙用：鼠标 + 键盘 + 媒体键合成一个描述符，各自带报文编号。
      * 鼠标排第一是 2026-10-15 排查 iPad 点击无效时改的，后来发现那是 iPadOS 自己的毛病（别的鼠标当时也点不了），

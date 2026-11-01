@@ -27,7 +27,8 @@ import dev.douhua.KeyRows.Key;
  *   底行     符 ，空格 。↵
  *   快捷行   默认 复制 粘贴 剪切 撤销 全选 ← ↑ ↓ →，9 个位置都能在设置里换（选项是共用的动作清单 Actions）
  * "符"层把数字行和字母三行换成符号（一按就出，不用配 Shift），"Fn"层换成 F1–F12 和 Home/End/翻页。
- * 修饰键点一下锁定（高亮），打完下一个键自动解开。键位和分裂时怎么分见 {@link KeyRows}。
+ * 修饰键点一下就是按一下，单独按住 0.4–1 秒松手才锁（高亮），打完下一个键自动解开；Caps 点一下发、按住只切显示（2026-11-01，规则在
+ * TouchRouter / KeyHolds，这里只画：{@link #setKeyState}）。键位和分裂时怎么分见 {@link KeyRows}。
  *
  * 分裂（{@link #setSplit}，由 KeyboardScreen 按布局设置和键盘区的宽高定）时面板从左半的左边到右半的右边，默认两半各占三分之一宽，
  * 中间这一截面板不画东西，触控板由 KeyboardScreen 摆在那里；触控板藏起来 / 放在别处时两半往中间伸、只隔一条缝。
@@ -38,7 +39,8 @@ import dev.douhua.KeyRows.Key;
  * 键与键之间的缝、第二行两头的空位、外圈边距不是死区：分给最近的键（规则只有一份，TouchRouter.nearestKey；
  * 分流时由键盘范围 REGION_KEYBOARD 触发，面板自己收触摸时由 {@link KeyFingers#pick} 调它）。
  * 所有键帽 view 都是面板的直接子 view，建一次缓存着（三层、两种布局都是），换层、分裂 / 合拢只切显示、重新摆放。
- * 键帽分主次（主题的功能键颜色）：字母、数字、空格、标点是普通键，其余（修饰键、⌫ ↵、F 键、?123、快捷行……）是功能键，见 KeyRows.functionKey。
+ * 键帽分主次（主题的功能键颜色）：字母、数字、空格、标点是普通键，其余（修饰键、⌫ ↵、F 键、?123、快捷行……）是功能键，见 KeyRows.functionKey；
+ * 功能行最右的 ⋯ 另画成强调色的底 + 反差字、不带边框（Style.menuKeyLook，2026-11-01）。
  *
  * 键盘页上的两块面板之一（豆花布局；另一块是实体键盘 FixedKeyboardView，第 1B 批），对外的共同方法在 KeyboardFace，
  * 切到实体键盘再切回来这块面板不销毁（层、键帽缓存都留着），设置一个都不写。
@@ -49,8 +51,11 @@ import dev.douhua.KeyRows.Key;
  */
 final class KeyboardPanel extends ViewGroup implements KeyboardFace {
     interface Listener {
-        /** 服务没接管时，键被按下 / 松开。key 同 Proto.REGION_KEY 的 id。 */
-        void onLocalKey(int key, boolean down);
+        /**
+         * 服务没接管时，键被按下 / 松开。key 同 Proto.REGION_KEY 的 id（含合并键），action = Proto.KEY_DOWN / KEY_UP / KEY_CANCEL
+         * （被取消的手指：ACTION_CANCEL、服务接管时 releaseTouches、换键时消失了的键——修饰键不锁，Caps、合并键什么都不出）。
+         */
+        void onLocalKey(int key, int action);
 
         void onKeyHaptic(int id, boolean special);
 
@@ -107,6 +112,8 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
         int left, top, right, bottom;
         /** 被小红点切掉的那块：{圆心 x, 圆心 y, 半径}（键帽自己的坐标）；没被切到是 null。 */
         float[] cut;
+        /** 带角上小字的键（合并键）按着 0.4 秒把放大提示换成角上那个字（{@link #preview}）。 */
+        Runnable cornerLater;
 
         Cap(Key key, TextView view, boolean fn) {
             this.key = key;
@@ -121,7 +128,9 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
     /** 快捷行（设置里可改）。 */
     private Key[] shortcuts = new Key[0];
     private int layer = KeyRows.LAYER_LETTERS;
-    private int modifiers;
+    /** 修饰键的状态（MSG_MODIFIERS：锁住 / 按着 / 快锁了）、豆花这边显示的大写锁定，见 {@link #setKeyState}。 */
+    private int latched, held, armed;
+    private boolean capsOn;
     private boolean split;
     /** 功能行最右边带 ⋯ 键（小触控板没摆出来时，见 {@link #setMenuKey}）。 */
     private boolean menuKey;
@@ -180,24 +189,34 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
         rebuildBottom();
     }
 
-    /** 服务报来的锁定修饰键：高亮对应键，锁定 Shift 时显示大写和上档符号。 */
+    /**
+     * 修饰键和 Caps 的显示（KeyboardFace.setKeyState）：锁住的、"现在松手就锁"的修饰键和开着的 Caps 高亮；
+     * 锁住或按着 Shift 时显示大写和上档符号，Caps 开着时字母按 KeyRows.capText 换大小写。
+     */
     @Override
-    public void setModifiers(int mask) {
-        modifiers = mask;
+    public void setKeyState(int latched, int held, int armed, boolean caps) {
+        if (latched == this.latched && held == this.held && armed == this.armed && caps == capsOn) return;
+        // 按着的修饰键松开了：分流照 KeyHolds 的规则先把待定的合并键当点一下结算掉，提示不再换成角上那个字
+        if ((this.held & ~held) != 0) settleCorners(-1);
+        this.latched = latched;
+        this.held = held;
+        this.armed = armed;
+        capsOn = caps;
         refreshLabels();
     }
 
-    /** "符" / "Fn" 被点了。 */
+    /** "符" / "Fn" 被点了。按着的功能行修饰键 / Caps、底行的合并键 / 空格在各层是同一个键，照旧按着（{@link #changeKeys}）。 */
     void onLayerButton(int id) {
         int target = id == FN_BUTTON_ID ? KeyRows.LAYER_FN : KeyRows.LAYER_SYMBOLS;
-        dropTouches();
-        layer = layer == target ? KeyRows.LAYER_LETTERS : target;
-        showLayer();
+        changeKeys(() -> {
+            layer = layer == target ? KeyRows.LAYER_LETTERS : target;
+            showLayer();
+        });
     }
 
     /**
      * 分裂成左右两半 / 合成一整块，分裂时两半中间留多宽（KeyboardScreen 量尺寸时按布局设置、键盘区的宽高定，见 KeyboardPlan）。
-     * 键的位置全变了：面板自己收的手指按着的键先松开、按下的样子收掉，再换显示的键（分裂时多一个空格）。
+     * 键的位置全变了：换显示的键（分裂时多一个空格），面板自己收的手指按着的键还显示着就照旧按着、消失了的当取消松开（{@link #changeKeys}）。
      * 只是中间宽度变了（触控板显示 / 隐藏、调整模式里拖两半）也一样：两半的键都挪了位置。
      * seam = 两半只隔一条缝（KeyboardPlan.Plan.seam，决定键盘范围伸不伸到缝的中线）。
      * 在 KeyboardScreen.onMeasure 里、量这个面板之前调：这里改子 view 的显示只会让接着的这次测量把它们算进去。
@@ -206,11 +225,12 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
         int m = on ? middle : KeyRows.MIDDLE_PAD;
         boolean sm = on && seam;
         if (on == split && m == this.middle && sm == this.seam) return;
-        dropTouches();
-        split = on;
-        this.middle = m;
-        this.seam = sm;
-        showLayer();
+        changeKeys(() -> {
+            split = on;
+            this.middle = m;
+            this.seam = sm;
+            showLayer();
+        });
     }
 
     boolean isSplit() {
@@ -219,29 +239,32 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
 
     /**
      * 功能行最右边带不带 ⋯ 键（KeyboardScreen 量尺寸时定：小触控板摆出来、角上放得下 ⋯ 小方块就不带，不然带）。
-     * 功能行的键都挪了位置：同 {@link #setSplit}，先松开按着的键、收掉按下的样子，在量这个面板之前调。
+     * 功能行的键都挪了位置：同 {@link #setSplit}（按着的键还显示着就照旧按着），在量这个面板之前调。
      */
     @Override
     public void setMenuKey(boolean on) {
         if (on == menuKey) return;
-        dropTouches();
-        menuKey = on;
-        showLayer();
+        changeKeys(() -> {
+            menuKey = on;
+            showLayer();
+        });
     }
 
     /**
      * 小红点状态下底行、快捷行在中间让出的空位 {左, 右}（面板 x，KeyboardPlan.Plan.hole；null = 不让）：底行的空格缩短、
      * spread（KeyboardPlan.Plan.spread）时快捷行的键也分到两边，不然快捷行照旧铺满（KeyRows.place），空位里放三个鼠标键（KeyboardScreen 摆，叠在面板上面）。
-     * 键的位置变了：同 {@link #setSplit}，先松开按着的键，在量这个面板之前调。
+     * 键的位置变了：同 {@link #setSplit}（按着的键还显示着就照旧按着），在量这个面板之前调。
      */
     @Override
     public void setHole(int[] hole, boolean spread) {
         boolean sp = hole != null && spread;
         if (java.util.Arrays.equals(hole, this.hole) && sp == this.spread) return;
-        dropTouches();
-        this.hole = hole == null ? null : hole.clone();
-        this.spread = sp;
-        showLayer();
+        int[] h = hole == null ? null : hole.clone();
+        changeKeys(() -> {
+            this.hole = h;
+            this.spread = sp;
+            showLayer();
+        });
     }
 
     /** ⋯ 键摆在哪（面板坐标 {左, 上, 右, 下}，量过尺寸之后才对）；功能行没带它时返回 null。 */
@@ -349,17 +372,18 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
         setShortcuts(shortcutActions);   // 重建底行和快捷行（键的编号跟着变），区域会随重新布局报上去
     }
 
-    /** 重建底行和快捷行（换主机、换快捷行）；功能行和中间三层不动。 */
+    /** 重建底行和快捷行（换主机、换快捷行）；功能行和中间三层不动（按着的照旧按着），底行、快捷行的键帽换了新的，按着的当取消松开。 */
     private void rebuildBottom() {
-        dropTouches();
-        for (Cap c : bottomCaps) {
-            removeView(c.view);
-            capOf.remove(c.key);
-        }
-        bottomCaps.clear();
-        bottomRows = KeyRows.bottomRows(apple, shortcuts);
-        addCaps(bottomRows, bottomCaps);
-        showLayer();
+        changeKeys(() -> {
+            for (Cap c : bottomCaps) {
+                removeView(c.view);
+                capOf.remove(c.key);
+            }
+            bottomCaps.clear();
+            bottomRows = KeyRows.bottomRows(apple, shortcuts);
+            addCaps(bottomRows, bottomCaps);
+            showLayer();
+        });
     }
 
     /**
@@ -371,7 +395,7 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
             if (capOf.containsKey(key)) continue;
             // 一个字（含 🌐 这种占两个 char 的）用大字，多个字的键名用小字
             boolean oneChar = key.label.codePointCount(0, key.label.length()) <= 1;
-            TextView v = Style.keyButton(getContext(), oneChar ? 18 : 13);
+            TextView v = Style.keyButton(getContext(), oneChar ? 18 : 13, key.corner);   // 合并键右上角另画一个小字
             if (key.id == GLOBE_BUTTON_ID) v.getPaint().setColorFilter(grayEmoji());   // 🌐 是彩色 emoji，去色调暗，和别的键一个色调
             v.setVisibility(GONE);
             addView(v);
@@ -432,8 +456,7 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
     }
 
     /**
-     * 键要换掉了（换层、重建底行、分裂 / 合拢）：面板自己收的手指按着的键先松开；所有键画回松开的样子、收起放大提示
-     * （服务转来的按下等不到这些键的松开了，藏起来的层下次显示时也不该还按着）。
+     * 服务刚接管（releaseTouches）：面板自己收的手指按着的键全部当取消松开；所有键画回松开的样子、收起放大提示。
      */
     private void dropTouches() {
         releaseFingers();
@@ -441,6 +464,28 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
             look(c, false);
             preview(c, false);
         }
+    }
+
+    /**
+     * 换键（换层、分裂 / 合拢、⋯ 键、让位、重建底行，2026-11-01 起）：change 里改状态、换显示的键（showLayer），之后按 Key 对象（Cap）
+     * 把面板自己收的手指重新对上（KeyFingers.remap）：还显示着的键（功能行的修饰键 / Caps、底行的合并键 / 空格在各层是同一个 Key 对象）
+     * 照旧按着——按住功能行的 Shift 点 ?123 再按符号、按住合并键时滚着点了 ?123，Shift 不松、逗号不丢；只有真消失的键当取消松开（KEY_CANCEL）。
+     * 以前一律当取消松开，新规则下修饰键松手就算数，换层会把按着的 Shift / Ctrl 松掉。
+     * 样子：消失了的键帽画回松开；还显示着的保持按着的样子（含服务转来的按下，它们的松开照常会到）；放大提示都收掉（位置可能变了）。
+     */
+    private void changeKeys(Runnable change) {
+        List<Cap> old = new ArrayList<>(caps);
+        for (Cap c : old) preview(c, false);
+        change.run();
+        IdentityHashMap<Cap, Integer> now = new IdentityHashMap<>();
+        for (int i = 0; i < caps.size(); i++) now.put(caps.get(i), i);
+        int[] map = new int[old.size()];
+        for (int i = 0; i < map.length; i++) {
+            Integer j = now.get(old.get(i));
+            map[i] = j == null ? -1 : j;
+        }
+        for (int o : fingers.remap(map)) release(old.get(o), false);
+        for (Cap c : old) if (!now.containsKey(c)) look(c, false);
     }
 
     // ═══════════ 摆放 ═══════════
@@ -505,8 +550,8 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
     }
 
     private String label(Key key) {
-        String label = key.label;
-        if ((modifiers & KeyRows.SHIFT) != 0 && key.shifted != null) label = key.shifted;
+        // 锁住或按着 Shift 换上档字、字母再看 Caps（连苹果设备时 Shift ∨ Caps，别的主机 Shift ⊕ Caps）
+        String label = KeyRows.capText(key, latched | held, capsOn, apple);
         // 跟着系统语言的键名
         if (key.id == 0x2C) label = getContext().getString(R.string.key_space);
         if (key.id == 0xE0) label = apple ? "⌃" : "Ctrl";
@@ -518,11 +563,43 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
         return label;
     }
 
-    /** 字符键按下时放大显示（看清按到了哪个），松开收起。 */
+    /**
+     * 字符键按下时放大显示（看清按到了哪个），松开收起。合并键（角上有小字）按着 0.4 秒（KeyHolds.HOLD_MS）把提示换成角上那个字：
+     * 只是样子，真正出什么字由分流定（差几毫秒无所谓）。
+     */
     private void preview(Cap c, boolean pressed) {
         if (previewHost == null) return;
-        if (!pressed) previewHost.hideKeyPreview(c.view);
-        else if (isCharKey(c)) previewHost.showKeyPreview(c.view, c.view.getText().toString());
+        if (c.cornerLater != null) removeCallbacks(c.cornerLater);
+        if (!pressed) {
+            previewHost.hideKeyPreview(c.view);
+        } else if (isCharKey(c)) {
+            previewHost.showKeyPreview(c.view, c.view.getText().toString());
+            if (c.key.corner != null) {
+                if (c.cornerLater == null) {
+                    c.cornerLater = () -> {
+                        if (previewHost != null && c.pressed) previewHost.showKeyPreview(c.view, c.key.corner);
+                    };
+                }
+                postDelayed(c.cornerLater, KeyHolds.HOLD_MS);
+            }
+        }
+    }
+
+    /**
+     * 合并键按着、还没到 0.4 秒时分流把它结算了（KeyHolds：别的键按下、按着的修饰键松开之前先当点一下发出逗号，之后按多久都不再出句号）：
+     * 放大提示照旧是逗号，不再到点换成角上那个字。except = 这次按下的键（合并键自己按下不算）；-1 = 都撤。
+     * 只照面板看得到的两件事撤（别的键按下、按着的修饰键少了一位）：开合开始时分流也结算，App 看不到，那时提示照样会换（只是样子）；
+     * 被取消的修饰键松开分流不结算，这里分不出来、照样撤（手掌压在 Shift 上这类，少见）。
+     */
+    private void settleCorners(int except) {
+        for (Cap c : capOf.values()) {
+            if (c.cornerLater != null && c.key.id != except) removeCallbacks(c.cornerLater);
+        }
+    }
+
+    /** 服务 / 本地分流报来别的键按下了（MainActivity.onButton 键那一支，按键本身分流已经发了）：见 {@link #settleCorners}。 */
+    void otherKeyDown(int id) {
+        settleCorners(id);
     }
 
     /** 字符键：键帽只有一个字的字母、数字、符号。修饰键、⇧ ⌫ ↵、空格、F 键、快捷行不放大。 */
@@ -533,17 +610,22 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
         return t.length() == 1 && "⇧⌫↵".indexOf(t) < 0;
     }
 
-    /** 高亮（换层键、锁定的修饰键）和按下的样子，功能键用主题的功能键颜色；和上次画的一样就不动（Style.keyLook 每次都新建背景）。 */
+    /**
+     * 高亮（换层键、锁住的和"现在松手就锁"的修饰键、开着的 Caps，KeyRows.lit）和按下的样子，功能键用主题的功能键颜色；
+     * 和上次画的一样就不动（Style.keyLook 每次都新建背景）。
+     */
     private void look(Cap c, boolean pressed) {
         int id = c.key.id;
         boolean active = (id == SYMBOLS_BUTTON_ID && layer == KeyRows.LAYER_SYMBOLS)
                 || (id == FN_BUTTON_ID && layer == KeyRows.LAYER_FN)
-                || (id >= 0xE0 && id <= 0xE3 && (modifiers & (1 << (id - 0xE0))) != 0);
+                || KeyRows.lit(c.key, latched | armed, capsOn);
         c.pressed = pressed;
         int state = (active ? 2 : 0) | (pressed ? 1 : 0);
         if (state == c.look) return;
         c.look = state;
-        Style.keyLook(c.view, c.fn, active, pressed, c.cut);
+        // ⋯ 键：强调色的底 + 反差字、不画边框（KeyRows.menuKey；它是特殊键，从不高亮）
+        if (KeyRows.menuKey(id)) Style.menuKeyLook(c.view, pressed, c.cut);
+        else Style.keyLook(c.view, c.fn, active, pressed, c.cut);
     }
 
     // ═══════════ 键自己收触摸（服务没接管、没走本地分流时） ═══════════
@@ -571,14 +653,14 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
                 int index = keyAt(e.getX(i), e.getY(i));
                 if (index < 0) break;   // 不在键盘范围里（分裂时的中间、多指时派到这里的别处手指）
                 int old = fingers.down(e.getPointerId(i), index);
-                if (old != KeyFingers.NONE) release(old, false);
-                press(index);
+                if (old != KeyFingers.NONE) release(caps.get(old), false);
+                press(caps.get(index));
                 break;
             }
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_POINTER_UP: {
                 int index = fingers.up(e.getPointerId(e.getActionIndex()));
-                if (index != KeyFingers.NONE) release(index, true);
+                if (index != KeyFingers.NONE) release(caps.get(index), true);
                 break;
             }
             case MotionEvent.ACTION_CANCEL:
@@ -590,9 +672,9 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
         return true;
     }
 
-    /** 面板自己收的手指按着的键全部松开（不算点击）。 */
+    /** 面板自己收的手指按着的键全部松开（不算点击，KEY_CANCEL）。 */
     private void releaseFingers() {
-        for (int index : fingers.cancel()) release(index, false);
+        for (int index : fingers.cancel()) release(caps.get(index), false);
     }
 
     /** 面板坐标 (x, y) 该算哪个键（caps 的下标），范围外 / 没有键返回 -1。 */
@@ -623,19 +705,23 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
     }
 
     /** 先发键，再震动、画按下的样子（震动是一次 binder 调用，画背景也要时间，别让报文等它们）。 */
-    private void press(int index) {
-        Cap c = caps.get(index);
-        if (!c.key.special) listener.onLocalKey(c.key.id, true);
+    private void press(Cap c) {
+        if (!c.key.special) {
+            listener.onLocalKey(c.key.id, Proto.KEY_DOWN);
+            settleCorners(c.key.id);   // 分流先把待定的合并键结算掉了（出逗号）
+        }
         listener.onKeyHaptic(c.key.id, c.key.special);
         look(c, true);
         preview(c, true);
     }
 
-    /** tap = 手指正常抬起（特殊键这时才算点了）；被取消、被顶掉的只松开。 */
-    private void release(int index, boolean tap) {
-        Cap c = caps.get(index);
+    /**
+     * tap = 手指正常抬起（特殊键这时才算点了；键发 KEY_UP）；被取消、被顶掉、换键时消失了的发 KEY_CANCEL（修饰键松开但不锁，
+     * Caps、合并键什么都不出，不然取消一下就发 Caps / 逗号）。按 Cap 不按下标：换键以后下标就变了。
+     */
+    private void release(Cap c, boolean tap) {
         if (!c.key.special) {
-            listener.onLocalKey(c.key.id, false);
+            listener.onLocalKey(c.key.id, tap ? Proto.KEY_UP : Proto.KEY_CANCEL);
         } else if (tap) {
             post(() -> listener.onSpecialKey(c.key.id));
         }

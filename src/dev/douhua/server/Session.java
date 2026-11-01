@@ -36,7 +36,7 @@ import dev.douhua.TouchRouter;
  *
  * 线程：命令线程（douhua-session，每条连接一个）读 App 的消息；监管线程负责独占和读触摸；
  * 实体键线程（douhua-keys）负责独占和读音量键（{@link #superviseKeys}；电源键从不独占）；
- * 定时器线程跑轻点拖动的等待、惯性滚动的每一帧和切键盘焦点（router 的定时器撤掉 / 被取代后，已经到点、在等锁的那次不调，见 {@link OneShotTimer}）；节拍线程（douhua-tick）在小红点 / 中键滚动杆按着时按固定间隔推它（{@link #startTicks}）。
+ * 定时器线程跑轻点拖动的等待、惯性滚动的每一帧、修饰键 / Caps / 合并键按住到点（router 的第二个定时器，keyTimer）和切键盘焦点（router 的定时器撤掉 / 被取代后，已经到点、在等锁的那次不调，见 {@link OneShotTimer}）；节拍线程（douhua-tick）在小红点 / 中键滚动杆按着时按固定间隔推它（{@link #startTicks}）。
  * router 只在持有 lock 时访问。
  * 惯性滚动转着时：释放触摸屏（TouchReader 的 finally → router.releaseAll）、会话结束、换参数（setConfig）都走 engine.cancel 停下；
  * 看到任何一根手指按下（含分屏透传归系统的）也停。
@@ -191,6 +191,11 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     });
     /** TouchRouter 的一次性定时器（轻点拖动的等待、长按、惯性的每一帧）：撤掉 / 取代之后已经在等锁的那次回调不调（见 {@link OneShotTimer}）。 */
     private final OneShotTimer routerTimer = new OneShotTimer(timer, lock, () -> router.onTimer(SystemClock.uptimeMillis()));
+    /**
+     * TouchRouter 按键专用的一次性定时器（修饰键 / Caps / 合并键按住到点，KeyHolds；协议 20）：和引擎那个槽分开，同样撤掉 / 取代之后在等锁的那次不调。
+     * onKeyTimer 本身也按截止时刻 + 当前状态处理，过期的回调什么都不多做。
+     */
+    private final OneShotTimer keyTimer = new OneShotTimer(timer, lock, () -> router.onKeyTimer(SystemClock.uptimeMillis()));
     /**
      * 小红点的节拍：单独一个线程，不和定时器线程挤（那边切键盘焦点要等 binder，系统服务卡住时红点会跟着停）。
      * 桌面模式 8ms 一拍，蓝牙模式（转发）12ms（电脑约 11.25ms 收一次报文，发得更密会挤在一起、被对方当成加速）。
@@ -478,13 +483,19 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                     break;
                 }
                 case Proto.CMD_HID_KEY: {
-                    int usage = in.readUnsignedShort();
-                    boolean down = in.readUnsignedByte() == 1;
+                    // 协议 20：key:i32（含合并键）, action:u8（KEY_UP / KEY_DOWN / KEY_CANCEL）；时间用收到的时刻（同一个时基）
+                    int key = in.readInt();
+                    int action = in.readUnsignedByte();
                     synchronized (lock) {
-                        router.key(usage, down);
+                        router.key(key, action, SystemClock.uptimeMillis());
                     }
                     break;
                 }
+                case Proto.CMD_UNLATCH:
+                    synchronized (lock) {
+                        router.unlatch(SystemClock.uptimeMillis());   // 锁着的修饰键全部解开，按着的不动
+                    }
+                    break;
                 case Proto.CMD_TRACE: {
                     // 键盘触点写 logcat（和 App 本地分流写的同一个标签、同一种格式），不写服务的日志文件：等于按键记录，不落盘
                     boolean keys = (in.readUnsignedByte() & 1) != 0;
@@ -1142,8 +1153,13 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     }
 
     @Override
-    public void modifiers(int latched) {
-        send(new byte[]{(byte) Proto.MSG_MODIFIERS, (byte) latched});
+    public void modifiers(int latched, int held, int armed) {
+        send(new byte[]{(byte) Proto.MSG_MODIFIERS, (byte) latched, (byte) held, (byte) armed});
+    }
+
+    @Override
+    public void caps(boolean sent) {
+        send(new byte[]{(byte) Proto.MSG_CAPS, (byte) (sent ? 1 : 0)});
     }
 
     @Override
@@ -1154,6 +1170,16 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     @Override
     public void cancelSchedule() {
         routerTimer.cancel();
+    }
+
+    @Override
+    public void scheduleKeys(long delayMs) {
+        keyTimer.schedule(delayMs);
+    }
+
+    @Override
+    public void cancelKeys() {
+        keyTimer.cancel();
     }
 
     /** 小红点 / 中键滚动杆按着：按固定节拍推（调用方持有 lock）。释放触摸屏 → router.releaseAll → stopTicks，所以放开之后不会还在推光标。 */

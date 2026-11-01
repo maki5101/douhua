@@ -6,8 +6,9 @@ package dev.douhua;
  *
  * 每套只写几个"底子"（页面底色、键帽、键帽文字、强调色、触控板底色和边框，有的写了键帽边框），其余按固定规则推出来
  * （{@link Spec#build}）：灰色说明字、状态字取"离底色最近、对比度还够 4.5:1"的那个颜色，强调色当文字用时不够 4.5:1 就往亮 / 暗推。
- * 键帽分主次两种（照 Gboard / 三星键盘）：字母、数字、空格、标点用 key / text；功能键（修饰键、⌫ ↵、F 键、方向键、?123、Fn、🌐、⋯、
+ * 键帽分主次两种（照 Gboard / 三星键盘）：字母、数字、空格、标点用 key / text；功能键（修饰键、⌫ ↵、F 键、方向键、?123、Fn、🌐、
  * 快捷行……，哪些算见 KeyRows.functionKey）用 fnKey / fnText——键帽底色掺一点强调色、字用强调色。
+ * ⋯ 另有一套（menuKey / menuKeyText / menuKeyPressed，不带框的 ⋯ 用 menuDots）：强调色的底 + 反差字，比功能键显眼（2026-11-01）。
  * 纯黑是 2026-10-30 以前的样子，每个槽位都照原来的常量写死（功能键和普通键一样），选它和以前一模一样（ThemeTest 逐个锁住）。
  */
 final class Theme {
@@ -50,8 +51,20 @@ final class Theme {
     final int focus;
     /** 空中鼠标页圆钮平时的圈（跟随中用 activeText）。 */
     final int ring;
-    /** 触控板角上的小按钮（含键盘屏触控板角上的 ⋯）：字、边框。 */
+    /** 触控板角上的小按钮：字、边框。 */
     final int dim, dimBorder;
+    /**
+     * ⋯ 做成键帽时（豆花布局功能行最右的 ⋯ 键、实体键盘 Esc 和 F1 中间的 ⋯ 槽）：底、字、手指按着时的底（2026-11-01 用户：⋯ 用强调色，找得到）。
+     * 照 Gboard 的回车键：强调色的底 + 反差字、不画边框（"按键边框"开关不管它，Style.menuKeyLook）。
+     * 底 = 强调色往远离页面的方向推到对页面、键帽、功能键都 ≥ 3:1（键堆里一眼看出来）；字 = 页面色和正文色里对底反差大的那个，
+     * 不够 4.5:1 再推；按下 = 底往字色掺一成半（字对它 ≥ 3:1）。纯黑写死成 focus 的蓝（灰的强调色推出来不显眼）。
+     */
+    final int menuKey, menuKeyText, menuKeyPressed;
+    /**
+     * 不带框的 ⋯（主界面 / 键盘屏触控板顶上正中、手柄页顶上正中、设置 → 手柄预览里的）的字：强调色推到对触控板底、页面都 ≥ 4.5:1、
+     * 对按下的底（pressed，按着时垫的那块）≥ 3:1。有背景图时 ⋯ 下面垫不透明的触控板底色（TrackpadView），所以对 padFill 够就看得清。
+     */
+    final int menuDots;
     /** 贴字面板输入框里的灰色提示字。 */
     final int hint;
     /** 触控板里边缘滚动带的细线。 */
@@ -105,6 +118,12 @@ final class Theme {
         hint = or(s.hint, dim);
         edge = or(s.edge, blend(padFill, padBorder, 0.3f));
         menuFill = or(s.menuFill, blend(bg, accent, 0.08f));
+        // ⋯ 用强调色（见字段注释）：键帽形状的底先定，字跟着底挑
+        menuKey = or(s.menuKey, reachAll(accent, new int[]{bg, keyFill, fnFill}, new double[]{3, 3, 3}));
+        int pick = contrast(bg, menuKey) >= contrast(text, menuKey) ? bg : text;
+        menuKeyText = or(s.menuKeyText, reach(pick, menuKey, TEXT_RATIO));
+        menuKeyPressed = or(s.menuKeyPressed, blend(menuKey, menuKeyText, 0.15f));
+        menuDots = or(s.menuDots, reachAll(accent, new int[]{padFill, bg, pressed}, new double[]{TEXT_RATIO, TEXT_RATIO, 3}));
         stick = stickRed(bg, padFill);
         borderDp = s.borderDp;
         shade = shadeFor(bg, keyFill, text, fnFill, fnText, strong);
@@ -132,12 +151,15 @@ final class Theme {
 
     /** 先深色、后浅色（设置页按 {@link #light} 分两组，组里照这个顺序排）。 */
     static final Theme[] ALL = {
-            // ① 纯黑：2026-10-30 以前的 Style 常量，一个不改（外屏一直亮着，黑底最省电、最不烧屏）；功能键和普通键一样
+            // ① 纯黑：2026-10-30 以前的 Style 常量，一个不改（外屏一直亮着，黑底最省电、最不烧屏）；功能键和普通键一样。
+            // ⋯（2026-11-01 新加的四个槽位）写死成 focus 的蓝：强调色是灰的（#707070），推出来不显眼，用户就是嫌纯黑里找不到 ⋯；
+            // 按下 = 蓝往黑掺一成半（同别的主题的推法）
             new Spec("black", null).base(0xFF000000, 0x00000000, 0xFF8A8A8A, 0xFF707070, 0xFF000000, 0xFF2A2A2A)
                     .border(0xFF2A2A2A).pressed(0xFF1C1C1C).fn(0x00000000, 0xFF8A8A8A, 0xFF1C1C1C)
                     .activeText(0xFFDDDDDD).strong(0xFFDDDDDD)
                     .status(0xFF4A4A4A, 0xFF8A5A30).preview(0xFF2E2E2E, 0xFF8A8A8A, 0xFFF2F2F2).focus(0xFF8AB4F8)
                     .ring(0xFF707070).dim(0xFF5A5A5A, 0xFF1E1E1E).hint(0xFF555555).edge(0xFF1E1E1E).menuFill(0xFF121212)
+                    .menu(0xFF8AB4F8, 0xFF000000, 0xFF7599D3, 0xFF8AB4F8)
                     .build(),
             // ② 深色（Gboard 深色）；触控板边框用 Google 蓝 400（原来的 #5F6368 是灰的，对触控板底色只有 2.3:1，和键盘分不开）
             new Spec("dark", null).base(0xFF202124, 0xFF3C4043, 0xFFE8EAED, 0xFF8AB4F8, 0xFF2A2D33, 0xFF669DF6)
@@ -349,6 +371,21 @@ final class Theme {
         return far;
     }
 
+    /**
+     * 同 {@link #reach}，一次看几个底：往远离 against[0] 的方向推（方向只看第一个底的亮度），推到对每个 against[i] 都够 ratios[i] 为止；
+     * 推到头还不够就是那一头的黑 / 白。
+     */
+    static int reachAll(int c, int[] against, double[] ratios) {
+        int far = luminance(against[0]) > 0.4 ? 0xFF000000 : 0xFFFFFFFF;
+        for (int i = 0; i <= 50; i++) {
+            int d = blend(c, far, i / 50f);
+            boolean ok = true;
+            for (int j = 0; j < against.length; j++) ok &= contrast(d, against[j]) >= ratios[j];
+            if (ok) return d;
+        }
+        return far;
+    }
+
     /** from 到 to 之间最靠近 from、对 against 里每个颜色的对比度都够 ratio 的那个（灰色说明字：够看清就行，别比正文还亮）。 */
     static int dimmest(int from, int to, double ratio, int... against) {
         for (int i = 0; i <= 100; i++) {
@@ -372,7 +409,7 @@ final class Theme {
         int bad = 0xFFE07A5F;
         float borderDp = 1.5f;
         Integer border, pressed, fnKey, fnText, fnPressed, activeText, strong, status, statusBad, previewFill, previewBorder, previewText,
-                focus, ring, dim, dimBorder, hint, edge, menuFill;
+                focus, ring, dim, dimBorder, hint, edge, menuFill, menuKey, menuKeyText, menuKeyPressed, menuDots;
 
         Spec(String id, String fixedName) {
             this.id = id;
@@ -464,6 +501,15 @@ final class Theme {
 
         Spec menuFill(int c) {
             menuFill = c;
+            return this;
+        }
+
+        /** ⋯ 的键帽底、键帽字、按下的底、不带框时的字（纯黑写死）。 */
+        Spec menu(int key, int text, int pressed, int dots) {
+            menuKey = key;
+            menuKeyText = text;
+            menuKeyPressed = pressed;
+            menuDots = dots;
             return this;
         }
 

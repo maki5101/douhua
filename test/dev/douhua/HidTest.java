@@ -50,29 +50,13 @@ public final class HidTest {
     }
 
     /**
-     * 修饰键掩码的两个小工具：Ctrl 左右都算（实体键盘上锁右 Ctrl 也是缩放），界面替服务解开锁住的修饰键时左右八个都点一下
-     * （以前只看左边四个，实体键盘上锁住的右 Ctrl / AltGr 解不开，2026-11-01 审查发现）。
+     * 修饰键掩码的小工具：Ctrl 左右都算（实体键盘上锁右 Ctrl 也是缩放）。以前还有个 modifierUsages（界面替服务解开锁住的修饰键时逐个点一下），
+     * 协议 20 换成 CMD_UNLATCH 后删了：新规则下对没锁着的修饰键点一下就是给主机一次真单点。
      */
     static void modifierHelpers() {
         check(Hid.ctrl(Hid.MOD_CTRL) && Hid.ctrl(Hid.MOD_RCTRL) && Hid.ctrl(0xFF), "Ctrl：左 0x01、右 0x10 都算");
         check(!Hid.ctrl(0) && !Hid.ctrl(0x02 | 0x04 | 0x08 | 0x20 | 0x40 | 0x80), "别的修饰键不算 Ctrl");
         check(Hid.MOD_RCTRL == Hid.modifierBit(0xE4), "右 Ctrl 的掩码 = 0xE4 的那一位");
-        check(java.util.Arrays.equals(Hid.modifierUsages(0), new int[0]), "没锁：一个都不点");
-        check(java.util.Arrays.equals(Hid.modifierUsages(0x10), new int[]{0xE4}), "锁右 Ctrl：点 0xE4");
-        check(java.util.Arrays.equals(Hid.modifierUsages(0x41), new int[]{0xE0, 0xE6}), "锁左 Ctrl + AltGr：点 0xE0、0xE6");
-        check(java.util.Arrays.equals(Hid.modifierUsages(0xFF), new int[]{0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7}), "八个全锁：八个都点");
-        check(java.util.Arrays.equals(Hid.modifierUsages(0x1FF), Hid.modifierUsages(0xFF)), "掩码高位不是修饰键：不看");
-        // 每个用法码点一下正好切回去：点完以后掩码是 0（TouchRouter 按 Hid.modifierBit 切换）
-        boolean ok = true;
-        for (int mask = 0; mask < 256; mask++) {
-            int m = mask;
-            for (int u : Hid.modifierUsages(mask)) {
-                if (!Hid.isModifier(u)) ok = false;
-                m ^= Hid.modifierBit(u);
-            }
-            if (m != 0) ok = false;
-        }
-        check(ok, "256 种掩码：每个点一下都切回 0");
     }
 
     // ═══════════ 小 HID 解析器 ═══════════

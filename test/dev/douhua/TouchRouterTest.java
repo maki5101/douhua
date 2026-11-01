@@ -44,9 +44,33 @@ public final class TouchRouterTest {
             log.add("b" + id + ":" + action);
         }
 
+        /** 修饰键状态记成 "mod锁住/按着/快锁了"（十进制）。 */
         @Override
-        public void modifiers(int latched) {
-            log.add("mod" + latched);
+        public void modifiers(int latched, int held, int armed) {
+            log.add("mod" + latched + "/" + held + "/" + armed);
+        }
+
+        @Override
+        public void caps(boolean sent) {
+            log.add("caps" + (sent ? 1 : 0));
+        }
+
+        /** 按键定时器（KeyHolds）：挂着没有、最近一次排的延迟、排 / 撤各几次。 */
+        boolean keyPending;
+        long keyDelay = -1;
+        int keySchedules, keyCancels;
+
+        @Override
+        public void scheduleKeys(long delayMs) {
+            keyPending = true;
+            keyDelay = delayMs;
+            keySchedules++;
+        }
+
+        @Override
+        public void cancelKeys() {
+            keyPending = false;
+            keyCancels++;
         }
 
         @Override
@@ -104,6 +128,9 @@ public final class TouchRouterTest {
         keyPressesAndReleases();
         modifierLatchesUntilNextKey();
         modifierTapTwiceUnlatches();
+        modifierTapIsTap();
+        modifierHoldTooLong();
+        modifierUsedNeverLatches();
         chordKeyHoldsItsModifier();
         holdLeftHoldsButton();
         holdLeftCommand();
@@ -316,10 +343,10 @@ public final class TouchRouterTest {
         TouchRouter t = router(r);
         flick(t, 1000);
         int at = r.log.size();
-        t.key(COPY, true);
+        t.key(COPY, Proto.KEY_DOWN, 1100);
         check(!r.pending, "界面发来的键（组合键动作、服务没接管时键盘自己收的）：停");
         check(!r.log.subList(at, r.log.size()).contains(SPIN_CATCH), "不震");
-        t.key(COPY, false);
+        t.key(COPY, Proto.KEY_UP, 1150);
         flick(t, 2000);
         t.stopSpin(true);
         check(!r.pending && r.log.contains(SPIN_CATCH), "stopSpin（分屏透传归系统的手指、App 那边别的按下）：停，震\"刹住\"");
@@ -328,8 +355,10 @@ public final class TouchRouterTest {
     static void spinNotWithCtrlLatched() {
         Rec r = new Rec();
         TouchRouter t = router(r);
-        t.down(1, 1050, 250, 900);   // 点一下 Ctrl：锁定
-        t.up(1, 950);
+        t.down(1, 1050, 250, 300);   // 单独按住 Ctrl 0.5 秒：锁定
+        t.onKeyTimer(700);
+        t.up(1, 800);
+        check(r.log.contains("mod1/0/0"), "Ctrl 锁住");
         flick(t, 1000);
         check(!r.log.contains(SPIN_START) && !r.pending, "锁着 Ctrl：边缘一拨不起惯性（Ctrl + 滚轮是缩放）");
         t.releaseAll();
@@ -344,9 +373,10 @@ public final class TouchRouterTest {
     static void spinNotWithRightCtrlLatched() {
         Rec r = new Rec();
         TouchRouter t = router(r);
-        t.key(0xE4, true);   // 界面发来的右 Ctrl（实体键盘面板自己收触摸时）：点一下锁定
-        t.key(0xE4, false);
-        check(r.log.contains("mod16"), "右 Ctrl 锁住（掩码 0x10）");
+        t.key(0xE4, Proto.KEY_DOWN, 300);   // 界面发来的右 Ctrl（实体键盘面板自己收触摸时）：单独按住 0.5 秒锁定
+        t.onKeyTimer(700);
+        t.key(0xE4, Proto.KEY_UP, 800);
+        check(r.log.contains("mod16/0/0"), "右 Ctrl 锁住（掩码 0x10）");
         flick(t, 1000);
         check(!r.log.contains(SPIN_START) && !r.pending, "锁着右 Ctrl：边缘一拨不起惯性");
         t.setConfig(new GestureEngine.Config(), 1);   // 换参数：新引擎也知道右 Ctrl 锁着
@@ -370,8 +400,9 @@ public final class TouchRouterTest {
         GestureEngine.Config c = new GestureEngine.Config();
         c.smoothScroll = true;
         t2.setConfig(c, 1);
-        t2.key(0xE4, true);
-        t2.key(0xE4, false);
+        t2.key(0xE4, Proto.KEY_DOWN, 300);
+        t2.onKeyTimer(700);
+        t2.key(0xE4, Proto.KEY_UP, 800);
         t2.down(0, 10, 300, 1000);
         for (int i = 1; i <= 20; i++) {
             t2.move(0, 10, 300 + i * 7);
@@ -441,29 +472,95 @@ public final class TouchRouterTest {
                 "k0", "b" + (Proto.KEY_ID_BASE + KEY_C) + ":" + Proto.BUTTON_UP), "C 键：按下发键、松开发空报文，界面收到按下 / 松开");
     }
 
+    /** 2026-11-01 起：单独按住 0.4–1 秒松手才锁（以前点一下就锁），锁了以后打完下一个键自动解开。 */
     static void modifierLatchesUntilNextKey() {
         Rec r = new Rec();
         TouchRouter t = router(r);
-        t.down(0, 1050, 250, 1000);   // 点 Ctrl
-        t.up(0, 1050);
-        eq(r.only("k"), list("k1"), "点一下 Ctrl：立刻按下并锁定");
-        check(r.log.contains("mod1"), "告诉界面 Ctrl 锁定了");
-        t.down(0, 1050, 350, 1100);   // 再点 C
-        t.up(0, 1150);
+        t.down(0, 1050, 250, 1000);   // 按住 Ctrl
+        eq(r.only("k"), list("k1"), "Ctrl 按下马上发");
+        check(r.keyPending && r.keyDelay == KeyHolds.HOLD_MS, "排 0.4 秒的按键定时器");
+        t.onKeyTimer(1400);
+        check(r.log.contains("mod0/1/1") && r.log.contains("h" + GestureEngine.HAPTIC_CLICK), "到 0.4 秒：快锁了（高亮）+ 震一下");
+        t.up(0, 1500);
+        eq(r.only("k"), list("k1"), "0.4–1 秒松手：锁住，HID 里照旧按着（主机看不到松开）");
+        check(r.log.contains("mod1/0/0") && !r.keyPending, "告诉界面 Ctrl 锁定了，定时器撤了");
+        t.down(0, 1050, 350, 1600);   // 再点 C
+        t.up(0, 1650);
         eq(r.only("k"), list("k1", "k1 6", "k1", "k0"), "Ctrl 锁着按 C = Ctrl+C，松开后 Ctrl 自动解开");
-        check(r.log.contains("mod0"), "告诉界面解锁了");
+        check(r.log.contains("mod0/0/0"), "告诉界面解锁了");
     }
 
     static void modifierTapTwiceUnlatches() {
         Rec r = new Rec();
         TouchRouter t = router(r);
         t.down(0, 1050, 250, 1000);
-        t.up(0, 1050);
-        t.down(0, 1050, 250, 1100);
-        t.up(0, 1150);
-        eq(r.only("k"), list("k1", "k0"), "Ctrl 再点一下就解开");
-        eq(r.only("mod"), list("mod1", "mod0"), "界面跟着变");
+        t.onKeyTimer(1400);
+        t.up(0, 1500);
+        t.down(0, 1050, 250, 2000);   // 锁着时再按一下：这一下是解开
+        t.onKeyTimer(2400);   // 没排着也照样调：什么都不做
+        t.up(0, 2500);
+        eq(r.only("k"), list("k1", "k0"), "锁住后再点一下就解开（按下时不发、松手松开）");
+        eq(r.only("mod"), list("mod0/1/0", "mod0/1/1", "mod1/0/0", "mod0/1/0", "mod0/0/0"), "界面跟着变：解锁那一下按多久都不再快锁");
+        eq(r.only("h"), list("h" + GestureEngine.HAPTIC_CLICK), "只在第一次到 0.4 秒时震");
     }
+
+    /** 单点修饰键（< 0.4 秒）：按下 / 松开各一帧、不锁、不震（主机上单点 Shift 切中英文照常）。 */
+    static void modifierTapIsTap() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        t.down(0, 1050, 250, 1000);
+        t.up(0, 1120);
+        eq(r.only("k"), list("k1", "k0"), "点一下：按下、松开");
+        eq(r.only("mod"), list("mod0/1/0", "mod0/0/0"), "按着时界面知道（键帽换字），松开不锁");
+        check(r.only("h").isEmpty() && !r.keyPending, "不震、定时器撤了");
+        t.onKeyTimer(1400);   // 撤晚了、已经到点的那次
+        eq(r.only("k"), list("k1", "k0"), "过期的定时器什么都不做");
+        check(r.only("h").isEmpty(), "过期的定时器不震");
+    }
+
+    /** 单独按住超过 1 秒：高亮退回、松手不锁。 */
+    static void modifierHoldTooLong() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        t.down(0, 1050, 250, 1000);
+        t.onKeyTimer(1400);
+        check(r.keyPending && r.keyDelay == KeyHolds.LOCK_MAX_MS - KeyHolds.HOLD_MS, "到 0.4 秒后再排到 1 秒");
+        r.keyPending = false;   // 宿主的定时器到点了（到点的那次不再挂着）
+        t.onKeyTimer(2000);
+        check(r.log.contains("mod0/1/0") && r.only("mod").get(r.only("mod").size() - 1).equals("mod0/1/0"), "1 秒：高亮退回");
+        check(!r.keyPending, "不再等");
+        t.up(0, 2500);
+        eq(r.only("k"), list("k1", "k0"), "松手照常松开、不锁");
+        eq(r.only("h").size(), 1, "只在 0.4 秒震一次，退回不震");
+    }
+
+    /** Ctrl 按着时点 C / 点触控板 / 开合：组合，不锁（不管按了多久）。 */
+    static void modifierUsedNeverLatches() {
+        // 按着 Ctrl 0.5 秒（已经亮了）再点 C：C 按下那一刻高亮退回，松手不锁
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        t.down(0, 1050, 250, 1000);
+        t.onKeyTimer(1400);
+        t.down(1, 1050, 350, 1500);
+        check(r.only("mod").get(r.only("mod").size() - 1).equals("mod0/1/0"), "C 按下：快锁了的退回");
+        t.up(1, 1550);
+        t.up(0, 1700);
+        eq(r.only("k"), list("k1", "k1 6", "k1", "k0"), "Ctrl+C，松开 Ctrl 就松");
+        check(!r.log.contains("mod1/0/0"), "不锁");
+        // 按着 Ctrl 时点触控板（左键按下那一帧算用过）
+        Rec r2 = new Rec();
+        TouchRouter t2 = router(r2);
+        t2.down(0, 1050, 250, 1000);
+        t2.down(1, 500, 500, 1100);
+        t2.frame(1100);
+        t2.up(1, 1150);
+        t2.onKeyTimer(1400);
+        t2.onTimer(1500);
+        t2.up(0, 1600);
+        check(!r2.log.contains("mod1/0/0") && !r2.log.contains("mod0/1/1"), "Ctrl + 点触控板：不锁、不快锁");
+        check(r2.only("m").contains("m1"), "点击照发（带着 Ctrl 的键盘报文）");
+    }
+
 
     static void chordKeyHoldsItsModifier() {
         Rec r = new Rec();
@@ -471,7 +568,7 @@ public final class TouchRouterTest {
         t.down(0, 1050, 450, 1000);
         t.up(0, 1080);
         eq(r.only("k"), list("k1", "k1 6", "k1", "k0"), "复制键：先按 Ctrl 再按 C，先松 C 再松 Ctrl");
-        eq(r.only("mod"), list(), "自带的修饰键不算锁定");
+        eq(r.only("mod"), list(), "自带的修饰键不算锁定、也不算按着（键帽不换字）");
     }
 
     static void holdLeftHoldsButton() {
@@ -579,8 +676,9 @@ public final class TouchRouterTest {
     static void releaseAllLetsGo() {
         Rec r = new Rec();
         TouchRouter t = router(r);
-        t.down(0, 1050, 250, 1000);   // 锁定 Ctrl
-        t.up(0, 1050);
+        t.down(0, 1050, 250, 400);   // 锁定 Ctrl（单独按住 0.5 秒）
+        t.onKeyTimer(800);
+        t.up(0, 900);
         t.down(1, 1050, 150, 1100);   // 按着普通按钮
         t.down(2, 1050, 350, 1100);   // 按着 C
         t.releaseAll();
@@ -588,7 +686,8 @@ public final class TouchRouterTest {
         eq(k.get(k.size() - 1), "k0", "放手：键全部松开");
         check(r.log.contains("b7:" + Proto.BUTTON_UP), "按着的按钮报告松开");
         check(r.log.contains("b" + (Proto.KEY_ID_BASE + KEY_C) + ":" + Proto.BUTTON_UP), "按着的键报告松开");
-        check(r.log.contains("mod0"), "锁定的修饰键解开");
+        check(r.log.contains("mod0/0/0"), "锁定的修饰键解开");
+        check(!r.keyPending, "按键定时器撤了");
         int before = r.log.size();
         t.up(1, 1200);
         t.up(2, 1200);
@@ -598,8 +697,8 @@ public final class TouchRouterTest {
     static void keyFromAppSide() {
         Rec r = new Rec();
         TouchRouter t = router(r);
-        t.key(COPY, true);
-        t.key(COPY, false);
+        t.key(COPY, Proto.KEY_DOWN, 1000);
+        t.key(COPY, Proto.KEY_UP, 1050);
         eq(r.only("k"), list("k1", "k1 6", "k1", "k0"), "界面直接发的组合键（动作里的复制）");
         eq(r.only("b"), list(), "界面自己发的键不回报按钮事件");
     }
@@ -891,12 +990,13 @@ public final class TouchRouterTest {
         Rec r = new Rec();
         TouchRouter t = keyboardRouter(r);
         t.down(0, 2, 850, 1000);   // Ctrl 左边的边距
-        t.up(0, 1050);
-        eq(r.only("k"), list("k1"), "缝里分到 Ctrl：照样点一下锁定");
-        t.down(0, 100, 750, 1100);   // a 的正中
-        t.up(0, 1150);
+        t.onKeyTimer(1400);
+        t.up(0, 1500);
+        eq(r.only("k"), list("k1"), "缝里分到 Ctrl：照样单独按住 0.5 秒锁定");
+        t.down(0, 100, 750, 1600);   // a 的正中
+        t.up(0, 1650);
         eq(r.only("k"), list("k1", "k1 4", "k1", "k0"), "锁着 Ctrl 按 a，打完自动解开");
-        eq(r.only("mod"), list("mod1", "mod0"), "界面跟着变");
+        eq(r.only("mod"), list("mod0/1/0", "mod0/1/1", "mod1/0/0", "mod0/0/0"), "界面跟着变");
     }
 
     static void unknownTypeDoesNothing() {

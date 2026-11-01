@@ -358,8 +358,20 @@ public final class MainActivity extends Activity
     private int hardConfig = -1;
     /** 触摸那一路（服务转发 / 本地分流）最近报的鼠标键；和空中鼠标那一路并起来发，谁也不会松掉对方按着的键。 */
     private int touchButtons;
-    /** 服务那边锁住的修饰键（MSG_MODIFIERS）：进空中鼠标时要让服务解开，不然 Ctrl 一直按着、每次点击都成了 Ctrl+点击。 */
-    private int latchedMods;
+    /**
+     * 修饰键的状态（MSG_MODIFIERS / 本地分流，2026-11-01 起三样）：锁住的（latchedMods：KeyScan 的 notReady 看它）、有手指按着的、
+     * "现在松手就锁"的。两块键盘面板照它画高亮、换字（KeyboardFace.setKeyState）。
+     */
+    private int latchedMods, heldMods, armedMods;
+    /**
+     * Caps 的显示（豆花这边以为主机的大写锁定开着没有）：只有 App 这一份（服务 MSG_CAPS、本地分流 LocalOutput.caps 都只报"翻一下"）。
+     * 主机的大写锁定跨连接都在，服务的分流和本地分流各自 releaseAll，放进哪个都会在接管 / 断开时丢；static：Activity 换语言 / 字体重建也不丢，
+     * 进程重启才归"关"。换了主机（蓝牙连上的设备地址变了、蓝牙 ↔ 桌面模式）也归"关"（{@link #updateHostKind}）；服务断开、重启不归零
+     * （主机那边多半还是原来的状态，对不上就长按 Caps 对回来）。主机自己的大写灯（LED 输出报告）这批没读，以后可以做。
+     */
+    private static boolean capsShown;
+    /** capsShown 属于哪台主机（"bt:地址" / "desktop"；null = 还不知道）。 */
+    private static String capsHost;
     private final Runnable airExitLater = () -> {
         haptics.play(GestureEngine.HAPTIC_CLICK);
         setAirMode(false);
@@ -368,6 +380,8 @@ public final class MainActivity extends Activity
     /** 蓝牙模式下的触摸分流（桌面模式下这件事在服务里做）。 */
     private final TouchRouter local = new TouchRouter(new LocalOutput());
     private final Runnable localTimer = () -> local.onTimer(SystemClock.uptimeMillis());
+    /** 本地分流按键专用的定时器（修饰键 / Caps / 合并键按住到点，KeyHolds；和 localTimer 分开，同服务那边的第二个 OneShotTimer）。 */
+    private final Runnable localKeyTimer = () -> local.onKeyTimer(SystemClock.uptimeMillis());
     /** 这次手势由 local 分流（按下时定，一直到全部抬起）。 */
     private boolean localGesture;
     /** 这次手势是服务注入回系统的（分屏透传），见 {@link #dispatchTouchEvent}。 */
@@ -409,7 +423,7 @@ public final class MainActivity extends Activity
 
             @Override
             public void key(int key, boolean down) {
-                onLocalKey(key, down);
+                onLocalKey(key, down ? Proto.KEY_DOWN : Proto.KEY_UP);
             }
         });
         onKeyLogChanged();   // 界面重建时接上还没到期的租期
@@ -516,9 +530,7 @@ public final class MainActivity extends Activity
             touchButtons = 0;
             bt.sendMouse(air.buttons(), 0, 0, 0, 0);
             bt.sendKeyboard(new byte[Hid.KEYBOARD_REPORT_SIZE]);
-            latchedMods = 0;
-            keyboard.setModifiers(0);
-            fixedKeyboard.setModifiers(0);
+            showKeyState(0, 0, 0);
         }
         grabbed = false;
         if (btAcquired) {
@@ -694,7 +706,7 @@ public final class MainActivity extends Activity
         numpad = buildNumpad();
         numpad.setVisibility(View.GONE);
         padMouseKeys = buildMouseKeys();
-        // 触控板顶上正中的 ⋯：同键盘屏，只有暗字、不带框
+        // 触控板顶上正中的 ⋯：同键盘屏，不带框、字是强调色（Style.bare）
         padMenuButton = Style.button(this, 18);
         padMenuButton.setText("⋯");
         Style.bare(padMenuButton, false);
@@ -710,7 +722,7 @@ public final class MainActivity extends Activity
         // 键盘和数字键盘按实体键盘排，阿拉伯语这类从右往左的语言下也不镜像
         keyboard.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         numpad.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        // 触控板顶上正中的 ⋯：只有暗字、不带框
+        // 触控板顶上正中的 ⋯：不带框、字是强调色（Style.bare）
         kbMenuButton = Style.button(this, 18);
         kbMenuButton.setText("⋯");
         Style.bare(kbMenuButton, false);
@@ -1053,12 +1065,12 @@ public final class MainActivity extends Activity
                     int a = e.getActionMasked();
                     if (a == MotionEvent.ACTION_DOWN) {   // 先发键，再震、再画按下的样子
                         numpadHeld.add(v);
-                        onLocalKey(usage, true);
+                        onLocalKey(usage, Proto.KEY_DOWN);
                         keyHaptic();
                         Style.keyLook(v, fn, false, true);
                     } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
                         // 接管时已经替它松开过（releaseNumpad）的，迟到的抬起不再发
-                        if (numpadHeld.remove(v)) onLocalKey(usage, false);
+                        if (numpadHeld.remove(v)) onLocalKey(usage, a == MotionEvent.ACTION_CANCEL ? Proto.KEY_CANCEL : Proto.KEY_UP);
                         Style.keyLook(v, fn, false, false);
                     }
                     return true;
@@ -1479,6 +1491,8 @@ public final class MainActivity extends Activity
             int key = id - Proto.KEY_ID_BASE;
             if (down) keyHaptic();
             keyboardScreen.face().showPressed(key, down);
+            // 分流照 KeyHolds 先把按着的合并键结算成逗号了：它的放大提示别再到 0.4 秒换成句号（实体键盘没有合并键）
+            if (down && keyboard != null) keyboard.otherKeyDown(key);
             for (int i = 0; i < numpadButtons.size(); i++) {
                 if (numpadUsages.get(i) == key) numpadLook(i, down);
             }
@@ -1800,10 +1814,11 @@ public final class MainActivity extends Activity
         return true;
     }
 
+    /** 键盘面板 / 数字键盘自己收触摸时、动作里的组合键：action = Proto.KEY_DOWN / KEY_UP / KEY_CANCEL，判点一下 / 按住 / 锁由分流做（KeyHolds）。 */
     @Override
-    public void onLocalKey(int key, boolean down) {
-        if (btMode) local.key(key, down);
-        else link.hidKey(key, down);
+    public void onLocalKey(int key, int action) {
+        if (btMode) local.key(key, action, SystemClock.uptimeMillis());
+        else link.hidKey(key, action);
     }
 
     /** 键盘上的"符" / "Fn" / 🌐 / ⋯，和快捷行里不是键盘组合键的动作。 */
@@ -2130,10 +2145,25 @@ public final class MainActivity extends Activity
     }
 
     @Override
-    public void onModifiers(int mask) {
-        latchedMods = mask;
-        keyboard.setModifiers(mask);   // 两块都收：切换键盘时锁住的修饰键还按着，新显示的那块上有这个键就亮
-        fixedKeyboard.setModifiers(mask);
+    public void onModifiers(int latched, int held, int armed) {
+        showKeyState(latched, held, armed);
+    }
+
+    /** Caps 的显示翻一下（服务 MSG_CAPS / 本地分流）：点一下（sent，发了 Caps Lock）和按住 0.4 秒（只切显示）都是翻。 */
+    @Override
+    public void onCaps(boolean sent) {
+        capsShown = !capsShown;
+        showKeyState(latchedMods, heldMods, armedMods);
+    }
+
+    /** 记下修饰键的状态，两块面板都画（切换键盘时锁住 / 按着的修饰键、Caps 还在，新显示的那块上有这个键就亮）。 */
+    private void showKeyState(int latched, int held, int armed) {
+        latchedMods = latched;
+        heldMods = held;
+        armedMods = armed;
+        if (keyboard == null) return;
+        keyboard.setKeyState(latched, held, armed, capsShown);
+        fixedKeyboard.setKeyState(latched, held, armed, capsShown);
     }
 
     // ═══════════ 动作 ═══════════
@@ -2141,8 +2171,8 @@ public final class MainActivity extends Activity
     private void run(Actions.Action a) {
         switch (a.kind) {
             case HID:   // 虚拟键盘按一下这个组合键
-                onLocalKey(a.hidCode(appleHost), true);
-                onLocalKey(a.hidCode(appleHost), false);
+                onLocalKey(a.hidCode(appleHost), Proto.KEY_DOWN);
+                onLocalKey(a.hidCode(appleHost), Proto.KEY_UP);
                 break;
             case KEY:
                 key(a.code, a.meta);
@@ -2404,9 +2434,8 @@ public final class MainActivity extends Activity
                 });
                 airRoundPressed = false;
                 leftHolds = 0;
-                latchedMods = 0;
-                keyboard.setModifiers(0);
-                fixedKeyboard.setModifiers(0);
+                showKeyState(0, 0, 0);   // Caps 的显示不跟着归零：主机那边的大写锁定多半还在
+
                 if (wasGrabbed) {   // 服务转来的键按下等不到松开了：按下的样子、放大提示收起
                     keyboard.clearPressed();
                     fixedKeyboard.clearPressed();
@@ -2450,7 +2479,7 @@ public final class MainActivity extends Activity
     private void releaseNumpad() {
         for (View v : numpadHeld) {
             int i = numpadButtons.indexOf(v);
-            if (i >= 0) onLocalKey(numpadUsages.get(i), false);
+            if (i >= 0) onLocalKey(numpadUsages.get(i), Proto.KEY_CANCEL);
         }
         numpadHeld.clear();
         for (int i = 0; i < numpadButtons.size(); i++) numpadLook(i, false);
@@ -2827,13 +2856,13 @@ public final class MainActivity extends Activity
         unlatchServiceModifiers();
     }
 
-    /** 服务那边锁住的修饰键：按一下就解开（服务的 TouchRouter 里修饰键是按下时切换）。只在蓝牙模式、服务接管着时。 */
+    /**
+     * 服务那边锁住的修饰键全部解开（CMD_UNLATCH，协议 20；按着的不动）。只在蓝牙模式、服务接管着时。
+     * 以前逐个点一下（那时修饰键按下就切换）；现在对没锁着的修饰键点一下就是给主机一次真单点（Super 打开开始菜单），也不带 App 记的锁定（可能晚一步）。
+     */
     private void unlatchServiceModifiers() {
         if (!btMode || !grabbed || !link.isConnected()) return;
-        for (int usage : Hid.modifierUsages(latchedMods)) {   // 左右八个都看（实体键盘上右边四个也能锁住）
-            link.hidKey(usage, true);
-            link.hidKey(usage, false);
-        }
+        link.unlatch();
     }
 
     private void updateAirOverlay() {
@@ -2932,13 +2961,10 @@ public final class MainActivity extends Activity
         gamepadScreen.clearReports();
     }
 
-    /** 桌面模式下服务那边锁住的修饰键：按一下就解开（服务的 TouchRouter 里修饰键是按下时切换；服务没接管时也在服务里记着）。 */
+    /** 桌面模式下服务那边锁住的修饰键全部解开（CMD_UNLATCH；服务没接管时也在服务里记着）。同 {@link #unlatchServiceModifiers}。 */
     private void unlatchDesktopModifiers() {
         if (btMode || !link.isConnected()) return;
-        for (int usage : Hid.modifierUsages(latchedMods)) {   // 左右八个都看（实体键盘上右边四个也能锁住）
-            link.hidKey(usage, true);
-            link.hidKey(usage, false);
-        }
+        link.unlatch();
     }
 
     // ═══════════ 实体按键 ═══════════
@@ -3180,8 +3206,13 @@ public final class MainActivity extends Activity
         }
 
         @Override
-        public void modifiers(int latched) {
-            onModifiers(latched);
+        public void modifiers(int latched, int held, int armed) {
+            onModifiers(latched, held, armed);
+        }
+
+        @Override
+        public void caps(boolean sent) {
+            onCaps(sent);
         }
 
         @Override
@@ -3193,6 +3224,17 @@ public final class MainActivity extends Activity
         @Override
         public void cancelSchedule() {
             main.removeCallbacks(localTimer);
+        }
+
+        @Override
+        public void scheduleKeys(long delayMs) {
+            main.removeCallbacks(localKeyTimer);
+            main.postDelayed(localKeyTimer, delayMs);
+        }
+
+        @Override
+        public void cancelKeys() {
+            main.removeCallbacks(localKeyTimer);
         }
 
         @Override
@@ -3247,10 +3289,20 @@ public final class MainActivity extends Activity
         updateStatus();
     }
 
-    /** 蓝牙连着苹果设备时，修饰键按苹果写法标、内置快捷键按苹果习惯发（⌘C 而不是 Ctrl+C）；桌面模式和别的主机照通用的。 */
+    /**
+     * 蓝牙连着苹果设备时，修饰键按苹果写法标、内置快捷键按苹果习惯发（⌘C 而不是 Ctrl+C）；桌面模式和别的主机照通用的。
+     * 顺带：换了主机（蓝牙连上的设备地址和上次的不一样、蓝牙 ↔ 桌面模式）Caps 的显示归"关"；蓝牙没连着时不动（等回来的可能还是这台）。
+     */
     private void updateHostKind() {
-        appleHost = btMode && btState == BtHid.STATE_CONNECTED && BtHid.isApple(bt.connectedDevice());
+        android.bluetooth.BluetoothDevice d = btMode && btState == BtHid.STATE_CONNECTED ? bt.connectedDevice() : null;
+        appleHost = d != null && BtHid.isApple(d);
         keyboard.setAppleHost(appleHost);
+        String host = !btMode ? "desktop" : d != null ? "bt:" + d.getAddress() : null;
+        if (host != null && !host.equals(capsHost)) {
+            if (capsHost != null) capsShown = false;
+            capsHost = host;
+        }
+        showKeyState(latchedMods, heldMods, armedMods);   // 苹果 / 不是苹果（字母的大小写规则）、Caps 的显示都可能变了
     }
 
     private String btStatusText() {

@@ -19,7 +19,8 @@ import java.util.List;
  * 只有分裂时的两个空格是另外的对象（份数和整块时不一样）。
  * 选小红点时（只有整块，2026-11-01 起小红点状态不分裂）它嵌在 g、h、v、b 交界那一点（{@link #stickPoint}；多大、压着键多少由 KeyboardPlan 定），
  * 左 / 中 / 右三个鼠标键竖着跨底行（空格那一排）和快捷行：这两行在中间让出同一段空位（{@link #place} 的 hole），
- * 底行变成 ?123 , 空格（缩短，{@link #STICK_SPACE} 份，只有它跟着空位变）│ 空位 │ . ↵，快捷行的键按个数分到空位两边（{@link #spreadLeft}）；
+ * 底行变成 ?123 [,.] 空格（缩短，{@link #STICK_SPACE} 份，只有它跟着空位变）│ 空位 │ 空格 ↵（逗号句号合成一个键、右边放第二个空格，2026-11-01），
+ * 快捷行的键按个数分到空位两边（{@link #spreadLeft}）；
  * 快捷行分开后键太窄（KeyboardPlan.shortcutsSpread）就不让位、照旧铺满，三个鼠标键只占空格那一排（{@link #place} 的 spread）。
  */
 final class KeyRows {
@@ -34,6 +35,14 @@ final class KeyRows {
     /** ⋯：键盘界面的菜单（收起键盘 / 调整大小 / 布局 / 触控板），小触控板没摆出来时放在功能行最右边，由 App 执行。 */
     static final int MENU_BUTTON_ID = 303;
 
+    /**
+     * 这个键是不是 ⋯（豆花布局功能行最右的 ⋯ 键、实体键盘 Esc 和 F1 中间的 ⋯ 槽，FixedLayout.MENU_ID 是同一个编号）：
+     * 键帽画成强调色的底 + 反差字、不画边框（Theme.menuKey，Style.menuKeyLook；2026-11-01 用户：⋯ 用强调色）。两块面板都按它挑画法。
+     */
+    static boolean menuKey(int id) {
+        return id == MENU_BUTTON_ID;
+    }
+
     static final int SHIFT = 2;
     static final int LAYER_LETTERS = 0;
     static final int LAYER_SYMBOLS = 1;
@@ -44,7 +53,10 @@ final class KeyRows {
     /** 分裂时字母层每行的份数（整块时一行 10 份，从中间切开、各带上错开的半格）。 */
     static final float HALF_UNITS = 5.5f;
 
-    /** 一个键。id = HID 用法码 | (自带修饰键 << 8)；SPACER = 空位；切换键用 *_BUTTON_ID。 */
+    /**
+     * 一个键。id = HID 用法码 | (自带修饰键 << 8)，或者合并键（Proto.dualKey：点一下 / 按住 0.4 秒出两个字）；SPACER = 空位；切换键用 *_BUTTON_ID。
+     * corner = 键帽右上角的小字（合并键按住出的那个字；null = 没有）。
+     */
     static final class Key {
         static final int SPACER = -1;
 
@@ -53,13 +65,19 @@ final class KeyRows {
         final String shifted;
         final float weight;
         final boolean special;
+        final String corner;
 
         Key(int id, String label, String shifted, float weight, boolean special) {
+            this(id, label, shifted, weight, special, null);
+        }
+
+        Key(int id, String label, String shifted, float weight, boolean special, String corner) {
             this.id = id;
             this.label = label;
             this.shifted = shifted;
             this.weight = weight;
             this.special = special;
+            this.corner = corner;
         }
 
         boolean spacer() {
@@ -115,6 +133,38 @@ final class KeyRows {
             this.right = right;
             this.bottom = bottom;
         }
+    }
+
+    // ═══════════ 键帽上的字、高亮（2026-11-01：按住修饰键也换字，Caps 的显示） ═══════════
+
+    /** 右 Shift 的修饰键位（豆花布局只有左 Shift，实体键盘的右 Shift 按着时两块面板收的是同一份状态）。 */
+    static final int RSHIFT = 0x20;
+
+    /** 字母键（a–z、不带自带修饰键、不是特殊键）：跟着 Shift / Caps 换大小写。 */
+    static boolean letterKey(Key key) {
+        return !key.special && key.id >= 0x04 && key.id <= 0x1D;
+    }
+
+    /**
+     * 键帽上写哪个字（KeyboardPanel 再按界面语言换空格、修饰键这些键名）：mods = 锁住 | 按着的修饰键（MSG_MODIFIERS 的 latched | held：
+     * 按住 Shift 时键帽就变大写，用户原话"我只要按住 Shift，我再按字母键，它就是大写"），caps = 豆花这边显示的大写锁定（只有 App 一份）。
+     * 字母：连着苹果设备 Shift ∨ Caps（macOS / iPadOS 大写锁定开着时 Shift 不反转），别的主机 Shift ⊕ Caps（Windows / Linux / 安卓：
+     * 大写锁定 + Shift 出小写）；数字行的上档字只看 Shift，符号层、别的键不看 Caps。
+     */
+    static String capText(Key key, int mods, boolean caps, boolean apple) {
+        boolean shift = (mods & (SHIFT | RSHIFT)) != 0;
+        boolean upper = letterKey(key) ? (apple ? shift || caps : shift ^ caps) : shift;
+        return upper && key.shifted != null ? key.shifted : key.label;
+    }
+
+    /**
+     * 画不画高亮（锁住的样子：普通键帽底 + 强调色边框 + 高亮字）：修饰键（左右八个）看 shown = latched | armed（锁住的、单独按住到了 0.4 秒
+     * "现在松手就锁"的；按着的样子另外画），Caps 看 caps（豆花这边显示的大写锁定）。换层键（?123 / Fn）由面板自己看层。
+     */
+    static boolean lit(Key key, int shown, boolean caps) {
+        if (key.special) return false;
+        if (key.id == 0x39) return caps;
+        return key.id >= 0xE0 && key.id <= 0xE7 && (shown & (1 << (key.id - 0xE0))) != 0;
     }
 
     // ═══════════ 主次键帽（主题的功能键颜色） ═══════════
@@ -249,7 +299,7 @@ final class KeyRows {
     private static final Key[] BOTTOM_APPLE = {SYMBOLS_KEY, GLOBE_KEY, COMMA, wide(0x2C, "Space", 4), PERIOD, ENTER};
 
     /**
-     * 小红点状态下底行缩短的空格平时多少份（空位右边是 . ↵，左边 ?123 , 和它）：2026-11-01 用户要三个鼠标键占空格那一排，
+     * 小红点状态下底行缩短的空格平时多少份（空位右边是右空格 ↵，左边 ?123 [,.] 和它）：2026-11-01 用户要三个鼠标键占空格那一排，
      * 空格缩短但要留得住——1.5 份（同 ?123、↵）；手机竖屏这样排不下三个 44dp 的鼠标键时才再缩，最短 {@link #STICK_SPACE_MIN} 份
      * （一个字母键宽），见 KeyboardPlan.stickHole。
      */
@@ -257,19 +307,29 @@ final class KeyRows {
     static final float STICK_SPACE_MIN = 1f;
     /** 小红点状态下的空格（又一个键帽，同分裂的两个空格；连不连苹果设备共用）。 */
     private static final Key STICK_SPACE_KEY = wide(0x2C, "Space", STICK_SPACE);
+    /**
+     * 小红点状态的逗号键（2026-11-01 用户）：点一下 = ","，按住 0.4 秒 = "."（TouchRouter / KeyHolds 判断，按住不连发）；
+     * 键帽大字 ","、右上角小字 "."。占逗号原来的 1 份，主次键帽照 id & 0xFF = 0x36（标点）是普通键。
+     */
+    static final Key COMMA_PERIOD = new Key(Proto.dualKey(0x36, 0x37), ",", null, 1, false, ".");
+    /**
+     * 小红点状态右边的空格：给右手（用户原话"右手边没有空格"），照 . 原来的 1 份；同分裂键盘的两个空格，另一个键帽、同一个 id。
+     * 份数一个都没变（合并键占逗号的、右空格占句号的），所以空位多宽、红点多大、三个鼠标键多宽全都不变（KeyboardPlan.stickHole）。
+     */
+    static final Key STICK_SPACE_R = wide(0x2C, "Space", 1);
 
     /**
      * 分裂时底行：?123 , 空格 | 空格 . ↵，两半都凑够 HALF_UNITS 份；🌐 放左半（左边的空格让出一份）。
-     * 小红点状态（整块）：?123 , 空格（缩短）│ 空位 │ . ↵，🌐 照旧跟在 ?123 后面。
+     * 小红点状态（整块）：?123 [,.] 空格（缩短）│ 空位 │ 空格 ↵，🌐 照旧跟在 ?123 后面。
      */
     private static final Row BOTTOM_ROW = new Row(BOTTOM,
             new Key[]{SYMBOLS_KEY, COMMA, wide(0x2C, "Space", 3)},
             new Key[]{wide(0x2C, "Space", 3), PERIOD, ENTER},
-            new Key[]{SYMBOLS_KEY, COMMA, STICK_SPACE_KEY}, new Key[]{PERIOD, ENTER}, false);
+            new Key[]{SYMBOLS_KEY, COMMA_PERIOD, STICK_SPACE_KEY}, new Key[]{STICK_SPACE_R, ENTER}, false);
     private static final Row BOTTOM_ROW_APPLE = new Row(BOTTOM_APPLE,
             new Key[]{SYMBOLS_KEY, GLOBE_KEY, COMMA, wide(0x2C, "Space", 2)},
             new Key[]{wide(0x2C, "Space", 3), PERIOD, ENTER},
-            new Key[]{SYMBOLS_KEY, GLOBE_KEY, COMMA, STICK_SPACE_KEY}, new Key[]{PERIOD, ENTER}, false);
+            new Key[]{SYMBOLS_KEY, GLOBE_KEY, COMMA_PERIOD, STICK_SPACE_KEY}, new Key[]{STICK_SPACE_R, ENTER}, false);
 
     // ═══════════ 行 ═══════════
 
@@ -385,7 +445,7 @@ final class KeyRows {
     /**
      * 让空位的底行在份数上是什么样，返回 {空位左边的键共多少份（空格按 STICK_SPACE 份）, 右边的键共多少份, 整行多少份}；
      * rows 里没有让位的底行返回 null。空位左边最多能到 [0] 份处、最少到 [0] − (STICK_SPACE − STICK_SPACE_MIN) 份处；
-     * 右边最远到 [2] − [1] 份处（. 原来的左边），KeyboardPlan.stickHole 在这中间挑。
+     * 右边最远到 [2] − [1] 份处（右边那个空格原来的左边 = 整行时 . 的左边），KeyboardPlan.stickHole 在这中间挑。
      */
     static float[] holeUnits(Row[] rows) {
         for (Row row : rows) {
@@ -545,7 +605,7 @@ final class KeyRows {
      * 同上，hole = 小红点状态下底行、快捷行让出的空位 {左, 右}（面板像素，KeyboardPlan.stickHole 定；null = 不让，分裂时不看）：
      * 让位的行（{@link Row#holed}）在 [0, 左]、[右, width] 两段里摆，空位里什么都不摆（三个鼠标键在那儿）。
      * 底行：before 里除了最后一个（缩短的空格）照整行时的份数宽（取整同整行），空格从前一个键的右边伸到空位的左边；
-     * after 在 [右, width] 里按份数分（空位右边比 . 原来的左边靠左时 . ↵ 一起变宽）。
+     * after 在 [右, width] 里按份数分（空位右边比右空格原来的左边靠左时右空格和 ↵ 按 1 : 1.5 一起变宽）。
      * 快捷行：spread（快捷行也让位，KeyboardPlan.Plan.spread）时按 {@link #spreadLeft} 分到两段、各自铺满；不然照旧铺满整行
      * （让位后快捷键太窄时，三个鼠标键只占空格那一排）。
      */

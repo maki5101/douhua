@@ -28,30 +28,31 @@
 
 | 文件 | 职责 |
 |---|---|
-| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 19）；手柄控件编号（gamepadId：0x4000 \| 种类 << 10 \| 副本 << 8 \| 参数）和输出码（GP_*，按位置；GP_C_* = N64 的 C 键，GamepadTouch 换成右摇杆推满） |
+| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 20）；手柄控件编号（gamepadId：0x4000 \| 种类 << 10 \| 副本 << 8 \| 参数）和输出码（GP_*，按位置；GP_C_* = N64 的 C 键，GamepadTouch 换成右摇杆推满）；按键的 action（KEY_UP / KEY_DOWN / KEY_CANCEL，CMD_HID_KEY 协议 20 起 key:i32 + action:u8）、CMD_UNLATCH（16，不带参数）、MSG_MODIFIERS 三个字节（锁住 / 按着 / 快锁了）、MSG_CAPS（0x8B）；合并键的 id（dualKey：点一下的键 \| 按住 0.4 秒的键 << 16，isDualKey / dualTap / dualHold） |
 | `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测）；惯性滚动（边缘一拨接着转、碰触控板抓住，用唯一的定时器槽 TIMER_SPIN）、连续滚动（按 1/120 格出、每滚过一格咔嗒、双指锁主方向）也在这里；滚轮量的单位是 1/120 格；中键按着时单指划 = 滚动（setScrollHold，方向"推哪边视野往哪边走"、不起长按 / 惯性），小红点的位移、滚轮经 externalMove / externalScroll 出 |
 | `src/dev/douhua/ScrollInertia.java` | 惯性滚动的物理（黏滞 + 恒定摩擦的闭式解、阻尼档位 → τ、停止时间 / 距离），纯 Java（离线测，HidTest），引擎和设置页共用 |
 | `src/dev/douhua/ConfigCodec.java` | CMD_CONFIG 的编解码（App 的 Link 写、服务的 Session 读、TestClient 写，三处共用一份），纯 Java（离线测往返） |
-| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，按得到的是报上来那个正方形的内切圆——Region.contains，服务、App 本地分流、KeyFingers 共用；第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数，中键按着 = 滚动、没滚过松开补中键单击；按在中键上的第一根手指自己也是滚动杆——lever，另一个滚动杆模式的 TrackPoint，和红点共用一套节拍：任一按着就开、都松了才停（stopTicksIfIdle），挪出轻点容差就算滚过、松开不补单击；中键按着、滚动杆还没挪出轻点容差时别的来源——红点、触控板、开合、滚轮动作——先出了滚轮，滚动杆让位到抬起（leverYield：按着中键当修饰键时拇指漂一点不另外滚））；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立） |
-| `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号；带滚轮分辨率倍率的鼠标描述符（MOUSE_DESC_HIRES 蓝牙用，竖、横两个倍率；MOUSE_DESC_HIRES_V 桌面模式 uhid 用，只有竖向一个；输入报文都和旧的一字不差）、倍率字节编解码、WheelOut（1/120 格 → 计数、余数、拆帧；uhid 那份设 / 问倍率的 setUhidFeature / uhidFeatureReport，UhidMouse 只调它们；离线测 HidTest）；手柄描述符 GAMEPAD_DESC（Game Pad、15 键 + Hat + X/Y/Z/Rz + Brake/Accelerator，13 字节，全零 = 中立）和 Gamepad（状态、报文、两路合并 merge）；修饰键掩码的两个小工具（ctrl：左右 Ctrl 都算；modifierUsages：掩码里按着的左右八个修饰键的用法码，界面替服务解开锁住的修饰键时逐个点一下） |
+| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键（按住要计时的修饰键 / Caps / 合并键交给 KeyHolds，报文、自带修饰键的键、开合的 Ctrl 自己管），纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，按得到的是报上来那个正方形的内切圆——Region.contains，服务、App 本地分流、KeyFingers 共用；第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数，中键按着 = 滚动、没滚过松开补中键单击；按在中键上的第一根手指自己也是滚动杆——lever，另一个滚动杆模式的 TrackPoint，和红点共用一套节拍：任一按着就开、都松了才停（stopTicksIfIdle），挪出轻点容差就算滚过、松开不补单击；中键按着、滚动杆还没挪出轻点容差时别的来源——红点、触控板、开合、滚轮动作——先出了滚轮，滚动杆让位到抬起（leverYield：按着中键当修饰键时拇指漂一点不另外滚））；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立）；按键（2026-11-01，协议 20）：区域那一路（down / up）和界面那一路（key(key, action, t)）都进 KeyHolds，按键专用的第二个定时器 Output.scheduleKeys / cancelKeys → onKeyTimer（和引擎那个槽分开），每个带时间的入口记下 now；鼠标键按下 / 松开、带着按住的鼠标键移动、滚轮、开合、三指四指手势给按着的修饰键标"用过"（mouse 第一行在 lastButtons 赋值之前比），开合开始前先结算待定的键；unlatch（CMD_UNLATCH）；Output.modifiers(锁住, 按着, 快锁了) 变了才报、Output.caps(sent) 报"Caps 显示翻一下"；换参数时按着键的手指留着（clearSlots(true)：键不依赖引擎，抬起照常松开、照常判） |
+| `src/dev/douhua/KeyHolds.java` | 按着时要计时的键（2026-11-01），纯 Java（离线测，KeyHoldsTest 全经真 TouchRouter 跑），TouchRouter 持有一份、不加锁：修饰键（0xE0–0xE7、不带自带修饰键，左右八个含 AltGr / ⌃⌥⌘）按下马上发，按住期间用过（按了别的键、TouchRouter 报的鼠标 / 滚轮 / 开合 / 手势，used）或按下时已有别的键 / 鼠标键按着（Host.mouseBusy）= 组合、松手就松，单独点一下 = 点一下，单独按住 HOLD_MS（0.4 秒）–LOCK_MAX_MS（1 秒）松手 = 锁（到 0.4 秒 armed + 震），超过 1 秒退回不锁；锁了以后打完下一个普通键解开、再按一下锁住的键也解开；Caps（0x39）按下先不发，点一下发 Caps Lock（按着 CAPS_TAP_MS 60ms 再松）+ Host.caps(true)，按住 0.4 秒只 Host.caps(false) + 震；合并键（Proto.dualKey）点一下 tap 键、按住 0.4 秒 hold 键（只发一次）+ 震；待定的 Caps / 合并键在别的键按下、手指按着的修饰键（正常）松开、开合开始（settle）之前当点一下结算（被取消的修饰键松开不结算）；按着的键按 id 计数（计数 0 的松开整个不理：releaseAll 之后迟到的）；到点按截止时刻 + 当前状态处理（onTimer，过期的回调什么都不多做），排定时器正好排在最早的截止时刻；Host 的 pressKey / releaseKey 是原语、不回调这里 |
+| `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号；带滚轮分辨率倍率的鼠标描述符（MOUSE_DESC_HIRES 蓝牙用，竖、横两个倍率；MOUSE_DESC_HIRES_V 桌面模式 uhid 用，只有竖向一个；输入报文都和旧的一字不差）、倍率字节编解码、WheelOut（1/120 格 → 计数、余数、拆帧；uhid 那份设 / 问倍率的 setUhidFeature / uhidFeatureReport，UhidMouse 只调它们；离线测 HidTest）；手柄描述符 GAMEPAD_DESC（Game Pad、15 键 + Hat + X/Y/Z/Rz + Brake/Accelerator，13 字节，全零 = 中立）和 Gamepad（状态、报文、两路合并 merge）；修饰键掩码的小工具（ctrl：左右 Ctrl 都算；modifierBit）。以前的 modifierUsages（界面替服务解开锁定时逐个点一下）2026-11-01 随协议 20 删了，改发 CMD_UNLATCH |
 | `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停；描述符跟着"连续滚动"开关（变了就注销、重新注册，descriptorChanged），回应主机设 / 问滚轮倍率 |
 | `src/dev/douhua/Haptics.java` | 震动：点击、咔嗒、颗粒、拖动时的持续轻震、按键的"嗒"、惯性的"放开 / 刹住"（调试版设置里能挑候选波形，正式包用默认） |
-| `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；几屏共用的 ⋯ 菜单的项（主界面 键盘 / 手柄 / 设置 / 旋转 / 退出，键盘屏 键盘（豆花 / 实体，MENU_BOARD_ID 418，switchBoard 只写 kbd_board）/ 收起键盘 / 调整大小 / 布局（只在显示豆花布局时）/ 指点（显示着的那块自己的）/ 手柄 / 设置 / 旋转 / 退出，手柄页 预设 / 返回触控板 / 设置 / 旋转 / 退出；"手柄"只在桌面模式）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：五页往里收）；手柄页的进出（setGamepadMode：桌面模式下手柄页走本地分流，CMD_GAMEPAD 发给服务）、吞自己手柄的键和摇杆（dispatchKeyEvent / dispatchGenericMotionEvent） |
-| `src/dev/douhua/KeyboardFace.java` | 键盘页上两块面板（豆花布局 KeyboardPanel、实体键盘 FixedKeyboardView）对外的共同方法（第 1B 批）：修饰键、按下的样子、松开、主题、报区域、⋯ 键、空位、红点；KeyboardScreen.face 给显示着的那块 |
+| `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；几屏共用的 ⋯ 菜单的项（主界面 键盘 / 手柄 / 设置 / 旋转 / 退出，键盘屏 键盘（豆花 / 实体，MENU_BOARD_ID 418，switchBoard 只写 kbd_board）/ 收起键盘 / 调整大小 / 布局（只在显示豆花布局时）/ 指点（显示着的那块自己的）/ 手柄 / 设置 / 旋转 / 退出，手柄页 预设 / 返回触控板 / 设置 / 旋转 / 退出；"手柄"只在桌面模式）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：五页往里收）；手柄页的进出（setGamepadMode：桌面模式下手柄页走本地分流，CMD_GAMEPAD 发给服务）、吞自己手柄的键和摇杆（dispatchKeyEvent / dispatchGenericMotionEvent）；修饰键 / Caps 的显示（2026-11-01）：onModifiers(锁住, 按着, 快锁了) → showKeyState 两块面板都画；Caps 的显示只有这一份（static capsShown，服务 MSG_CAPS / 本地分流只报"翻一下"，换了主机——蓝牙地址变了、蓝牙 ↔ 桌面模式——在 updateHostKind 里归"关"）；本地分流的按键定时器 localKeyTimer；onLocalKey(key, action)（KEY_DOWN / KEY_UP / KEY_CANCEL，数字键盘、动作里的组合键同）；进空中鼠标 / 手柄页替服务解开锁定发 CMD_UNLATCH（link.unlatch） |
+| `src/dev/douhua/KeyboardFace.java` | 键盘页上两块面板（豆花布局 KeyboardPanel、实体键盘 FixedKeyboardView）对外的共同方法（第 1B 批）：修饰键、按下的样子、松开、主题、报区域、⋯ 键、空位、红点；KeyboardScreen.face 给显示着的那块；setKeyState(锁住, 按着, 快锁了, caps)（2026-11-01 起取代 setModifiers：高亮 = 锁住 \| 快锁了 和 Caps 的显示，键帽上的字照 锁住 \| 按着 换） |
 | `src/dev/douhua/FixedLegends.java` | 实体键盘的键帽字（res/raw/kbd_win / kbd_mac）和布局清单（kbd_catalog）的读法，纯 Java（离线测，FixedLegendsTest）：格式照 tools/kbd/kbdtable.py（段、别名、死键 `\*`、转义），读不出就抛异常；四层（普通 / Shift / 第三层 / 第三层+Shift）；画不画得出来（printable：私用区的苹果标、组合附加符号不画）；布局 id → 语言标签（LOCALE_TAGS）。Mac 模式查不对调那段（`<id>`，不读 `<id>.iso`） |
 | `src/dev/douhua/FixedLayout.java` | 实体键盘的几何（第 1B 批），纯 Java（离线测，FixedLayoutTest）：形状（ANSI / ISO）× 尺寸（TKL / 全尺寸）× 模式（Windows / Mac）拼一块，单位 u（F 行 + 隔 0.25u + 主键区五行，6.25u 高；主键区 15u、编辑区、小键盘）；每个键的用法码（Windows 照 PC 惯例；Mac 底行 ⌃ ⌥ ⌘ 空格 ⌘ ⌥ 🌐 ⌃、F13–F15、没有 Ins / Menu，ISO 的 1 左边发 0x64、Z 左边发 0x35 照真苹果 ISO 键盘）、L 形回车（x2 / w2）、两行高的小键盘 + / Enter；Esc 和 F1 之间的 ⋯ 槽（menu）；键盘范围每区块每行一块（ranges：伸到相邻行 / 区块空隙的中线、外圈到面板边，没有键的格子不在任何一块里）；小红点那条竖线（stickU：G 的右边 = B 的中线）；Windows 模式右 Alt 是不是 AltGr（altGr：字表有第三层才是，美式不是；Mac 模式一律假）；照字表拼（forLegends：字表是 null 就不拼、返回 null） |
-| `src/dev/douhua/FixedPanel.java` | 实体键盘摆到像素以后，纯 Java（离线测，FixedLayoutTest）：每个键按行切成几段矩形（segments，相邻键共用边界、四边缩进 gap）、范围、报给服务的区域（regions：段在前、范围在后）、面板自己收触摸时哪根手指按哪个键（keyAt：KeyFingers + nearestKey，红点圆、空位是洞）；小红点在真 ThinkPad 的位置（stickPoint：G|H 的缝、G / H 键帽下沿）、空格那一排让给三个鼠标键的空位（stickHole：以红点为中线对称，规则同豆花布局的 stickHole，空格切成左右两段）、碰到切口的键（KeyboardPlan.cuts）和字挪多少（labelShift）、角上小字放哪个角；键帽上画哪几个字（glyphs：字母一个、数字标点上下两层、第三层角上小字，锁着 Shift / 第三层时不会出的压暗，死键；第三层 = Mac 的任一 Option、Windows 有 AltGr 的布局的右 Alt，layer）、放大提示（preview）、主次键帽（functionKey）、L 形回车的形状（shape）、几个键帽（capBoxes：空格被空位切开时两个） |
+| `src/dev/douhua/FixedPanel.java` | 实体键盘摆到像素以后，纯 Java（离线测，FixedLayoutTest）：每个键按行切成几段矩形（segments，相邻键共用边界、四边缩进 gap）、范围、报给服务的区域（regions：段在前、范围在后）、面板自己收触摸时哪根手指按哪个键（keyAt：KeyFingers + nearestKey，红点圆、空位是洞）；小红点在真 ThinkPad 的位置（stickPoint：G|H 的缝、G / H 键帽下沿）、空格那一排让给三个鼠标键的空位（stickHole：以红点为中线对称，规则同豆花布局的 stickHole，空格切成左右两段）、碰到切口的键（KeyboardPlan.cuts）和字挪多少（labelShift）、角上小字放哪个角；键帽上画哪几个字（glyphs：字母一个、数字标点上下两层、第三层角上小字，锁着 Shift / 第三层时不会出的压暗，死键；第三层 = Mac 的任一 Option、Windows 有 AltGr 的布局的右 Alt，layer）、放大提示（preview）、主次键帽（functionKey）、L 形回车的形状（shape）、几个键帽（capBoxes：空格被空位切开时两个）；Caps 的显示（2026-11-01）：字母类的键 Windows 模式 Shift ⊕ Caps、Mac 模式 Shift ∨ Caps（upper），glyphs / preview 带 caps，active 看 锁住 \| 快锁了 和 Caps 键（0x39） |
 | `src/dev/douhua/Boards.java` | 键盘页用哪块（豆花布局 / 实体键盘，kbd_board）和实体键盘自己的设置（kbx_lang / shape / size / mode / pointer、大小位置 kbx_<尺寸>_<指点>_<land|port>_*），纯 Java（离线测，BoardsTest），跑在 Store 接口上（App 里是 Prefs.store）；一个 kb_ 开头的键都不读不写；形状按布局清单核（德语只有 ISO，存的值不动） |
 | `src/dev/douhua/FixedData.java` | 实体键盘的数据从 res/raw 读进来（进程里读一次缓存），拼布局（右 Alt 写不写 AltGr 看字表有没有第三层、小键盘小数点看清单；字表读不出来 / 没有这一段时布局是 null，键盘页照样显示豆花布局）、布局在界面语言里叫什么、开源许可页的文本 |
-| `src/dev/douhua/FixedKeyboardView.java` | 实体键盘的面板（第 1B 批）：一个 View 自己画全部键帽（L 形回车、两三层字、死键强调色、左右八个修饰键高亮、被小红点切到的键用 Style.CutCap 画），自己收触摸（服务没接管时，照 FixedPanel.keyAt）；规则全在 FixedPanel |
-| `src/dev/douhua/KeyboardPanel.java` | 外接键盘的键帽、触摸、高亮（键位本身在 KeyRows；第 1B 批起叫"豆花布局"，implements KeyboardFace，切到实体键盘再切回来不销毁），键 id = 用法码 \| 自带修饰键 << 8；自己摆放键帽（ViewGroup，所有键帽是直接子 view，按 KeyRows.place 摆）；报区域时键后面报键盘范围（REGION_KEYBOARD：整块一块，分裂时左右两半各一块）；功能行带不带最右边的 ⋯ 键（setMenuKey，小触控板上没摆出 ⋯ 时带，menuKeyRect 给菜单定位）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键；嵌在键里的小红点圆里、让给三个鼠标键的空位里不算任何键）；三层的全部行交给 KeyboardPlan 算红点多大、空位多宽（layers）；键帽照 KeyRows.capKeys 建（含小红点状态底行的 before / after）；小红点状态（2026-11-01）：底行在中间让出空位、快捷行分得开时也让（setHole(hole, spread)，KeyRows.place 的 hole / spread），红点嵌在键里时碰到切口的键帽沿圆弧画（setStick → Style.keyLook 的 cut）、字竖着挪开（上下内边距，KeyboardPlan.labelShift）；三层、两种布局的键帽各建一次，换层 / 分裂只切显示；键帽文字 / 高亮没变的键不重设 |
-| `src/dev/douhua/KeyRows.java` | 键位和排布，纯 Java（离线测，KeyRowsTest）：键（Key）、每行整块 / 分裂时左右两半各是哪些键（Row）、键盘区宽 ≥ 2 × 高（shouldSplit）、每个键摆在哪（place）；分裂时两半中间放触控板（各三分之一宽）或只隔一条缝（leftEnd 的 middle），只隔一条缝时两块键盘范围伸到缝的中线（areaEnd / areaStart）；同一个键两种布局用同一个 Key 对象；功能行两份（topRows：不带 / 带最右边的 ⋯，⋯ 是特殊键 MENU_BUTTON_ID = 303）；哪些键算功能键（functionKey；数字键盘另有 numpadFunctionKey，"-" 在那里算运算符），主题按它分主次上色；一层的全部行（rows / layers，KeyboardPanel 和 KeyboardPlan 共用）；小红点嵌在哪（stickPoint：字母层 g|h、v|b 的缝和 a–l / z–m 两行交界那一点，只有整块）；小红点状态下底行、快捷行让出空位（Row 的 before / after：底行 ?123 , 空格（缩短，STICK_SPACE 1.5 份、最短 STICK_SPACE_MIN 1 份，只有它跟着空位伸缩）│ 空位 │ . ↵；spread：快捷行按个数分到两边 spreadLeft，place 的 spread 为假时照旧铺满；holeUnits / holeTop / holeBottom 给 KeyboardPlan 算空位）；所有布局下会显示的键（capKeys，KeyboardPanel 照它建键帽） |
+| `src/dev/douhua/FixedKeyboardView.java` | 实体键盘的面板（第 1B 批）：一个 View 自己画全部键帽（L 形回车、两三层字、死键强调色、左右八个修饰键高亮、被小红点切到的键用 Style.CutCap 画），自己收触摸（服务没接管时，照 FixedPanel.keyAt）；规则全在 FixedPanel；高亮看 锁住 \| 快锁了 和 Caps、字看 锁住 \| 按着 和 Caps（setKeyState → FixedPanel.active / glyphs / preview 带 caps），自己收的手指被取消 / 换键盘时发 KEY_CANCEL；Esc 和 F1 中间的 ⋯ 槽（KeyRows.menuKey）画成强调色的底 + 反差字、不描边（同豆花布局的 ⋯ 键，2026-11-01） |
+| `src/dev/douhua/KeyboardPanel.java` | 外接键盘的键帽、触摸、高亮（键位本身在 KeyRows；第 1B 批起叫"豆花布局"，implements KeyboardFace，切到实体键盘再切回来不销毁），键 id = 用法码 \| 自带修饰键 << 8；自己摆放键帽（ViewGroup，所有键帽是直接子 view，按 KeyRows.place 摆）；报区域时键后面报键盘范围（REGION_KEYBOARD：整块一块，分裂时左右两半各一块）；功能行带不带最右边的 ⋯ 键（setMenuKey，小触控板上没摆出 ⋯ 时带，menuKeyRect 给菜单定位）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键；嵌在键里的小红点圆里、让给三个鼠标键的空位里不算任何键）；三层的全部行交给 KeyboardPlan 算红点多大、空位多宽（layers）；键帽照 KeyRows.capKeys 建（含小红点状态底行的 before / after）；小红点状态（2026-11-01）：底行在中间让出空位、快捷行分得开时也让（setHole(hole, spread)，KeyRows.place 的 hole / spread），红点嵌在键里时碰到切口的键帽沿圆弧画（setStick → Style.keyLook 的 cut）、字竖着挪开（上下内边距，KeyboardPlan.labelShift）；三层、两种布局的键帽各建一次，换层 / 分裂只切显示；键帽文字 / 高亮没变的键不重设；修饰键 / Caps 的样子（2026-11-01，setKeyState：KeyRows.capText 定键帽上的字、KeyRows.lit 定高亮）；合并键的键帽带右上角小字（Style.keyButton 的 corner → CornerKey），按着 0.4 秒放大提示换成角上那个字；自己收触摸时按下发 KEY_DOWN、抬起 KEY_UP、被取消 / 消失 KEY_CANCEL；换层、分裂 / 合拢、⋯ 键、让位、重建底行都走 changeKeys：按 Key 对象（Cap）把手指重新对上（KeyFingers.remap），还显示着的键照旧按着，只有真消失的当取消松开（服务接管时的 releaseTouches 照旧全部取消）；功能行最右的 ⋯ 键画成强调色的底 + 反差字、不带边框（look → Style.menuKeyLook，2026-11-01） |
+| `src/dev/douhua/KeyRows.java` | 键位和排布，纯 Java（离线测，KeyRowsTest）：键（Key）、每行整块 / 分裂时左右两半各是哪些键（Row）、键盘区宽 ≥ 2 × 高（shouldSplit）、每个键摆在哪（place）；分裂时两半中间放触控板（各三分之一宽）或只隔一条缝（leftEnd 的 middle），只隔一条缝时两块键盘范围伸到缝的中线（areaEnd / areaStart）；同一个键两种布局用同一个 Key 对象；功能行两份（topRows：不带 / 带最右边的 ⋯，⋯ 是特殊键 MENU_BUTTON_ID = 303）；哪些键算功能键（functionKey；数字键盘另有 numpadFunctionKey，"-" 在那里算运算符），主题按它分主次上色；一层的全部行（rows / layers，KeyboardPanel 和 KeyboardPlan 共用）；小红点嵌在哪（stickPoint：字母层 g|h、v|b 的缝和 a–l / z–m 两行交界那一点，只有整块）；小红点状态下底行、快捷行让出空位（Row 的 before / after：底行 ?123 [,.] 空格（缩短，STICK_SPACE 1.5 份、最短 STICK_SPACE_MIN 1 份，只有它跟着空位伸缩）│ 空位 │ 空格 ↵；spread：快捷行按个数分到两边 spreadLeft，place 的 spread 为假时照旧铺满；holeUnits / holeTop / holeBottom 给 KeyboardPlan 算空位）；所有布局下会显示的键（capKeys，KeyboardPanel 照它建键帽）；小红点状态底行的两个新键（2026-11-01）：COMMA_PERIOD（Proto.dualKey(0x36, 0x37)，点一下 , 按住 .，Key.corner = "." 右上角小字，占 , 原来的 1 份）、STICK_SPACE_R（右边的空格，另一个键帽、同一个 id，占 . 原来的 1 份；份数没变，空位 / 红点 / 鼠标键全都不变）；键帽上的字 capText（Shift = 锁住 \| 按着、字母连苹果设备 Shift ∨ Caps 别的 Shift ⊕ Caps）、高亮 lit（修饰键左右八个看 锁住 \| 快锁了、Caps 看显示）；哪个键是 ⋯（menuKey：豆花布局的 ⋯ 键、实体键盘的 ⋯ 槽同一个编号，两块面板按它画强调色的 ⋯） |
 | `src/dev/douhua/KeyboardPlan.java` | 键盘界面怎么摆，纯 Java（离线测，KeyboardPlanTest；实体键盘那部分 FixedLayoutTest）：实体键盘（第 1B 批：fixedFits 一格 ≥ 32dp 才显示、fixedDefaultRect 按"行高 ≈ 键宽 × 1.1"的自然比例（守调大小的约束：不比 fixedMinWidth 窄——一格 ≥ 32dp、不比 MIN_HEIGHT 矮）、planFixed：不分裂、触控板同合并、⋯ 在触控板顶上或 Esc–F1 的槽里、小红点在 G / H / B 中间 + 空格那一排的三个鼠标键；红点嵌在键里多大 / 嵌不下放哪和豆花布局共用 placeStickAt）；布局（自动 / 分裂 / 合并）轮换、分不分裂（键太窄不分）、分裂 / 合并时键盘占哪块、触控板放在空得最多的一侧（太小不放）、宽窗口没调过大小时的默认位置（触控板显示且放得下才三分之二宽）；⋯ 菜单的几何（menuTop：⋯ 放触控板顶上正中、padMenuTop：主界面的 ⋯ 放不下也照样放、menuPosition：菜单弹在哪不出屏、menuGrid：项多窗口矮时先压矮再分列、adjustBarTop：调整栏放上还是下、barButtonWidth：调整栏按钮宽度）；分裂时对称调大小的几何（左半"格子"、默认格子、fitSplit 按窗口守约束、dragSplit 拖法和约束）；指点三选一（POINTER_PAD / STICK / NONE，nextPointer）：小红点照真的 ThinkPad 键盘摆（2026-11-01）、固定合并（不管"布局"）——三个鼠标键铺满底行、快捷行在中间让出的空位（stickHole：以红点为中线对称、空格尽量长、三个键各 ≥ 44dp，放不下就空格最短、三个键最窄 32dp；holeKeys 铺法，Plan.hole / keys / middleKey；快捷行分到两边后每个键连缝 ≥ 32dp 才也让位、三个键跨两行，不然只占空格那一排，shortcutsSpread / Plan.spread），红点在 KeyRows.stickPoint（placeStick：嵌在四个键的交界、挨着的键被和红点同心的圆切掉一块，stickRadius 按每层每个键被切掉的面积 cutShare（精确算）、键上的字躲不躲得开 labelShift 定多大，Plan.cut 是切口半径；嵌不下放键盘外面上 / 下 / 旁边），中键窄、左右键宽、中键对着红点（middleKey，三键条也用）；触控板的三键条（cutBar，上沿 / 下沿，主界面也用）、⋯ 放哪（Plan.menuArea / menuMargin；没有触控板时回功能行）；离页面边的距离可以各边不一样（Sizes.edgeL / T / R / B、withEdges，menuTop / menuGrid / menuPosition / adjustBarTop 各有带 {左, 上, 右, 下} 的版本，屏幕边缘留白用） |
-| `src/dev/douhua/KeyFingers.java` | 键盘面板自己收触摸时每根手指按的是哪个键（按 pointer id 记，抬起只松自己那个）；按下定键 = 包含的键优先、缝里交给 TouchRouter.nearestKey（几块范围时只在落进的那一块里分），落在洞（嵌在键里的小红点——REGION_STICK 按内切圆认；小红点状态下让给三个鼠标键的空位）里不算任何键，纯 Java（离线测） |
+| `src/dev/douhua/KeyFingers.java` | 键盘面板自己收触摸时每根手指按的是哪个键（按 pointer id 记，抬起只松自己那个）；按下定键 = 包含的键优先、缝里交给 TouchRouter.nearestKey（几块范围时只在落进的那一块里分），落在洞（嵌在键里的小红点——REGION_STICK 按内切圆认；小红点状态下让给三个鼠标键的空位）里不算任何键，纯 Java（离线测）；remap（2026-11-01）：面板换键时按新下标对上还显示着的键、返回消失了的（调用方当取消松开） |
 | `src/dev/douhua/KeyboardScreen.java` | 键盘界面：可调大小位置的键盘 + 小触控板占满整页（没有工具栏那一行）；两块键盘面板（豆花布局 / 实体键盘，第 1B 批）都在、同一时刻只显示一块（face：选了实体键盘、这个窗口放得下——KeyboardPlan.fixedFits——才显示它，不然暂时显示豆花布局，换了 post Listener.onKeyboardFaceChanged），实体键盘照 KeyboardPlan.planFixed 摆、自己记指点和大小位置（setFixedWanted / setFixedPointer / setFixedRect，调整模式拖的是它那份）；按键放大提示按 view 或按面板里的矩形定位（PreviewHost.showKeyPreviewAt）；⋯（触控板顶上正中、不带框）、调整模式的"完成 / 恢复默认"栏由它摆（视图由 MainActivity 建）；菜单本身在 MenuLayer，贴着这里的 ⋯ 弹出（menuAnchor）；每次量尺寸按 KeyboardPlan 摆；调整模式由 App 自己收触摸，分裂时两半对称着拖（pickSplitHandle，按右半时左右位移镜像）；指点选小红点时摆红点（TrackPointView，嵌在键里时只画红帽，键自己切口）和铺满底行、快捷行空位的三个鼠标键（MouseKeys 的铺满模式；快捷行太挤不让位时只铺底行那段），量键盘之前把空位和红点告诉面板（KeyboardPanel.setHole / setStick）；触控板开着三键条时从上沿 / 下沿切一条（同一组 MouseKeys）；屏幕边缘留白时整屏被往里收，离各边的 20dp 少留收进去的那么多（setEdgeInsets） |
 | `src/dev/douhua/MenuLayer.java` | ⋯ 菜单，主界面和键盘屏共用一份（根视图最上面一层、铺满整页；屏幕边缘留白时和别的页一样往里收，离各边少留，setEdgeInsets）：盖住整页的"点外面" + 菜单底板（项是它的子 view，只排显示着的，KeyboardPlan.menuGrid 排、先排满第一列）；贴着当前那一屏的 ⋯ 弹出（Host.menuAnchor + KeyboardPlan.menuPosition）；⋯ 那一支单独重新布局时由 MainActivity 在根视图的布局监听里再 place 一次 |
-| `src/dev/douhua/Style.java` | 共用样式（边框、按下 / 高亮、触控板角上的小按钮——small 的 onImage：触控板上有背景图时平时垫不透明的触控板底色）；颜色从当前主题取（setTheme，MainActivity 设），设置页预览用带 Theme 参数的那几个；键帽（整屏键盘、数字键盘）走 keyButton / keyLook（边框跟"按键边框"开关；缩到最小字号还放不下的键名末尾省略"…"），其它按钮走 button / look（一直有边框）；sp 换像素（Style.sp，跟着系统字体大小）；键帽分主次：keyLook / look 带 fn（功能键的颜色；高亮时照旧是普通键帽底色 + 强调色的边）；被小红点切掉一块的键帽（keyLook 的 cut → CutCap：圆角矩形减去圆，底色、边框沿着圆弧走，颜色同别的键帽） |
-| `src/dev/douhua/Theme.java` | 主界面的十八套配色（设置 → 外观；ALL 先深色后浅色）：每套写几个底子、其余按规则推（灰字取"刚够 4.5:1"的、强调色当字用不够就推亮 / 推暗）；功能键的槽位 fnKey / fnText / fnPressed（底色掺强调色，到和键帽、页面色差 ≥ 8 为止，fnTint）；纯黑每个槽位照以前的常量写死（功能键和普通键一样）；对比度、CIE76 色差计算，纯 Java（离线测 ThemeTest）；小红点的红（stick：ThinkPad 红推到对页面、触控板底色都 ≥ 3:1，stickRed） |
+| `src/dev/douhua/Style.java` | 共用样式（边框、按下 / 高亮、触控板角上的小按钮——small 的 onImage：触控板上有背景图时平时垫不透明的触控板底色）；颜色从当前主题取（setTheme，MainActivity 设），设置页预览用带 Theme 参数的那几个；键帽（整屏键盘、数字键盘）走 keyButton / keyLook（边框跟"按键边框"开关；缩到最小字号还放不下的键名末尾省略"…"），其它按钮走 button / look（一直有边框）；sp 换像素（Style.sp，跟着系统字体大小）；键帽分主次：keyLook / look 带 fn（功能键的颜色；高亮时照旧是普通键帽底色 + 强调色的边）；被小红点切掉一块的键帽（keyLook 的 cut → CutCap：圆角矩形减去圆，底色、边框沿着圆弧走，颜色同别的键帽）；右上角带小字的键帽（CornerKey，keyButton(c, sp, corner)：合并键的 "."，字号 min(10sp, 键高 × 0.22)、颜色同字色）；⋯ 用强调色（2026-11-01）：键帽形状的 ⋯ 走 menuKeyLook（强调色底 menuKey / 按下 menuKeyPressed、反差字 menuKeyText、不画边框、不跟"按键边框"开关，被切时也走 CutCap），不带框的 ⋯（触控板顶上、手柄页顶上）走 bare（字 menuDots，按着时垫 pressed） |
+| `src/dev/douhua/Theme.java` | 主界面的十八套配色（设置 → 外观；ALL 先深色后浅色）：每套写几个底子、其余按规则推（灰字取"刚够 4.5:1"的、强调色当字用不够就推亮 / 推暗）；功能键的槽位 fnKey / fnText / fnPressed（底色掺强调色，到和键帽、页面色差 ≥ 8 为止，fnTint）；纯黑每个槽位照以前的常量写死（功能键和普通键一样）；对比度、CIE76 色差计算，纯 Java（离线测 ThemeTest）；小红点的红（stick：ThinkPad 红推到对页面、触控板底色都 ≥ 3:1，stickRed）；⋯ 的四个槽位（2026-11-01）：menuKey（强调色推到对页面、键帽、功能键都 ≥ 3:1，reachAll：一次看几个底、方向看第一个）、menuKeyText（页面色 / 正文色里对它反差大的那个，再推到 ≥ 4.5:1）、menuKeyPressed（底往字掺一成半）、menuDots（强调色推到对触控板底、页面 ≥ 4.5:1、对 pressed ≥ 3:1）；纯黑这四个写死成 focus 的蓝（#8AB4F8 底、黑字、按下 #7599D3、不带框的蓝字） |
 | `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 键盘 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），七页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、轻点 = 左键、负惯性、三键条开关和上沿 / 下沿）；"键盘"页（第 1B 批，keyboardSection）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘的语言 / 形状 / 尺寸（写键数）/ Windows · Mac 模式、主机那边要设成同一种布局的说明（桌面模式下一个按钮打开手机的实体键盘设置）、豆花布局的快捷行（从"按钮与按键"挪过来）；"通用"页最下面"开源许可"（licenses：res/raw/licenses.txt 的全文）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它） |
 | `src/dev/douhua/ThemeGrid.java` | 设置 → 外观的主题色块网格（一组深色或浅色）：每格一小块样子（普通键 A + 功能键 ⇧ + 一小块触控板）+ 名字，每行几格按宽度定（每格 ≥ 96dp），选中框用设置页自己的蓝 |
 | `src/dev/douhua/ButtonStrip.java` | 自定义按键（主界面左边一列，原来的左侧按钮条；设置里打开，默认关），屏幕矮时自动分列 |
@@ -65,7 +66,7 @@
 | `src/dev/douhua/GamepadConfig.java` | 手柄的手感参数（设置 → 手柄，Prefs.gamepadConfig 按 gp_* 读，存成整数：dp / 百分比 / 度）和 CMD_GAMEPAD_CONFIG 的编解码（length:u16 + 字段，多的跳过、少的用默认），纯 Java |
 | `src/dev/douhua/GamepadScreen.java` | 手柄页（独立一页）：按 GamepadPlan 摆、GamepadPainter 画（看手柄报文画按下：本地分流的 + 服务 MSG_GAMEPAD 的合起来），顶上正中的 ⋯（MainActivity 建，按住 0.6 秒开菜单）、状态字；collectRegions 报 REGION_GAMEPAD（簇的范围在成员前面）；setSpec 按 key 比（内容一样的自定义不算换）；name：预设 / 自定义显示的名字（手柄页菜单、设置页共用）；强制从左往右 |
 | `src/dev/douhua/GamepadPainter.java` | 手柄控件的画法（手柄页和设置页的预览共用）：面键圆、△○×□ 和 N64 的 C 键画形状、十字键、街机摇杆底座、摇杆、肩键 / 扳机 / 中间小长条；k = 一个 dp 画成几像素，minText = 0 时不写字（网格小图） |
-| `src/dev/douhua/GamepadPreview.java` | 设置 → 手柄的预览：按 930 × 350dp（分屏下半边）摆、缩小了画（GamepadPainter，没按着的键），大预览写字、网格小图不写；颜色用设置里的主题 |
+| `src/dev/douhua/GamepadPreview.java` | 设置 → 手柄的预览：按 930 × 350dp（分屏下半边）摆、缩小了画（GamepadPainter，没按着的键），大预览写字、网格小图不写；颜色用设置里的主题；顶上的 ⋯ 同手柄页用 Theme.menuDots |
 | `src/dev/douhua/GamepadGrid.java` | 设置 → 手柄的预设网格：每格一张 GamepadPreview 小图 + 名字，最后一格自定义；每行几格按宽度定、选中框用设置页的蓝（同 ThemeGrid） |
 | `src/dev/douhua/MouseKeys.java` | 一排左 / 中 / 右三个鼠标键（选小红点时底行、快捷行让出的空位里，触控板的三键条）：中键窄、左右键宽（setMiddle，没设时平分）；铺满模式（setTiled，键盘里）三个键的 view 铺满空位、不留缝（报的区域也就铺满），键帽各缩进同键盘的键画；不写字，照真 ThinkPad：左右键下沿（靠用户那条长边）横着一道红线、几乎占满键宽，中键没有红线、上沿附近一排 7 个小点；按掩码画按下 |
 | `src/dev/douhua/TrackpadView.java` | 只画底色、背景图（PadImage，可选）、边缘滚动带的细线、状态字和边框（颜色画的时候从当前主题现取）；状态字两边让出多宽（setStatusSide：主界面下面两个角有按钮时让过它们）；有图时状态字、⋯（setMenuChip，KeyboardScreen / PadStack 告诉它 ⋯ 在哪）下面垫不透明的触控板底色、细线下面垫 3dp 底条，边框最后画 |
@@ -95,11 +96,11 @@
 | `src/dev/douhua/KeyboardSnap.java` | 调整键盘时的轻微吸附（分裂时 applySplit：贴边 / 两半合拢 / 上下边），纯 Java（离线测） |
 | `src/dev/douhua/EdgeMargin.java` | 屏幕边缘留白，纯 Java（离线测，EdgeMarginTest）：哪几条边留、留多少（margins：窗口贴着屏幕边的才留，一个方向最多窗口的一半）、页面收进去以后"离屏幕边 20dp"在页面里还剩多少（edges）、设置的范围（0–48dp、步长 2、默认 8） |
 | `src/dev/douhua/Prefs.java` | 设置键名和默认值 |
-| `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息；空闲 2 秒发保活（CMD_PING），连接超时 / 5 秒等不到 hello 报"服务没响应"；记下 hello 里服务的 APK 路径（serverApk）；回调全部经一个异步 Handler 到主线程（不排在界面重画的同步屏障后面） |
+| `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息；空闲 2 秒发保活（CMD_PING），连接超时 / 5 秒等不到 hello 报"服务没响应"；记下 hello 里服务的 APK 路径（serverApk）；回调全部经一个异步 Handler 到主线程（不排在界面重画的同步屏障后面）；协议 20：hidKey(key:i32, action)、unlatch（CMD_UNLATCH），读 MSG_MODIFIERS 三个字节、MSG_CAPS（onModifiers(锁住, 按着, 快锁了) / onCaps） |
 | `src/dev/douhua/DexDisplay.java` | 找外接屏（按键注入目标；类名是改叫"桌面模式"之前起的） |
 | `src/dev/douhua/DisplayReceiver.java` | 服务叫醒它：接上外接屏弹通知（点开在手机屏上打开豆花），拔掉收回 |
 | `src/dev/douhua/server/Server.java` | 服务入口：主线程只 accept，按 SessionPolicy 接 / 顶掉旧会话 / 回"忙"，每条连接一个 douhua-session 线程；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒；`keys` 只读：用 getevent -i 列出输入设备、音量键能不能截、会截哪块 / 旁观哪块 |
-| `src/dev/douhua/server/Session.java` | 一次 App 连接：建虚拟设备、发 hello、独占时机、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App；10 秒没消息自己断开，可被新连接顶掉（kick）；小红点的节拍在单独的 douhua-tick 线程上（桌面模式 8ms、蓝牙转发 12ms，startTicks / stopTicks）；TouchRouter 的定时器交给 OneShotTimer；虚拟手柄（第一次用到才建 UhidGamepad、会话结束才关；CMD_GAMEPAD / CMD_GAMEPAD_CONFIG、MSG_GAMEPAD；两路合并 GamepadMux，接管时清 App 那路） |
+| `src/dev/douhua/server/Session.java` | 一次 App 连接：建虚拟设备、发 hello、独占时机、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App；10 秒没消息自己断开，可被新连接顶掉（kick）；小红点的节拍在单独的 douhua-tick 线程上（桌面模式 8ms、蓝牙转发 12ms，startTicks / stopTicks）；TouchRouter 的定时器交给 OneShotTimer（引擎那个 routerTimer、按键专用的 keyTimer 两个，协议 20）；CMD_HID_KEY（key:i32, action，时间用收到的时刻）、CMD_UNLATCH → router.unlatch，MSG_MODIFIERS 三个字节、MSG_CAPS；虚拟手柄（第一次用到才建 UhidGamepad、会话结束才关；CMD_GAMEPAD / CMD_GAMEPAD_CONFIG、MSG_GAMEPAD；两路合并 GamepadMux，接管时清 App 那路） |
 | `src/dev/douhua/server/OneShotTimer.java` | TouchRouter 的一次性定时器（Output.schedule / cancelSchedule 的服务端实现）：再排取代上一次；撤掉 / 被取代之后，已经到点、卡在锁上的那次回调拿到锁先比令牌、过期了就不调（ScheduledFuture.cancel 撤不掉已经开始跑的任务），纯 JDK（离线测，ServerPartsTest 真起一个定时器线程） |
 | `src/dev/douhua/server/SessionPolicy.java` | 新连接来时旧会话怎么办：没有 / 已收尾 → 接，沉默 ≥ 5 秒 → 顶掉，否则回"忙"，纯 Java（离线测） |
 | `src/dev/douhua/server/GrabCondition.java` | 独占条件里的心跳（只有心跳和布局算，保活不算）和释放原因码，Session 调它，纯 Java（离线测） |
@@ -124,7 +125,7 @@
 | `src/dev/douhua/server/GamepadMux.java` | 桌面模式 uhid 手柄的两路（服务分流 + App 本地分流）合并、接管时清 App 那路、没变不写，纯 Java（离线测，ServerPartsTest） |
 | `src/dev/douhua/server/UhidMouse.java` / `UhidKeyboard.java` | 虚拟 USB 鼠标 / 键盘，只管发报文（描述符在 Hid，按键状态在 TouchRouter）；鼠标记着内核设的竖滚轮倍率（WheelOut；描述符 MOUSE_DESC_HIRES_V，横向一直 ×1） |
 | `src/dev/douhua/server/PeerUid.java` | 查 /proc/net/tcp 确认连进来的是谁 |
-| `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放；`keys=<4 位>` 一起截音量键，打印实体键事件 / 状态 |
+| `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放；`keys=<4 位>` 一起截音量键，打印实体键事件 / 状态；认得协议 20 的 MSG_MODIFIERS（三个字节）、MSG_CAPS |
 | `src/dev/douhua/server/KeyDevices.java` | 跑 `getevent -i`（经 Shell，5 秒超时）解析输入设备，挑能单独独占的音量键设备（白名单，带电源键的绝不截）和只旁观的带电源键设备，解析部分纯 Java（离线测） |
 | `src/dev/douhua/server/HardKeyGate.java` | 音量键的判断：配了动作的交给 HardKeys、同设备上没配的透传注入；旁观到电源键 + 截住的音量键一起按（截屏）就按原时间补发后交还系统，纯 Java（离线测） |
 | `src/dev/douhua/server/KeyReader.java` | 独占并读音量键设备、不独占地读旁观设备（plain + grab 两个描述符，交还时读空 grabFd 再关），poll 100ms 检查是否该放开 |
@@ -254,7 +255,8 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   GestureEngineTest 的乱序序列锁住"cancel 之后定时器晚到也没有输出、转着时一直挂着定时器"。
   **撤掉 / 取代了的定时器绝不再到点**（引擎只有一个定时器槽、不认回调是哪一次排的，过期的惯性帧会被当成随后新排的长按）：服务的定时器线程到点后卡在 lock 上的那一次
   cancel(false) 撤不掉，所以 Session 的定时器走 OneShotTimer（每排一次一个令牌，拿到锁先比，ServerPartsTest 锁住，含真 TouchRouter 的"过期的惯性帧不被当成长按"）；
-  App 用主线程 Handler.removeCallbacks，单线程，撤掉就不会再跑。
+  App 用主线程 Handler.removeCallbacks，单线程，撤掉就不会再跑。按键专用的第二个定时器（2026-11-01，修饰键 / Caps / 合并键按住到点）同样：服务另一个 OneShotTimer（Session.keyTimer），
+  App 另一个 Runnable（localKeyTimer）；而且 KeyHolds.onTimer 按截止时刻 + 当前状态处理，就算漏进来一次过期的回调也什么都不多做（ServerPartsTest 真起 OneShotTimer 锁住"松开之后才拿到锁的那次不震、不锁"）。
 - **滚轮量在引擎 → TouchRouter → 服务 / App 这一路是 1/120 格（Hid.WHEEL_UNIT）**，只在最后一步按主机设的分辨率倍率换算成计数（Hid.WheelOut 一处，UhidMouse、BtHid 都用它）：
   主机设了倍率后缩放、"滚轮向上 / 向下"、按格滚也全按倍率换算（不然慢 8 倍）；按格滚 + 主机没设倍率时报文和以前逐字节一样（HidTest 锁住）。
   带倍率的描述符只多一个 Feature 报告，输入报文的字节排布一个都不动（已有报告的排布不能动，没重新配对的主机照旧）。
@@ -268,19 +270,35 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   服务接管时本地分流收尾）、换参数（setConfig → clearSlots，两个都作废）都 stopTicks；服务收尾 ticker.shutdownNow 兜底；迟到的节拍 TouchRouter.onTick 看红点、滚动杆都没按着（或滚动杆让位了）就什么都不出
   （TouchRouterTest / TrackPointTest 锁住，startTicks / stopTicks 配对；两个来源乱序交错开停 TouchRouterTest.leverTicksRandom 锁住）。按着却 20 秒没事件就暂停（TrackPoint.IDLE_PAUSE_MS），这根手指再动接着。
   中键收尾（releaseAll）和被取消的抬起（TouchRouter.up 的 canceled：手掌 / 丢数据、TouchReader 收尾补报的、App 带 FLAG_CANCELED 的）都不补中键单击；
-  三键条 / 键盘里（底行、快捷行空位）的左键和"左键"按钮、CMD_HOLD_LEFT 共用 TouchRouter.holds 一个计数。
+  三键条 / 键盘里（底行、快捷行空位）的左键和"左键"按钮、CMD_HOLD_LEFT 共用 TouchRouter.leftHolds 一个计数。
 - **键盘上会显示的每个键都有键帽**（实体键盘同样：每个显示的键有外框、有字，出字的键在字表里有这一行，锁着哪种修饰键都有字——FixedLayoutTest.caps 按
   布局 × 形状 × 尺寸 × 模式 × ⋯ × 让位 × 窗口扫；FixedPanel 的数组跟着键一起换、下标对得上，换键盘后还没重新量时也不越界）：KeyboardPanel 只按 KeyRows.capKeys 建键帽（showLayer 按 KeyRows.keys 取，取到没键帽的键就闪退），
-  加新的行、新的布局变体（像小红点状态底行的 before / after）只改 KeyRows，两处规则在一起；KeyRowsTest.capKeysCover 锁住"keys() 给的每个键都在 capKeys 里"。
+  加新的行、新的布局变体（像小红点状态底行的 before / after）只改 KeyRows，两处规则在一起；KeyRowsTest.capKeysCover 锁住"keys() 给的每个键都在 capKeys 里"
+  （2026-11-01 的合并键 COMMA_PERIOD、右空格 STICK_SPACE_R 在 before / after 里，同样锁住）。
+- **修饰键只在"单独按住 0.4–1 秒"时锁**（2026-11-01，KeyHolds）：按下那一刻已有别的键的手指或鼠标键按着、按着期间按了别的键（含界面发来的 key()、Caps、合并键、别的修饰键）
+  或动了鼠标键（按下 / 松开 / 带着按住的鼠标键移动）/ 滚轮 / 开合 / 三指四指手势，都绝不锁（例外见技术债：蓝牙模式下不经分流的几路鼠标键）；没按鼠标键的光标移动不算。
+  按下马上发（HID 里按着），松手就松，只有锁住时松手 HID 照旧按着。规则只有 KeyHolds 一份，三条触摸路径（服务接管、蓝牙本地分流、面板自己收触摸经 CMD_HID_KEY / local.key）一样，
+  App 只画（MSG_MODIFIERS 的锁住 / 按着 / 快锁了）。KeyHoldsTest 的随机序列锁住"armed ⊆ held、latched ∩ held = ∅、HID 修饰键字节 = latched | held | 自带修饰键 | 缩放 Ctrl、用过的永远不锁"。
+- **修饰键在所有收尾路径上松开、锁定 / 按着 / 快锁了全部归零**：releaseAll（释放独占、断开、退后台、服务接管时本地分流收尾、蓝牙断开）清 KeyHolds、撤按键定时器、发一帧干净的报文、
+  报 (0,0,0)；之后迟到的松开计数是 0、整个不理（不松、不解开新的锁定、不结算）；被取消的抬起（手掌、收尾补报的、FLAG_CANCELED、面板的 KEY_CANCEL）松开但不锁；被取消的修饰键松开也不结算待定的 Caps / 合并键
+  （收尾补报按 slot / 手指编号的先后来，修饰键那根在前时以前会凭空发一次 Caps Lock、一个 "<"；KeyHoldsTest.canceledModifierNoSettle 锁住），待定的留给它们自己的抬起（被取消就什么都不出）或 releaseAll（丢掉）。
+  普通键被取消照样松开（KeyHoldsTest 的随机序列在 releaseAll 之前查：全部抬起后主机上没有按着的键、修饰键字节 = 锁住的）。
+  换参数（setConfig）不松、不丢按着的键（clearSlots(true) 留着键的 slot，抬起照常松开、照常判）。
+- **Caps 只在点一下时发键码、按住只切显示；合并键只发一次点按、不连发**（按住 0.4 秒那一下发完，之后按多久都不再发、松手什么都不发）。
+  **待定的键（Caps、合并键）在别的键按下、手指按着的修饰键（正常）松开、开合开始之前先当点一下结算**：出字的顺序和修饰键跟按下的先后一致（"，空格"不会变成"空格，"、
+  按住 Shift 点合并键再先松 Shift 照样是 "<"）；锁定被解开（打完普通键、Caps 松开、CMD_UNLATCH）不结算（锁着 Shift 快打 "I." 出的是句号）。KeyHoldsTest 锁住。
+- **Caps 的显示只有 App 一份**（MainActivity.capsShown，static）：服务（MSG_CAPS）和本地分流都只报"翻一下"，判点一下 / 按住只在 TouchRouter；不进 Prefs。
+- **面板自己收触摸时换键（换层、分裂 / 合拢、⋯ 键、让位、重建底行）不松还显示着的键**（KeyboardPanel.changeKeys + KeyFingers.remap，按 Key 对象对上）：
+  按住功能行的 Shift / Ctrl 点 ?123 不会把它们松掉、按住合并键时滚着点 ?123 逗号不丢；只有真消失的键当取消松开（KEY_CANCEL）。
 - **切换键盘不写任何 kb_ 开头的键，豆花布局的面板对象不销毁**（第 1B 批，用户 2026-11-01："豆花布局整个保留"）：⋯ 菜单 / 设置页换键盘只写 kbd_board，
   实体键盘的设置全在 kbd_ / kbx_ 下（Boards，BoardsTest 用随机序列锁住"kb_ 开头的键集合和每个值都不变、只写了 kbd_ / kbx_"）；
-  KeyboardPanel 一直在，层（字母 / ?123 / Fn）、键帽缓存、锁住的修饰键照旧（两块面板都收 setModifiers）。实体键盘自己记指点（kbx_pointer）、大小位置
+  KeyboardPanel 一直在，层（字母 / ?123 / Fn）、键帽缓存、锁住的修饰键照旧（两块面板都收 setKeyState）。实体键盘自己记指点（kbx_pointer）、大小位置
   （尺寸 × 指点 × 横竖屏），显示实体键盘时 ⋯ 菜单"指点"、调整模式、恢复默认改的是它那份；窗口太窄暂时显示豆花布局时改的是豆花布局的（显示着的那块）。
 - **实体键盘的区域照豆花布局的规矩报**：只报显示着的那块（KeyboardScreen.face）；键段在前、键盘范围在后，范围每区块每行一块（FixedLayout.ranges，
   每段恰好落在一块同行同区块的范围里，范围不重叠，一行里没有键的格子——方向键上面那几格、↑ 两边、Mac 模式 Ins 那格——不在任何范围里）；
   分流和面板自己收触摸逐点一致（FixedLayoutTest.routing 扫两百多万个点）。跨两行的键按行切成同 id 的几段（ISO 回车、小键盘 + / Enter），画成一个形状。
 - **修饰键掩码是 8 位，右边四个和左边四个一样能锁住**（实体键盘上右 Ctrl / 右 Shift / AltGr·右 Alt·右 ⌥ / 右 Super·右 ⌘ 都是单独的键，0xE4–0xE7，掩码 0x10–0x80；
-  豆花布局只有左边四个）：只看低四位的地方就会漏一个一直按着的键。界面替服务解开锁住的修饰键一律走 Hid.modifierUsages（左右八个都点一下）；"Ctrl 按着"一律走 Hid.ctrl（左右都算）；
+  豆花布局只有左边四个）：只看低四位的地方就会漏一个一直按着的键。界面替服务解开锁住的修饰键一律发 CMD_UNLATCH（Link.unlatch → TouchRouter.unlatch → KeyHolds.unlatch，清全部 8 位锁定、按着的不动；协议 20 起，不再逐个点一下——新规则下点一下没锁着的修饰键就是给主机一次真单点，Windows 单点 Super 弹开始菜单）；"Ctrl 按着"一律走 Hid.ctrl（左右都算）；
   键帽的第三层只认 Mac 的任一 Option、Windows 有 AltGr 的布局的右 Alt（FixedPanel.layer）。加新的"看修饰键"的地方照这条（HidTest、TouchRouterTest、FixedLayoutTest 锁住）。
 - **嵌在键里的小红点、键上切了角的键，三条触摸路径按同一个圆分**（实体键盘同样：红点 REGION_STICK、FixedPanel.holes 按同一个内切圆，FixedLayoutTest.stickRouting）：分流（服务 / App 本地分流）是 REGION_STICK 的内切圆（TouchRouter.Region.contains，红点区域排在键前面）；
   View 自己收触摸时红点 view 不收手指，面板的 KeyFingers 洞按同一个内切圆挖（不靠红点 view 的触摸目标：ViewGroup 会把落在它方块里的后来的手指直接交给它）。
@@ -303,6 +321,9 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   （GamepadMux.deviceCreated，不然之后的松开被当成没变、电脑上一直按着）。CMD_GAMEPAD、CMD_GAMEPAD_CONFIG 不算心跳。
 - **触控板背景图只是画面**：只在 TrackpadView 里画（PadImage），区域上报、TouchRouter、服务、协议都不知道有它（上面那条"从触控板出发划出去照样动光标"不受影响）。
   拷贝、解码（大图一次几百毫秒）一律在后台线程，主线程只比文件名和设置（心跳在主线程，卡 3 秒服务释放触摸屏）。
+- **每套主题里（含纯黑）⋯ 都显眼、看得清**（2026-11-01，用户：⋯ 找不到）：键帽形状的 ⋯（menuKey）对页面、普通键帽、功能键都 ≥ 3:1、和功能键色差 ≥ 8，字对它 ≥ 4.5:1、对按下的底 ≥ 3:1；
+  不带框的 ⋯（menuDots）对触控板底、页面 ≥ 4.5:1、对按着时垫的 pressed ≥ 3:1（ThemeTest.menu 十八套锁住）。加主题、加新的 ⋯ 时照这条：键帽形状的走 Style.menuKeyLook（或同样的颜色），
+  不带框的走 Style.bare；哪个键是 ⋯ 只问 KeyRows.menuKey。⋯ 只换颜色，区域、按得到的范围、菜单的开法一样都不变。
 - 按键一律带显式 displayId 注入到外接屏（没找到外接屏时是 INVALID_DISPLAY，由系统发给当前焦点）。
 - 主窗口平时 `FLAG_NOT_FOCUSABLE`（不抢外接屏的焦点），打字面板打开时、没有外接屏时去掉（MainActivity.updateFocusable）。
   例外（2026-10-30，用户试：Moonlight 不抓豆花的鼠标、光标跑出它的边界，推测焦点被豆花抢走、捕获被系统收回）：桌面模式分屏 / 小窗时，
@@ -357,7 +378,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **键盘第二版（整屏键盘界面）**：第一版把 PC 键位塞在触控板下面，用户说难点。改成整屏键盘界面，字母区照 Gboard，
   修饰键 / 数字 / 快捷键各占一排；符号键和快捷键"自带修饰键"（id 高字节），一按就出，不用先锁 Shift / Ctrl。
   大小位置照 Gboard 的调整方式（拖四边、拖中间），横竖屏各存一份（Prefs.savedKeyboardRect）。
-- **修饰键点一下锁定**：触摸屏上按组合键靠"先点 Ctrl 再点 C"；锁定时修饰键真的按着（HID 报文里），所以 Ctrl + 点击也行。
+- **修饰键点一下锁定**（**2026-11-01 已改**：点一下 = 按一下，单独按住 0.4–1 秒才锁，见"修饰键点一下 = 按一下、按住才锁"一条）：触摸屏上按组合键靠"先点 Ctrl 再点 C"；锁定时修饰键真的按着（HID 报文里），所以 Ctrl + 点击也行。
   打完下一个普通键（松开时）自动解开。状态由服务发 MSG_MODIFIERS 给 App 画高亮，App 不自己记，避免两边不一致。
 - **缩放 = Ctrl + 滚轮**：鼠标没法发捏合手势；InputReader 会把所有键盘的修饰键状态带进鼠标事件，所以虚拟键盘按住 Ctrl、
   虚拟鼠标滚滚轮，应用收到的就是 Ctrl + 滚轮。双指先判是滚动还是开合（间距变化超过 16dp 且比整体移动多 = 开合），判定后整次手势不变。
@@ -748,7 +769,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     调整模式里角上的 ⋯ 藏起来（功能行不跟着变，免得键挪位置）。
     **2026-10-31 改到触控板顶上正中、不带框**（用户："在右下角放着有点丑……放在触控板顶部居中不要带框，这个位置不咋按"）：KeyboardPlan.menuTop，
     按得到的范围 56 × 36dp、贴着触控板顶边、按触控板（不是页面）的中线居中，同样离页面四条边至少 20dp（竖屏触控板贴着屏幕上边时往下推 20dp）、推完要整个在触控板里，
-    放不下照旧去功能行；只画 18sp 的暗字（Style.bare），按着时一块按下的底色；菜单和它居中对齐（menuPosition 的 center）。
+    放不下照旧去功能行；只画 18sp 的暗字（Style.bare；2026-11-01 改成强调色，见"各处的 ⋯ 用强调色"一条），按着时一块按下的底色；菜单和它居中对齐（menuPosition 的 center）。
     代价：横向边缘滚动开着时，顶边那条滚动带正中这一截归 ⋯（以前角上的小方块同样压着边缘带）。
   - 菜单豆花自己画（MainActivity.buildKbMenu：一列四项"收起键盘 / 调整大小 / 布局：… / 触控板：…"，最宽 220dp；2026-11-01 已改：两屏共用的 MenuLayer、键盘屏七项，见"主界面改版"；不能用 PopupMenu / Dialog：服务独占触摸屏时
     App 收不到手指）。位置 KeyboardPlan.menuPosition：⋯ 在页面右半就右对齐、左半就左对齐，先放 ⋯ 下面、放不下放上面、都放不下放空得多的那边再挪进屏，
@@ -854,6 +875,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     ① 右边四个修饰键（右 Ctrl / 右 Shift / AltGr·右 Alt·右 ⌥ / 右 Super·右 ⌘，0xE4–0xE7，掩码 0x10–0x80）在实体键盘上也能锁住，界面替服务解开锁住的修饰键的两处
     （收起键盘回空中鼠标页 unlatchServiceModifiers、进手柄页 unlatchDesktopModifiers）原来只看左边四位：锁着 AltGr / 右 Ctrl 收起键盘，之后空中鼠标的每次点击都成了 AltGr+点击；
     锁着右 Ctrl 进手柄页，Moonlight 一直收到右 Ctrl 按着。改成 Hid.modifierUsages（左右八个都点一下，HidTest 扫 256 种掩码点完都切回 0）。
+    （2026-11-01 随协议 20 改成发 CMD_UNLATCH、清全部 8 位锁定，modifierUsages 连同 HidTest 那几条删了，见"修饰键点一下 = 按一下"那条。）
     ② "Ctrl 按着"（不起惯性、转着的停、连续模式照旧按格）原来只看左 Ctrl（Hid.MOD_CTRL）：锁住右 Ctrl 后边缘一拨照样起惯性 = 停不下来的缩放，连续滚动开着时一小段一小段地缩放。
     改成 Hid.ctrl（左右都算），TouchRouter.applyModifiers、setConfig 两处（服务端代码，要重启服务），TouchRouterTest.spinNotWithRightCtrlLatched 锁住。
     ③ 字表读不出来（照理不会；以后加布局时 kbd_mac 缺某一段也是这种）时 FixedData.layout 原来照样拼一块，键盘页显示一块出字的键全是空白的实体键盘，和类注释说的"照样显示豆花布局"相反。
@@ -1252,13 +1274,73 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     （4 / 20 / 80 格每秒，从按下点量；挪出 6dp 容差那一下已经在曲线上）20dp 就到平台 20 格 / 秒。现在滚动杆自己一组 LEVER_CRAWL / PLATEAU / MAX = 2 / 10 / 40（红点翻倍之前那组），
     位移从轻点容差那一圈起算（TrackPoint.leverLevel：离按下点的距离 − 6dp），所以离按下点 8.5dp（容差 + 死区）以内都不滚、挪回来就停（第一版是挪回 2.5dp 以内才停）；
     同样挪 20dp 是 9 格 / 秒（以前 20），12dp 是 2 格 / 秒（以前约 14），推到底（38dp）40 格 / 秒。红点那条（按住中键推红点）不变。数字是猜的，用户再试；还不对就加一个"中键滚动速度"滑块。
+- **修饰键点一下 = 按一下、按住才锁；Caps 点一下发、按住只切显示；小红点状态的逗号句号合键**（2026-11-01，协议 20；用户："Shift 键单点就是 Shift 键及时触发，
+  长按变成锁定，然后超过长按的时间就取消锁定……我只要按住 Shift，我再按字母键，它就是大写。然后这个时候，我是不需要它锁定的……如果锁定了还在按住，那就说明我不需要锁定"；
+  "Caps 键做成点按就锁定的，但是，长按切换状态不发送键码"；小红点状态"右手边没有空格"；协调者的方案 design-mods.md 第 0–3、5 节，定稿前过了一轮审查）。
+  - **规则**（KeyHolds，纯 Java；TouchRouter 持有一份）：修饰键（0xE0–0xE7 不带自带修饰键：豆花布局的 Shift / ⇧ / Ctrl / Alt / Super，实体键盘左右八个含 AltGr、Mac 的 ⌃⌥⌘）按下马上发；
+    按住期间用过（按了任何别的键；鼠标键按下 / 松开、带着按住的鼠标键移动、滚轮、开合、三指四指手势）或者按下那一刻已经有别的键的手指 / 鼠标键按着 = 组合，松手就松；
+    单独点一下（< 0.4 秒）= 点了一下；单独按住 0.4–1 秒松手 = 锁（0.4 秒震 HAPTIC_CLICK + 高亮"现在松手就锁"，松手时 HID 照旧按着）；单独按住超过 1 秒 = 高亮退回、松手不锁。
+    锁了以后同以前：打完下一个普通键松开时解开、再按一下锁住的键也解开（这一下按多久都不再锁）。两个修饰键一起按谁都不锁（Windows 的 Ctrl+Shift / Alt+Shift 换输入法慢慢按也不会锁住一个）；
+    想两个都锁就一个一个锁。没按鼠标键的光标移动不算用过（另一只手指搭在触控板 / 红点上抖一下就锁不上）。
+    后果（同真键盘，用户的规则就是这个意思）：Windows 上单点 Alt 激活菜单栏、单点 Super 开开始菜单，GNOME 单点 Super 开活动概览；想用 Super+X 就按住 Super 点 X，或者先锁住。
+  - **Caps**（0x39 不带自带修饰键；Num / Scroll Lock 不动）：按下先不发；不到 0.4 秒松手 = 发一次 Caps Lock（按着 60ms 再松：零长度的按下有被主机吞掉的风险，同"双击要隔开发"）+ 显示翻一下；
+    按住到 0.4 秒 = 只翻显示、不发键码、震一下，松手什么都不做。**显示状态只有 App 一份**（MainActivity.capsShown，static）：主机的大写锁定跨连接都在，服务的分流和本地分流各自 releaseAll，
+    放进哪个都会丢；服务（MSG_CAPS）和本地分流只报"翻一下"。换了主机（蓝牙连上的地址变了、蓝牙 ↔ 桌面模式）、进程重启归"关"；服务断开 / 重启不归零（对不上就长按对回来，这正是长按的用途）。
+    字母键帽：豆花布局连苹果设备 Shift ∨ Caps、别的主机 Shift ⊕ Caps（KeyRows.capText）；实体键盘 Mac 模式 ∨、Windows 模式 ⊕（FixedPanel.upper，德语 ä ö ü 跟着、ß 数字标点第三层不跟）；Caps 键开着时高亮。
+    协调者定的两条（方案第 10 节）：苹果设备开着"用大写锁定键切换输入法"时点 Caps 显示会错——**不特殊处理**（用户定过"苹果非苹果设备不需要自动识别"，长按对回来）；
+    读主机的大写灯（键盘描述符本来就有 LED 输出报告，蓝牙经 onSetReport、uhid 经 OUTPUT 事件会发回来，现在读掉不管）自动对上显示——**这批不做**（桌面模式经 Moonlight 时安卓的灯和电脑的不是一回事），以后可以做。
+  - **小红点状态的底行**（只豆花布局）：?123 [,.] 空格 │ 左 中 右 │ 空格 ↵——逗号句号合成一个键（KeyRows.COMMA_PERIOD，id = Proto.dualKey(0x36, 0x37)：点一下逗号、按住 0.4 秒句号 + 震，按住不连发），
+    右上角小字 "."（Style.CornerKey），按着 0.4 秒放大提示换成 "."；右边放第二个空格（STICK_SPACE_R，另一个键帽、同一个 id，同分裂的两个空格）。份数一个都没变（合并键占 , 的 1 份、右空格占 . 的 1 份），
+    所以空位多宽、红点多大、三个鼠标键多宽全都不变（KeyboardPlan 只改了注释）。实体键盘、触控板 / 关、分裂都照旧。
+  - **待定的键结算**：Caps、合并键按下了还没定（< 0.4 秒、没松手）时，别的键按下、手指按着的修饰键松开、开合开始之前，先当点一下发出去（不然"，空格"变成"空格，"、Caps 后面的字母先到主机、
+    按住 Shift 点合并键再先松 Shift 丢掉 Shift、待定的逗号松手时带上缩放的 Ctrl）。锁定被解开、"@" 这类自带修饰键的键松开、开合结束不结算（锁着 Shift 快打 "I."：I 抬起解开 Shift 时合并键还按着，
+    在那一刻结算会出 "I<"）。没用"按下时记下修饰键掩码、发的时候照它发"：发的那一刻 HID 的修饰键字节已经是别的值，要临时改回去，主机会看到一次凭空的 Shift 按下 / 松开。
+  - **定时器**：TouchRouter.Output 加 scheduleKeys / cancelKeys（不做成 default），服务第二个 OneShotTimer（Session.keyTimer）、App 第二个 Runnable（localKeyTimer），和引擎那个槽分开；
+    KeyHolds.onTimer 按截止时刻 + 当前状态处理，排定时器正好排在最早的截止时刻。时间：TouchRouter 每个带时间的入口记下 now，key() 加了时间参数（App 传 uptimeMillis，服务传收到 CMD_HID_KEY 的时刻）。
+  - **协议 20**：CMD_HID_KEY 改 key:i32（合并键的 id 放不进 16 位）+ action:u8（KEY_UP / KEY_DOWN / KEY_CANCEL：面板被取消的手指不能当"点了一下"）；CMD_UNLATCH = 16（不带参数，清掉全部锁定、按着的不动；
+    取代 MainActivity 进空中鼠标 / 手柄页时"逐个点一下锁住的修饰键"——新规则下对没锁着的修饰键点一下就是给主机一次真单点，也不带 App 记的锁定，那份可能晚一步）；
+    MSG_MODIFIERS 三个字节（锁住、按着、快锁了）；MSG_CAPS = 0x8B（sent:u8）。都不算心跳。Hid.modifierUsages 没人用了，连同 HidTest 那几条删了。TestClient 跟着读新格式。
+  - **界面**：KeyboardFace.setModifiers 换成 setKeyState(锁住, 按着, 快锁了, caps)：高亮 = 锁住 | 快锁了（按住 0.4 秒那一刻是"按下 + 高亮"，1 秒后退回"只按下"）和 Caps；
+    键帽上的字照 锁住 | 按着（用户原话"我只要按住 Shift，我再按字母键，它就是大写"，按住 Shift 时键帽就变大写，实体键盘按住 AltGr / Option 时角上的第三层字亮起来）。
+  - **第三条路（面板自己收触摸）换键不松还显示着的键**（审查意见）：以前换层、分裂 / 合拢、⋯ 键、让位、重建底行都先把面板自己收的手指全部当取消松开；新规则下修饰键松手就算数，
+    "按住功能行的 Shift 再点 ?123" 会把 Shift 松掉、按住合并键时滚着点 ?123 逗号被吞。现在 KeyboardPanel.changeKeys 按 Key 对象把手指重新对上（KeyFingers.remap），只有真消失的键发 KEY_CANCEL。
+    实体键盘没有换层，换键盘 / ⋯ 槽 / 让位照旧全部取消。
+  - **顺带修的**：换参数（setConfig）以前清掉按着键的 slot、不松 HID，按着的键（现在包括按着的修饰键）会一直按在主机上直到 releaseAll；现在留着键的 slot（clearSlots(true)），抬起照常松开、照常判。
+  - **和方案不一样的地方**：① KeyHolds.used 带时间参数（方案写 used()）：每个入口先把到了截止时刻的处理掉，结果只看事件时间、不看定时器晚到多少；
+    ② DebugMoves 的 KeySink 没改签名（按下 / 松开两种），MainActivity 换成 KEY_DOWN / KEY_UP；
+    ③ 中键按下（TouchRouter.mouseButton）也标"用过"：中键按着时不出鼠标帧（按着是滚动），不另外标的话按着修饰键时按中键不算组合；
+    ④ 数字键盘的 ACTION_CANCEL 发 KEY_CANCEL（方案只写了 releaseNumpad）。
+  - **审查后的修改（同一天，只跑了离线测试和编译）**：
+    ① 被取消的修饰键松开不再结算待定的键（KeyHolds.up：`n == 1 && !canceled` 才结算）。以前收尾补报的抬起（TouchReader 的 finally 按 slot 先后 up(…, true)、
+    面板 releaseTouches / ACTION_CANCEL 按手指编号逐个 KEY_CANCEL、手掌）里修饰键那根排在前面时，会把待定的 Caps / 合并键当点一下发出去：按住 Shift 刚按下 Caps / 逗号键时豆花退后台、转屏、心跳超时，
+    主机凭空收到一次 Caps Lock（豆花显示也翻）或一个 "<"，而且结果看 slot 谁先谁后；蓝牙本地分流的 ACTION_CANCEL 走 releaseAll，本来就不出。现在待定的留着，由它自己的抬起（被取消就什么都不出）
+    或 releaseAll（丢掉）收；只有 Shift 那根被取消、合并键之后正常松开时照点一下出逗号（不带已经松掉的 Shift）。
+    ② 合并键的放大提示：分流已经把它结算成逗号（别的键按下、按着的修饰键松开）之后再按过 0.4 秒，提示以前照样换成 "."，和打出来的对不上。现在面板照同样两件事撤掉换字的定时器
+    （KeyboardPanel.settleCorners：面板自己按下别的键 press、MainActivity.onButton 报来别的键按下 otherKeyDown、setKeyState 里按着的修饰键少了一位）。App 看不到的两种照旧会换：
+    开合开始时的结算（按着合并键双指缩放，少见）；被取消的修饰键松开（分流不结算、这里分不出来、照样撤，手掌压在 Shift 上这类）。只是样子，出什么字由分流定。
+    ③ KeyHoldsTest 的随机序列原来全部抬起后先 releaseAll 再查报文全零，releaseAll 一定发一帧干净的报文，"被取消的普通键不松"这类错查不出来（审查者改坏一处跑过：所有离线测试都过）；
+    现在在 releaseAll 之前查主机上没有按着的键、修饰键字节 = 锁住的，另加定向的两条（区域 / key() 那一路被取消的 a 照样松开）。把①、这一条各改回去跑过，新检查都报错。
+    ④ CLAUDE.md 里几处没跟上的说法（Hid.modifierUsages、TouchRouter.holds、setModifiers、底行的旧写法）改了。
+  只跑了离线测试和编译，真机要看的见"进行中"。
+- **各处的 ⋯ 用强调色**（2026-11-01，同一份方案 design-mods.md 第 4 节；用户：⋯ 找不到，尤其纯黑里）。只改画法：不碰分流、区域、协议、服务（和上一条同一批，一起装）。
+  - **键帽形状的 ⋯**（豆花布局功能行最右的 ⋯ 键、实体键盘 Esc 和 F1 中间的 ⋯ 槽；哪个键是 ⋯ 只有 KeyRows.menuKey 一处，两块面板都问它）：照 Gboard 的回车键，强调色的底 + 反差字、
+    不画边框（"按键边框"开关不管它；⋯ 是特殊键，从不高亮），按下时底往字色掺一成半。KeyboardPanel.look → Style.menuKeyLook（被小红点切到时同样走 CutCap，功能行碰不到红点，防一手）；
+    FixedKeyboardView.onDraw 照同样的颜色自己画（它的键帽路径往里缩了半条边框、靠描边补到键帽的边：⋯ 照样描、描成底色，大小和旁边的键一样）。
+  - **不带框的 ⋯**（主界面 / 键盘屏触控板顶上正中、手柄页顶上正中、设置 → 手柄的预览）：照旧不带框（用户 2026-10-31），只把字从暗字（dim）换成强调色（menuDots）；按着时照旧垫一块 pressed；
+    有背景图时 ⋯ 下面垫的不透明触控板底色不变（menuDots 对 padFill 已经 ≥ 4.5:1）。Style.bare 的调用点一个没改。
+  - **颜色**（Theme 四个新槽位，规则见文件表；十八套都过 ThemeTest）：menuKey 对页面 / 键帽 / 功能键最低 3.74 / 3.76 / 3.11（都 ≥ 3:1）、和功能键色差 ≥ 8；
+    menuKeyText 对 menuKey 最低 4.51、对按下的底 3.53；menuDots 对触控板最低 4.50、对页面 4.62、对按着时的底 3.04。深色主题多半是强调色原样（不用推）+ 深字，浅色主题是推暗一点的强调色 + 浅字；
+    高对比是白底黑字 / 白点（别的字都是黄的）。**纯黑**：强调色是灰的（#707070），推出来不显眼（用户就是嫌纯黑里找不到），四个槽位写死成纯黑里已经在用的 focus 蓝：
+    ⋯ 键 #8AB4F8 底黑字、按下 #7599D3，不带框的 ⋯ #8AB4F8；纯黑原有槽位一个没动（ThemeTest.blackUnchanged 照锁）。代价：纯黑页面上多一小块亮蓝。
+  - 顺手：Style 里 CutCap 的注释被上一批插进来的 CornerKey 隔开了，挪回 CutCap 上面（只动注释）。
+  只跑了离线测试和编译，真机要看的见"进行中"。
 
 ## 测试
 
 - **测试设备**：用 USB 连的测试机（序列号见 `.private/NOTES.md`），命令里显式 `adb -s`。用户的主力机禁止拿来测试。
   测试机不是三星、没有 DeX，服务在它上面找不到触摸屏（见"想做的功能"里"服务支持缩放面板的手机"），桌面模式只能交给用户在主力机上试；`tools/build.sh --install`、`start-server.sh` 等脚本连着多台时会列出来让人选（tools/adb-device.sh），我自己跑时一律加 `-s <测试机>`。
 
-- `tools/test.sh`：ThemeTest（十八套槽位齐全、先深色后浅色、纯黑和以前一样（功能键也是）、对比度、功能键和键帽 / 页面的色差，`java … dev.douhua.ThemeTest print` 打出取值和对比度表）、GestureEngine、MtDecoder、TouchDevice 解析、KeyFingers（键盘面板自己收触摸时的多指）、KeyRows（分裂键盘哪个键归哪半、摆放、哪些键算功能键，
+- `tools/test.sh`：ThemeTest（十八套槽位齐全、先深色后浅色、纯黑和以前一样（功能键也是）、对比度、功能键和键帽 / 页面的色差；⋯ 的四个槽位（2026-11-01，ThemeTest.menu：十八套含纯黑，⋯ 键对页面 / 键帽 / 功能键 ≥ 3:1、和功能键 / 键帽色差 ≥ 8，字对 ⋯ 键 ≥ 4.5、对按下 ≥ 3、按下看得出来，不带框的 ⋯ 对触控板 / 页面 ≥ 4.5、对 pressed ≥ 3、和原来的暗字分得开，还带着强调色的色相、本来够的强调色不推、字从页面色 / 正文色里挑；纯黑写死的四个值；reachAll），`java … dev.douhua.ThemeTest print` 打出取值和对比度表）、GestureEngine、MtDecoder、TouchDevice 解析、KeyFingers（键盘面板自己收触摸时的多指）、KeyRows（分裂键盘哪个键归哪半、摆放、哪些键算功能键，
   以及按面板报区域的方式交给真正的 TouchRouter / KeyFingers 逐点核对缝只在各自那一半里分、中间是触控板）、KeyboardPlan（布局按钮、触控板放哪一侧、门槛、
   调整栏按钮宽度、⋯ 放触控板顶上哪儿 / 菜单弹在哪 / 调整栏放上还是下（再扫一遍各种尺寸查 ⋯ 离边够远、在触控板里、菜单不出屏、旁边放得下时不压着 ⋯）、
   主界面的 ⋯ 放不下也照样放（padMenuTop，扫一遍查一定在触控板里）、菜单项多窗口矮时怎么排（menuGrid：先压矮再分列，扫一遍查排得下、没有空列、不出页面、高度够时一直一列），外加各种尺寸扫一遍查触控板不压键、够大、分裂了键够宽；分裂时对称调大小：默认格子喂回去不变、存过的格子怎么摆、拖法和约束、
@@ -1266,6 +1348,16 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   RotationLock、GrabCondition）、LogThrottle、Shell（会真起 echo / sleep 子进程）、实体键（KeyDevices 解析 getevent 输出 / 挑设备、HardKeyGate 状态机）也在 ServerPartsTest 里。
   分屏透传（TouchSplit 的归属、InjectStream 的动作码 / 下标 / 手指集合、MtDecoder 的 cancel、MtDecoder → TouchSplit → InjectStream 整条路含替换 slot / 手掌 / 释放独占，
   加两组随机序列）在 PassthroughTest 里，每个事件都过一个照 AOSP input_verifier.rs 写的校验器（校验器本身也测了能认出坏流）。
+  修饰键 / Caps / 合并键（2026-11-01，协议 20）：KeyHoldsTest（全经真 TouchRouter，看主机收到的键盘报文 [修饰键|按着的键]、报给界面的锁住 / 按着 / 快锁了、震动、两个定时器按截止时刻依次到点：
+  单点、0.4–1 秒锁、超过 1 秒不锁、定时器卡住时按截止时刻补上；按着时按普通键 / "@" / 别的修饰键 / Caps / 合并键、触控板轻点 / CMD_CLICK / 滚轮 / 三指手势 / "左键"按钮 / CMD_HOLD_LEFT / 开合都不锁、
+  只挪光标照锁；锁着时再按解开；⇧ 和功能行的 Shift 两根手指；被取消的不锁；被取消的修饰键松开不结算待定的 Caps / 合并键（两种先后 × 两条路 × 再 releaseAll）、被取消的普通键照样松开；打完普通键解开、按着的不松；unlatch 只清锁定；方案审查补的几条（先长按拖动再按修饰键、按着修饰键时开始拖、
+  先按住 a 再按 Shift、两个修饰键一起按 / 一个一个锁、Shift 先抬起时合并键 / Caps 先结算、锁着 Shift 快打 "I."、开合开始前结算、"@" 带的 Shift）；Caps 点一下 / 按住 / 滚着打 / 被取消 / 锁着 Shift；
+  合并键点一下 / 按住只发一次 / 滚着打 / 被取消 / 两根手指 / 落在缝里照分给它；releaseAll 之后迟到的松开、两个空格副本、定时器只在有待定项时挂着、乱序 / 重复 / 早到的回调；
+  区域那一路和 key() 那一路同样的序列报文一模一样；换参数不丢按着的键；400 组随机序列查 armed ⊆ held、latched ∩ held = ∅、HID 修饰键字节、用过的永远不锁、震动次数、全部抬起后（releaseAll 之前）没有按着的键、收尾归零），
+  TouchRouterTest（原来锁"点一下锁定"的几条改成按住 0.4–1 秒、加单点 / 超过 1 秒 / 用过不锁），ServerPartsTest（协议 20 的编号、CMD_HID_KEY / CMD_UNLATCH 不算心跳、合并键 id 编解码、
+  真 OneShotTimer + 真 TouchRouter："到点卡在锁上时松开，拿到锁的那次不震不锁""真到点震一下、0.5 秒松开锁住"），KeyFingersTest（remap），KeyRowsTest（底行 ?123 [,.] 空格 │ │ 空格 ↵、
+  合并键 / 右空格有键帽、capText / lit），KeyboardPlanTest（让位扫描找合并键、右空格），FixedLayoutTest（Caps：Windows ⊕ / Mac ∨、ä ö ü 跟着、ß 数字第三层不跟、放大提示、Caps 键高亮，
+  键帽齐全那一扫加了 Caps 开 / 关）。
   小红点：TrackPointTest（曲线的点、单调 / 平台 / 封顶、8 / 12 / 抖动的节拍积分、50ms 上限、灵敏度、负惯性起步更快 / 平台一样 / 不反向、轻点、颗粒、中键滚动的方向 / 主方向 /
   按格 / 连续、停、20 秒暂停；中键滚动杆模式：不看 scroll 参数一直滚、和按着中键推红点出的量一模一样（负惯性开 / 关 × 按格 / 连续）、方向 / 主方向 / 封顶 / 灵敏度、
   先挪出轻点容差才开始、开始以后挪回死区停 / 再推出死区接着、不算轻点、不发颗粒、咔嗒、停、暂停）、TouchRouterTest（第二根手指不理、节拍开停配对、左键三处共用计数、中键单击 / 滚过不补 / 被取消不补、中键 + 触控板滚动、releaseAll / 换参数停、
@@ -1349,7 +1441,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   G / H 键帽下沿，空位对称、够宽、占空格那一排、中键正对红点、空格两段各 ≥ 1 份，嵌在键里时切到 G、H、B、N 不切、切掉的不超过四分之一、G 的角上小字挪走）；
   红点、三个鼠标键和键的分流逐点核对（同 KeyboardPlanTest.stickRouting））、BoardsTest（默认值、形状跟着布局、大小位置按尺寸 × 指点 × 横竖屏分开、键名不以 kb_ 开头；
   40 轮随机序列各 60 步后 kb_ 开头的键一个没变、只写了 kbd_ / kbx_）。原有的测试一个没改、输出逐字一样（KeyboardPlan 的 placeStick 拆出 placeStickAt、KeyRows.functionKey 扩规则都不影响豆花布局）。
-  审查后加的：HidTest.modifierHelpers（Hid.ctrl 左右都算、modifierUsages 256 种掩码点完都切回 0）、TouchRouterTest.spinNotWithRightCtrlLatched（锁右 Ctrl 不起惯性、换参数后照样、
+  审查后加的：HidTest.modifierHelpers（Hid.ctrl 左右都算、modifierUsages 256 种掩码点完都切回 0——modifierUsages 那几条 2026-11-01 随协议 20 删了，只剩 ctrl / modifierBit）、TouchRouterTest.spinNotWithRightCtrlLatched（锁右 Ctrl 不起惯性、换参数后照样、
   转着时按右 Ctrl 停、连续滚动开着时照旧整格）；把这几处改回去跑过一遍，新加的检查都报错（右 Ctrl 3 项、Hid 1 项、实体键盘 9 项）。
   界面（FixedKeyboardView 画出来的样子、KeyboardScreen 换面板、设置页）离线编不到，没在真机上看过。
 - 主机实测扫描（实体键盘布局的前提）：手机装调试包，`tools/kbd-scan.sh --host ipad|linux|… --layout us|de`（桌面模式 `--desktop`），
@@ -1367,6 +1459,32 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   也没在真手机上跑过。真机上要看的见"进行中"。
 
 ## 进行中（交接；做完删掉这一节）
+
+- **各处的 ⋯ 用强调色（2026-11-01 写完，没提交，待真机验证；只改 App 的画法，但和下一条（协议 20）同一批：一起装，装完要重启服务）**：见决策记录。
+  只跑了离线测试（主题 1600 项、键盘分行 1552 项、实体键盘几何 5540 项，含只有 ⋯ 走强调色画法）和编译，界面一次都没看过。要看：
+  ① 十八套主题（设置 → 外观逐个换）里四处 ⋯ 找不找得到、好不好看：豆花布局功能行最右的 ⋯ 键（触控板关掉、或指点换成小红点 / 关时才出现）、实体键盘 Esc 和 F1 中间的 ⋯ 槽（同样触控板摆不出时）、
+  主界面 / 键盘屏触控板顶上正中的 ⋯、手柄页顶上的 ⋯；设置 → 手柄的大预览里的 ⋯。
+  ② 纯黑里一块亮蓝（⋯ 键 #8AB4F8 底黑字）能不能接受、会不会太扎眼；高对比里 ⋯ 是白底黑字 / 白点（别的字都是黄的）合不合适。
+  ③ ⋯ 键不画边框：按键边框开 / 关两种下和旁边的键并排看着协调不协调、大小和旁边的键一样；按下的样子看得出来。
+  ④ 有触控板背景图时 ⋯ 下面那块底 + 强调色的点；按住 ⋯ 时那块按下的底上 ⋯ 还看得清（Dracula、Gruvbox 这几套对按下底只有 3.0–3.2:1）。
+- **修饰键点一下 = 按一下、按住才锁；Caps；小红点状态的逗号句号合键（2026-11-01 写完，没提交，待真机验证；协议 20，App 和服务一起改了，装完要重启服务——
+  旧服务连着时 App 看 hello 的版本 / APK 路径会自己重启它）**：见决策记录。各处 ⋯ 用强调色（方案第 4 节）另成一条（上一条）。只跑了离线测试
+  （修饰键 / Caps / 合并键 5877 项含 400 组随机序列 48000 步、触摸分流 422 项、服务端部件 289 项、键盘多指 521 项、键盘分行 1552 项、键盘布局 332 项、实体键盘几何 5540 项、
+  滚轮倍率 187 项）和编译，界面、真机一次都没看过。要看：
+  ① 修饰键，豆花布局 / 实体键盘、三条路径（桌面模式服务接管、蓝牙模式服务接管 / 本地分流、桌面模式服务连着没接管或贴字面板开着）都试：单点 Shift 切中英文（Windows 微软拼音、
+  安卓 Gboard 外接键盘）；按住 Shift 打大写；单独按住 0.5 秒松开锁住（0.4 秒那一下震动的时机、高亮）、按住 2 秒不锁（1 秒时高亮退回）、锁住后再点一下解开；Ctrl + C、Ctrl + 点触控板、
+  Ctrl + 双指缩放；两根手指慢慢按 Ctrl+Shift / Alt+Shift（换输入法）两个都不锁；先拖文件再按住 Ctrl 放下（Ctrl 拖动复制）之后 Ctrl 不锁；Windows 上单点 Alt / Super 的副作用能不能接受；
+  0.4 秒、1 秒这两个数手感对不对。
+  ② 按住 Shift 时键帽变大写、实体键盘按住 AltGr / Option 时角上的字亮——好不好、会不会闪得烦。
+  ③ Caps：点一下主机大写开 / 关、豆花高亮和字母大小写跟着；按住 0.5 秒只切显示、主机不变（震一下）；Caps 还没松就打字母（滚着打）大小写对；连 iPad / Mac 时 Caps + Shift 的键帽还是大写；
+  **iPad / Mac 中文输入法开着"用大写锁定键切换中英文"时**，点一下 Caps 是切输入法、豆花显示照样翻（不特殊处理，长按对回来）；换蓝牙主机后显示归"关"；桌面模式服务重启后显示对不对。
+  ④ 逗号键（小红点状态）：点一下逗号、按住句号（0.4 秒震一下、放大提示换成 "."）、打快了"，空格"顺序对、按住 3 秒只出一个句号；按住 Shift 点它、Shift 先抬起照样出 "<"；
+  锁着 Shift 快打 "I." 出的是句号；右上角小 "." 看不看得清；右空格好不好按（手机竖屏约 45dp）、"空格"字放不放得下（德 / 法语）。
+  ⑤ 第三条路（桌面模式服务连着没接管，或贴字面板开着）：按住功能行的 Shift 点 ?123 再按符号、按住合并键时点 ?123，Shift 照旧按着、逗号不丢；分裂 / 合拢、换快捷行时按着的键不粘。
+  ⑥ 进空中鼠标页、手柄页时锁着的 Ctrl 被解开（CMD_UNLATCH），按着的不受影响；`TestClient` 自测时修饰键那行打印三个数。
+  ⑦ 装完重启服务（协议 20）；旧服务连着时 App 应该自己重启它。
+  ⑧ 审查后改的（只跑了离线测试和编译）：按住 Shift、刚按下 Caps / 逗号键（不到 0.4 秒）时让豆花退后台、转屏、拉下通知栏，主机不出 Caps Lock、不出 "<"，豆花的 Caps 显示不翻；
+  逗号键按下 0.15 秒内按空格、再一直按着逗号键过 0.4 秒，放大提示一直是 ","、不换成 "."（打出来的就是 ", "）；按住 Shift 点逗号键、先松 Shift 再按着逗号键过 0.4 秒，提示同样不换成 "."（出的是 "<"）。
 
 - **中键自己当滚动杆（2026-11-01 写完，没提交，待真机验证；不改协议，但 TouchRouter / TrackPoint 是服务和 App 共用的，装完要重启服务——旧服务接管时中键还是只能点）**：
   见决策记录。只跑了离线测试（小红点 91 项、触摸分流 313 项，含随机交错 300 组 × 80 步；审查后加了滚动杆让位，触摸分流 399 项）和编译，真机一次都没试过。要看：
@@ -1926,6 +2044,14 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   推算缩放，只有一台样本，没做；做了才能在测试机上测服务那一半。
 
 ## 已知技术债 / 没验证的
+
+- 修饰键"用过了"只认经分流（TouchRouter）的鼠标 / 键（2026-11-01）：蓝牙模式下有几路鼠标键由 App 直接经蓝牙发——音量键配的"按住左键"（MainActivity.holdLeft → air.holdLeft）、空中鼠标、
+  快捷行 / 角上按钮里的"单击"类动作（btMode 下 click 直接 bt.sendMouse）——按着修饰键 0.4–1 秒时用这几路点了鼠标，松手照样会锁（0.4 秒有震动、键亮着，再点一下就解开）。
+  要补得给"服务转发"那条路加一条命令（App 告诉服务"按着的修饰键用过了"）。桌面模式这几路都经服务的分流（CMD_HOLD_LEFT、CMD_CLICK），没有这个问题。
+- 面板自己收触摸时按住字母层的 ⇧ 再点 ?123：⇧ 在符号层没有，换层时当取消松开 → Shift 松开（功能行的 Shift 各层都有，不受影响；符号层的键本来自带 Shift，少见）。
+- Caps 的显示是豆花自己记的（主机的大写灯没读）：苹果设备开着"用大写锁定键切换输入法"时点 Caps 是切输入法、显示照样翻；主机那边被别的键盘改了大写锁定也不知道。长按 Caps 对回来。
+- 打字测试工具（tools/typelog/analyze.py、KeyReplay）认不得合并键的 id（Proto.dualKey，> 0xFFFF），小红点状态的打字测试分析不了。
+- 桌面模式服务连着没接管（面板自己收触摸）时，按住多久按服务收到 CMD_HID_KEY 的时刻算，消息排队晚到会让 0.4 秒 / 1 秒的边界差几十毫秒。
 
 - 惯性转着时同一个触摸帧里一根按在键（或分屏时另一边）上、一根按在触控板上：按 slot 顺序先处理的是键那根时惯性已经停了，触控板那根就不算"抓住"，轻点照常点击
   （先处理触控板那根时不算点击）。罕见（要几毫秒内同时落下），没改：要改得让 TouchRouter 记住"这一帧停过惯性"再告诉引擎。

@@ -31,6 +31,7 @@ public final class KeyRowsTest {
         holeRows();
         holePlacement();
         capKeysCover();
+        capTextAndLit();
         layerRows();
         System.err.println("键盘分行 / 分裂：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
@@ -419,10 +420,13 @@ public final class KeyRowsTest {
                         boolean want = !plainSet.contains(k.label);
                         check(plainSet.contains(k.label) || fnSet.contains(k.label), "键 " + k.label + " 在清单里（漏了就补上）");
                         check(KeyRows.functionKey(k, false) == want, k.label + (want ? " 是功能键" : " 是普通键"));
+                        // ⋯ 另画成强调色的底 + 反差字（2026-11-01）：只有它，别的键照主次键帽画
+                        check(KeyRows.menuKey(k.id) == k.label.equals("⋯"), k.label + (k.label.equals("⋯") ? " 画成强调色的 ⋯" : " 不是 ⋯"));
                     }
                 }
             }
         }
+        check(seen.contains("⋯/" + KeyRows.MENU_BUTTON_ID), "功能行带 ⋯ 那份里看得见 ⋯");
         // 方向键、自带 Ctrl 的组合键（快捷行默认放的）、右 Shift 自带的符号
         check(KeyRows.functionKey(KeyRows.k(0x50, "←"), false) && KeyRows.functionKey(KeyRows.k(0x52, "↑"), false),
                 "方向键是功能键");
@@ -485,15 +489,24 @@ public final class KeyRowsTest {
     static void holeRows() {
         KeyRows.Key[] sc = {KeyRows.k(0x06 | (1 << 8), "复制"), KeyRows.k(0x19 | (1 << 8), "粘贴"), KeyRows.k(0x1B | (1 << 8), "剪切")};
         KeyRows.Row[] b = KeyRows.bottomRows(false, sc);
-        eq(labels(b[0].before) + " | " + labels(b[0].after), "?123 , Space | . ↵", "底行：空位左边 ?123 , 空格，右边 . ↵");
-        check(b[0].before[0] == b[0].whole[0] && b[0].before[1] == b[0].whole[1] && b[0].after[0] == b[0].whole[3]
-                && b[0].after[1] == b[0].whole[4], "?123 , . ↵ 是整行时那几个键帽");
+        // 2026-11-01：逗号句号合成一个键（点一下 , 按住 .），右边放第二个空格（用户"右手边没有空格"）；份数和以前的 , . 一样
+        eq(labels(b[0].before) + " | " + labels(b[0].after), "?123 , Space | Space ↵", "底行：空位左边 ?123 [,.] 空格，右边 空格 ↵");
+        KeyRows.Key dual = b[0].before[1], right = b[0].after[0];
+        check(b[0].before[0] == b[0].whole[0] && b[0].after[1] == b[0].whole[4], "?123 ↵ 是整行时那两个键帽");
+        check(dual == KeyRows.COMMA_PERIOD && dual != b[0].whole[1] && dual.id == Proto.dualKey(0x36, 0x37)
+                && Proto.dualTap(dual.id) == b[0].whole[1].id && Proto.dualHold(dual.id) == b[0].whole[3].id
+                && dual.weight == b[0].whole[1].weight && ".".equals(dual.corner) && !dual.special,
+                "合并键：另一个键帽，点一下 = 整行时的 ,、按住 = .，和 , 一样 1 份，右上角小字 .");
+        check(right == KeyRows.STICK_SPACE_R && right.id == 0x2C && right != b[0].whole[2] && right.weight == b[0].whole[3].weight,
+                "右边的空格：又一个键帽，同一个 id，占 . 原来的 1 份");
+        check(!KeyRows.functionKey(dual, false) && !KeyRows.functionKey(right, false), "合并键、右空格是普通键（主次键帽）");
+        check(b[0].whole[1].corner == null && b[0].whole[3].corner == null, "整行时的 , . 照旧，没有角上小字");
         KeyRows.Key sp = b[0].before[2];
         check(sp.id == 0x2C && sp != b[0].whole[2] && sp.weight == KeyRows.STICK_SPACE, "缩短的空格：又一个键帽、平时 1.5 份");
         check(b[1].spread && b[1].before == null && b[1].holed() && b[0].holed(), "快捷行按个数分到两边；底行、快捷行都让位");
         KeyRows.Row[] a = KeyRows.bottomRows(true, new KeyRows.Key[0]);
-        eq(labels(a[0].before) + " | " + labels(a[0].after), "?123 🌐 , Space | . ↵", "苹果：🌐 照旧跟在 ?123 后面");
-        check(a[0].before[3] == sp, "苹果和不连苹果用同一个缩短的空格键帽");
+        eq(labels(a[0].before) + " | " + labels(a[0].after), "?123 🌐 , Space | Space ↵", "苹果：🌐 照旧跟在 ?123 后面");
+        check(a[0].before[3] == sp && a[0].before[2] == dual && a[0].after[0] == right, "苹果和不连苹果用同一个缩短的空格、合并键、右空格键帽");
         for (KeyRows.Row[] layer : KeyRows.LAYERS) for (KeyRows.Row r : layer) check(!r.holed(), "中间四行不让位");
         check(!KeyRows.TOP_ROWS[0].holed() && !KeyRows.TOP_ROWS_MENU[0].holed(), "功能行不让位");
         // 份数：左边 4（苹果 5）、右边 2.5、整行 10
@@ -559,14 +572,19 @@ public final class KeyRowsTest {
                         }
                         check(clear, what + "：空位 " + Arrays.toString(hole) + " 里一个键都没有");
                         check(othersSame, what + "：底行上面的行和不让位时一模一样");
-                        // 底行：?123 , . ↵ 照整行时的宽度；空格从 , 的右边到空位左边；↵ 到最右边；. 从空位右边开始
-                        KeyRows.Placed sym = find(ps, "?123"), comma = find(ps, ","), space = find(ps, "Space"), dot = find(ps, "."), enter = find(ps, "↵");
+                        // 底行（2026-11-01 起 ?123 [,.] 空格 │ 空位 │ 空格 ↵）：?123 和合并键照整行时 ?123 , 的宽度、位置；空格从合并键的右边到空位左边；
+                        // ↵ 到最右边；右边那个空格从空位右边开始，和 ↵ 按 1 : 1.5 分（份数同以前的 . ↵）
+                        KeyRows.Placed sym = find(ps, "?123"), comma = find(ps, ","), space = find(ps, "Space"), dot = findLast(ps, "Space"), enter = find(ps, "↵");
+                        check(comma.key == KeyRows.COMMA_PERIOD && comma.key.id == Proto.dualKey(0x36, 0x37) && ".".equals(comma.key.corner),
+                                what + "：逗号的位置是合并键（点一下 , 按住 .，右上角小字 .）");
+                        check(dot.key == KeyRows.STICK_SPACE_R && dot.key.id == space.key.id && space.key.id == 0x2C && dot != space,
+                                what + "：右边是第二个空格（另一个键帽、同一个 id）");
                         KeyRows.Placed sym0 = find(base, "?123"), comma0 = find(base, ",");
                         check(sym.left == sym0.left && sym.right == sym0.right && comma.left == comma0.left && comma.right == comma0.right,
                                 what + "：?123 , 和整行时一样宽、一样位置");
                         check(space.left == comma.right + 2 * GAP && space.right == hole[0] - GAP, what + "：空格伸到空位左边");
                         check(dot.left == hole[1] + GAP && enter.right == w - GAP && Math.abs(1.5f * (dot.right - dot.left + 2 * GAP)
-                                - (enter.right - enter.left + 2 * GAP)) <= 2, what + "：. ↵ 铺满空位右边、按 1 : 1.5 分");
+                                - (enter.right - enter.left + 2 * GAP)) <= 2, what + "：右空格 ↵ 铺满空位右边、按 1 : 1.5 分");
                         if (n > 0) {
                             List<KeyRows.Placed> sc = new ArrayList<>();
                             for (KeyRows.Placed p : ps) if (p.key.label.startsWith("快")) sc.add(p);
@@ -649,6 +667,62 @@ public final class KeyRowsTest {
         // 缩短的空格就在里面（就是它以前漏了）
         KeyRows.Row[] b = KeyRows.bottomRows(false, new KeyRows.Key[0]);
         check(KeyRows.capKeys(b).contains(b[0].before[b[0].before.length - 1]), "缩短的空格有键帽");
+        // 小红点状态的合并键、右边的空格（2026-11-01 新加的两个键帽）同样在里面，连苹果设备那份也是
+        for (boolean apple : new boolean[]{false, true}) {
+            List<KeyRows.Key> ks = KeyRows.capKeys(KeyRows.bottomRows(apple, new KeyRows.Key[0]));
+            boolean dual = false, right = false;
+            for (KeyRows.Key k : ks) {
+                dual |= k == KeyRows.COMMA_PERIOD;
+                right |= k == KeyRows.STICK_SPACE_R;
+            }
+            check(dual && right, (apple ? "苹果：" : "") + "合并键、右空格有键帽");
+        }
+    }
+
+    // ── 键帽上的字、高亮（2026-11-01：按住修饰键也换字，Caps 的显示；KeyboardPanel 照它画） ──
+    static void capTextAndLit() {
+        KeyRows.Key a = null, one = null, at = null, shiftKey = null, caps = null, ctrl = null, fn = null;
+        for (KeyRows.Row[] rows : KeyRows.LAYERS) {
+            for (KeyRows.Row r : rows) {
+                for (KeyRows.Key k : r.whole) {
+                    if (k.id == 0x04 && a == null) a = k;
+                    if (k.id == 0x1E && k.shifted != null) one = k;
+                    if (k.id == (0x1F | (KeyRows.SHIFT << 8))) at = k;
+                    if (k.id == 0xE1 && shiftKey == null) shiftKey = k;
+                }
+            }
+        }
+        for (KeyRows.Key k : KeyRows.TOP_ROWS_MENU[0].whole) {
+            if (k.id == 0x39) caps = k;
+            if (k.id == 0xE0) ctrl = k;
+            if (k.id == KeyRows.FN_BUTTON_ID) fn = k;
+        }
+        check(a != null && one != null && at != null && shiftKey != null && caps != null && ctrl != null && fn != null, "找得到 a、1、@、⇧、Caps、Ctrl、Fn");
+        if (a == null || one == null || at == null || caps == null || ctrl == null || fn == null) return;
+        int sh = KeyRows.SHIFT, rsh = KeyRows.RSHIFT;
+        // 字母：别的主机 Shift ⊕ Caps，苹果 Shift ∨ Caps
+        eq(KeyRows.capText(a, 0, false, false), "a", "a：什么都没有");
+        eq(KeyRows.capText(a, sh, false, false), "A", "a：Shift（锁住或按着）");
+        eq(KeyRows.capText(a, rsh, false, false), "A", "a：右 Shift 也算");
+        eq(KeyRows.capText(a, 0, true, false), "A", "a：Caps");
+        eq(KeyRows.capText(a, sh, true, false), "a", "a：Shift + Caps（Windows / Linux / 安卓）：小写");
+        eq(KeyRows.capText(a, sh, true, true), "A", "a：Shift + Caps（苹果）：大写");
+        eq(KeyRows.capText(a, 0, true, true), "A", "a：Caps（苹果）");
+        eq(KeyRows.capText(a, 0x01 | 0x04 | 0x08, false, false), "a", "a：Ctrl / Alt / Super 不换字");
+        // 数字行的上档字只看 Shift，不看 Caps
+        eq(KeyRows.capText(one, 0, true, false), "1", "1：Caps 不换");
+        eq(KeyRows.capText(one, sh, false, false), "!", "1：Shift 换上档字");
+        eq(KeyRows.capText(one, sh, true, false), "!", "1：Shift + Caps 照样是上档字");
+        eq(KeyRows.capText(at, sh, true, false), at.label, "符号层的 @：不换");
+        check(!KeyRows.letterKey(at) && !KeyRows.letterKey(one) && KeyRows.letterKey(a) && !KeyRows.letterKey(KeyRows.COMMA_PERIOD), "哪些是字母键");
+        eq(KeyRows.capText(KeyRows.COMMA_PERIOD, sh, true, false), ",", "合并键：键帽一直写 ,");
+        // 高亮：修饰键看 latched | armed（左右八个），Caps 看显示的大写锁定，特殊键不看
+        check(KeyRows.lit(shiftKey, sh, false) && !KeyRows.lit(shiftKey, 0, true) && !KeyRows.lit(shiftKey, rsh, false), "⇧：只看左 Shift 那一位");
+        check(KeyRows.lit(ctrl, 0x01, false) && !KeyRows.lit(ctrl, 0x10, false), "Ctrl：左 Ctrl 那一位");
+        check(KeyRows.lit(caps, 0, true) && !KeyRows.lit(caps, 0xFF, false), "Caps：只看大写锁定的显示");
+        check(!KeyRows.lit(fn, 0xFF, true) && !KeyRows.lit(a, 0xFF, true), "Fn、字母：不高亮");
+        check(KeyRows.lit(KeyRows.k(0xE6, "AltGr"), 0x40, false), "右 Alt（实体键盘的 AltGr）：0x40");
+        check(!KeyRows.lit(KeyRows.k(0xE1 | (1 << 8), "x"), 0xFF, false), "自带修饰键的键不是修饰键");
     }
 
     private static boolean sameList(List<KeyRows.Placed> a, List<KeyRows.Placed> b) {
@@ -730,6 +804,13 @@ public final class KeyRowsTest {
         throw new IllegalArgumentException(label);
     }
 
+    private static KeyRows.Placed findLast(List<KeyRows.Placed> ps, String label) {
+        KeyRows.Placed last = null;
+        for (KeyRows.Placed p : ps) if (p.key.label.equals(label)) last = p;
+        if (last == null) throw new IllegalArgumentException(label);
+        return last;
+    }
+
     private static int width(List<KeyRows.Placed> ps, String label) {
         KeyRows.Placed p = find(ps, label);
         return p.right - p.left;
@@ -765,9 +846,12 @@ public final class KeyRowsTest {
         @Override public void haptic(int kind) { }
         @Override public void gesture(int fingers, int kind) { }
         @Override public void button(int id, int action) { }
-        @Override public void modifiers(int latched) { }
+        @Override public void modifiers(int latched, int held, int armed) { }
+        @Override public void caps(boolean sent) { }
         @Override public void schedule(long delayMs) { }
         @Override public void cancelSchedule() { }
+        @Override public void scheduleKeys(long delayMs) { }
+        @Override public void cancelKeys() { }
         @Override public void startTicks() { }
         @Override public void stopTicks() { }
         @Override public void gamepad(byte[] report) { }

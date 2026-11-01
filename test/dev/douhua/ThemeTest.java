@@ -6,7 +6,8 @@ import java.util.Set;
 
 /**
  * Theme 的离线测试：十八套齐全、先深色后浅色，纯黑和 2026-10-30 以前的 Style 常量一模一样（功能键和普通键一样）、
- * 其余每套文字对底色的对比度够（含功能键的字）、触控板和键盘分得开、功能键和普通键帽分得开。
+ * 其余每套文字对底色的对比度够（含功能键的字）、触控板和键盘分得开、功能键和普通键帽分得开；
+ * 每套（含纯黑）的 ⋯（键帽形状的强调色底 + 反差字、不带框的强调色字）都看得清、在键堆里显眼。
  * 最后打印每套的取值和对比度（交差、写 CLAUDE.md 用）。
  */
 public final class ThemeTest {
@@ -20,6 +21,7 @@ public final class ThemeTest {
             if (t != Theme.DEFAULT) readable(t);
             separable(t);
             stickRed(t);
+            menu(t);
         }
         helpers();
         if (args.length > 0 && args[0].equals("print")) print();
@@ -72,6 +74,10 @@ public final class ThemeTest {
         check(t.edge == 0xFF1E1E1E, "边缘滚动带的线");
         check(t.dim == 0xFF5A5A5A && t.dimBorder == 0xFF1E1E1E && t.hint == 0xFF555555, "角上小按钮、输入框提示字");
         check(t.menuFill == 0xFF121212, "⋯ 菜单底板");
+        // 2026-11-01 新加的 ⋯ 四个槽位：写死成 focus 的蓝（灰的强调色推出来不显眼）
+        check(t.menuKey == 0xFF8AB4F8 && t.menuKeyText == 0xFF000000 && t.menuKeyPressed == 0xFF7599D3 && t.menuDots == 0xFF8AB4F8,
+                "⋯：蓝底黑字、按下 #7599D3、不带框的 ⋯ 蓝字");
+        check(t.menuKeyPressed == Theme.blend(t.menuKey, t.menuKeyText, 0.15f), "⋯ 按下 = 蓝往黑掺一成半（同别的主题的推法）");
         check(t.previewFill == 0xFF2E2E2E && t.previewBorder == 0xFF8A8A8A && t.previewText == 0xFFF2F2F2, "放大提示");
         check(t.focus == 0xFF8AB4F8 && t.ring == 0xFF707070, "调整框 / 拖把手 / 空中鼠标状态、圆钮的圈");
         check(t.shade() == 0xB0000000, "调整时的压暗层");
@@ -139,6 +145,49 @@ public final class ThemeTest {
         }
     }
 
+    /**
+     * ⋯ 用强调色（2026-11-01 用户：各处的 ⋯ 找不到）：十八套都测，纯黑也要显眼。
+     * 键帽形状的 ⋯（豆花布局功能行最右、实体键盘 Esc 和 F1 中间的槽）不画边框，靠底色在键堆里显出来：底对页面、普通键帽、功能键都 ≥ 3:1
+     * （非文字的界线），字对底 ≥ 4.5:1、对按下的底 ≥ 3:1，按下看得出来；不带框的 ⋯（触控板顶上、手柄页顶上）字对触控板底、页面 ≥ 4.5:1、
+     * 对按着时垫的那块（pressed）≥ 3:1。推出来的 ⋯ 还带着强调色的色相（不是推到纯黑 / 纯白）——高对比的强调色本来就是白，除外。
+     */
+    static void menu(Theme t) {
+        int key = t.keyFill(), fn = t.fnFill();
+        ratio(t, "⋯ 键 / 页面", t.menuKey, t.bg, 3);
+        ratio(t, "⋯ 键 / 键帽", t.menuKey, key, 3);
+        ratio(t, "⋯ 键 / 功能键", t.menuKey, fn, 3);
+        ratio(t, "⋯ 键的字 / ⋯ 键", t.menuKeyText, t.menuKey, 4.5);
+        ratio(t, "⋯ 键的字 / ⋯ 键按下", t.menuKeyText, t.menuKeyPressed, 3);
+        check(Theme.contrast(t.menuKeyPressed, t.menuKey) >= 1.15, t.id + "：⋯ 键按下看得出来 "
+                + fmt(Theme.contrast(t.menuKeyPressed, t.menuKey)));
+        check(Theme.deltaE(t.menuKey, fn) >= Theme.FN_DELTA_E && Theme.deltaE(t.menuKey, key) >= Theme.FN_DELTA_E,
+                t.id + "：⋯ 键和功能键、普通键帽分得开（色差）");
+        ratio(t, "不带框的 ⋯ / 触控板", t.menuDots, t.padFill, 4.5);
+        ratio(t, "不带框的 ⋯ / 页面（手柄页）", t.menuDots, t.bg, 4.5);
+        ratio(t, "不带框的 ⋯ / 按着时的底", t.menuDots, t.pressed, 3);
+        if (t != Theme.DEFAULT) {
+            if (t.accent != 0xFFFFFFFF) {
+                check(!grey(t.menuKey) && !grey(t.menuDots), t.id + "：⋯ 还带着强调色 " + hex(t.menuKey) + " / " + hex(t.menuDots));
+            }
+            // 本来就够的不推（强调色原样）
+            if (Theme.contrast(t.accent, t.bg) >= 3 && Theme.contrast(t.accent, key) >= 3 && Theme.contrast(t.accent, fn) >= 3) {
+                check(t.menuKey == t.accent, t.id + "：⋯ 键本来就够的不推");
+            }
+            // 字是页面色或正文色（或它们推出来的）：深色主题多半是深字、浅色主题是浅字
+            check(t.menuKeyText == Theme.reach(t.bg, t.menuKey, 4.5) || t.menuKeyText == Theme.reach(t.text, t.menuKey, 4.5),
+                    t.id + "：⋯ 键的字从页面色 / 正文色里挑");
+        }
+        // 和原来的暗字（Style.bare 以前用的 dim）一眼分得开
+        check(Theme.deltaE(t.menuDots, t.dim) >= Theme.FN_DELTA_E || t.id.equals("contrast"),
+                t.id + "：不带框的 ⋯ 和原来的暗字分得开（色差 " + fmt(Theme.deltaE(t.menuDots, t.dim)) + "）");
+    }
+
+    /** 灰的（三个通道差不到 16）。 */
+    private static boolean grey(int c) {
+        int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+        return Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b)) < 16;
+    }
+
     /** 灰度 v（0–255）的 emoji 像素经 {@link Theme#emojiMap} 后的颜色。 */
     static int emoji(Theme t, int v) {
         float[] k = t.emojiMap();
@@ -189,6 +238,16 @@ public final class ThemeTest {
         check(Math.abs(Theme.deltaE(0xFF000000, 0xFFFFFFFF) - 100) < 0.05, "黑白色差 100（L* 0 → 100）");
         int m = Theme.dimmest(0xFF000000, 0xFFFFFFFF, 4.5, 0xFF000000);
         check(Theme.contrast(m, 0xFF000000) >= 4.5 && Theme.contrast(m, 0xFF000000) < 5, "刚好够 4.5:1，不多亮");
+        // reachAll：一次看几个底，方向只看第一个
+        int a = Theme.reachAll(0xFF333333, new int[]{0xFF000000, 0xFF202020}, new double[]{3, 4.5});
+        check(Theme.contrast(a, 0xFF000000) >= 3 && Theme.contrast(a, 0xFF202020) >= 4.5 && Theme.luminance(a) > Theme.luminance(0xFF333333),
+                "reachAll：暗底上往亮推到每个底都够");
+        check(Theme.reachAll(0xFFFFFFFF, new int[]{0xFF000000}, new double[]{4.5}) == 0xFFFFFFFF, "reachAll：已经够的不动");
+        check(Theme.reachAll(0xFF808080, new int[]{0xFF000000}, new double[]{4.5}) == Theme.reach(0xFF808080, 0xFF000000, 4.5),
+                "reachAll：一个底时同 reach");
+        // 对白、对深灰都要 7:1：没有这样的颜色，推到头（白底 → 往黑推）就是黑
+        check(Theme.reachAll(0xFF808080, new int[]{0xFFFFFFFF, 0xFF202020}, new double[]{7, 7}) == 0xFF000000,
+                "reachAll：推到头还不够就是那一头的黑");
     }
 
     static void print() {
@@ -198,7 +257,8 @@ public final class ThemeTest {
         System.out.println(sep);
         String[] names = {"bg", "key", "text", "border", "pressed", "accent", "activeText", "strong", "padFill", "padBorder",
                 "status", "statusBad", "previewFill", "previewBorder", "previewText", "focus", "ring", "dim", "dimBorder",
-                "hint", "edge", "menuFill", "fnKey", "fnText", "fnPressed", "stick", "shade"};
+                "hint", "edge", "menuFill", "fnKey", "fnText", "fnPressed", "stick", "menuKey", "menuKeyText", "menuKeyPressed",
+                "menuDots", "shade"};
         for (int i = 0; i < names.length; i++) {
             final int slot = i;
             System.out.println("| " + names[i] + " | " + join(t -> hex(printed(t)[slot])) + " |");
@@ -229,6 +289,14 @@ public final class ThemeTest {
         row("🌐 中灰 / 功能键", t -> Theme.contrast(emoji(t, 128), t.fnFill()));
         row("小红点 / 页面", t -> Theme.contrast(t.stick, t.bg));
         row("小红点 / 触控板", t -> Theme.contrast(t.stick, t.padFill));
+        row("⋯ 键 / 页面", t -> Theme.contrast(t.menuKey, t.bg));
+        row("⋯ 键 / 键帽", t -> Theme.contrast(t.menuKey, t.keyFill()));
+        row("⋯ 键 / 功能键", t -> Theme.contrast(t.menuKey, t.fnFill()));
+        row("⋯ 键的字 / ⋯ 键", t -> Theme.contrast(t.menuKeyText, t.menuKey));
+        row("⋯ 键的字 / 按下", t -> Theme.contrast(t.menuKeyText, t.menuKeyPressed));
+        row("不带框的 ⋯ / 触控板", t -> Theme.contrast(t.menuDots, t.padFill));
+        row("不带框的 ⋯ / 页面", t -> Theme.contrast(t.menuDots, t.bg));
+        row("不带框的 ⋯ / 按下", t -> Theme.contrast(t.menuDots, t.pressed));
     }
 
     // ── 小工具 ──
@@ -257,7 +325,8 @@ public final class ThemeTest {
     private static int[] slots(Theme t) {
         return new int[]{t.bg, t.keyFill(), t.text, t.border, t.pressed, t.accent, t.activeText, t.strong, t.padFill,
                 t.padBorder, t.status, t.statusBad, t.previewFill, t.previewBorder, t.previewText, t.focus, t.ring, t.dim,
-                t.dimBorder, t.hint, t.edge, t.menuFill, t.fnFill(), t.fnText, t.fnPressed, t.stick};
+                t.dimBorder, t.hint, t.edge, t.menuFill, t.fnFill(), t.fnText, t.fnPressed, t.stick, t.menuKey, t.menuKeyText,
+                t.menuKeyPressed, t.menuDots};
     }
 
     private static int[] printed(Theme t) {

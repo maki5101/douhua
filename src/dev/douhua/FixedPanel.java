@@ -388,7 +388,8 @@ final class FixedPanel {
     // ═══════════ 键帽上的字 ═══════════
 
     /**
-     * 锁着的修饰键（mods，TouchRouter 的 latched 掩码：左 Ctrl 0x01、左 Shift 0x02、左 Alt 0x04、左 GUI 0x08，右边四个 << 4）会选哪一层：
+     * 锁着 / 按着的修饰键（mods = TouchRouter 的 latched | held 掩码：左 Ctrl 0x01、左 Shift 0x02、左 Alt 0x04、左 GUI 0x08，右边四个 << 4；
+     * 2026-11-01 起按住 Shift / AltGr / Option 也换层，同锁着）会选哪一层：
      * Shift = 任一 Shift；第三层 = Mac 的任一 Option（左右 Alt），Windows 的 AltGr（右 Alt，0x40）——只在这个布局有第三层、键帽写着 AltGr 时
      * （FixedLayout.altGr）；美式的右 Alt 写 Alt，锁住它和锁左 Alt 一样不换层（不然整块键盘的字全压暗，像出了故障）。layout 是 null 时不换第三层。
      */
@@ -405,7 +406,7 @@ final class FixedPanel {
         return c == null || FixedLegends.printable(c.text) == null ? null : c;
     }
 
-    /** 字母那种键：普通层是一个字母，Shift 层是它的大写（a / A、ü / Ü），只画一个字、跟着 Shift 换大小写（同豆花布局）。 */
+    /** 字母那种键：普通层是一个字母，Shift 层是它的大写（a / A、ü / Ü），只画一个字、跟着 Shift / Caps 换大小写（同豆花布局）。 */
     private static boolean letterLike(FixedLegends.Cell n, FixedLegends.Cell s) {
         if (n == null || s == null || n.dead || s.dead) return false;
         if (n.text.codePointCount(0, n.text.length()) != 1 || !Character.isLetter(n.text.codePointAt(0))) return false;
@@ -414,15 +415,28 @@ final class FixedPanel {
     }
 
     /**
+     * 字母类的键这时出大写吗（2026-11-01，Caps 的显示）：Windows 模式 Shift ⊕ Caps（Windows / Linux / 安卓的大写锁定 + Shift 出小写），
+     * Mac 模式 Shift ∨ Caps（macOS 大写锁定开着时 Shift 不反转；iPadOS 凭记忆同 macOS，没核对）。数字、标点、第三层不看 Caps。
+     */
+    static boolean upper(boolean shift, boolean caps, FixedLayout layout) {
+        return layout != null && layout.mac() ? shift || caps : shift ^ caps;
+    }
+
+    /** 同 {@link #glyphs(int, int, boolean, String)}，Caps 关着。 */
+    List<Glyph> glyphs(int i, int mods, String spaceName) {
+        return glyphs(i, mods, false, spaceName);
+    }
+
+    /**
      * 第 i 个键键帽上画哪几个字（照实体键帽，方案 §1.1 第 5 条，用户 2026-11-01 定）：
      * - 功能键、小键盘、空格：正中一个名字（spaceName = 界面语言的"空格"）；
-     * - 字母：正中一个字母，跟着锁住的 Shift 换大小写；
+     * - 字母：正中一个字母，跟着锁住 / 按着的 Shift 和 Caps（caps = 豆花这边显示的大写锁定）换大小写（{@link #upper}）；
      * - 数字、标点：上半 Shift 层、下半普通层；
      * - 有第三层（AltGr / Option）的字：角上一个小字（平时右下；被小红点切到的键放离切口最远的角，{@link #corner}）。
      * 锁着 Shift / 第三层时，会出的那个字照常画、别的压暗（dim）；锁着第三层 + Shift 时角上换成第四层的字（有的话）。
      * 死键（dead）用强调色。画不出来的字（苹果标这种私用区字）不画。
      */
-    List<Glyph> glyphs(int i, int mods, String spaceName) {
+    List<Glyph> glyphs(int i, int mods, boolean caps, String spaceName) {
         List<Glyph> out = new ArrayList<>();
         FixedLayout.Key k = keys.get(i);
         if (!k.charKey()) {
@@ -437,8 +451,8 @@ final class FixedPanel {
         FixedLegends.Cell n = cell(k.id, FixedLegends.NORMAL), s = cell(k.id, FixedLegends.SHIFT);
         FixedLegends.Cell t = cell(k.id, FixedLegends.THIRD), t4 = cell(k.id, FixedLegends.THIRD_SHIFT);
         if (letterLike(n, s)) {
-            // 字母：锁着 Shift 画大写（会出的就是它，不暗）；锁着第三层时会出的是角上那个，字母压暗
-            FixedLegends.Cell c = shift ? s : n;
+            // 字母：Shift / Caps 定大小写（会出的就是它，不暗）；锁着第三层时会出的是角上那个，字母压暗
+            FixedLegends.Cell c = upper(shift, caps, layout) ? s : n;
             out.add(new Glyph(c.text, Glyph.CENTER, c.dead, third));
         } else if (s != null && n != null) {
             // 上半 Shift 层：只锁着 Shift 时会出它；下半普通层：没锁时会出它
@@ -464,9 +478,19 @@ final class FixedPanel {
      * （同豆花布局），返回 null。
      */
     String preview(int i, int mods) {
+        return preview(i, mods, false);
+    }
+
+    /** 同上，caps = 豆花这边显示的大写锁定：字母类的键照 {@link #upper} 换大小写（第三层不看 Caps）。 */
+    String preview(int i, int mods, boolean caps) {
         FixedLayout.Key k = keys.get(i);
         if (!k.charKey()) return null;
-        FixedLegends.Cell c = cell(k.id, layer(mods, layout));
+        int layer = layer(mods, layout);
+        if (layer == FixedLegends.NORMAL || layer == FixedLegends.SHIFT) {
+            FixedLegends.Cell n = cell(k.id, FixedLegends.NORMAL), s = cell(k.id, FixedLegends.SHIFT);
+            if (letterLike(n, s)) return (upper(layer == FixedLegends.SHIFT, caps, layout) ? s : n).text;
+        }
+        FixedLegends.Cell c = cell(k.id, layer);
         return c == null ? null : c.text;
     }
 
@@ -477,7 +501,17 @@ final class FixedPanel {
 
     /** 这个键是修饰键，而且锁着（高亮）：左右八个都认（豆花布局只画左边四个）。 */
     static boolean active(FixedLayout.Key k, int mods) {
-        return k.id >= 0xE0 && k.id <= 0xE7 && !k.special && (mods & (1 << (k.id - 0xE0))) != 0;
+        return active(k, mods, false);
+    }
+
+    /**
+     * 这个键画不画高亮：修饰键看 shown（= latched | armed：锁住的、"现在松手就锁"的，左右八个都认），Caps 看 caps（豆花这边显示的大写锁定）。
+     * 按着的样子另外画（按下事件），所以按住 0.4 秒那一刻是"按下 + 高亮"，1 秒后退回"只按下"。
+     */
+    static boolean active(FixedLayout.Key k, int shown, boolean caps) {
+        if (k.special) return false;
+        if (k.id == KeyHolds.CAPS) return caps;
+        return k.id >= 0xE0 && k.id <= 0xE7 && (shown & (1 << (k.id - 0xE0))) != 0;
     }
 
     /**

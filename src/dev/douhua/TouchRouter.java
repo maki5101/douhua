@@ -8,8 +8,11 @@ import java.util.Locale;
  * 触摸分流：每根手指按下时落在哪个区域，就交给谁——触控板 → 手势引擎；键盘键 → 虚拟键盘；
  * 按钮 → 报告给界面；"左键"按钮 → 按住鼠标左键。另外管键盘修饰键和双指开合的 Ctrl + 滚轮。
  *
- * 修饰键（Ctrl / Shift / Alt / Win）点一下锁定、立即按下，打完下一个普通键自动解开，再点一下也能解开；
- * 锁定期间点触控板就是 Ctrl + 点击之类。"自带修饰键"的键（"@"、"复制"之类）按下时连同修饰键一起按。
+ * 修饰键（左右八个）按下马上发；按住期间用过（按了别的键、鼠标键 / 滚轮 / 缩放 / 手势）= 组合键、松手就松；单独点一下 = 点了一下；
+ * 单独按住 0.4–1 秒松手才锁，锁了以后打完下一个普通键自动解开、再点一下也能解开（2026-11-01 起，以前是点一下就锁）。
+ * Caps 点一下发、按住只切显示；小红点状态的合并键点一下逗号、按住句号。按着要计时的这几种键、锁定、按着的计数都在 {@link KeyHolds}，
+ * 到点用按键专用的定时器（{@link Output#scheduleKeys}，和引擎那个槽分开）。锁定期间点触控板就是 Ctrl + 点击之类。
+ * "自带修饰键"的键（"@"、"复制"之类）按下时连同修饰键一起按。
  *
  * 键盘：按在键与键的缝、第二行两头的空位、外圈边距上（落在 Proto.REGION_KEYBOARD 里却没落在键上），
  * 分给范围里最近的键（{@link #nearestKey}）；按在键上的照旧按矩形判。
@@ -49,13 +52,27 @@ public final class TouchRouter implements GestureEngine.Output {
         /** 按钮 / 键按下、松开（id、action 同 Proto.MSG_BUTTON），界面据此画按下状态、执行动作。 */
         void button(int id, int action);
 
-        /** 锁定的修饰键变了（同 Proto.MSG_MODIFIERS）。 */
-        void modifiers(int latched);
+        /**
+         * 修饰键的状态变了（同 Proto.MSG_MODIFIERS，HID 修饰键位）：latched = 锁住的，held = 有手指按着的，armed = "现在松手就锁"的。
+         * 三样都比上次报的，变了才调。
+         */
+        void modifiers(int latched, int held, int armed);
+
+        /** Caps 的显示该翻一下了（同 Proto.MSG_CAPS）：sent = 这次给主机发了 Caps Lock（点一下），假 = 只切显示（按住 0.4 秒）。显示状态归界面管。 */
+        void caps(boolean sent);
 
         /** 过 delayMs 后调 {@link #onTimer}；再次调用时取代上一次。 */
         void schedule(long delayMs);
 
         void cancelSchedule();
+
+        /**
+         * 过 delayMs 后调 {@link #onKeyTimer}；再次调用时取代上一次。按键专用（修饰键 / Caps / 合并键按住到点，{@link KeyHolds}），
+         * 和 schedule（引擎唯一的槽：轻点拖动、长按、惯性）是两条独立的路。不做成 default：忘了实现就编译不过（同 startTicks）。
+         */
+        void scheduleKeys(long delayMs);
+
+        void cancelKeys();
 
         /**
          * 开始按固定节拍调 {@link #onTick}（桌面模式 8ms、蓝牙 12ms，由实现方定）；已经在跑就不动。小红点按着时用。
@@ -163,7 +180,7 @@ public final class TouchRouter implements GestureEngine.Output {
     /** 上次记下的键盘布局（同样的布局重报时不重复记）。 */
     private String tracedLayout;
     /** 按着的左键：REGION_HOLD_LEFT、三键条 / 键盘最下面那排的左键、holdLeft（实体键）共用。 */
-    private int holds;
+    private int leftHolds;
     /** 按着的右键、中键（三键条 / 键盘最下面那排）。 */
     private int rightHolds, middleHolds;
     /** 中键这次按着期间滚过（出过滚轮）：松开时不补中键单击。 */
@@ -179,8 +196,12 @@ public final class TouchRouter implements GestureEngine.Output {
     private boolean ticking;
     /** 手柄页的控件（REGION_GAMEPAD）。 */
     private final GamepadTouch gamepad = new GamepadTouch(new PadOutput());
-    /** 点一下锁定的修饰键。 */
-    private int latched;
+    /** 按着要计时的键（修饰键、Caps、合并键）、锁定的修饰键、按着的键的计数。 */
+    private final KeyHolds holds = new KeyHolds(new HoldsHost());
+    /** 上次报给界面的修饰键状态（Output.modifiers，变了才报）。 */
+    private int shownLatched, shownHeld, shownArmed;
+    /** 最近一次带时间的入口给的时间（引擎在 frame / onTimer 里回调 mouse / zoom 时用它；只会比真正的现在早，按它排的定时器只会晚到）。 */
+    private long now = Long.MIN_VALUE;
     /** 开合缩放期间按住的 Ctrl。 */
     private boolean zoomCtrl;
     /** 正按着的"自带修饰键"的键，它们的修饰键要一起按着。 */
@@ -192,7 +213,11 @@ public final class TouchRouter implements GestureEngine.Output {
         this.out = out;
     }
 
-    /** 新的手势参数：换一个引擎，进行中的手势作废。density = 每 dp 多少像素。 */
+    /**
+     * 新的手势参数：换一个引擎，进行中的手势作废。density = 每 dp 多少像素。
+     * 按着键的手指留着（键不依赖引擎，抬起照常松开、照常判点一下 / 锁定）：以前一起清掉、不松 HID，按着的键（现在包括按着的修饰键）
+     * 会一直按在主机上，直到 releaseAll。
+     */
     public void setConfig(GestureEngine.Config c, float density) {
         if (engine != null) engine.cancel();   // 转着的惯性也停
         engine = new GestureEngine(this, c);
@@ -201,7 +226,7 @@ public final class TouchRouter implements GestureEngine.Output {
         lever.setConfig(c);
         this.density = density > 0 ? density : 1;
         gamepad.setDensity(this.density);
-        clearSlots();
+        clearSlots(true);
     }
 
     /** 手柄参数（Proto.CMD_GAMEPAD_CONFIG）：手柄这一路先回中立（按着的全松、发全零），再换。不动手势引擎。 */
@@ -288,6 +313,7 @@ public final class TouchRouter implements GestureEngine.Output {
      */
     public Region down(int slot, float x, float y, long t) {
         if (slot < 0 || slot >= SLOTS) return null;
+        tick(t);
         Region r = hit(x, y);
         // 按在键、手柄控件上的静默停（它们自己会"嗒"）
         if (engine != null && (r == null || r.type != Proto.REGION_PAD)) {
@@ -316,7 +342,7 @@ public final class TouchRouter implements GestureEngine.Output {
             }
             case Proto.REGION_HOLD_LEFT:
                 slotKind[slot] = KIND_HOLD;
-                if (holds++ == 0) applyExternal();
+                if (leftHolds++ == 0) applyExternal();
                 out.button(r.id, Proto.BUTTON_DOWN);
                 break;
             case Proto.REGION_STICK:
@@ -343,7 +369,7 @@ public final class TouchRouter implements GestureEngine.Output {
                 break;
             case Proto.REGION_KEY:
                 slotKind[slot] = KIND_KEY;
-                keyDown(r.id);
+                holds.down(r.id, t);
                 out.button(Proto.KEY_ID_BASE + r.id, Proto.BUTTON_DOWN);
                 break;
             case Proto.REGION_BUTTON:
@@ -376,6 +402,7 @@ public final class TouchRouter implements GestureEngine.Output {
 
     /** 一帧触摸报完（所有手指的位置都更新了）。 */
     public void frame(long t) {
+        tick(t);
         if (engine != null) engine.endFrame(t);
         if (stickSlot >= 0 && stick.frame(t)) startTicks();   // 太久没动暂停了的红点又动了：接着发
         if (leverLive() && lever.frame(t)) startTicks();   // 中键滚动杆同样
@@ -392,6 +419,7 @@ public final class TouchRouter implements GestureEngine.Output {
      */
     public void up(int slot, long t, boolean canceled) {
         if (slot < 0 || slot >= SLOTS) return;
+        tick(t);
         int kind = slotKind[slot];
         Region r = slotRegion[slot];
         slotKind[slot] = KIND_NONE;
@@ -406,8 +434,8 @@ public final class TouchRouter implements GestureEngine.Output {
                 engine.up(slot, t, canceled);
                 break;
             case KIND_HOLD:
-                if (--holds <= 0) {
-                    holds = 0;
+                if (--leftHolds <= 0) {
+                    leftHolds = 0;
                     applyExternal();
                 }
                 out.button(r.id, Proto.BUTTON_UP);
@@ -435,7 +463,7 @@ public final class TouchRouter implements GestureEngine.Output {
                 break;
             }
             case KIND_KEY:
-                keyUp(r.id);
+                holds.up(r.id, t, canceled);   // 被取消的：修饰键松开但不锁，Caps、合并键什么都不出
                 out.button(Proto.KEY_ID_BASE + r.id, Proto.BUTTON_UP);
                 break;
             case KIND_GAMEPAD:
@@ -447,7 +475,25 @@ public final class TouchRouter implements GestureEngine.Output {
     }
 
     public void onTimer(long t) {
+        tick(t);
         if (engine != null) engine.onTimer(t);
+    }
+
+    /** 按键专用的定时器到点（{@link Output#scheduleKeys}）：按截止时刻 + 当前状态处理，过期的回调什么都不多做（{@link KeyHolds#onTimer}）。 */
+    public void onKeyTimer(long t) {
+        tick(t);
+        holds.onTimer(t);
+    }
+
+    /** 清掉全部锁住的修饰键（Proto.CMD_UNLATCH：进空中鼠标、手柄页时）；按着的不动。 */
+    public void unlatch(long t) {
+        tick(t);
+        holds.unlatch(t);
+    }
+
+    /** 带时间的入口先记下时间（只往后走）。 */
+    private void tick(long t) {
+        if (t > now) now = t;
     }
 
     /**
@@ -456,6 +502,7 @@ public final class TouchRouter implements GestureEngine.Output {
      * 两个都没按着（迟到的节拍、滚动杆让位了）什么都不出；按着的都太久没事件暂停了就停节拍。
      */
     public void onTick(long t) {
+        tick(t);
         if (engine == null || (stickSlot < 0 && !leverLive())) {
             stopTicks();
             return;
@@ -476,16 +523,16 @@ public final class TouchRouter implements GestureEngine.Output {
     }
 
     /**
-     * 按住 / 松开鼠标左键，和 {@link Proto#REGION_HOLD_LEFT} 共用 {@link #holds} 计数（桌面模式下实体键按住配了"左键"时用）。
+     * 按住 / 松开鼠标左键，和 {@link Proto#REGION_HOLD_LEFT} 共用 {@link #leftHolds} 计数（桌面模式下实体键按住配了"左键"时用）。
      * 第一个按下时按住左键，最后一个松开时清零；减到 0 以下截在 0。{@link #releaseAll} / {@link #clearSlots} 会把计数归零，
      * 这时若实体键还按着，之后的松开减到 0 以下也不会出错。
      */
     public void holdLeft(boolean down) {
         if (engine == null) return;
         if (down) {
-            if (holds++ == 0) applyExternal();
-        } else if (--holds <= 0) {
-            holds = 0;
+            if (leftHolds++ == 0) applyExternal();
+        } else if (--leftHolds <= 0) {
+            leftHolds = 0;
             applyExternal();
         }
     }
@@ -500,9 +547,9 @@ public final class TouchRouter implements GestureEngine.Output {
     private void mouseButton(int mask, boolean down, boolean canceled) {
         if (mask == Proto.BUTTON_LEFT) {
             if (down) {
-                if (holds++ == 0) applyExternal();
-            } else if (--holds <= 0) {
-                holds = 0;
+                if (leftHolds++ == 0) applyExternal();
+            } else if (--leftHolds <= 0) {
+                leftHolds = 0;
                 applyExternal();
             }
         } else if (mask == Proto.BUTTON_RIGHT) {
@@ -514,6 +561,7 @@ public final class TouchRouter implements GestureEngine.Output {
             }
         } else if (mask == Proto.BUTTON_MIDDLE) {
             if (down) {
+                holds.used(now);   // 中键按下不出鼠标帧（按着时是滚动），这里替它标"用过"：按着修饰键时按中键也是组合
                 if (middleHolds++ == 0) {
                     middleScrolled = false;
                     engine.setScrollHold(true);
@@ -528,7 +576,7 @@ public final class TouchRouter implements GestureEngine.Output {
 
     /** 外部按住的鼠标键（左键计数、右键计数）告诉引擎。 */
     private void applyExternal() {
-        engine.setExternalButtons((holds > 0 ? Proto.BUTTON_LEFT : 0) | (rightHolds > 0 ? Proto.BUTTON_RIGHT : 0));
+        engine.setExternalButtons((leftHolds > 0 ? Proto.BUTTON_LEFT : 0) | (rightHolds > 0 ? Proto.BUTTON_RIGHT : 0));
     }
 
     private void startTicks() {
@@ -581,17 +629,25 @@ public final class TouchRouter implements GestureEngine.Output {
     }
 
     /**
-     * 按下 / 松开一个键（key = HID 用法码 | 自带修饰键 << 8，同 Proto.REGION_KEY）。界面自己收到的键、动作里的组合键走这里。
+     * 按下 / 松开一个键（key 同 Proto.REGION_KEY 的 id：HID 用法码 | 自带修饰键 << 8，或者合并键 Proto.dualKey），
+     * action = Proto.KEY_DOWN / KEY_UP / KEY_CANCEL（被取消的：修饰键松开但不锁，Caps、合并键什么都不出）。
+     * 界面自己收到的键（面板自己收触摸时）、动作里的组合键走这里，和按在区域上的键走同一份规则（KeyHolds），t = 按下 / 松开的时间。
      * 按下时转着的惯性静默停（打字说明不滚了，也免得 Ctrl / Super 在转的中途接上）。
      */
-    public void key(int key, boolean down) {
-        if (down && engine != null) engine.stopSpin(false);
-        if (down) keyDown(key);
-        else keyUp(key);
+    public void key(int key, int action, long t) {
+        tick(t);
+        if (action == Proto.KEY_DOWN) {
+            if (engine != null) engine.stopSpin(false);
+            holds.down(key, t);
+        } else {
+            holds.up(key, t, action == Proto.KEY_CANCEL);
+        }
     }
 
     /**
-     * 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开、小红点和中键滚动杆停（节拍停）、中键不补单击、手柄回中立。触摸屏被释放、连接断开时调。
+     * 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开、小红点和中键滚动杆停（节拍停）、中键不补单击、手柄回中立；
+     * 修饰键的锁定 / 按着 / 快锁了全部归零，待定的 Caps / 合并键丢掉（不发），按键定时器撤掉。之后迟到的松开计数是 0、整个不理。
+     * 触摸屏被释放、连接断开时调。
      */
     public void releaseAll() {
         if (engine != null) engine.cancel();
@@ -603,23 +659,24 @@ public final class TouchRouter implements GestureEngine.Output {
                 out.button(Proto.KEY_ID_BASE + slotRegion[s].id, Proto.BUTTON_UP);
             }
         }
-        clearSlots();
-        boolean hadLatched = latched != 0;
-        latched = 0;
+        clearSlots(false);
+        holds.releaseAll();   // 连按键定时器一起撤掉
         zoomCtrl = false;
         chordKeys.clear();
         if (engine != null) engine.setCtrlHeld(false);
         if (keyboard.releaseAll()) sendKeyboard();
-        if (hadLatched) out.modifiers(0);
+        showModifiers();   // 不是全零就报一次 (0, 0, 0)
     }
 
-    private void clearSlots() {
+    /** keepKeys = 按着键的手指留着（换参数时，见 {@link #setConfig}）；releaseAll 全清。 */
+    private void clearSlots(boolean keepKeys) {
         for (int s = 0; s < SLOTS; s++) {
+            if (keepKeys && slotKind[s] == KIND_KEY) continue;
             slotKind[s] = KIND_NONE;
             slotRegion[s] = null;
             slotTraced[s] = false;
         }
-        holds = 0;
+        leftHolds = 0;
         rightHolds = 0;
         middleHolds = 0;
         middleScrolled = false;
@@ -691,15 +748,10 @@ public final class TouchRouter implements GestureEngine.Output {
 
     // ═══════════ 虚拟键盘 ═══════════
 
-    private void keyDown(int key) {
+    /** 普通键按下（原语，KeyHolds 调）：自带修饰键的先按下修饰键、再按键。 */
+    private void pressKey(int key) {
         int usage = key & 0xFF;
         int chord = (key >> 8) & 0xFF;
-        if (chord == 0 && Hid.isModifier(usage)) {
-            latched ^= Hid.modifierBit(usage);
-            applyModifiers();
-            out.modifiers(latched);
-            return;
-        }
         if (chord != 0) {
             chordKeys.add(key);
             applyModifiers();   // 先按下修饰键，再按键
@@ -707,16 +759,26 @@ public final class TouchRouter implements GestureEngine.Output {
         if (keyboard.press(usage)) sendKeyboard();
     }
 
-    private void keyUp(int key) {
+    /** 普通键松开（原语，KeyHolds 调）：先松开键，再松开它自带的修饰键。"打完一个键锁定的修饰键自动解开"在 KeyHolds 里。 */
+    private void releaseKey(int key) {
         int usage = key & 0xFF;
-        int chord = (key >> 8) & 0xFF;
-        if (chord == 0 && Hid.isModifier(usage)) return;   // 修饰键是点一下锁定，松手不算
-        if (keyboard.release(usage)) sendKeyboard();   // 先松开键，再松开它自带的修饰键
-        chordKeys.remove(Integer.valueOf(key));
-        boolean hadLatched = latched != 0;
-        latched = 0;               // 打完一个键，锁定的修饰键自动解开
-        applyModifiers();
-        if (hadLatched) out.modifiers(0);
+        if (keyboard.release(usage)) sendKeyboard();
+        if (chordKeys.remove(Integer.valueOf(key))) applyModifiers();
+    }
+
+    /** 修饰键的状态告诉界面（latched / held / armed 三样，比上次报的，变了才报）。 */
+    private void showModifiers() {
+        int l = holds.latched(), h = holds.held(), a = holds.armed();
+        if (l == shownLatched && h == shownHeld && a == shownArmed) return;
+        shownLatched = l;
+        shownHeld = h;
+        shownArmed = a;
+        out.modifiers(l, h, a);
+    }
+
+    /** 鼠标键按着（左 / 右 / 中，含外部按住的、中键按着还没发出去的）：这时按下的修饰键是组合的一部分，绝不锁。 */
+    private boolean mouseBusy() {
+        return lastButtons != 0 || middleHolds > 0 || leftHolds > 0 || rightHolds > 0;
     }
 
     private void applyModifiers() {
@@ -725,11 +787,11 @@ public final class TouchRouter implements GestureEngine.Output {
         if (keyboard.setModifiers(mask)) sendKeyboard();
     }
 
-    /** 虚拟键盘现在该按着的修饰键：锁定的、自带修饰键的键带的、开合缩放的 Ctrl。 */
+    /** 虚拟键盘现在该按着的修饰键：锁定的、有手指按着的、自带修饰键的键带的、开合缩放的 Ctrl。 */
     private int modifierMask() {
         int chords = 0;
         for (int k : chordKeys) chords |= (k >> 8) & 0xFF;
-        return latched | chords | (zoomCtrl ? Hid.MOD_CTRL : 0);
+        return holds.latched() | holds.held() | chords | (zoomCtrl ? Hid.MOD_CTRL : 0);
     }
 
     private void sendKeyboard() {
@@ -741,6 +803,9 @@ public final class TouchRouter implements GestureEngine.Output {
 
     @Override
     public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
+        // 按着的修饰键"用过了"：鼠标键按下 / 松开、带着按住的鼠标键的移动（拖动中）、滚轮、横向滚；没按鼠标键的纯移动不算
+        // （另一只手指搭在触控板 / 红点上抖一下就锁不上）。在 lastButtons 赋值之前比
+        if (buttons != lastButtons || buttons != 0 || wheel != 0 || pan != 0) holds.used(now);
         lastButtons = buttons;
         if (middleHolds > 0 && (wheel != 0 || pan != 0)) {   // 中键按着时滚过（红点、触控板、滚动杆都算）
             middleScrolled = true;
@@ -756,7 +821,9 @@ public final class TouchRouter implements GestureEngine.Output {
             middleScrolled = true;
             leverYield();
         }
+        holds.used(now);
         if (!zoomCtrl) {
+            holds.settle(now);   // 待定的键先发出去（不带缩放的 Ctrl：Ctrl+, 在不少应用里是"设置"）
             zoomCtrl = true;
             applyModifiers();
         }
@@ -772,6 +839,7 @@ public final class TouchRouter implements GestureEngine.Output {
 
     @Override
     public void gesture(int fingers, int kind) {
+        holds.used(now);   // 三指 / 四指手势是明确的操作（蓝牙模式下手势映射成的点击不经分流，这里先兜住）
         out.gesture(fingers, kind);
     }
 
@@ -793,6 +861,50 @@ public final class TouchRouter implements GestureEngine.Output {
     @Override
     public void edgeRelease(float speedDpPerMs, float spinPerSecond) {
         out.edgeRelease(speedDpPerMs, spinPerSecond);
+    }
+
+    /** 按键规则（KeyHolds）回调到这里：报文、修饰键字节、界面、震动、按键定时器。 */
+    private final class HoldsHost implements KeyHolds.Host {
+        @Override
+        public void pressKey(int key) {
+            TouchRouter.this.pressKey(key);
+        }
+
+        @Override
+        public void releaseKey(int key) {
+            TouchRouter.this.releaseKey(key);
+        }
+
+        @Override
+        public void modsChanged() {
+            applyModifiers();
+            showModifiers();
+        }
+
+        @Override
+        public boolean mouseBusy() {
+            return TouchRouter.this.mouseBusy();
+        }
+
+        @Override
+        public void holdReached() {
+            out.haptic(GestureEngine.HAPTIC_CLICK);
+        }
+
+        @Override
+        public void caps(boolean sent) {
+            out.caps(sent);
+        }
+
+        @Override
+        public void schedule(long delayMs) {
+            out.scheduleKeys(delayMs);
+        }
+
+        @Override
+        public void cancel() {
+            out.cancelKeys();
+        }
     }
 
     /** 手柄的输出：报文、按下 / 松开（App 震"嗒"）、"咔嗒"。 */

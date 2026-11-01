@@ -110,8 +110,12 @@ public final class TestClient {
                     case Proto.MSG_GESTURE:
                         Server.log("自测收到 手势 " + in.readUnsignedByte() + "/" + in.readUnsignedByte());
                         break;
-                    case Proto.MSG_MODIFIERS:
-                        Server.log("自测收到 修饰键 " + in.readUnsignedByte());
+                    case Proto.MSG_MODIFIERS:   // 协议 20：锁住 / 按着 / 快锁了三个字节
+                        Server.log("自测收到 修饰键 锁住=" + in.readUnsignedByte() + " 按着=" + in.readUnsignedByte()
+                                + " 快锁了=" + in.readUnsignedByte());
+                        break;
+                    case Proto.MSG_CAPS:
+                        Server.log("自测收到 Caps 显示翻一下（" + (in.readUnsignedByte() == 1 ? "发了 Caps Lock" : "只切显示") + "）");
                         break;
                     case Proto.MSG_BUTTON:
                         Server.log("自测收到 按钮 " + in.readInt() + " " + in.readUnsignedByte());

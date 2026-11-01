@@ -130,6 +130,27 @@ public final class KeyFingersTest {
         check(f.down(2, B) == A, "顶掉的旧键交回调用方松开");
         check(f.up(2) == B, "抬起松开新的键");
 
+        // ── 键换了下标 / 有的不显示了（换层、分裂 / 合拢、⋯ 键、让位、重建底行，2026-11-01）：还显示着的照旧按着、换成新下标，消失的交回去当取消松开 ──
+        KeyFingers g = new KeyFingers();
+        g.down(1, 0);   // 旧下标 0（比如功能行的 Shift）→ 新下标 3
+        g.down(4, 2);   // 旧下标 2（比如字母层的 q）→ 消失
+        g.down(6, 5);   // 旧下标 5（比如底行的合并键）→ 新下标 5
+        g.down(9, 1);   // 旧下标 1 → 消失
+        int[] gone = g.remap(new int[]{3, -1, -1, 0, 1, 5});
+        check(Arrays.equals(gone, new int[]{2, 1}), "消失了的键按手指编号交回旧下标（调用方当取消松开）：" + Arrays.toString(gone));
+        check(g.up(1) == 3, "还显示着的键：抬起时返回新下标（照旧按着）");
+        check(g.up(6) == 5, "下标没变的照旧");
+        check(g.up(4) == KeyFingers.NONE && g.up(9) == KeyFingers.NONE, "消失了的手指之后抬起什么都不松");
+        g.down(2, 7);
+        check(g.remap(new int[]{0, 1}).length == 1 && g.up(2) == KeyFingers.NONE, "旧下标超出映射：当消失");
+        g.down(3, 0);
+        check(g.remap(new int[0]).length == 1, "空映射：全部消失");
+        check(g.cancel().length == 0, "都清掉了");
+        check(g.remap(new int[]{1, 0}).length == 0, "没按着的手指：remap 什么都不做");
+        g.down(0, 0);
+        g.down(1, 1);
+        check(g.remap(new int[]{1, 0}).length == 0 && g.up(0) == 1 && g.up(1) == 0, "两个键对调位置：各自跟着自己的键");
+
         System.err.println("键盘多指：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }

@@ -74,6 +74,8 @@ public final class ServerPartsTest {
         gamepadMux();
         gamepadNotHeartbeat();
         gamepadConfigCodec();
+        protocol20();
+        staleKeyTimerDoesNothing();
 
         System.err.println("服务端部件：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
@@ -534,7 +536,47 @@ public final class ServerPartsTest {
         check(!c.fresh(t0 + 3000), "只收手柄报文 / 手柄参数：3 秒后照样不新鲜");
         check(Proto.CMD_GAMEPAD != Proto.CMD_HEARTBEAT && Proto.CMD_GAMEPAD_CONFIG != Proto.CMD_LAYOUT
                 && Proto.CMD_GAMEPAD == 14 && Proto.CMD_GAMEPAD_CONFIG == 15 && Proto.MSG_GAMEPAD == 0x8A
-                && Proto.REGION_GAMEPAD == 7 && Proto.VERSION == 19, "协议 19：命令 14 / 15、消息 0x8A、区域 7");
+                && Proto.REGION_GAMEPAD == 7, "手柄：命令 14 / 15、消息 0x8A、区域 7（协议 19 加的）");
+    }
+
+    /**
+     * 协议 20（修饰键点一下 = 按一下、按住才锁，Caps，合并键）：CMD_HID_KEY、CMD_UNLATCH 都不是心跳（App 主线程卡住时面板不会收触摸，
+     * 但连接线程还可能把排着的发出去；同保活不算心跳的理由）；新的命令 / 消息编号不和已有的撞；合并键的 id 编解码。
+     */
+    static void protocol20() {
+        GrabCondition c = new GrabCondition();
+        long t0 = 200_000;
+        c.onMessage(Proto.CMD_HEARTBEAT, t0);
+        for (long t = t0 + 500; t <= t0 + 3000; t += 500) {
+            c.onMessage(Proto.CMD_HID_KEY, t);
+            c.onMessage(Proto.CMD_UNLATCH, t);
+        }
+        check(!c.fresh(t0 + 3000), "只收按键 / 解开锁定：3 秒后照样不新鲜");
+        check(Proto.VERSION == 20, "协议 20");
+        int[] cmds = {Proto.CMD_PING, Proto.CMD_KEY, Proto.CMD_CLICK, Proto.CMD_CONFIG, Proto.CMD_LAYOUT, Proto.CMD_HEARTBEAT, Proto.CMD_HID_KEY,
+                Proto.CMD_ROTATE, Proto.CMD_WHEEL, Proto.CMD_TRACE, Proto.CMD_HARD_KEYS, Proto.CMD_HOLD_LEFT, Proto.CMD_GAMEPAD,
+                Proto.CMD_GAMEPAD_CONFIG, Proto.CMD_UNLATCH};
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        boolean unique = true;
+        for (int v : cmds) unique &= seen.add(v);
+        check(unique && Proto.CMD_UNLATCH == 16, "命令编号不重复，CMD_UNLATCH = 16");
+        int[] msgs = {Proto.MSG_HELLO, Proto.MSG_HAPTIC, Proto.MSG_GESTURE, Proto.MSG_BUTTON, Proto.MSG_GRAB, Proto.MSG_MODIFIERS,
+                Proto.MSG_MOUSE, Proto.MSG_KEYBOARD, Proto.MSG_HARD_KEY, Proto.MSG_HARD_GRAB, Proto.MSG_GAMEPAD, Proto.MSG_CAPS};
+        seen.clear();
+        unique = true;
+        for (int v : msgs) unique &= seen.add(v);
+        check(unique && Proto.MSG_CAPS == 0x8B, "消息编号不重复，MSG_CAPS = 0x8B");
+        check(Proto.KEY_UP == 0 && Proto.KEY_DOWN == 1 && Proto.KEY_CANCEL == 2, "CMD_HID_KEY 的 action：0 松开、1 按下、2 取消");
+        // 合并键：tap | hold << 16，正数、比任何 16 位的键 id 大，两个都取得回来
+        int comma = Proto.dualKey(0x36, 0x37);
+        check(comma == 0x00370036 && comma > 0 && Proto.isDualKey(comma), "逗号句号合键的 id = 0x00370036");
+        check(Proto.dualTap(comma) == 0x36 && Proto.dualHold(comma) == 0x37, "取回点一下 / 按住的键");
+        int big = Proto.dualKey(0x1F | (2 << 8), 0x7FFF);
+        check(big > 0 && Proto.dualTap(big) == (0x1F | (2 << 8)) && Proto.dualHold(big) == 0x7FFF, "自带修饰键的键、最大的 hold 照样取得回来、id 还是正数");
+        boolean plain = true;
+        for (int k = 0; k <= 0xFFFF; k++) plain &= !Proto.isDualKey(k);
+        check(plain, "16 位的键 id 都不是合并键");
+        check(Proto.KEY_ID_BASE + comma > Proto.KEY_ID_BASE, "报给 App 的按钮编号照旧 ≥ KEY_ID_BASE");
     }
 
     /** GamepadConfig 往返；长了（新版本多发的字段）跳过、后面的命令照读；短了（旧版本）缺的用默认。 */
@@ -1471,7 +1513,10 @@ public final class ServerPartsTest {
             public void button(int id, int action) {}
 
             @Override
-            public void modifiers(int latched) {}
+            public void modifiers(int latched, int held, int armed) {}
+
+            @Override
+            public void caps(boolean sent) {}
 
             @Override
             public void schedule(long delayMs) {
@@ -1482,6 +1527,12 @@ public final class ServerPartsTest {
             public void cancelSchedule() {
                 timer.cancel();
             }
+
+            @Override
+            public void scheduleKeys(long delayMs) {}
+
+            @Override
+            public void cancelKeys() {}
 
             @Override
             public void startTicks() {}
@@ -1519,6 +1570,105 @@ public final class ServerPartsTest {
         synchronized (lock) {
             check(!log.contains("m1") && !log.contains("h" + GestureEngine.HAPTIC_DRAG_START),
                     "过期的惯性帧不被当成长按：左键没按下、没开始拖动");
+            t.releaseAll();
+        }
+        tt.exec.shutdownNow();
+    }
+
+    /**
+     * 按键专用的第二个定时器（Session.keyTimer，协议 20）+ 真 TouchRouter：
+     * ① 按下 Shift，定时器到点、卡在锁上时松开（事件时间 300ms：用户在 0.4 秒之前就松了，只是消息晚到）——拿到锁的那次什么都不做：不震、不锁；
+     * ② 正常按住：到 0.4 秒真到点（震一下、快锁了），0.5 秒松开锁住。
+     */
+    static void staleKeyTimerDoesNothing() throws Exception {
+        TimerThread tt = new TimerThread();
+        Object lock = new Object();
+        List<String> log = Collections.synchronizedList(new ArrayList<>());
+        TouchRouter[] router = new TouchRouter[1];
+        OneShotTimer keyTimer = new OneShotTimer(tt.exec, lock, () -> router[0].onKeyTimer(nowMs()));
+        router[0] = new TouchRouter(new TouchRouter.Output() {
+            @Override
+            public void mouse(int buttons, int dx, int dy, int wheel, int pan) {}
+
+            @Override
+            public void keyboard(byte[] report) {
+                log.add("k" + report[0]);
+            }
+
+            @Override
+            public void haptic(int kind) {
+                log.add("h" + kind);
+            }
+
+            @Override
+            public void gesture(int fingers, int kind) {}
+
+            @Override
+            public void button(int id, int action) {}
+
+            @Override
+            public void modifiers(int latched, int held, int armed) {
+                log.add("mod" + latched + "/" + held + "/" + armed);
+            }
+
+            @Override
+            public void caps(boolean sent) {}
+
+            @Override
+            public void schedule(long delayMs) {}
+
+            @Override
+            public void cancelSchedule() {}
+
+            @Override
+            public void scheduleKeys(long delayMs) {
+                keyTimer.schedule(delayMs);
+            }
+
+            @Override
+            public void cancelKeys() {
+                keyTimer.cancel();
+            }
+
+            @Override
+            public void startTicks() {}
+
+            @Override
+            public void stopTicks() {}
+
+            @Override
+            public void gamepad(byte[] report) {}
+        });
+        TouchRouter t = router[0];
+        String hold = "h" + GestureEngine.HAPTIC_CLICK;
+        boolean blocked;
+        synchronized (lock) {
+            t.setConfig(new GestureEngine.Config(), 1);
+            long t0 = nowMs();
+            t.key(0xE1, Proto.KEY_DOWN, t0);
+            blocked = tt.awaitBlocked();   // 0.4 秒到点了，卡在锁上
+            t.key(0xE1, Proto.KEY_UP, t0 + 300);   // 用户 0.3 秒就松了（消息晚到）：撤掉定时器
+        }
+        check(blocked, "按键定时器：0.4 秒到点的那次卡在锁上");
+        Thread.sleep(150);
+        synchronized (lock) {
+            check(!log.contains(hold) && !log.contains("mod2/0/0") && !log.contains("mod0/2/2"),
+                    "按键定时器：撤掉之后才拿到锁的那次什么都不做（不震、不快锁、不锁）：" + log);
+            check("k0".equals(log.get(log.size() - 1)) || log.lastIndexOf("k0") > log.lastIndexOf("k2"), "Shift 照常松开");
+        }
+        // 正常按住：真到点
+        long t1;
+        synchronized (lock) {
+            log.clear();
+            t1 = nowMs();
+            t.key(0xE1, Proto.KEY_DOWN, t1);
+        }
+        long end = System.nanoTime() + 2_000_000_000L;
+        while (!log.contains(hold) && System.nanoTime() < end) Thread.sleep(1);
+        synchronized (lock) {
+            check(log.contains(hold) && log.contains("mod0/2/2"), "按键定时器：0.4 秒真到点，震一下、快锁了");
+            t.key(0xE1, Proto.KEY_UP, t1 + 500);
+            check(log.get(log.size() - 1).equals("mod2/0/0") && !log.contains("k0"), "0.5 秒松开：锁住（主机看不到松开）");
             t.releaseAll();
         }
         tt.exec.shutdownNow();

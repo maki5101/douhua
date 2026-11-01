@@ -83,13 +83,21 @@ final class Style {
      * （小红点状态下缩短的空格、分到空位两边的快捷键，德 / 法 / 西 / 意 / 日 / 韩语的短名可能放不下，2026-11-01 审查发现）。
      */
     static TextView keyButton(Context c, int textSp) {
-        TextView b = button(c, textSp, theme, keyBorders);
+        return keyButton(c, textSp, null);
+    }
+
+    /** 键帽；corner 不是 null 时右上角另画一个小字（{@link CornerKey}：小红点状态的逗号句号合键，按住 0.4 秒出它）。 */
+    static TextView keyButton(Context c, int textSp, String corner) {
+        TextView b = setup(corner == null ? new TextView(c) : new CornerKey(c, corner), textSp, theme, keyBorders);
         b.setEllipsize(TextUtils.TruncateAt.END);
         return b;
     }
 
     static TextView button(Context c, int textSp, Theme t, boolean borders) {
-        TextView b = new TextView(c);
+        return setup(new TextView(c), textSp, t, borders);
+    }
+
+    private static TextView setup(TextView b, int textSp, Theme t, boolean borders) {
         b.setGravity(Gravity.CENTER);
         b.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSp);
         look(b, t, borders, false, false);
@@ -155,10 +163,51 @@ final class Style {
         v.setBackground(border(v.getContext(), theme.dimBorder, pressed ? theme.pressed : onImage ? theme.padFill : 0));
     }
 
-    /** 键盘屏触控板顶上的 ⋯：只有暗字、不带框（用户 2026-10-31：带框放角上丑），按着时一块按下的底色。 */
+    /**
+     * 不带框的 ⋯（主界面 / 键盘屏触控板顶上正中、手柄页顶上正中）：只有字、不带框（用户 2026-10-31：带框放角上丑），
+     * 字是强调色（Theme.menuDots，2026-11-01 用户：⋯ 用强调色，以前的暗字找不到），按着时一块按下的底色。
+     */
     static void bare(TextView v, boolean pressed) {
-        v.setTextColor(theme.dim);
+        v.setTextColor(theme.menuDots);
         v.setBackground(pressed ? border(v.getContext(), 0, 0, theme.pressed) : null);
+    }
+
+    /**
+     * ⋯ 做成键帽时（豆花布局功能行最右的 ⋯ 键；实体键盘的 ⋯ 槽由 FixedKeyboardView 自己画、颜色同这里）：强调色的底（按下时 menuKeyPressed）、
+     * 反差字、不画边框（照 Gboard 的回车键；"按键边框"开关不管它，高亮也没有）。cut 同 {@link #keyLook(View, boolean, boolean, boolean, float[])}：
+     * 被小红点切到时沿圆弧画（功能行碰不到红点，防一手），颜色一样。
+     */
+    static void menuKeyLook(View v, boolean pressed, float[] cut) {
+        int fill = pressed ? theme.menuKeyPressed : theme.menuKey;
+        if (cut == null) v.setBackground(border(v.getContext(), 0, 0, fill));
+        else v.setBackground(new CutCap(dp(v.getContext(), 10), 0, 0, fill, cut[0], cut[1], cut[2]));
+        if (v instanceof TextView) ((TextView) v).setTextColor(theme.menuKeyText);
+    }
+
+    /**
+     * 右上角带一个小字的键帽（2026-11-01，小红点状态的逗号句号合键：大字 ","、右上角 "."，照 Gboard 长按候选的惯例放右上角）。
+     * 大字照常（自动缩字号、末尾省略）；小字字号 min(10sp, 键高 × 0.22)、颜色 = 当前字色（对键帽 ≥ 4.5:1 由 ThemeTest 保证）、
+     * 离右边 4dp、离上边 3dp（同实体键盘角上小字的大小）。
+     */
+    static final class CornerKey extends TextView {
+        private final String corner;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        CornerKey(Context c, String corner) {
+            super(c);
+            this.corner = corner;
+            paint.setTextAlign(Paint.Align.RIGHT);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            if (getWidth() <= 0 || getHeight() <= 0) return;
+            paint.setColor(getCurrentTextColor());
+            paint.setTextSize(Math.min(sp(getContext(), 10), getHeight() * 0.22f));
+            Paint.FontMetrics fm = paint.getFontMetrics();
+            canvas.drawText(corner, getScrollX() + getWidth() - dp(getContext(), 4), getScrollY() + dp(getContext(), 3) - fm.ascent, paint);
+        }
     }
 
     /**

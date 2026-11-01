@@ -9,8 +9,12 @@ import java.util.List;
  * setMenuKey / setHole / setStick 由 KeyboardScreen 量尺寸时、在量这块面板之前调（同 KeyboardPanel 原来的规矩）。
  */
 interface KeyboardFace {
-    /** 服务报来的锁定修饰键（TouchRouter 的 latched 掩码）：高亮对应的键、键帽跟着换。 */
-    void setModifiers(int mask);
+    /**
+     * 修饰键和 Caps 的显示（2026-11-01 起；以前只有锁定掩码）：latched / held / armed 同 Proto.MSG_MODIFIERS（HID 修饰键位），
+     * caps = 豆花这边显示的大写锁定（只有 App 一份，MainActivity.capsShown）。高亮画 latched | armed（锁住的、"现在松手就锁"的）和 Caps，
+     * 键帽上的字照 latched | held 换（按住 Shift 键帽就大写）、字母再看 caps。按着的样子另外画（showPressed / 自己收的手指）。
+     */
+    void setKeyState(int latched, int held, int armed, boolean caps);
 
     /** 画按下的样子（id 同 Proto.REGION_KEY / REGION_BUTTON 的 id）。 */
     void showPressed(int id, boolean pressed);

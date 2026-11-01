@@ -29,6 +29,7 @@ trap 'rm -rf "$OUT"' EXIT
 # 主界面的十八套配色（槽位齐全、对比度、小红点的红）、
 # 惯性滚动的物理（ScrollInertia）、连续滚动的描述符 / 滚轮倍率换算、CMD_CONFIG 编解码（HidTest）、uhid 的 GET / SET_REPORT（UhidEvents）、
 # 小红点（TrackPoint：速度曲线、负惯性、积分、轻点、颗粒、中键滚动）、
+# 修饰键 / Caps / 合并键的点一下、按住、锁定（KeyHolds：真 TouchRouter 跑报文序列，加随机序列查不变量）、
 # 触控板背景图怎么摆（PadFit：五种显示方式、焦点、吸附、平铺相位、按形状挑设置、解码多大）、
 # 主机实测扫描许发哪些键、一段怎么拆成拍（KeyScan）、
 # 实体键盘第 1B 批（FixedLegends：读 res/raw 的键帽数据、抽查值；FixedLayout / FixedPanel：几何、每区块每行的范围、分流、小红点在真 ThinkPad 的位置、
@@ -38,7 +39,7 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \
     src/dev/douhua/Proto.java src/dev/douhua/GestureEngine.java \
     src/dev/douhua/ScrollInertia.java src/dev/douhua/ConfigCodec.java \
-    src/dev/douhua/Hid.java src/dev/douhua/TouchRouter.java \
+    src/dev/douhua/Hid.java src/dev/douhua/TouchRouter.java src/dev/douhua/KeyHolds.java test/dev/douhua/KeyHoldsTest.java \
     src/dev/douhua/TrackPoint.java test/dev/douhua/TrackPointTest.java \
     test/dev/douhua/HidTest.java src/dev/douhua/server/UhidEvents.java \
     src/dev/douhua/server/MtDecoder.java src/dev/douhua/server/TouchDevice.java \
@@ -84,6 +85,7 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/java" -cp "$OUT" dev.douhua.server.PassthroughTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyboardSnapTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.TouchRouterTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.KeyHoldsTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.TrackPointTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyFingersTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyRowsTest

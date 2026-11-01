@@ -627,13 +627,13 @@ final class KeyboardPlan {
 
     /**
      * 小红点状态下底行、快捷行在中间让出的空位 {左, 右}（键盘面板里的 x；pw = 面板宽，rows = 一层的全部行），让不出返回 null。
-     * 空位右边最远到 . 原来的左边（. ↵ 不变窄），左边是缩短的空格的右边（空格 {@link KeyRows#STICK_SPACE} 份到 {@link KeyRows#STICK_SPACE_MIN} 份）。
+     * 空位右边最远到右边那个空格原来的左边（右空格、↵ 不变窄；份数同以前 . 的位置），左边是缩短的空格的右边（空格 {@link KeyRows#STICK_SPACE} 份到 {@link KeyRows#STICK_SPACE_MIN} 份）。
      * 先后照顾：① 中键正对红点、左右键一样宽（空位以红点那一点为中线左右对称，照真 ThinkPad），做不到就尽量近；② 空格尽量长；
-     * ③ 三个鼠标键每个至少 keyW（{@link Sizes#holeWidth}）。对称时空位右边比 . 原来的左边靠左，多出来的那截给 . ↵（一起变宽）。
+     * ③ 三个鼠标键每个至少 keyW（{@link Sizes#holeWidth}）。对称时空位右边比右空格原来的左边靠左，多出来的那截给右空格和 ↵（按 1 : 1.5 一起变宽）。
      * 1. 对称：空格能多长就多长（不超过 STICK_SPACE 份），空位至少够三个 keyW 宽的键——宽的窗口（手机横屏、大屏分屏）空格 1.5 份、
      *    空位 3 份宽；手机竖屏空格 1–1.5 份、三个键各 keyW；连苹果设备（多一个 🌐）的宽窗口空格 1–1.5 份、三个键各 keyW。
      * 2. 对称放不下（连苹果设备 + 窗口不到约 720dp 宽：空位左边被 🌐 挤到红点附近；或者很窄的窗口）：空格最短（STICK_SPACE_MIN 份）、
-     *    右边到 . 原来的左边，这样中键离红点最近；三个键分这一段，每个最窄 minKey（32dp，同分裂时字母键的门槛）——
+     *    右边到右空格原来的左边，这样中键离红点最近；三个键分这一段，每个最窄 minKey（32dp，同分裂时字母键的门槛）——
      *    比 keyW 窄，但三个键有两行高，比以前那排 48dp 高的好按。再窄就不让位（三个鼠标键不显示，红点照样有）。
      */
     static int[] stickHole(int pw, KeyRows.Row[] rows, Sizes s) {
@@ -641,14 +641,14 @@ final class KeyboardPlan {
         if (u == null || pw <= 0 || u[2] <= 0) return null;
         float unit = pw / u[2];
         int cx = KeyRows.stickPoint(pw, 1, rows.length)[0];
-        int right = Math.round(unit * (u[2] - u[1]));   // . 原来的左边
+        int right = Math.round(unit * (u[2] - u[1]));   // 右空格原来的左边（= 整行时 . 的左边）
         int longest = Math.round(unit * u[0]);   // 空格 STICK_SPACE 份时空位的左边
         int shortest = Math.round(unit * (u[0] - (KeyRows.STICK_SPACE - KeyRows.STICK_SPACE_MIN)));   // 空格 STICK_SPACE_MIN 份
         int need = s.holeWidth(s.keyW);
-        // 1. 对称：左边 ≤ 红点 − 半个空位（够宽）、≤ longest（空格不超过 1.5 份），尽量靠右；还得 ≥ shortest、右边不过 . 原来的左边
+        // 1. 对称：左边 ≤ 红点 − 半个空位（够宽）、≤ longest（空格不超过 1.5 份），尽量靠右；还得 ≥ shortest、右边不过右空格原来的左边
         int l = Math.min(longest, cx - (need + 1) / 2);
         if (l >= Math.max(shortest, 2 * cx - right)) return new int[]{l, 2 * cx - l};
-        // 2. 空格最短、右边到 . 原来的左边（离对称最近），三个键分这一段
+        // 2. 空格最短、右边到右空格原来的左边（离对称最近），三个键分这一段
         if (right - shortest >= s.holeWidth(s.minKey)) return new int[]{shortest, right};
         return null;
     }

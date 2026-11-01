@@ -42,6 +42,7 @@ public final class FixedLayoutTest {
         pins();
         caps();
         glyphs();
+        capsGlyphs();
         functionKeys();
         fits();
         planDefaults();
@@ -437,8 +438,8 @@ public final class FixedLayoutTest {
                                 ok = false;
                                 bad = k + " 没有键帽";
                             }
-                            for (int md : mods) {
-                                List<FixedPanel.Glyph> gs = p.glyphs(i, md, "Space");
+                            for (int md : mods) for (boolean cl : new boolean[]{false, true}) {   // Caps 显示开 / 关（2026-11-01）
+                                List<FixedPanel.Glyph> gs = p.glyphs(i, md, cl, "Space");
                                 boolean any = false;
                                 for (FixedPanel.Glyph g : gs) {
                                     if (g.text == null || g.text.isEmpty()) bad = k + " 有空的字";
@@ -446,7 +447,7 @@ public final class FixedLayoutTest {
                                 }
                                 if (!any) {
                                     ok = false;
-                                    bad = k + " 锁着 " + Integer.toHexString(md) + " 时键帽上没有字";
+                                    bad = k + " 锁着 " + Integer.toHexString(md) + (cl ? " + Caps" : "") + " 时键帽上没有字";
                                 }
                             }
                         }
@@ -467,8 +468,12 @@ public final class FixedLayoutTest {
     }
 
     static String glyphs(FixedPanel p, int id, int mods) {
+        return glyphs(p, id, mods, false);
+    }
+
+    static String glyphs(FixedPanel p, int id, int mods, boolean caps) {
         StringBuilder sb = new StringBuilder();
-        for (FixedPanel.Glyph g : p.glyphs(p.index(id), mods, "空格")) {
+        for (FixedPanel.Glyph g : p.glyphs(p.index(id), mods, caps, "空格")) {
             if (sb.length() > 0) sb.append(' ');
             sb.append(new String[]{"中", "上", "下", "角"}[g.slot]).append(g.text);
             if (g.dead) sb.append("（死）");
@@ -525,6 +530,43 @@ public final class FixedLayoutTest {
                 && !FixedPanel.active(de.keys().get(de.index(0xE4)), 0x01), "右边四个修饰键锁住时也高亮");
     }
 
+    /**
+     * Caps 的显示（2026-11-01）：字母类的键 Windows 模式 Shift ⊕ Caps、Mac 模式 Shift ∨ Caps；德语 ä ö ü 跟着 Caps，ß、数字、标点、第三层不跟；
+     * 按着（held）的 Shift / AltGr / Option 换层同锁着（mods 本来就是 latched | held，一个掩码）；Caps 键在显示开着时高亮、修饰键看 latched | armed。
+     */
+    static void capsGlyphs() {
+        FixedPanel de = panel("de", FixedLayout.ISO, FixedLayout.TKL, FixedLayout.WIN);
+        FixedPanel md = panel("de", FixedLayout.ISO, FixedLayout.TKL, FixedLayout.MAC);
+        FixedPanel us = panel("us", FixedLayout.ANSI, FixedLayout.TKL, FixedLayout.WIN);
+        FixedPanel um = panel("us", FixedLayout.ANSI, FixedLayout.TKL, FixedLayout.MAC);
+        eqs(glyphs(us, 0x04, 0, true), "中A", "win:us Caps：a 画成 A");
+        eqs(glyphs(us, 0x04, 0x02, true), "中a", "win:us Caps + Shift：小写（Windows / Linux / 安卓）");
+        eqs(glyphs(us, 0x04, 0x20, true), "中a", "win:us Caps + 右 Shift：小写");
+        eqs(glyphs(um, 0x04, 0, true), "中A 角å", "mac:us Caps：A（角上 Option 层照旧，大写锁定下的 Å 字表里没有、不画）");
+        eqs(glyphs(um, 0x04, 0x02, true), "中A 角å（暗）", "mac:us Caps + Shift：照样大写（macOS 不反转）");
+        eqs(glyphs(um, 0x04, 0x02, false), "中A 角å（暗）", "mac:us Shift：大写");
+        eqs(glyphs(us, 0x1F, 0, true), "上@ 下2", "win:us Caps：数字键不变");
+        eqs(glyphs(us, 0x36, 0, true), glyphs(us, 0x36, 0, false), "win:us Caps：标点不变");
+        eqs(glyphs(de, 0x2F, 0, true), "中Ü", "win:de Caps：ü 画成 Ü");
+        eqs(glyphs(de, 0x2F, 0x02, true), "中ü", "win:de Caps + Shift：ü");
+        eqs(glyphs(md, 0x2F, 0x02, true), "中Ü 角•（暗）", "mac:de Caps + Shift：Ü");
+        eqs(glyphs(de, 0x2D, 0, true), glyphs(de, 0x2D, 0, false), "win:de Caps：ß 那个键不变（Shift 层是 ?，不是字母那种键）");
+        eqs(glyphs(de, 0x14, 0x40, true), "中Q（暗） 角@", "win:de Caps + AltGr：字母照 Caps 画大写、压暗，角上的第三层不跟 Caps");
+        eqs(glyphs(md, 0x0F, 0x04, true), "中L（暗） 角@", "mac:de Caps + Option：同上");
+        // 放大提示：字母照 Caps 换大小写，第三层不看
+        eqs(us.preview(us.index(0x04), 0, true), "A", "放大提示：Caps 时 A");
+        eqs(us.preview(us.index(0x04), 0x02, true), "a", "放大提示：Windows Caps + Shift 时 a");
+        eqs(um.preview(um.index(0x04), 0x02, true), "A", "放大提示：Mac Caps + Shift 时 A");
+        eqs(de.preview(de.index(0x14), 0x40, true), "@", "放大提示：Caps + AltGr+Q 照样 @");
+        eqs(us.preview(us.index(0x1F), 0, true), "2", "放大提示：Caps 时数字不变");
+        eqs(us.preview(us.index(0x04), 0), "a", "放大提示：不带 caps 的旧方法照旧");
+        // 高亮
+        FixedLayout.Key capsKey = us.keys().get(us.index(0x39)), shift = us.keys().get(us.index(0xE1));
+        check(FixedPanel.active(capsKey, 0, true) && !FixedPanel.active(capsKey, 0xFF, false), "Caps 键：只看显示的大写锁定");
+        check(FixedPanel.active(shift, 0x02, false) && !FixedPanel.active(shift, 0, true), "Shift：看 latched | armed 那一位");
+        check(!FixedPanel.active(us.keys().get(us.index(0x04)), 0xFF, true), "字母不高亮");
+    }
+
     static void functionKeys() {
         FixedPanel p = panel("de", FixedLayout.ISO, FixedLayout.FULL, FixedLayout.WIN);
         for (int u : new int[]{0x04, 0x1E, 0x2C, 0x35, 0x64, 0x31, 0x59, 0x62, 0x63}) {
@@ -535,6 +577,19 @@ public final class FixedLayoutTest {
         }
         FixedPanel mp = panel("us", FixedLayout.ANSI, FixedLayout.TKL, FixedLayout.MAC);
         check(mp.functionKey(mp.index(FixedLayout.GLOBE_ID)), "🌐 是功能键");
+        // ⋯ 槽（2026-11-01：强调色的底 + 反差字，和豆花布局的 ⋯ 键同一条 KeyRows.menuKey）：槽里放了 ⋯ 时正好一个键是它，没放时一个都没有
+        for (String mode : new String[]{FixedLayout.WIN, FixedLayout.MAC}) {
+            FixedLayout l = layout(FixedLayout.ISO, FixedLayout.FULL, mode);
+            for (boolean menu : new boolean[]{false, true}) {
+                int n = 0;
+                for (FixedLayout.Key k : l.keys(menu)) {
+                    if (!KeyRows.menuKey(k.id)) continue;
+                    n++;
+                    check("⋯".equals(k.name) && k.special && k.id == FixedLayout.MENU_ID, mode + "：⋯ 槽的键就是 ⋯");
+                }
+                check(n == (menu ? 1 : 0), mode + (menu ? "：槽里放了 ⋯，正好一个 ⋯" : "：槽空着，没有 ⋯") + "（" + n + "）");
+            }
+        }
     }
 
     // ── 窄窗口退回豆花布局 ──

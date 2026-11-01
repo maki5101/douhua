@@ -498,15 +498,18 @@
     <string name="gp_arcade6">아케이드 6버튼</string>
     <string name="tab_keyboard">키보드</string>
     <string name="kbd_menu_douhua">키보드: 더우화</string>
-    <string name="kbd_menu_fixed">키보드: 실물 (%1$s)</string>
+    <string name="kbd_menu_fixed">키보드: 실물 · %1$s</string>
     <string name="kbd_menu_narrow">키보드: 실물 (여기는 좁아서 더우화 표시 중)</string>
-    <string name="kbd_menu_stepped">키보드: 실물 (%1$s; %2$s 크기가 안 들어가 %3$s 표시 중)</string>
+    <string name="kbd_menu_stepped">키보드: 실물 · %1$s (%2$s → %3$s)</string>
     <string name="kbd_menu_no_data">키보드: 실물 (데이터를 읽을 수 없어 더우화 표시 중)</string>
+    <string name="kbd_menu_no_mode">키보드: 실물 · %1$s (%2$s 모드 데이터가 없어 더우화 표시 중)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
-    <string name="kbd_lang_us">미국식</string>
-    <string name="kbd_lang_de">독일어</string>
+    <string name="kbd_var_intl">국제</string>
+    <string name="kbd_var_legacy">레거시</string>
+    <string name="kbd_var_pinyin">병음</string>
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
+    <string name="kbd_mode_unavailable">%1$s (이 배열은 데이터 없음)</string>
     <string name="sec_kbd_board">사용할 키보드</string>
     <string name="kbd_board">키보드 화면에서 사용</string>
     <string name="kbd_board_douhua">더우화 배열</string>
@@ -515,9 +518,16 @@
     <string name="sec_kbd_fixed">실물 키보드</string>
     <string name="kbd_lang">배열 (키에 표시되는 글자)</string>
     <string name="kbd_host_names">컴퓨터 / 태블릿에서도 같은 배열을 고르세요: Mac과 iPad에서는 “%1$s”, Windows에서는 “%2$s”라고 합니다.</string>
+    <string name="kbd_host_names_win">컴퓨터 / 태블릿에서도 같은 배열을 고르세요: Windows에서는 “%1$s”라고 합니다. 이 배열에는 Mac 모드 데이터가 없습니다.</string>
+    <string name="kbd_host_names_mac">컴퓨터 / 태블릿에서도 같은 배열을 고르세요: Mac과 iPad에서는 “%1$s”라고 합니다. Windows에는 이 배열이 없어서 Windows 모드 데이터가 없습니다.</string>
+    <string name="kbd_lang_hosts">Mac: %1$s · Windows: %2$s</string>
+    <string name="kbd_lang_hosts_win">Windows: %1$s</string>
+    <string name="kbd_lang_hosts_mac">Mac: %1$s · Windows에는 없음</string>
+    <string name="kbd_lang_no_mode">%1$s 모드 키 데이터가 없습니다. 모드를 바꾸면 고를 수 있습니다</string>
     <string name="kbd_shape">형태</string>
     <string name="kbd_shape_ansi">ANSI (미국식, 일자형 Enter)</string>
     <string name="kbd_shape_iso">ISO (L자형 Enter, Z 왼쪽에 키 하나 더)</string>
+    <string name="kbd_shape_abnt2">ABNT2 (브라질: L자형 Enter, 오른쪽 Shift 왼쪽에 / ? 키)</string>
     <string name="kbd_size">크기</string>
     <string name="kbd_size_tkl">텐키리스 (TKL, %1$d키)</string>
     <string name="kbd_size_full">풀사이즈 (숫자 키패드 포함, %1$d키)</string>
@@ -531,6 +541,7 @@
     <string name="kbd_host_note">더우화는 키의 위치를 보내고, 입력되는 글자는 컴퓨터 / 태블릿 쪽 키보드 배열이 정합니다. 그쪽도 같은 배열로 맞추면 키에 표시된 글자와 입력되는 글자가 같아집니다. 데스크톱 모드에서는 \"그쪽\"이 이 휴대폰입니다: 휴대폰 설정의 실물 키보드에서 Douhua Keyboard에 같은 배열을 고르세요.</string>
     <string name="kbd_open_hw">휴대폰의 실물 키보드 설정 열기</string>
     <string name="kbd_no_data">실물 키보드 데이터를 읽을 수 없습니다</string>
+    <string name="kbd_no_mode_data">%1$s에는 %2$s 모드 키 데이터가 없어 키보드 화면에 더우화 배열을 표시합니다. 다른 모드나 배열을 고르세요.</string>
     <string name="sec_kbd_douhua">더우화 배열</string>
     <string name="licenses">오픈소스 라이선스</string>
 </resources>

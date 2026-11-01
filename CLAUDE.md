@@ -37,24 +37,24 @@
 | `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号；带滚轮分辨率倍率的鼠标描述符（MOUSE_DESC_HIRES 蓝牙用，竖、横两个倍率；MOUSE_DESC_HIRES_V 桌面模式 uhid 用，只有竖向一个；输入报文都和旧的一字不差）、倍率字节编解码、WheelOut（1/120 格 → 计数、余数、拆帧；uhid 那份设 / 问倍率的 setUhidFeature / uhidFeatureReport，UhidMouse 只调它们；离线测 HidTest）；手柄描述符 GAMEPAD_DESC（Game Pad、15 键 + Hat + X/Y/Z/Rz + Brake/Accelerator，13 字节，全零 = 中立）和 Gamepad（状态、报文、两路合并 merge）；修饰键掩码的小工具（ctrl：左右 Ctrl 都算；modifierBit）。以前的 modifierUsages（界面替服务解开锁定时逐个点一下）2026-11-01 随协议 20 删了，改发 CMD_UNLATCH |
 | `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停；描述符跟着"连续滚动"开关（变了就注销、重新注册，descriptorChanged），回应主机设 / 问滚轮倍率 |
 | `src/dev/douhua/Haptics.java` | 震动：点击、咔嗒、颗粒、拖动时的持续轻震、按键的"嗒"、惯性的"放开 / 刹住"（调试版设置里能挑候选波形，正式包用默认） |
-| `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；几屏共用的 ⋯ 菜单的项（主界面 键盘 / 手柄 / 设置 / 旋转 / 退出，键盘屏 键盘（豆花 / 实体，MENU_BOARD_ID 418，switchBoard 只写 kbd_board）/ 收起键盘 / 调整大小 / 布局（只在显示豆花布局时）/ 指点（显示着的那块自己的）/ 手柄 / 设置 / 旋转 / 退出，手柄页 预设 / 返回触控板 / 设置 / 旋转 / 退出；"手柄"只在桌面模式）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：五页往里收）；手柄页的进出（setGamepadMode：桌面模式下手柄页走本地分流，CMD_GAMEPAD 发给服务）、吞自己手柄的键和摇杆（dispatchKeyEvent / dispatchGenericMotionEvent）；修饰键 / Caps 的显示（2026-11-01）：onModifiers(锁住, 按着, 快锁了) → showKeyState 两块面板都画；Caps 的显示只有这一份（static capsShown，服务 MSG_CAPS / 本地分流只报"翻一下"，换了主机——蓝牙地址变了、蓝牙 ↔ 桌面模式——在 updateHostKind 里归"关"）；本地分流的按键定时器 localKeyTimer；onLocalKey(key, action)（KEY_DOWN / KEY_UP / KEY_CANCEL，数字键盘、动作里的组合键同）；进空中鼠标 / 手柄页替服务解开锁定发 CMD_UNLATCH（link.unlatch） |
+| `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；几屏共用的 ⋯ 菜单的项（主界面 键盘 / 手柄 / 设置 / 旋转 / 退出，键盘屏 键盘（豆花 / 实体，MENU_BOARD_ID 418，switchBoard 只写 kbd_board；写"实体 · 名字 · 模式"，没数据的模式写 kbd_menu_no_mode）/ 收起键盘 / 调整大小 / 布局（只在显示豆花布局时）/ 指点（显示着的那块自己的）/ 手柄 / 设置 / 旋转 / 退出，手柄页 预设 / 返回触控板 / 设置 / 旋转 / 退出；"手柄"只在桌面模式）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：五页往里收）；手柄页的进出（setGamepadMode：桌面模式下手柄页走本地分流，CMD_GAMEPAD 发给服务）、吞自己手柄的键和摇杆（dispatchKeyEvent / dispatchGenericMotionEvent）；修饰键 / Caps 的显示（2026-11-01）：onModifiers(锁住, 按着, 快锁了) → showKeyState 两块面板都画；Caps 的显示只有这一份（static capsShown，服务 MSG_CAPS / 本地分流只报"翻一下"，换了主机——蓝牙地址变了、蓝牙 ↔ 桌面模式——在 updateHostKind 里归"关"）；本地分流的按键定时器 localKeyTimer；onLocalKey(key, action)（KEY_DOWN / KEY_UP / KEY_CANCEL，数字键盘、动作里的组合键同）；进空中鼠标 / 手柄页替服务解开锁定发 CMD_UNLATCH（link.unlatch） |
 | `src/dev/douhua/FixedSizing.java` | 实体键盘逐级缩的状态（2026-11-01），纯 Java（离线测，FixedLayoutTest.sizing，含随机序列）：这次显示哪一级（update：KeyboardPlan.fixedLevel 按整页宽现算、不做回差）、用哪份大小位置（按显示着的那个尺寸取：缩成笔记本就用笔记本那份）、调大小从显示着的（撑开过的）那份开始拖（beginDrag）、没拖动就换回、拖了就存进显示着的那个尺寸（endDrag 返回 Save）、中途换级 / 换存的那几份 / 换键盘这一下作废、恢复默认（reset）；KeyboardScreen 只调它 |
 | `src/dev/douhua/KeyboardFace.java` | 键盘页上两块面板（豆花布局 KeyboardPanel、实体键盘 FixedKeyboardView）对外的共同方法（第 1B 批）：修饰键、按下的样子、松开、主题、报区域、⋯ 键、空位、红点；KeyboardScreen.face 给显示着的那块；setKeyState(锁住, 按着, 快锁了, caps)（2026-11-01 起取代 setModifiers：高亮 = 锁住 \| 快锁了 和 Caps 的显示，键帽上的字照 锁住 \| 按着 换） |
-| `src/dev/douhua/FixedLegends.java` | 实体键盘的键帽字（res/raw/kbd_win / kbd_mac）和布局清单（kbd_catalog）的读法，纯 Java（离线测，FixedLegendsTest）：格式照 tools/kbd/kbdtable.py（段、别名、死键 `\*`、转义），读不出就抛异常；四层（普通 / Shift / 第三层 / 第三层+Shift）；画不画得出来（printable：私用区的苹果标、组合附加符号不画）；布局 id → 语言标签（LOCALE_TAGS）。Mac 模式查不对调那段（`<id>`，不读 `<id>.iso`） |
-| `src/dev/douhua/FixedLayout.java` | 实体键盘的几何（第 1B 批），纯 Java（离线测，FixedLayoutTest）：形状（ANSI / ISO）× 尺寸（笔记本 / TKL / 全尺寸）× 模式（Windows / Mac）拼一块，单位 u（F 行 + 隔 0.25u + 主键区五行，6.25u 高——笔记本 6.5，最下一排 1.25 行；主键区 15u、编辑区、小键盘；行表、总高、区块数是实例的：rowTop / rowBottom / height / clusterCount）；笔记本（2026-11-01，照 ThinkPad：F 行 Esc · F1–F12 · Home End Ins Del，第 1–4 行同 TKL，最下一排 Ctrl ·（⋯ 槽）· Super · Alt · 空格 5u · AltGr · PrtSc · Ctrl · 方向键两层——Key.y0 / y1 竖向子区间，segTop / segBottom；Mac 模式 PrtSc 那格是 🌐、F 行 Ins 那格是声明的空格子 blanks，不在任何范围里）；两份键表（keys / ⋯ 在槽里的那份，笔记本的左 Ctrl 换成窄的）；逐级缩的几级（ladder：全尺寸 → TKL → 笔记本，只缩不涨）；每个键的用法码（Windows 照 PC 惯例；Mac 底行 ⌃ ⌥ ⌘ 空格 ⌘ ⌥ 🌐 ⌃、F13–F15、没有 Ins / Menu，ISO 的 1 左边发 0x64、Z 左边发 0x35 照真苹果 ISO 键盘）、L 形回车（x2 / w2）、两行高的小键盘 + / Enter；⋯ 槽（menu：TKL / 全尺寸在 Esc 和 F1 之间，笔记本在左下角 Ctrl 右边）；键盘范围每区块每行一块（ranges：伸到相邻行 / 区块空隙的中线、外圈到面板边，没有键的格子不在任何一块里；只占一截的键——笔记本方向键——每层单独一块，addSegments）；小红点那条竖线（stickU：G 的右边 = B 的中线）；Windows 模式右 Alt 是不是 AltGr（altGr：字表有第三层才是，美式不是；Mac 模式一律假）；照字表拼（forLegends：字表是 null 就不拼、返回 null） |
-| `src/dev/douhua/FixedPanel.java` | 实体键盘摆到像素以后，纯 Java（离线测，FixedLayoutTest）：每个键按行切成几段矩形（segments，相邻键共用边界、四边缩进 gap；竖着按这一块的行表，笔记本的方向键只占上层 / 下层那一截）、范围、报给服务的区域（regions：段在前、范围在后）、面板自己收触摸时哪根手指按哪个键（keyAt：KeyFingers + nearestKey，红点圆、空位是洞）；小红点在真 ThinkPad 的位置（stickPoint：G|H 的缝、G / H 键帽下沿）、空格那一排让给三个鼠标键的空位（stickHole：以红点为中线对称，规则同豆花布局的 stickHole，空格切成左右两段；笔记本多一步：空格最短 0.75 份 LAPTOP_SPACE_MIN，一格 ≥ 32dp 就一定让得出；空格那一排的上沿 spaceRowTop 带布局参数）、碰到切口的键（KeyboardPlan.cuts）和字挪多少（labelShift）、角上小字放哪个角；键帽上画哪几个字（glyphs：字母一个、数字标点上下两层、第三层角上小字，锁着 Shift / 第三层时不会出的压暗，死键；第三层 = Mac 的任一 Option、Windows 有 AltGr 的布局的右 Alt，layer）、放大提示（preview）、主次键帽（functionKey）、L 形回车的形状（shape）、几个键帽（capBoxes：空格被空位切开时两个）；Caps 的显示（2026-11-01）：字母类的键 Windows 模式 Shift ⊕ Caps、Mac 模式 Shift ∨ Caps（upper），glyphs / preview 带 caps，active 看 锁住 \| 快锁了 和 Caps 键（0x39） |
-| `src/dev/douhua/Boards.java` | 键盘页用哪块（豆花布局 / 实体键盘，kbd_board）和实体键盘自己的设置（kbx_lang / shape / size（tkl / full / laptop，逐级缩的起点）/ mode / pointer、大小位置 kbx_<尺寸>_<指点>_<land|port>_*——存取都显式给尺寸：savedRect / setRect / resetRect(尺寸, …)，逐级缩时是显示着的那个；savedRects 一次给三个尺寸存过的那几份），纯 Java（离线测，BoardsTest），跑在 Store 接口上（App 里是 Prefs.store）；一个 kb_ 开头的键都不读不写；形状按布局清单核（德语只有 ISO，存的值不动） |
-| `src/dev/douhua/FixedData.java` | 实体键盘的数据从 res/raw 读进来（进程里读一次缓存），拼逐级缩的几级（ladder：选的尺寸往下每级一块；右 Alt 写不写 AltGr 看字表有没有第三层、小键盘小数点看清单；字表读不出来 / 没有这一段时是空列表，键盘页照样显示豆花布局）、尺寸的短名字（sizeName，⋯ 菜单用）、布局在界面语言里叫什么、开源许可页的文本 |
+| `src/dev/douhua/FixedLegends.java` | 实体键盘的键帽字（res/raw/kbd_win / kbd_mac）和布局清单（kbd_catalog）的读法，纯 Java（离线测，FixedLegendsTest）：格式照 tools/kbd/kbdtable.py（段、别名、死键 `\*`、转义），读不出就抛异常；四层（普通 / Shift / 第三层 / 第三层+Shift）；画不画得出来（printable：私用区的苹果标、组合附加符号不画）。Mac 模式查不对调那段（`<id>`，不读 `<id>.iso`）。清单（第 2 批）按文件头 `#!columns` 认栏（缺栏 / 栏数不对抛异常）：Layout 带起名字的 locale + variant（variantWord：小写的要翻译）、有数据的模式（hasMode，至少一种：拉美没有 Mac 的，意大利 QZERTY、瑞典旧版没有 Windows 的）、kpdl / kpdlWin / kpco（小键盘小数点按模式取 kpdl(mode)：Windows 模式照微软布局表的 kpdl_win、Mac 模式照 xkb 的 kpdl；ABNT2 小键盘多的 0x85）、capsMac（拼音的 中/英）、macOS 现名 / CLDR 旧名、Windows / Linux / 安卓名（原来的 LOCALE_TAGS 挪进了清单） |
+| `src/dev/douhua/FixedLayout.java` | 实体键盘的几何（第 1B 批），纯 Java（离线测，FixedLayoutTest）：形状（ANSI / ISO / ABNT2，SHAPES；iso() 对 ISO 型的两种都真、abnt2()）× 尺寸（笔记本 / TKL / 全尺寸）× 模式（Windows / Mac）拼一块，单位 u（F 行 + 隔 0.25u + 主键区五行，6.25u 高——笔记本 6.5，最下一排 1.25 行；主键区 15u、编辑区、小键盘；行表、总高、区块数是实例的：rowTop / rowBottom / height / clusterCount）；笔记本（2026-11-01，照 ThinkPad：F 行 Esc · F1–F12 · Home End Ins Del，第 1–4 行同 TKL，最下一排 Ctrl ·（⋯ 槽）· Super · Alt · 空格 5u · AltGr · PrtSc · Ctrl · 方向键两层——Key.y0 / y1 竖向子区间，segTop / segBottom；Mac 模式 PrtSc 那格是 🌐、F 行 Ins 那格是声明的空格子 blanks，不在任何范围里）；两份键表（keys / ⋯ 在槽里的那份，笔记本的左 Ctrl 换成窄的）；逐级缩的几级（ladder：全尺寸 → TKL → 笔记本，只缩不涨）；每个键的用法码（Windows 照 PC 惯例；Mac 底行 ⌃ ⌥ ⌘ 空格 ⌘ ⌥ 🌐 ⌃、F13–F15、没有 Ins / Menu，ISO 的 1 左边发 0x64、Z 左边发 0x35 照真苹果 ISO 键盘）、L 形回车（x2 / w2）、两行高的小键盘 + / Enter；⋯ 槽（menu：TKL / 全尺寸在 Esc 和 F1 之间，笔记本在左下角 Ctrl 右边）；键盘范围每区块每行一块（ranges：伸到相邻行 / 区块空隙的中线、外圈到面板边，没有键的格子不在任何一块里；只占一截的键——笔记本方向键——每层单独一块，addSegments）；小红点那条竖线（stickU：G 的右边 = B 的中线）；Windows 模式右 Alt 是不是 AltGr（altGr：字表有第三层才是，美式不是；Mac 模式一律假）；照字表拼（forLegends：字表是 null 就不拼、返回 null；forEntry：另照清单的那一行写小键盘的小数点（按模式 Layout.kpdl(mode)）/ kpco、Mac 模式的 Caps 键帽 caps_mac，FixedData 用它）；巴西 ABNT2（第 2 批，2026-11-01，照 xkb geometry/pc 的 abnt2）：第 1–3 行、回车同 ISO，第 4 行右 Shift 左边多 / ? 键（0x87）、右 Shift 1.75u，全尺寸小键盘右列 + 一行高、下面是 0x85（写 kpco）；Mac 模式**不**对调 1 左边 / Z 左边（照 PC 惯例 0x35 / 0x64，ISO 才对调）；拼音的 Mac 模式 Caps 写 中/英 |
+| `src/dev/douhua/FixedPanel.java` | 实体键盘摆到像素以后，纯 Java（离线测，FixedLayoutTest）：每个键按行切成几段矩形（segments，相邻键共用边界、四边缩进 gap；竖着按这一块的行表，笔记本的方向键只占上层 / 下层那一截）、范围、报给服务的区域（regions：段在前、范围在后）、面板自己收触摸时哪根手指按哪个键（keyAt：KeyFingers + nearestKey，红点圆、空位是洞）；小红点在真 ThinkPad 的位置（stickPoint：G|H 的缝、G / H 键帽下沿）、空格那一排让给三个鼠标键的空位（stickHole：以红点为中线对称，规则同豆花布局的 stickHole，空格切成左右两段；笔记本多一步：空格最短 0.75 份 LAPTOP_SPACE_MIN，一格 ≥ 32dp 就一定让得出；空格那一排的上沿 spaceRowTop 带布局参数）、碰到切口的键（KeyboardPlan.cuts）和字挪多少（labelShift）、角上小字放哪个角；键帽上画哪几个字（glyphs：字母一个、数字标点上下两层、第三层角上小字，锁着 Shift / 第三层时不会出的压暗，死键；第三层 = Mac 的任一 Option、Windows 有 AltGr 的布局的右 Alt，layer）、放大提示（preview）、主次键帽（functionKey）、L 形回车的形状（shape）、几个键帽（capBoxes：空格被空位切开时两个）；Caps 的显示（2026-11-01）：字母类的键 Windows 模式 Shift ⊕ Caps、Mac 模式 Shift ∨ Caps（upper），glyphs / preview 带 caps，active 看 锁住 \| 快锁了 和 Caps 键（0x39）；字母那种键（letterLike）另认土耳其语的 i / İ（第 2 批：不然土耳其 i 那个键画成上下两层） |
+| `src/dev/douhua/Boards.java` | 键盘页用哪块（豆花布局 / 实体键盘，kbd_board）和实体键盘自己的设置（kbx_lang / shape / size（tkl / full / laptop，逐级缩的起点）/ mode / pointer、大小位置 kbx_<尺寸>_<指点>_<land|port>_*——存取都显式给尺寸：savedRect / setRect / resetRect(尺寸, …)，逐级缩时是显示着的那个；savedRects 一次给三个尺寸存过的那几份），纯 Java（离线测，BoardsTest），跑在 Store 接口上（App 里是 Prefs.store）；一个 kb_ 开头的键都不读不写；形状按布局清单核（德语只有 ISO、巴西只有 ABNT2，存的值不动）；第 2 批：设置页语言列表的规则——布局叫什么（langName：同一种语言在清单里有几个地区才带地区（regionNeeded），首字母大写，区分词接"· 词"）、列表按界面语言的名字排（langChoices，Collator）、某布局某模式没有键帽数据时灰掉（langChoices 的 enabled、modeAvailable：拉美的 Mac，意大利 QZERTY、瑞典旧版的 Windows） |
+| `src/dev/douhua/FixedData.java` | 实体键盘的数据从 res/raw 读进来（进程里读一次缓存），拼逐级缩的几级（ladder：选的尺寸往下每级一块，FixedLayout.forEntry；右 Alt 写不写 AltGr 看字表有没有第三层，小键盘的两个字、Mac 模式的 Caps 键帽看清单；字表读不出来 / 没有这一段（拉美的 Mac 模式，意大利 QZERTY、瑞典旧版的 Windows 模式）时是空列表，键盘页照样显示豆花布局）、尺寸的短名字（sizeName，⋯ 菜单用）、布局在界面语言里叫什么（langName → Boards.langName：界面语言 + 小写区分词的翻译 kbd_var_intl / legacy / pinyin；第 2 批起 1B 的 kbd_lang_us / de 不用了、删了）、设置页的语言列表（langChoices）、开源许可页的文本 |
 | `src/dev/douhua/FixedKeyboardView.java` | 实体键盘的面板（第 1B 批）：逐级缩的几级（setBoards / ladder）、量尺寸时换到哪一级（useLevel：换级先松开自己收的手指）；一个 View 自己画全部键帽（L 形回车、两三层字、死键强调色、左右八个修饰键高亮、被小红点切到的键用 Style.CutCap 画），自己收触摸（服务没接管时，照 FixedPanel.keyAt）；规则全在 FixedPanel；高亮看 锁住 \| 快锁了 和 Caps、字看 锁住 \| 按着 和 Caps（setKeyState → FixedPanel.active / glyphs / preview 带 caps），自己收的手指被取消 / 换键盘时发 KEY_CANCEL；Esc 和 F1 中间的 ⋯ 槽（KeyRows.menuKey）画成强调色的底 + 反差字、不描边（同豆花布局的 ⋯ 键，2026-11-01） |
 | `src/dev/douhua/KeyboardPanel.java` | 外接键盘的键帽、触摸、高亮（键位本身在 KeyRows；第 1B 批起叫"豆花布局"，implements KeyboardFace，切到实体键盘再切回来不销毁），键 id = 用法码 \| 自带修饰键 << 8；自己摆放键帽（ViewGroup，所有键帽是直接子 view，按 KeyRows.place 摆）；报区域时键后面报键盘范围（REGION_KEYBOARD：整块一块，分裂时左右两半各一块）；功能行带不带最右边的 ⋯ 键（setMenuKey，小触控板上没摆出 ⋯ 时带，menuKeyRect 给菜单定位）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键；嵌在键里的小红点圆里、让给三个鼠标键的空位里不算任何键）；三层的全部行交给 KeyboardPlan 算红点多大、空位多宽（layers）；键帽照 KeyRows.capKeys 建（含小红点状态底行的 before / after）；小红点状态（2026-11-01）：底行在中间让出空位、快捷行分得开时也让（setHole(hole, spread)，KeyRows.place 的 hole / spread），红点嵌在键里时碰到切口的键帽沿圆弧画（setStick → Style.keyLook 的 cut）、字竖着挪开（上下内边距，KeyboardPlan.labelShift）；三层、两种布局的键帽各建一次，换层 / 分裂只切显示；键帽文字 / 高亮没变的键不重设；修饰键 / Caps 的样子（2026-11-01，setKeyState：KeyRows.capText 定键帽上的字、KeyRows.lit 定高亮）；合并键的键帽带右上角小字（Style.keyButton 的 corner → CornerKey），按着 0.4 秒放大提示换成角上那个字；自己收触摸时按下发 KEY_DOWN、抬起 KEY_UP、被取消 / 消失 KEY_CANCEL；换层、分裂 / 合拢、⋯ 键、让位、重建底行都走 changeKeys：按 Key 对象（Cap）把手指重新对上（KeyFingers.remap），还显示着的键照旧按着，只有真消失的当取消松开（服务接管时的 releaseTouches 照旧全部取消）；功能行最右的 ⋯ 键画成强调色的底 + 反差字、不带边框（look → Style.menuKeyLook，2026-11-01） |
-| `src/dev/douhua/KeyRows.java` | 键位和排布，纯 Java（离线测，KeyRowsTest）：键（Key）、每行整块 / 分裂时左右两半各是哪些键（Row）、键盘区宽 ≥ 2 × 高（shouldSplit）、每个键摆在哪（place）；分裂时两半中间放触控板（各三分之一宽）或只隔一条缝（leftEnd 的 middle），只隔一条缝时两块键盘范围伸到缝的中线（areaEnd / areaStart）；同一个键两种布局用同一个 Key 对象；功能行两份（topRows：不带 / 带最右边的 ⋯，⋯ 是特殊键 MENU_BUTTON_ID = 303）；哪些键算功能键（functionKey；数字键盘另有 numpadFunctionKey，"-" 在那里算运算符），主题按它分主次上色；一层的全部行（rows / layers，KeyboardPanel 和 KeyboardPlan 共用）；小红点嵌在哪（stickPoint：字母层 g|h、v|b 的缝和 a–l / z–m 两行交界那一点，只有整块）；小红点状态下底行、快捷行让出空位（Row 的 before / after：底行 ?123 [,.] 空格（缩短，STICK_SPACE 1.5 份、最短 STICK_SPACE_MIN 1 份，只有它跟着空位伸缩）│ 空位 │ 空格 ↵；spread：快捷行按个数分到两边 spreadLeft，place 的 spread 为假时照旧铺满；holeUnits / holeTop / holeBottom 给 KeyboardPlan 算空位）；所有布局下会显示的键（capKeys，KeyboardPanel 照它建键帽）；小红点状态底行的两个新键（2026-11-01）：COMMA_PERIOD（Proto.dualKey(0x36, 0x37)，点一下 , 按住 .，Key.corner = "." 右上角小字，占 , 原来的 1 份）、STICK_SPACE_R（右边的空格，另一个键帽、同一个 id，占 . 原来的 1 份；份数没变，空位 / 红点 / 鼠标键全都不变）；键帽上的字 capText（Shift = 锁住 \| 按着、字母连苹果设备 Shift ∨ Caps 别的 Shift ⊕ Caps）、高亮 lit（修饰键左右八个看 锁住 \| 快锁了、Caps 看显示）；哪个键是 ⋯（menuKey：豆花布局的 ⋯ 键、实体键盘的 ⋯ 槽同一个编号，两块面板按它画强调色的 ⋯） |
+| `src/dev/douhua/KeyRows.java` | 键位和排布，纯 Java（离线测，KeyRowsTest）：键（Key）、每行整块 / 分裂时左右两半各是哪些键（Row）、键盘区宽 ≥ 2 × 高（shouldSplit）、每个键摆在哪（place）；分裂时两半中间放触控板（各三分之一宽）或只隔一条缝（leftEnd 的 middle），只隔一条缝时两块键盘范围伸到缝的中线（areaEnd / areaStart）；同一个键两种布局用同一个 Key 对象；功能行两份（topRows：不带 / 带最右边的 ⋯，⋯ 是特殊键 MENU_BUTTON_ID = 303）；哪些键算功能键（functionKey；数字键盘另有 numpadFunctionKey，"-" 在那里算运算符；实体键盘的 0x64、巴西 ABNT2 的 0x87 / 小键盘 0x85 算普通键），主题按它分主次上色；一层的全部行（rows / layers，KeyboardPanel 和 KeyboardPlan 共用）；小红点嵌在哪（stickPoint：字母层 g|h、v|b 的缝和 a–l / z–m 两行交界那一点，只有整块）；小红点状态下底行、快捷行让出空位（Row 的 before / after：底行 ?123 [,.] 空格（缩短，STICK_SPACE 1.5 份、最短 STICK_SPACE_MIN 1 份，只有它跟着空位伸缩）│ 空位 │ 空格 ↵；spread：快捷行按个数分到两边 spreadLeft，place 的 spread 为假时照旧铺满；holeUnits / holeTop / holeBottom 给 KeyboardPlan 算空位）；所有布局下会显示的键（capKeys，KeyboardPanel 照它建键帽）；小红点状态底行的两个新键（2026-11-01）：COMMA_PERIOD（Proto.dualKey(0x36, 0x37)，点一下 , 按住 .，Key.corner = "." 右上角小字，占 , 原来的 1 份）、STICK_SPACE_R（右边的空格，另一个键帽、同一个 id，占 . 原来的 1 份；份数没变，空位 / 红点 / 鼠标键全都不变）；键帽上的字 capText（Shift = 锁住 \| 按着、字母连苹果设备 Shift ∨ Caps 别的 Shift ⊕ Caps）、高亮 lit（修饰键左右八个看 锁住 \| 快锁了、Caps 看显示）；哪个键是 ⋯（menuKey：豆花布局的 ⋯ 键、实体键盘的 ⋯ 槽同一个编号，两块面板按它画强调色的 ⋯） |
 | `src/dev/douhua/KeyboardPlan.java` | 键盘界面怎么摆，纯 Java（离线测，KeyboardPlanTest；实体键盘那部分 FixedLayoutTest）：实体键盘（第 1B 批：fixedFits 一格 ≥ 32dp 才显示、逐级缩挑第一个放得下的 fixedLevel（2026-11-01）、存的位置在窄窗口里撑到一格 32dp 才显示 fitFixedRect（存的不改）、fixedDefaultRect 按"行高 ≈ 键宽 × 1.1"的自然比例（守调大小的约束：不比 fixedMinWidth 窄——一格 ≥ 32dp、不比 MIN_HEIGHT 矮）、planFixed：不分裂、触控板同合并、⋯ 在触控板顶上或这个尺寸的 ⋯ 槽里（Esc–F1 / 笔记本左下角 Ctrl 右边）、小红点在 G / H / B 中间 + 空格那一排的三个鼠标键；红点嵌在键里多大 / 嵌不下放哪和豆花布局共用 placeStickAt）；布局（自动 / 分裂 / 合并）轮换、分不分裂（键太窄不分）、分裂 / 合并时键盘占哪块、触控板放在空得最多的一侧（太小不放）、宽窗口没调过大小时的默认位置（触控板显示且放得下才三分之二宽）；⋯ 菜单的几何（menuTop：⋯ 放触控板顶上正中、padMenuTop：主界面的 ⋯ 放不下也照样放、menuPosition：菜单弹在哪不出屏、menuGrid：项多窗口矮时先压矮再分列、adjustBarTop：调整栏放上还是下、barButtonWidth：调整栏按钮宽度）；分裂时对称调大小的几何（左半"格子"、默认格子、fitSplit 按窗口守约束、dragSplit 拖法和约束）；指点三选一（POINTER_PAD / STICK / NONE，nextPointer）：小红点照真的 ThinkPad 键盘摆（2026-11-01）、固定合并（不管"布局"）——三个鼠标键铺满底行、快捷行在中间让出的空位（stickHole：以红点为中线对称、空格尽量长、三个键各 ≥ 44dp，放不下就空格最短、三个键最窄 32dp；holeKeys 铺法，Plan.hole / keys / middleKey；快捷行分到两边后每个键连缝 ≥ 32dp 才也让位、三个键跨两行，不然只占空格那一排，shortcutsSpread / Plan.spread），红点在 KeyRows.stickPoint（placeStick：嵌在四个键的交界、挨着的键被和红点同心的圆切掉一块，stickRadius 按每层每个键被切掉的面积 cutShare（精确算）、键上的字躲不躲得开 labelShift 定多大，Plan.cut 是切口半径；嵌不下放键盘外面上 / 下 / 旁边），中键窄、左右键宽、中键对着红点（middleKey，三键条也用）；触控板的三键条（cutBar，上沿 / 下沿，主界面也用）、⋯ 放哪（Plan.menuArea / menuMargin；没有触控板时回功能行）；离页面边的距离可以各边不一样（Sizes.edgeL / T / R / B、withEdges，menuTop / menuGrid / menuPosition / adjustBarTop 各有带 {左, 上, 右, 下} 的版本，屏幕边缘留白用） |
 | `src/dev/douhua/KeyFingers.java` | 键盘面板自己收触摸时每根手指按的是哪个键（按 pointer id 记，抬起只松自己那个）；按下定键 = 包含的键优先、缝里交给 TouchRouter.nearestKey（几块范围时只在落进的那一块里分），落在洞（嵌在键里的小红点——REGION_STICK 按内切圆认；小红点状态下让给三个鼠标键的空位）里不算任何键，纯 Java（离线测）；remap（2026-11-01）：面板换键时按新下标对上还显示着的键、返回消失了的（调用方当取消松开） |
 | `src/dev/douhua/KeyboardScreen.java` | 键盘界面：可调大小位置的键盘 + 小触控板占满整页（没有工具栏那一行）；两块键盘面板（豆花布局 / 实体键盘，第 1B 批）都在、同一时刻只显示一块（face：选了实体键盘就逐级缩挑一级——全尺寸 → TKL → 笔记本、一格 ≥ 32dp 的第一级，状态在 FixedSizing——笔记本也放不下才暂时显示豆花布局，显示 / 换级时 post Listener.onKeyboardFaceChanged），实体键盘照 KeyboardPlan.planFixed 摆、自己记指点和大小位置（setFixedBoards / setFixedWanted / setFixedPointer / setFixedRects（各个尺寸那几份）、fixedLevelNow 给菜单写字、resetFixedRect；调整模式拖的是显示着的那个尺寸那份，onKeyboardRectChanged 带尺寸）；按键放大提示按 view 或按面板里的矩形定位（PreviewHost.showKeyPreviewAt）；⋯（触控板顶上正中、不带框）、调整模式的"完成 / 恢复默认"栏由它摆（视图由 MainActivity 建）；菜单本身在 MenuLayer，贴着这里的 ⋯ 弹出（menuAnchor）；每次量尺寸按 KeyboardPlan 摆；调整模式由 App 自己收触摸，分裂时两半对称着拖（pickSplitHandle，按右半时左右位移镜像）；指点选小红点时摆红点（TrackPointView，嵌在键里时只画红帽，键自己切口）和铺满底行、快捷行空位的三个鼠标键（MouseKeys 的铺满模式；快捷行太挤不让位时只铺底行那段），量键盘之前把空位和红点告诉面板（KeyboardPanel.setHole / setStick）；触控板开着三键条时从上沿 / 下沿切一条（同一组 MouseKeys）；屏幕边缘留白时整屏被往里收，离各边的 20dp 少留收进去的那么多（setEdgeInsets） |
 | `src/dev/douhua/MenuLayer.java` | ⋯ 菜单，主界面和键盘屏共用一份（根视图最上面一层、铺满整页；屏幕边缘留白时和别的页一样往里收，离各边少留，setEdgeInsets）：盖住整页的"点外面" + 菜单底板（项是它的子 view，只排显示着的，KeyboardPlan.menuGrid 排、先排满第一列）；贴着当前那一屏的 ⋯ 弹出（Host.menuAnchor + KeyboardPlan.menuPosition）；⋯ 那一支单独重新布局时由 MainActivity 在根视图的布局监听里再 place 一次 |
 | `src/dev/douhua/Style.java` | 共用样式（边框、按下 / 高亮、触控板角上的小按钮——small 的 onImage：触控板上有背景图时平时垫不透明的触控板底色）；颜色从当前主题取（setTheme，MainActivity 设），设置页预览用带 Theme 参数的那几个；键帽（整屏键盘、数字键盘）走 keyButton / keyLook（边框跟"按键边框"开关；缩到最小字号还放不下的键名末尾省略"…"），其它按钮走 button / look（一直有边框）；sp 换像素（Style.sp，跟着系统字体大小）；键帽分主次：keyLook / look 带 fn（功能键的颜色；高亮时照旧是普通键帽底色 + 强调色的边）；被小红点切掉一块的键帽（keyLook 的 cut → CutCap：圆角矩形减去圆，底色、边框沿着圆弧走，颜色同别的键帽）；右上角带小字的键帽（CornerKey，keyButton(c, sp, corner)：合并键的 "."，字号 min(10sp, 键高 × 0.22)、颜色同字色）；⋯ 用强调色（2026-11-01）：键帽形状的 ⋯ 走 menuKeyLook（强调色底 menuKey / 按下 menuKeyPressed、反差字 menuKeyText、不画边框、不跟"按键边框"开关，被切时也走 CutCap），不带框的 ⋯（触控板顶上、手柄页顶上）走 bare（字 menuDots，按着时垫 pressed） |
 | `src/dev/douhua/Theme.java` | 主界面的十八套配色（设置 → 外观；ALL 先深色后浅色）：每套写几个底子、其余按规则推（灰字取"刚够 4.5:1"的、强调色当字用不够就推亮 / 推暗）；功能键的槽位 fnKey / fnText / fnPressed（底色掺强调色，到和键帽、页面色差 ≥ 8 为止，fnTint）；纯黑每个槽位照以前的常量写死（功能键和普通键一样）；对比度、CIE76 色差计算，纯 Java（离线测 ThemeTest）；小红点的红（stick：ThinkPad 红推到对页面、触控板底色都 ≥ 3:1，stickRed）；⋯ 的四个槽位（2026-11-01）：menuKey（强调色推到对页面、键帽、功能键都 ≥ 3:1，reachAll：一次看几个底、方向看第一个）、menuKeyText（页面色 / 正文色里对它反差大的那个，再推到 ≥ 4.5:1）、menuKeyPressed（底往字掺一成半）、menuDots（强调色推到对触控板底、页面 ≥ 4.5:1、对 pressed ≥ 3:1）；纯黑这四个写死成 focus 的蓝（#8AB4F8 底、黑字、按下 #7599D3、不带框的蓝字） |
-| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 键盘 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），七页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、轻点 = 左键、负惯性、三键条开关和上沿 / 下沿）；"键盘"页（第 1B 批，keyboardSection）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘的语言 / 形状 / 尺寸（笔记本 / TKL / 全尺寸，写键数，下面一行写逐级缩的规则）/ Windows · Mac 模式、主机那边要设成同一种布局的说明（桌面模式下一个按钮打开手机的实体键盘设置）、豆花布局的快捷行（从"按钮与按键"挪过来）；"通用"页最下面"开源许可"（licenses：res/raw/licenses.txt 的全文）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它） |
+| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 键盘 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），七页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、轻点 = 左键、负惯性、三键条开关和上沿 / 下沿）；"键盘"页（第 1B 批，keyboardSection）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘的语言（第 2 批起点开是一个按名字排的列表 langDialog：每项下面一行小字写 Mac / Windows 里叫什么——只有一家有的写"Windows 没有这一套"之类，现在的模式下没数据的灰掉、写原因）/ 形状（ANSI / ISO / ABNT2，照清单）/ 尺寸（笔记本 / TKL / 全尺寸，写键数，下面一行写逐级缩的规则）/ Windows · Mac 模式（这个布局没数据的那种灰掉，choiceRow 带 enabled 的那个）、主机那边要设成同一种布局的说明（桌面模式下一个按钮打开手机的实体键盘设置）、豆花布局的快捷行（从"按钮与按键"挪过来）；"通用"页最下面"开源许可"（licenses：res/raw/licenses.txt 的全文）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它） |
 | `src/dev/douhua/ThemeGrid.java` | 设置 → 外观的主题色块网格（一组深色或浅色）：每格一小块样子（普通键 A + 功能键 ⇧ + 一小块触控板）+ 名字，每行几格按宽度定（每格 ≥ 96dp），选中框用设置页自己的蓝 |
 | `src/dev/douhua/ButtonStrip.java` | 自定义按键（主界面左边一列，原来的左侧按钮条；设置里打开，默认关），屏幕矮时自动分列 |
 | `src/dev/douhua/PadArea.java` | 触控板 + 数字键盘的排布 |
@@ -90,9 +90,9 @@
 | `tools/type-log.sh` | 打字测试记录：DebugMoves 的 DEBUG_KEYLOG 广播开键盘触点日志（租期 10 秒，每 3 秒续）+ logcat 收 `douhua-keys` + 电脑浏览器打字页（tools/typelog/typing.html，本机小服务 server.py，句子 sentences.txt），结果在 `.private/typelog/`；`--desktop`（旧名 `--dex`）用 adb reverse 把页面开在手机那边（外接屏 / 分屏） |
 | `tools/type-analyze.sh` + `tools/typelog/` | 分析一次打字测试：analyze.py 对齐、误按率（按空 / 按错没改 / 按错改过）、每个键的落点偏移、电脑丢键核对（`--selftest` 在 test.sh 里跑）；KeyReplay.java 用真正的 TouchRouter 重放触点，核对和手机一致、比较缝分给最近的键前后 |
 | `tools/air-analyze.sh` + `tools/airlog/` | 分析一次双日志：送达节奏（卡不卡、排不排队）；用记下的原始转动按参数网格重放真正的 AirPointer（Replay.java），算静止抖动、2Hz / 5Hz 以上的晃、速度落后、距离保留 |
-| `tools/kbd-scan.sh` + `tools/kbd/` | 实体键盘布局第 1A 批（说明见 tools/kbd/README.md）。**主机实测扫描**：kbd-scan.sh（`--host` 手选主机系统、`--layout`、`--desktop` 用 adb reverse）起 scan_server.py（本机小服务，地址带随机口令，`--lan` 给 iPad 用），主机上开 scan.html 记每步的 e.key / e.code / 输入法组合，页面收完一段才让服务用 adb 发 DEBUG_KEYSCAN 下一段、失焦就叫停；compare.py 和生成的数据逐格比、逐条写前提成不成立（`--selftest` 拿生成的数据造假主机），结果在 `.private/kbdscan/`。**键帽数据生成**：gen_layouts.py（CLDR 43 osx / windows、本机 xkeyboard-config + libxkbcommon、AOSP KCM + Generic.kl → res/raw；原始文件缓存在 .cache/kbd/，按 sources.json 的 sha256 核对；`--selftest` 用 testdata/ 的小样本）、sources.json、catalog.json（手写：生成哪些布局）、check_tables.py（离线核对来源、不变量、抽查值）、kbdtable.py（共用：位置对照、文件读写、扫描计划） |
-| `res/raw/kbd_*.txt` | 生成的键帽数据（勿手改，tools/kbd/gen_layouts.py）：kbd_mac / win / linux / android 每家一份（每个布局一段，每个键 普通 / Shift / 第三层 / 第三层+Shift 的字，死键 `\*`；Mac 每个布局分 ANSI 型 / ISO 型两段），kbd_catalog 是布局清单。只有美式、德语；第 1B 批的实体键盘读 kbd_win（Windows 模式）、kbd_mac 不对调那段（Mac 模式）和清单，linux / android 两份留着没人读 |
-| `res/raw/licenses.txt` | 开源许可页的全文（设置 → 通用 → 开源许可）：Unicode CLDR（许可原文取自 ICU 73.1 的 LICENSE，和 CLDR 43 同一批发布，CLDR 43 自己那份没核）、AOSP、xkeyboard-config（版权行照 Debian xkb-data 的 copyright，去掉了邮箱）、BoringSSL、Apache-2.0 全文；scratchpad 里一次性脚本拼的，改了数据源要跟着改 |
+| `tools/kbd-scan.sh` + `tools/kbd/` | 实体键盘布局第 1A 批（说明见 tools/kbd/README.md）。**主机实测扫描**：kbd-scan.sh（`--host` 手选主机系统、`--layout`、`--desktop` 用 adb reverse）起 scan_server.py（本机小服务，地址带随机口令，`--lan` 给 iPad 用），主机上开 scan.html 记每步的 e.key / e.code / 输入法组合，页面收完一段才让服务用 adb 发 DEBUG_KEYSCAN 下一段、失焦就叫停；compare.py 和生成的数据逐格比、逐条写前提成不成立（`--selftest` 拿生成的数据造假主机），结果在 `.private/kbdscan/`。**键帽数据生成**：gen_layouts.py（CLDR 43 osx / windows、本机 xkeyboard-config + libxkbcommon、AOSP KCM + Generic.kl → res/raw；原始文件缓存在 .cache/kbd/，按 sources.json 的 sha256 核对；`--selftest` 用 testdata/ 的小样本）、sources.json、catalog.json（手写：生成哪些布局、每家用哪个文件——没有的写 null（Windows、Mac 至少一种）、起名字的语言 / 区分词、和 xkb 不一样的 Windows 小键盘小数点 kpdl_win（照微软布局表）；第 2 批 34 个）、mac_names.json（手写：CLDR 的 macOS 旧名 → 现名，凭记忆、要在 iPad 上核对）、check_tables.py（离线核对来源、清单、不变量（个别布局的例外带理由）、抽查值）、kbdtable.py（共用：位置对照、文件读写、清单的栏、死键例外、扫描计划、按主机平台取小键盘小数点 keypad_decimal） |
+| `res/raw/kbd_*.txt` | 生成的键帽数据（勿手改，tools/kbd/gen_layouts.py）：kbd_mac / win / linux / android 每家一份（每个布局一段，每个键 普通 / Shift / 第三层 / 第三层+Shift 的字，死键 `\*`；Mac 每个布局分 ANSI 型 / ISO 型两段；完全一样的表写成别名），kbd_catalog 是布局清单（文件头 `#!columns` 列栏名）。第 2 批起 34 个拉丁字母布局（美式、US-International、英国、爱尔兰、荷兰、罗马尼亚、法语、比利时、加拿大法语、德语、奥地利、瑞士德 / 法、瑞典两套、芬兰、丹麦、挪威、冰岛、西班牙、拉美、葡萄牙、巴西 ABNT2、意大利两套、克罗地亚、斯洛文尼亚、捷克、斯洛伐克、匈牙利、波兰、土耳其 Q / F、中文拼音）；某家没有数据的布局那份文件里没有那一段（拉美没有 Mac 的；意大利 QZERTY、瑞典旧版是 Mac 才有的那一套，没有 Windows、安卓的；爱尔兰、荷兰、罗马尼亚、奥地利没有安卓的）；清单另有 kpdl_win 一栏（Windows 模式的小键盘小数点，2026-11-01 审查后加的）。App 读 kbd_win（Windows 模式）、kbd_mac 不对调那段（Mac 模式）和清单，linux / android 两份 App 不读（扫描工具用） |
+| `res/raw/licenses.txt` | 开源许可页的全文（设置 → 通用 → 开源许可）：Unicode CLDR（许可原文取自 ICU 73.1 的 LICENSE，和 CLDR 43 同一批发布，CLDR 43 自己那份没核）、AOSP（第 2 批起各 KCM 文件头的年份 2010–2020 都列上）、xkeyboard-config（版权行照 Debian xkb-data 的 copyright，去掉了邮箱）、BoringSSL、Apache-2.0 全文；scratchpad 里一次性脚本拼的，改了数据源要跟着改 |
 | `tools/adb-device.sh` | 选哪台手机（-s → ANDROID_SERIAL → 只连一台就用它 → 多台时列出来让人选），start/stop-server、selftest、build --install 共用 |
 | `src/dev/douhua/KeyboardSnap.java` | 调整键盘时的轻微吸附（分裂时 applySplit：贴边 / 两半合拢 / 上下边），纯 Java（离线测） |
 | `src/dev/douhua/EdgeMargin.java` | 屏幕边缘留白，纯 Java（离线测，EdgeMarginTest）：哪几条边留、留多少（margins：窗口贴着屏幕边的才留，一个方向最多窗口的一半）、页面收进去以后"离屏幕边 20dp"在页面里还剩多少（edges）、设置的范围（0–48dp、步长 2、默认 8） |
@@ -273,7 +273,9 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   中键收尾（releaseAll）和被取消的抬起（TouchRouter.up 的 canceled：手掌 / 丢数据、TouchReader 收尾补报的、App 带 FLAG_CANCELED 的）都不补中键单击；
   三键条 / 键盘里（底行、快捷行空位）的左键和"左键"按钮、CMD_HOLD_LEFT 共用 TouchRouter.leftHolds 一个计数。
 - **键盘上会显示的每个键都有键帽**（实体键盘同样：每个显示的键有外框、有字，出字的键在字表里有这一行，锁着哪种修饰键都有字——FixedLayoutTest.caps 按
-  布局 × 形状 × 尺寸 × 模式 × ⋯ × 让位 × 窗口扫，笔记本另扫一遍；FixedPanel 的数组跟着键一起换、下标对得上，换键盘、逐级缩换级后还没重新量时也不越界）：KeyboardPanel 只按 KeyRows.capKeys 建键帽（showLayer 按 KeyRows.keys 取，取到没键帽的键就闪退），
+  布局 × 形状 × 尺寸 × 模式 × ⋯ × 让位 × 窗口扫，笔记本另扫一遍；清单里每个布局（第 2 批起 34 个）、每种**有数据的**模式都扫，没数据的模式（拉美的 Mac，意大利 QZERTY、瑞典旧版的 Windows）拼不出键盘、退回豆花布局，
+  FixedLegendsTest.missingModes 锁住"清单的 modes 和字表有没有那一段对得上"；巴西按 ABNT2 扫（多的 0x87 在字表里、小键盘的 0x85 写清单的 kpco），拼音的 Mac 模式 Caps 写 中/英
+  （FixedLayout.forEntry，caps 那一扫就用它拼）；清单里每个能选的形状 FixedLayout 都认得（FixedLayoutTest.abnt2Geometry 锁住，不会被 validShape 悄悄换成 ANSI）；FixedPanel 的数组跟着键一起换、下标对得上，换键盘、逐级缩换级后还没重新量时也不越界）：KeyboardPanel 只按 KeyRows.capKeys 建键帽（showLayer 按 KeyRows.keys 取，取到没键帽的键就闪退），
   加新的行、新的布局变体（像小红点状态底行的 before / after）只改 KeyRows，两处规则在一起；KeyRowsTest.capKeysCover 锁住"keys() 给的每个键都在 capKeys 里"
   （2026-11-01 的合并键 COMMA_PERIOD、右空格 STICK_SPACE_R 在 before / after 里，同样锁住）。
 - **修饰键只在"单独按住 0.4–1 秒"时锁**（2026-11-01，KeyHolds）：按下那一刻已有别的键的手指或鼠标键按着、按着期间按了别的键（含界面发来的 key()、Caps、合并键、别的修饰键）
@@ -298,7 +300,8 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   连笔记本都放不下、暂时显示豆花布局时改的是豆花布局的（显示着的那块）。
 - **实体键盘的区域照豆花布局的规矩报**：只报显示着的那块（KeyboardScreen.face）；键段在前、键盘范围在后，范围每区块每行一块（FixedLayout.ranges，
   每段恰好落在一块同行同区块的范围里，范围不重叠，一行里没有键的格子——方向键上面那几格、↑ 两边、Mac 模式 Ins 那格——不在任何范围里）；
-  分流和面板自己收触摸逐点一致（FixedLayoutTest.routing 扫两百多万个点，笔记本另扫九十多万个）。跨两行的键按行切成同 id 的几段（ISO 回车、小键盘 + / Enter），画成一个形状。
+  分流和面板自己收触摸逐点一致（FixedLayoutTest.routing 扫两百多万个点，笔记本另扫九十多万个，ABNT2 另扫一百四十多万个）。跨两行的键按行切成同 id 的几段（ISO 回车、小键盘 + / Enter），画成一个形状
+  （ABNT2 的小键盘 + 只有一行高，下面是 0x85，FixedLayoutTest.abnt2Pins 钉住两个键之间的缝各归一半）。
   笔记本（2026-11-01）：最下一排是一行，方向键在这一行里竖着分上下两层（Key.y0 / y1，不拆成两行）；**"每区块每行一块"的唯一例外**：这一行的范围是三块——
   方向键以外一块（0–12.1875u）、方向键上层一块、下层一块（12.1875u 到面板边，在 5.875u 一分为二；FixedLayout.ranges 把竖向子区间一样的键单独成组）。
   和整行高的键放在一块里的话，nearestKey 先比竖向，右 Ctrl 竖向距离是 0，两层之间那条缝全分给右 Ctrl（审查发现，按住还会把 Ctrl 锁住）；
@@ -306,6 +309,11 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   以后再有只占一截的键，照这条单独成组，别和整行高的键并进一块。Mac 模式笔记本 F 行的 Ins 那格只有 0.8125u，
   照"一段之内 ≤ 1.01u 的小缝并进范围"会被并进去、右半格分给 Del，所以声明成空格子（FixedLayout.blanks），不在任何范围里（FixedLayoutTest.laptopRanges / laptopPins 锁住）。
   逐级缩换级时只报换过去的那一块（KeyboardScreen 换级后 post onKeyboardFaceChanged → pushLayout）。
+- **不出没字的实体键盘**（第 2 批，2026-11-01）：某布局某模式没有键帽数据（清单的 modes 里没有，现在是拉美的 Mac，意大利 QZERTY、瑞典旧版的 Windows），设置页"语言"列表里这个布局在那种模式下灰掉、"模式"里那种模式在这个布局下灰掉
+  （Boards.langChoices / modeAvailable，BoardsTest 锁住"灰不灰和清单的 modes 一致"）；存着的组合要是正好没数据，FixedData.ladder 是空的，键盘页照 1B 的规则显示豆花布局，
+  ⋯ 菜单写 kbd_menu_no_mode、设置页标红一行，存的值不动（不悄悄换模式）。加没 Mac / Windows 数据的布局只改 catalog.json（mac / win 写 null，至少留一种），这几处自动跟着。
+  **某家没有这一套就是没数据，不拿名字相近的布局顶上**（2026-11-01 审查后）：意大利 QZERTY、瑞典旧版只有 Mac 有，Windows 模式下原来照普通的意大利 / 瑞典画，
+  列表、⋯ 菜单写的是"QZERTY"，画出来却是 QWERTY——现在 win 写 null、Windows 模式下灰掉（check_tables 的 MAC_ONLY、FixedLegendsTest、BoardsTest 锁住）。
 - **实体键盘的特殊键（⋯、🌐，REGION_BUTTON）只有一段**（2026-11-01）：TouchRouter.up 只在 `contains || Region.same(hit)` 时报 BUTTON_TAP，同一个键的几段坐标不同，
   跨段抬起就成了 BUTTON_UP（MainActivity.onButton 对 ⋯ / 🌐 只认 TAP），而面板自己收触摸那条路照样算点击，三条路不一样。以后的新尺寸、新排法不能把按钮切成几段
   （笔记本最下一排因此是一行；FixedLayoutTest.specialOneSegment 扫三种尺寸 × 形状 × 模式 × ⋯ × 让位 × 窗口、buttonTap 用真 TouchRouter 核对挪到段边抬起照样是点击）。
@@ -878,7 +886,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     空格切成左右两段（同一个键，两个键帽），中键正对红点（KeyboardPlan.holeKeys）；红点在空格里偏左（3.75–10u 里的 6.75u），右边那段多 0.25u。
   - 设置页新开"键盘"标签（触控板后面）：用哪块、实体键盘的语言 / 形状（德语只有 ISO）/ 尺寸（写键数）/ 模式，"主机那边要设成同一种布局"的说明（Mac / iPad、Windows 里叫什么，
     清单里的 CLDR 旧名），桌面模式下一个按钮打开手机的实体键盘设置（ACTION_HARD_KEYBOARD_SETTINGS，打不开退到输入法设置）；豆花布局的快捷行从"按钮与按键"挪过来。
-    布局名字：美式、德语两个写进 strings（kbd_lang_*），以后的用 Locale 自己翻（FixedLegends.LOCALE_TAGS，第 2 批挪进 catalog.json）。
+    布局名字：美式、德语两个写进 strings（kbd_lang_*），以后的用 Locale 自己翻（1B 写在 FixedLegends.LOCALE_TAGS；第 2 批已挪进 catalog.json 的 locale / variant，见"实体键盘第 2 批（数据那一半）"；界面那一半起美式、德语也用 Locale 翻，kbd_lang_* 删了，见"实体键盘第 2 批（界面那一半）"）。
   - 开源许可：设置 → 通用 → 开源许可，res/raw/licenses.txt（CLDR 的 Unicode 许可、AOSP、xkeyboard-config、BoringSSL 的声明和 Apache-2.0 全文）。
     Unicode 许可原文取自本机 ICU 73.1 的 LICENSE（和 CLDR 43 同一批发布、版权年份 1991-2023 对得上），CLDR 43 仓库里那份没核；xkb 的版权行照 Debian xkb-data 的 copyright，
     去掉了邮箱（隐私扫描会拦，许可要的是版权声明）。法律上够不够我判断不了。
@@ -924,7 +932,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   - **逐级缩**（KeyboardPlan.fixedLevel）：设置里选的尺寸是起点（FixedLayout.ladder：选全尺寸 = [全尺寸, TKL, 笔记本]，选 TKL = [TKL, 笔记本]，选笔记本 = [笔记本]，只缩不涨），
     看整页宽（已扣掉屏幕边缘留白，同 1B），第一个一格（1u，字母键连缝）≥ 32dp 的就是它；笔记本也放不下才暂用豆花布局。全尺寸要 ≥ 720dp、TKL ≥ 584、笔记本 ≥ 480。
     纯按当前宽度、不做回差（换尺寸不改变页宽，不会来回跳；回差 = 同一个宽度看历史显示不同的东西，违背确定性）。用整页宽、不用调过的键盘宽：用户拖窄是他的事，
-    拖窄另有 fixedMinWidth 拦着，不然拖边时尺寸跟着换、存的位置也跟着换成另一份。⋯ 菜单写实际显示的是哪种（缩了级："键盘：实体（德语 · Mac；全尺寸放不下，暂用 TKL）"，kbd_menu_stepped），
+    拖窄另有 fixedMinWidth 拦着，不然拖边时尺寸跟着换、存的位置也跟着换成另一份。⋯ 菜单写实际显示的是哪种（缩了级："键盘：实体（德语 · Mac；全尺寸放不下，暂用 TKL）"，kbd_menu_stepped；第 2 批审查后改短成"键盘：实体 · 名字 · 模式（全尺寸 → TKL）"），
     设置 → 键盘 → 尺寸三项从小到大（笔记本 / TKL / 全尺寸，键数现算），下面一行写这条规则（kbd_size_note），kbd_board_note 改成"连笔记本尺寸都放不下时……"。
     - **门槛量 1u**（协调者定、照方案）：笔记本的 F 键（0.8125u）、方向键（0.9375u 宽、0.625 行高）在门槛上比 32dp 小（页宽 480 时 F 键约 26dp 宽、方向键约 30 × 22dp，看得见的再小 4dp）。
       按"最小的键帽 ≥ 32dp"算的话笔记本要页宽 ≥ 591dp，可 TKL 584 就放得下，逐级缩永远轮不到笔记本。Fold 外屏竖屏（约 459dp）、内屏左右分屏的一半（约 452dp）连笔记本也放不下，照旧豆花布局。
@@ -944,6 +952,85 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     FixedLayoutTest 锁住"笔记本 + 小红点 + 一格 ≥ 32dp ⇒ 有三个鼠标键、中键正对红点"（页宽 480–2600 × 高 × 默认 / 随机存过的位置约 2.5 万种）。
     只保证三个鼠标键：红点在约 480–600dp 宽、≤ 300dp 高的窗口里嵌不进键（键太小）、外面也没地方，就没有红点（TKL 在 584–700 宽的矮窗口里一样，1B 就是这样）。
   - 没做：Fn 层（ScrLk / Pause / 右 Super / Menu 按不到）；打字测试工具不认几块范围 / 竖向子区间，笔记本同样分析不了。
+- **实体键盘第 2 批（数据那一半）：其余拉丁字母布局**（2026-11-01；总方案 design-keyboard-layouts §9 第 2 批、§6、§6.4，调研 kbd-data §2.1）。这一步只做数据：
+  tools/kbd/（catalog.json、sources.json、gen_layouts.py、check_tables.py、kbdtable.py、新的 mac_names.json）、生成 res/raw/kbd_*.txt、FixedLegends 的读法、FixedLegendsTest、licenses.txt；
+  App 界面（设置 → 键盘的语言选择、灰掉没数据的模式）、ABNT2 的几何留给下一步（同一天做了，见下一条"界面那一半"）。不改协议、不改服务、不改 TouchRouter。
+  - **34 个布局**（catalog.json 的顺序，id 存在 kbx_lang 里、定了别改）：us、us-intl（US-International）、gb、ie（爱尔兰）、nl、ro（Romanian Standard）、fr、be、ca-fr（加拿大法语 CSA）、
+    de、at、ch-de、ch-fr、se（Mac 的 Swedish - Pro，现名 Swedish）、se-legacy（Mac 的 Swedish，现名 Swedish – Legacy）、fi、dk、no、is、es（Mac 的 Spanish – ISO）、latam、pt、
+    br（巴西 ABNT2）、it（Mac 的 Italian - Pro）、it-qzerty（Mac 的旧 Italian，打字机式 QZERTY）、hr（Mac 的 Croatian-PC，QWERTZ）、si、cz、sk、hu、pl（Polish Programmers，默认 ANSI、能选 ISO）、
+    tr-q、tr-f、cn-pinyin（美式字，Mac 模式 Caps 写 中/英）。每项配哪个文件、为什么，写在 catalog.json 的 `_每项的依据`。
+    **和任务清单不一样的**：① 苹果的 International English 键盘不另列一项（= us 选 ISO，美式字 + ISO 形状，数据完全一样）；② 捷克、斯洛伐克只列 QWERTZ（苹果键帽是这套），
+    QWERTY 变体没列（四家都有数据，要加只加 catalog.json 一行）；③ 克罗地亚、斯洛文尼亚分两项（Mac 两套不一样：Croatian-PC 是 QWERTZ、Slovenian 是 QWERTY；Windows 是同一个 KBDCR，
+    CLDR 只有 sl 那份，克罗地亚那项的 Windows 名写 Croatian，凭记忆）。
+  - **没数据的模式**：CLDR 43 没有 macOS 的拉美布局，catalog.json 里 mac 写 null → kbd_mac 没有 latam 那一段、清单 modes 只写 win；App 选到时 FixedData.table 是 null、ladder 空，
+    照 1B 的规则退回豆花布局（设置页灰掉：界面那一半做了）。安卓：AOSP 没有爱尔兰、荷兰、罗马尼亚、奥地利（App 不读 kbd_android，只影响扫描工具）。
+    （审查后另有两项没有 Windows 的数据：意大利 QZERTY、瑞典旧版，见界面那一半的"审查后的修改"②。）
+  - **清单改成按名字认栏**：kbd_catalog.txt 文件头 `#!columns id locale variant shape shapes modes kpdl kpco caps_mac name_mac name_mac_cldr name_win name_linux name_android`（审查后在 kpdl 后面加了 kpdl_win，见界面那一半的"审查后的修改"），
+    Python（kbdtable.read_catalog）、Java（FixedLegends.parseCatalog）都按这一行认，缺栏 / 栏数不对就读不出（App 退回豆花布局）。起名字：locale 用 Locale 翻（原来的 FixedLegends.LOCALE_TAGS 删了），
+    variant 小写的是 strings.xml 的 kbd_var_intl / legacy / pinyin（九种语言加了这三条，AI 翻的），QZERTY、Q、F 这类照原样写；FixedData.langName 拼成"语言（地区） · 词"（en-US、de-DE 照旧用"美式""德语"；界面那一半改了：同一种语言有几个地区才带地区、美式德语也用 Locale 翻）。
+  - **Mac 现名**（mac_names.json）：CLDR osx 是 macOS 10.9 的名字，生成时换成现名写进 name_mac，旧名留在 name_mac_cldr。只有瑞典两条核过（苹果社区文档），**其余全凭记忆，要在 iPad / Mac 上核对**。
+    Windows 名是 CLDR windows 里的（Windows 10），Linux 名取本机 evdev.xml，安卓名取 AOSP InputDevices 的 strings.xml（main，这次看的）。
+  - **ABNT2 的数据**：字表多 0x87（右 Shift 左边的 / ?；CLDR windows 的 B11 = 扫描码 0x73、osx 的 B11 = 键码 94）。小键盘：0x63 出 ,（kpdl）、多出来的 0x85 出 .（新的 kpco 栏，
+    取自 xkb br 的 <KPPT>；CLDR 不含小键盘，两种模式都用它）。FixedLayout 还不认 abnt2（validShape 当 ANSI 摆），所以现在选巴西画的是 ANSI 形状、没有 0x64 / 0x87 那两个键，下一步做几何（界面那一半做了）。
+  - **数据源**：都是 1A 那三家，CLDR 还是 release-43、xkb 还是本机 2.46、AOSP 还是 GitHub 镜像按 blob 钉。新文件 82 个，sha256 是这次下载算的（sources.json 写明）；
+    顺带跑通了生成器的下载那条路（CLDR、AOSP 各删一个缓存文件重新生成，内容和 sha256 一样）。美式、德语那几段生成结果逐格不变。
+    gen_layouts.py：mac / android 可以是 null、新的清单栏、kpco、catalog.json 自检（id 不重复、形状认得、Windows 必须有）、xkb 多认几个死键（dead_stroke / belowcomma / hook / horn / currency / greek）；
+    AOSP 的 US-International 把 ' 键写成 U+030D / U+030E，规范成 ' " 死键（安卓自己就这么认，凭记忆）。
+  - **不变量改了说法**（原来"26 个字母键普通层正好是 a–z"对几个布局本来就不成立）：每个布局每种有数据的模式都要"26 个字母键普通层都有字、普通层凑得齐 a–z"；
+    "26 个字母键正好是 a–z"的例外带理由写在 check_tables.LETTER_EXCEPTIONS / FixedLegendsTest：法语、比利时（AZERTY，M 在 ; 的位置）、Mac 的旧意大利（QZERTY 同理）、
+    土耳其 Q（I 的位置出 ı、i 在 ' 的位置）、土耳其 F（q w x 不在字母键上）。死键的例外（kbdtable.DEAD_EXCEPTIONS）：Mac 捷克 / 斯洛伐克 ⌥- ⌥= 是写成 , - 的死键、
+    Mac 匈牙利 ⌥⇧, 是写成 – 的死键（CLDR 数据就是这样），Linux 的 dead_currency / dead_greek。ISO / ABNT2 的 0x64 有字、只有 ABNT2 有 0x87。
+  - **用户不要求扫描**（"主机怎么读那是主机的事"）：方案 §7.4"桌面模式检测对不上"和第 2 批"要你看的扫描"都不做；第 2 批的布局一个都没在主机上扫过，数据对不对全靠来源。
+- **实体键盘第 2 批（界面那一半）：ABNT2 的几何、设置页的语言列表、灰掉没数据的模式、名字**（2026-11-01，接着数据那一半做；总方案 §9 第 2 批、§8.2 / §8.3，形态调研 kbd-form §2.4）。
+  只改 App（FixedLayout / FixedPanel / Boards / FixedData / KeyRows.functionKey / SettingsActivity / MainActivity 的菜单字、九个 strings.xml），不改协议、不改服务、不改 TouchRouter。
+  - **巴西 ABNT2 的几何**（FixedLayout，尺寸照本机 xkb 的 geometry/pc 里的 abnt2）：主键区第 1–3 行、L 形回车同 ISO；第 4 行 左 Shift 1.25 · 0x64（\ |）· Z–M · , . ; · **/ ? 1u（0x87）** · **右 Shift 1.75u**；
+    全尺寸的小键盘右列 + 只有一行高（7 8 9 那一行），下面 4 5 6 那一行是 **0x85**（微软表里的"Brazilian Keypad ."，键帽写清单的 kpco "."），左下小数点 0x63 写 kpdl ","。
+    笔记本、TKL 同样多一个 0x87（第 4 行同 TKL）。键数：Windows 笔记本 85、TKL 89、全尺寸 107（ABNT2 就是 107 键），Mac 各少一个（没有 Ins）。iso() 对 ISO、ABNT2 都真（L 形回车、有 0x64），abnt2() 只对 ABNT2。
+    红点那条线、空格、⋯ 槽都和 ISO 一样（第 4 行 B 的位置没动），小红点、切口、三个鼠标键照旧。
+    **Mac 模式的 ABNT2 不对调 1 左边 / Z 左边**（两种模式都照 PC 惯例：1 左边 0x35、Z 左边 0x64），和 ISO 的 Mac 模式不一样。理由：苹果不做 ABNT2 键盘，"照真苹果键盘发码"没东西可照；
+    数据上 CLDR osx 的 Brazilian-ABNT2 不对调那段 0x35 = ' "、0x64 = \ |，正好是 ABNT2 键帽上 1 左边、Z 左边印的字（别的 ISO 布局是反过来的：mac:de 的 0x64 = ^、0x35 = <），
+    说明苹果这套布局本来就是给发 PC 码的 ABNT2 键盘用的；照 1B 的假设（主机按收到的码直接查表、不自己对调）画的字 = 打出来的字 = 键帽印的字。主机怎么认照旧是主机的事，没验证。
+  - **小键盘的字、Caps 键帽照清单那一行拼**（FixedLayout.forEntry，FixedData.ladder 用它）：kpdl / kpco 写小键盘两个键，caps_mac 写 Mac 模式的 Caps 键帽（拼音写"中/英"，Windows 模式、别的布局照旧 Caps）。
+    中/英只改键帽的字，发的码、点一下 / 按住的规则、Caps 的显示（点一下照样翻）都不变：macOS 拼音开着"用大写锁定键切换输入法"时点它是切中英、豆花的大写显示照样翻，
+    和 1B 定的"苹果设备开着用大写锁定键切换输入法时 Caps 显示会错——不特殊处理、长按对回来"同一回事，没另做。
+  - **主次键帽**（KeyRows.functionKey）：0x87 算标点、0x85 同小数点，都是普通键帽。豆花布局里没有这两个用法码，结果不变。
+  - **土耳其的 i / İ**（FixedPanel.letterLike）：判断"字母那种键"时大写另认土耳其语的规则（i → İ），不然土耳其 Q / F 的 i 那个键画成上下两层（İ 在上、i 在下）、不跟 Caps；
+    ı 那个键本来就对（ı 的通用大写是 I）。别的布局一个键的判断都没变（FixedLayoutTest.turkishI 把 32 个布局 × 模式的每个键用两种规则各判一遍比过）。
+  - **名字**（Boards.langName，纯 Java；FixedData.langName 只接上界面语言和 kbd_var_* 的翻译）：语言名一律按清单的 locale 用 Locale 翻；**同一种语言在清单里有几个地区才带地区**
+    （英语：美国 / 英国；法语：法国 / 比利时 / 加拿大 / 瑞士；德语：德国 / 奥地利 / 瑞士；西班牙语：西班牙 / 拉丁美洲；葡萄牙语：葡萄牙 / 巴西），只有一个地区的不带（"瑞典语""捷克语"）；
+    首字母大写（法 / 西 / 意语界面里语言名小写开头）；有区分词接" · 词"。1B 的"美式""德语"两个专门的名字不用了（"英语（美国）"挨着"英语（英国）"排，德语要和奥地利、瑞士分开），
+    kbd_lang_us / kbd_lang_de 九个文件都删了。**改了 catalog.json 一处**：挪威的 locale 从 nb-NO 改成 no-NO（nb 翻出来是"书面挪威语 / Norwegian Bokmål"，Mac / Windows 都叫 Norwegian），
+    重新生成后只有 kbd_catalog.txt 那一格变了（四份字表逐字不变，check_tables 照样过）。
+    ⋯ 菜单的字改成"键盘：实体 · 名字 · 模式"（kbd_menu_fixed / stepped，九种语言）：名字里带了地区的括号，原来的"键盘：实体（…）"会套两层括号。
+  - **设置 → 键盘的语言**（SettingsActivity.langDialog）：一行"布局（键帽上画的字）"写着现在选的，点开是一个列表对话框（三十多项单选框列不下）：按界面语言的名字排（Boards.langChoices，Collator），
+    每项两行——名字、下面一行小字"Mac：现名 · Windows：名字"（清单的 name_mac / name_win；没有 Mac 数据的只写 Windows），现在选的蓝字加粗，打开时滚到它附近。
+    没做方案 §8.2 的"可搜索、按地区分组"：按名字排以后同一种语言的几项本来就挨在一起（BoardsTest 九种界面语言都查了），三十多项滚一下就到。
+    CLDR 旧名（name_mac_cldr）界面上不写，只写现名（mac_names.json，**只有瑞典两条核过，其余凭记忆**）。
+  - **灰掉没数据的模式**（用户要"不能出没字的键盘"）：现在的模式下没有数据的布局在列表里灰掉、点不了，第三行写"没有 Mac 模式的键帽数据，换个模式才能选"；
+    选着这个布局时"模式"那一行里没数据的模式灰掉（choiceRow 多了带 enabled 的那个，适配器 isEnabled 为假、画成禁用的样子），写"Mac（这个布局没有它的数据）"。
+    存着的组合正好没数据（设置页选不出来；以后清单变了才会有）：键盘页照 1B 的规则退回豆花布局，⋯ 菜单写"键盘：实体 · 名字（没有 Mac 模式的数据，暂用豆花儿）"（kbd_menu_no_mode），
+    设置页标红一行（kbd_no_mode_data），存的值不动、不悄悄换模式。"主机里叫什么"那一行没有 Mac 数据时只写 Windows 的名字（kbd_host_names_win）。
+  - **和任务 / 方案不一样的**：用户不要求扫描、§7.4 不做（同数据那一半）；方案 §8.2 的"键盘列表、按主机记住"照 1B 不做；列表不做搜索和地区分组（见上）；
+    挪威改 no-NO（见上）；ABNT2 的 Mac 模式不对调（见上，方案没写到这一层）。
+  - **审查后的修改**（同一天，四条发现都核实过、都改了；只跑了离线测试和编译）：
+    ① **小键盘小数点按模式取**：荷兰、冰岛、捷克、斯洛伐克在 Windows 上小键盘小数点出 ","（审查者从 kbdlayout.info 下了 34 个布局的 KLC——按微软键盘 DLL 导出的布局表——
+    KBDNE / KBDIC / KBDCZ / KBDSL 的 DECIMAL 一行都是 002c，我逐个又读了一遍），原来 kpdl 一律取自 xkb、xkb 这四个没引 kpdl(comma)，键帽画 "." 打出 ","。
+    CLDR 不含小键盘，只能另写：catalog.json 给这四个手写 kpdl_win: ","（来源写在 _说明、_每项的依据），生成器把它写进清单新的一栏 kpdl_win（没写的照 xkb，没有 Windows 数据的空着）；
+    FixedLegends.Layout.kpdl(mode)：Windows 模式照 kpdl_win，Mac 模式照 kpdl（xkb；macOS 出什么没有数据、没核，和以前一样）；FixedLayout.forEntry 按模式取。
+    **Windows 模式也拿去连 Linux / 安卓**，这四个在 Linux 上小键盘出的是 "."——和字母区的字一样以 Windows 为准（用户定的"Windows 模式用 CLDR windows"），不另做。
+    扫描工具（compare.py、scan_server.py）按主机平台取（kbdtable.keypad_decimal：Windows 照 kpdl_win、别家照 kpdl）。34 个布局两种小数点在 check_tables.KPDL / KPDL_WIN 和 FixedLegendsTest 全锁住。
+    ② **只有 Mac 有的那一套不拿 Windows 的普通布局顶上**：意大利 QZERTY、瑞典旧版原来 Windows 模式下是 win:it / win:se 的别名，设置里照样能选、⋯ 菜单写"意大利语 · QZERTY · Windows"，
+    画出来却是普通的 QWERTY 意大利键盘。现在 catalog.json 里这两项 win、android 写 null（Windows、安卓都没有这一套），kbd_win / kbd_android 里没有这两段、清单 modes 只写 mac、
+    name_win 空着，Windows 模式下列表里灰掉（第二行写"Mac：… · Windows 没有这一套"，kbd_lang_hosts_mac；选着它时"主机里叫什么"那一行 kbd_host_names_mac）、"模式"里 Windows 灰掉；
+    存着这个组合的退回豆花布局（BoardsTest 锁住存的值不动）。gen_layouts.check_catalog 从"Windows 必须有"放宽成"Windows、Mac 至少一种"，check_tables 按 MAC_ONLY 核。
+    Linux：xkb 有 it(mac)（"Italian (Macintosh)"，就是 QZERTY，读本机 symbols/it 核过），it-qzerty 的 linux 改成它；瑞典旧版在 xkb 里没有对应的（se(mac) 和两套 Mac 布局差得一样多），照写普通的 se；
+    kbd_linux App 不读，只有扫描工具用。字母键不是 a–z 的例外（LETTER_EXCEPTIONS 的 it-qzerty）因此对它有数据的每家都成立，去掉了"只对 Mac"的特判。
+    ③ **⋯ 菜单"键盘"那一项放不下**：US-International 这种长名字 + 逐级缩时，英 / 日 / 德界面两行放不下（审查者按 Noto Sans 8sp、208dp 量的，14 条要三行），截掉的正是"显示的是哪个尺寸"。
+    kbd_menu_stepped 改短成"键盘：实体 · 名字 · 模式（全尺寸 → TKL）"（八种语言；阿拉伯文原来那句放得下、箭头在从右往左的文字里方向容易看反，没改），
+    箭头的写法同设置页尺寸下面那行（kbd_size_note："全尺寸 → TKL → 笔记本"）；菜单项加了 ellipsize END（两行还放不下时末尾写"…"，看得出被截了）。
+    改完照同一个量法：34 个布局 × 有数据的模式 × 九种界面语言 × {不缩、三种缩法、没数据的模式} 共 2367 条，208dp 下全在两行以内；按 190dp 量（给真机字体留一成余量）还有 3 条要三行
+    （日文 US-International 缩成笔记本、德文两条没数据的模式——那是设置页选不出来的组合），由省略号兜底。
+    ④ "测试"一节数据那一半的说明还写着"巴西现在按 ANSI 摆"，改成现在的（按 ABNT2 扫）。
 - **主题（外观）**（2026-10-30，用户：键盘和触控板都是纯黑底 + 暗灰边框，"难以分辨"，要像 Gboard / 三星键盘那样能上色；固定配色"参考再多一点，
   不只是其他键盘的调色，而是比较 match 比较好看的颜色搭配，量不要太大"）。设置页加一节"外观"：预览（一行键 + 一小块触控板，切了马上变）、
   主题九选一、"按键边框"开关（Gboard 同名；开 = 键帽画边框，关 = 只靠键帽底色区分，纯黑 / 高对比的键帽和页面同色，关了就只剩字；
@@ -1498,6 +1585,27 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   G / H 键帽下沿，空位对称、够宽、占空格那一排、中键正对红点、空格两段各 ≥ 1 份，嵌在键里时切到 G、H、B、N 不切、切掉的不超过四分之一、G 的角上小字挪走）；
   红点、三个鼠标键和键的分流逐点核对（同 KeyboardPlanTest.stickRouting））、BoardsTest（默认值、形状跟着布局、大小位置按尺寸 × 指点 × 横竖屏分开、键名不以 kb_ 开头；
   40 轮随机序列各 60 步后 kb_ 开头的键一个没变、只写了 kbd_ / kbx_）。原有的测试一个没改、输出逐字一样（KeyboardPlan 的 placeStick 拆出 placeStickAt、KeyRows.functionKey 扩规则都不影响豆花布局）。
+- 实体键盘第 2 批（数据，2026-11-01，`tools/test.sh`）：check_tables.py（34 个布局 × 四家：来源 / sha256 和 sources.json 一致、清单和 catalog.json / mac_names.json 对得上
+  （modes 照有没有 Windows / Mac 数据、没数据的那家一定没有那一段、只有 Mac 有的正好是 MAC_ONLY 那两个、CLDR 旧名都写进了 mac_names.json、小写的区分词得是有翻译的）、不变量（字母键都有字、凑得齐 a–z、
+  字母键正好是 a–z 的例外 LETTER_EXCEPTIONS、死键只在附加符号上 + DEAD_EXCEPTIONS、ISO / ABNT2 的 0x64、只有 ABNT2 有 0x87、Mac 的 .iso 对调、小键盘 kpdl / kpdl_win / kpco——两种小数点 34 个布局全锁住，KPDL / KPDL_WIN）、
+  抽查值（方案 §6.4 第 2 批 + 凭常识写的各国 @ 在哪之类，和数据核对一致）、别名（win:at = de、拼音 = 美式……））；gen_layouts.py --selftest 加了 KCM 的 U+030D / U+030E、
+  catalog.json 的自检、Mac 现名、xkb br 的小键盘和 0x87；FixedLegendsTest 加了清单按 #!columns 认栏（顺序随便、缺栏 / 栏数不对 / id 不对抛异常）、34 个布局的清单值、
+  三个要翻译的区分词九个 strings.xml 都有、第 2 批抽查值、每个布局每种有数据的模式都过不变量（审查后 65 张表：意大利 QZERTY、瑞典旧版没有 Windows 的）、没数据的模式拼不出键盘
+  （missingModes：拉美的 Mac，意大利 QZERTY、瑞典旧版的 Windows）、每个有 Mac 数据的布局 .iso 都对调、34 个布局的两种小数点和 kpdl(mode)（按模式取，认不出的模式当 Windows）；
+  FixedLayoutTest.caps 照清单扫全部布局（只扫有数据的模式；巴西按 ABNT2 扫：多的 0x87 在字表里、小键盘 0x85 写清单的 kpco——界面那一半做了），
+  keypadDecimal（审查后加的：每个布局 × 有数据的模式拼全尺寸，小键盘小数点写的是 kpdl(mode)；荷兰、冰岛、捷克、斯洛伐克 Windows 写 ","、Mac 写 "."）；
+  gen_layouts.py --selftest 加了 check_catalog 认"只有 Mac 的数据""手写 kpdl_win"、拒"两种都没有""kpdl_win 不是 . ,""没有 Windows 数据却写 kpdl_win"。
+- 实体键盘第 2 批（界面，2026-11-01，`tools/test.sh`）：FixedLayoutTest 的 1B / 笔记本扫描函数多了形状参数（原来那几次照旧传 ANSI / ISO，统计行和改之前逐字一样，拿改之前的输出 diff 过），
+  ABNT2 另调一遍、单独打一行（标"（ABNT2）"）：rowsFill / noOverlap / rangesU / laptopRows / laptopNoOverlap / laptopRanges / placement（三种尺寸）/ routing（TKL + 全尺寸约 108 万点、笔记本约 34 万点）/
+  laptopArrowSeam / specialOneSegment / stickPlan / stickRouting（三种尺寸，约 96 万点）；ABNT2 自己的（abnt2Geometry：键数 Windows 85 / 89 / 107、Mac 84 / 88 / 106，第 4 行顺序和宽度，
+  两种模式 1 左边 0x35、Z 左边 0x64（对照 ISO 的 Mac 模式照旧对调），第 1–3 行和回车同 ISO，第 4 行、小键盘右列以外每个键和 ISO 同一个位置，小键盘 - + 0x85 ↵ 从上到下、+ 一行高，
+  kpco / kpdl 写在键帽上、没给写 "."，清单里每个能选的形状 FixedLayout 都认得；abnt2Pins：; | /? | 右 Shift 两条缝、+ | 0x85 | ↵ 两条缝各归一半，真 TouchRouter 和 keyAt 两条路；
+  abnt2Glyphs：win:br / mac:br 的 / ? 键、1 左边 ' "、Z 左边 \ |、回车左边 ] }、小键盘 . ,、主次键帽、放大提示）；capsLabels（拼音 Mac 模式三种尺寸 Caps 写 中/英、Windows 和美式照旧 Caps、照样跟着 Caps 显示高亮）；
+  turkishI（土耳其 Q / F × 两种模式：i 那个键只画一个字、Shift / Caps 出 İ、放大提示 İ，ı 那个键出 I；别的 32 个布局每个键两种规则判断一样）。键帽齐全那一扫改用 forEntry 拼（巴西按 ABNT2、拼音写 中/英）。
+  BoardsTest：abnt2Shape（巴西只能 ABNT2、存的值不动、清单里每个布局没存过形状时读出默认形状且 FixedLayout 认得）、modes（灰不灰和清单的 modes 一致、审查后三处：拉美的 Mac，
+  意大利 QZERTY、瑞典旧版的 Windows（认不出的模式当 Windows 也灰）；没数据的组合存的值不动，意大利 QZERTY + Windows 不悄悄换成 Mac 或普通意大利）、names（九种界面语言 × 34 个布局：名字不重名、首字母不是小写、有区分词才接 ·；列表每个布局一项、按 Collator 排、同一种语言的挨在一起、Mac 模式下拉美灰掉；
+  带地区的正好是英 / 法 / 德 / 西 / 葡那 14 个；英文界面钉了 13 个名字——JDK 的语言数据，Android 上是 ICU 的，写法可能略有不同）；随机序列改成在全部 34 个布局 + 认不出的 id、三种形状 + 认不出的形状里挑，
+  每步查"读出来的形状是这个布局能选的"。新加的检查用变异测试核过（scratchpad 里的一次性脚本：去掉土耳其规则、ABNT2 的 Mac 模式也对调、kpco 写死、caps_mac 不管、名字一律带地区、不灰掉，各自都有检查报错）。
 - 实体键盘笔记本尺寸 + 逐级缩（2026-11-01，`tools/test.sh`，都在 FixedLayoutTest / BoardsTest 里）：1B 的扫描（placement / routing / caps / 默认位置 / 小红点 / 小红点分流）带上尺寸参数，
   原来那次照旧 TKL / 全尺寸、统计行和改之前逐字一样（拿改之前的输出 diff 过），笔记本另调一次、单独打一行（标"（笔记本）"）。笔记本自己的：键数（Windows 83 / 84、Mac 82 / 83）、
   有哪些没有哪些、第 1–4 行和 TKL 逐段相等、F 行位置、最下一排上下两层各从 0 铺到 15、左 Ctrl 2.25 / 1.25、⋯ 槽、空格以红点为中线、坐标都是 1/16u、底行顺序和键名、
@@ -1527,6 +1635,36 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   也没在真手机上跑过。真机上要看的见"进行中"。
 
 ## 进行中（交接；做完删掉这一节）
+
+- **实体键盘第 2 批：数据那一半（2026-11-01 写完，没提交；不改协议、不改服务，只装 App 就行）**：见决策记录。只跑了离线测试（键帽数据核对 81395 项、生成器自测 54 项、
+  FixedLegendsTest 1089 项、FixedLayoutTest 10184 项（键帽齐全从 96 / 48 种扫到 1168 / 584 种）、BoardsTest、扫描分析自测都过）和编译，一个布局都没在主机上看过。
+  **界面那一半还没做（下一步）**：设置 → 键盘的语言选择现在还是 1B 的一排选项（34 项挤在一起）、没数据的模式不会灰掉（选了拉美 + Mac 模式就退回豆花布局，⋯ 菜单写"数据读不出来"）、
+  形状选项只认 ANSI / ISO（Boards.shape / setShape、SettingsActivity 的形状名都把 abnt2 当 ANSI）、kbd_host_names 那一行拉美的 Mac 名是空的；ABNT2 的几何（0x87、小键盘 0x85、范围、小红点、
+  笔记本 / TKL / 全尺寸）没做，巴西现在按 ANSI 摆；FixedPanel.letterLike 按 Locale.ROOT 比大小写，土耳其的 i / İ 键会画成上下两层（İ 在上、i 在下），要不要特判由界面那一半定。
+  要看：① iPad 设置 → 通用 → 键盘 → 实体键盘（路径凭记忆）里各语言的布局叫什么，和 tools/kbd/mac_names.json 的现名对一遍（只有瑞典两条核过），对不上改那份文件重新生成；
+  ② 界面做完后挑法语（位置变化最大）、瑞典两套、英国（Mac 和 Windows 的 Shift 层不一样）、土耳其 F、巴西、拼音在 iPad / Linux / 桌面模式上各打一遍，看键帽画的和打出来的一致不一致
+  （用户不要求扫描，看哪几个由用户定）；③ 九种语言里布局名字（Locale 翻的"语言（地区）· 旧版"之类）读着顺不顺，kbd_var_intl / legacy / pinyin 是 AI 翻的。
+  （上面"界面那一半还没做"那几样同一天做了，见下一条；②③ 合到下一条的要看项里。）
+- **实体键盘第 2 批：界面那一半（2026-11-01 写完，没提交；不改协议、不改服务，只装 App 就行）**：见决策记录"实体键盘第 2 批（界面那一半）"。只跑了离线测试
+  （FixedLayoutTest 13846 项、BoardsTest 3206 项，原有的统计行逐字不变）和编译，设置页的列表、ABNT2 的样子、⋯ 菜单的字一次都没在真机上看过。要看：
+  ① 设置 → 键盘 → 布局：列表打得开、滚得动，三十多项按名字排（中文按拼音）、每项下面一行"Mac：… · Windows：…"看得清；现在选的蓝字、打开时在眼前；九种语言的名字读着顺不顺
+  （"英语（美国）"取代了原来的"美式"，"德语（德国）"取代了"德语"；挪威叫"挪威语"；阿拉伯文下列表从右往左）。
+  ② 灰掉：模式选 Mac 时列表里"西班牙语（拉丁美洲）"灰着、点不了、写原因；选着拉美时"模式"里 Mac 灰着点不了；换成 Windows 模式就能选拉美。
+  ③ 巴西（ABNT2）：Fold 外屏横屏（TKL）、内屏横屏（全尺寸）、窄的时候缩成笔记本，右 Shift 左边多一个 / ? 键、右 Shift 变短，全尺寸小键盘右列 + 变成一格高、下面多一个 "."，左下小数点写 ","；
+  按 / ? 键、小键盘 "." 主机上出什么（Windows 葡萄牙语（巴西 ABNT2）、Linux br、iPad / Mac 的 Brazilian – ABNT2，**Mac 模式 1 左边发 0x35、Z 左边发 0x64，没照 ISO 对调**，打出来对不对最要紧）；
+  指点换成小红点，红点、切口、三个鼠标键和 ISO 一样。
+  ④ 拼音 Mac 模式：Caps 键帽写"中/英"，字号放得下；点它在 Mac / iPad 上切中英（豆花的大写显示照样会翻，长按对回来，见决策记录）。
+  ⑤ 土耳其 Q / F：i 那个键只画一个 i（以前是上下两层 İ / i），锁 Shift / Caps 变 İ；ı 那个键变 I。
+  ⑥ ⋯ 菜单：写"键盘：实体 · 名字 · 模式"，名字带地区的（"法语（加拿大）"）不套两层括号；字太长时折两行看不看得清。
+  ⑦ iPad / Mac 上核 mac_names.json 的现名（只有瑞典两条核过），对不上改那份文件、重跑 gen_layouts.py。
+- **实体键盘第 2 批：审查后的修改（2026-11-01 写完，没提交；不改协议、不改服务，只装 App 就行）**：见决策记录"实体键盘第 2 批（界面那一半）"的"审查后的修改"。
+  只跑了离线测试（键帽数据核对 79938 项、生成器自测 56 项、FixedLegendsTest 1286 项、FixedLayoutTest 13848 项、BoardsTest 3213 项，别的统计行逐字不变）和编译，界面没在真机上看过。要看：
+  ① 设置 → 键盘：模式选 Windows 时列表里"意大利语 · QZERTY""瑞典语 · 旧版"灰着、点不了，第二行写"Mac：… · Windows 没有这一套"、第三行写原因；换成 Mac 模式能选，
+  选着它们时"模式"里 Windows 灰着，"主机里叫什么"那一行只写 Mac 的名字（kbd_host_names_mac，九种语言放不放得下）。
+  ② 捷克（或斯洛伐克、冰岛、荷兰）+ 全尺寸：Windows 模式小键盘左下那个键写 ","，主机 Windows 选同名布局、NumLock 开着按它出 ","；Mac 模式写 "."——**macOS 上这四个布局小键盘出什么没核**，
+  出的是 "," 就把 Mac 模式也改成照 Windows（catalog.json 加一栏或者直接用 kpdl_win，重跑 gen_layouts.py）；连 Linux 时 Windows 模式写 "," 打出 "."（预期，以 Windows 为准）。
+  ③ ⋯ 菜单"键盘"那一项：逐级缩时写"键盘：实体 · 名字 · 模式（全尺寸 → TKL）"，看不看得懂（看不懂就换回长的说法、另想办法缩短）；
+  选 US-International、界面换成英 / 日 / 德、窗口窄到缩成笔记本，两行放得下；万一放不下末尾是"…"、不是截掉半句。
 
 - **实体键盘笔记本尺寸 + 逐级缩（2026-11-01 写完，没提交，待真机验证；不改协议、不改服务，只装 App 就行）**：见决策记录。只跑了离线测试（实体键盘几何 7772 项（审查后方向键两层的范围改了，见决策记录）、
   键盘切换 168 项，1B 原有的统计行逐字不变）和编译，界面一次都没看过。要看：

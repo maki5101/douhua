@@ -6,7 +6,9 @@
   再和下面生成的数据逐格比。用来在你的 iPad、Linux 电脑、桌面模式上核实方案里最没把握的几条前提，结果决定第 1B 批怎么做。
 - **键帽数据生成**：从 CLDR 43（Mac、Windows）、xkeyboard-config（Linux）、AOSP KCM（安卓）生成每家主机上每个位置出什么字，
   放 `res/raw/kbd_*.txt`。第 1B 批起 App 的实体键盘读 kbd_win（Windows 模式）、kbd_mac 不对调那段（Mac 模式，照真苹果 ISO 键盘发码，见 FixedLayout）
-  和 kbd_catalog；kbd_linux / kbd_android 留着没人读。只有美式（ANSI / ISO）和德语（ISO）。
+  和 kbd_catalog；kbd_linux / kbd_android 留着没人读（扫描工具用）。第 1A / 1B 批只有美式（ANSI / ISO）和德语（ISO）；
+  第 2 批（2026-11-01）补齐拉丁字母布局，共 34 个（清单见 `catalog.json`：苹果键盘语言里的拉丁字母部分 + US-International + 巴西 ABNT2 + 中文拼音）。
+  用户不要求扫描（"主机怎么读那是主机的事"），第 2 批的布局一个都没扫过。
 
 ## 扫描怎么做
 
@@ -49,8 +51,13 @@ python3 tools/kbd/gen_layouts.py --offline  # 不下载，缓存里没有就失�
 python3 tools/kbd/check_tables.py           # 核对抽查值和不变量（tools/test.sh 也跑）
 ```
 
-- 数据源、版本、每个文件的 sha256 在 `sources.json`；生成哪些布局、每家用哪个文件在 `catalog.json`（手写）。
-- 原始文件不进仓库，缓存在 `.cache/kbd/`（不进 git）。sha256 是 2026-10-31 调研时下载的那份算的，新克隆第一次下载要是对不上会直接失败。
+- 数据源、版本、每个文件的 sha256 在 `sources.json`；生成哪些布局、每家用哪个文件、起名字用的语言 / 区分词在 `catalog.json`（手写，开头的 `_说明` 写了每一栏）；
+  CLDR 里的 macOS 旧名 → 现名在 `mac_names.json`（手写，**现名凭记忆，要在 iPad / Mac 上核对**）。
+- 某家没有某个布局的数据：catalog.json 里那家写 `null`（拉美没有 Mac 的、爱尔兰 / 荷兰 / 罗马尼亚 / 奥地利没有安卓的），生成的那份文件里就没有那一段，
+  清单的 `modes` 只写有数据的模式；设置页把它灰掉（选着那种模式时列表里这个布局灰掉、选着这个布局时那种模式灰掉），存着的组合正好没数据时键盘页退回豆花布局。
+- 原始文件不进仓库，缓存在 `.cache/kbd/`（不进 git）。sha256：美式、德语那几个是 2026-10-31 调研时下载的那份算的，第 2 批新加的是 2026-11-01 这次下载算的
+  （CLDR 从 raw.githubusercontent.com 的 release-43 下；AOSP 从 GitHub 镜像下、核了 git blob id）。下载那条路 2026-11-01 跑过（CLDR、AOSP 各删一个缓存文件重新生成，内容一样）。
+  新克隆第一次下载要是对不上会直接失败。
 - CLDR 钉 `release-43`（44 起老平台数据整个删了）；AOSP 按 git blob 钉（GitHub 镜像，不是官方源）；xkb 读本机，版本号要等于钉的 2.46。
 - 苹果、微软的系统布局文件不碰（没有再发布的许可）；xkb 的 `mac` 变体不当 macOS 数据用（方案 §6.1）。
 
@@ -67,7 +74,12 @@ python3 tools/kbd/check_tables.py           # 核对抽查值和不变量（tool
 - 空格子 = 没有字；`\*` 开头 = 死键（统一写成带间距的附加符号，比如 `\*´`）；`\\` = 反斜杠；看不见的字写 `\uXXXX`。
 - 第三层：Mac 是 Option（左 Alt），Windows / Linux / 安卓是 AltGr（右 Alt）。
 - Mac 每个布局两段：`<id>` = macOS 把豆花当 ANSI 键盘（不对调），`<id>.iso` = 当 ISO 键盘（对调 0x35 / 0x64）。
-- `kbd_catalog.txt`：布局清单（默认形状、能选的形状、小键盘小数点、各家主机设置里叫什么）。
+- `kbd_catalog.txt`：布局清单，文件头 `#!columns` 一行列出栏名（读的时候按它认栏，加栏不用改读法）：id、locale（起名字用的语言 + 地区）、
+  variant（区分词：小写的 intl / legacy / pinyin 是 strings.xml 里 kbd_var_<它> 的词，别的照写）、shape / shapes（默认 / 能选的形状：ansi、iso、abnt2）、
+  modes（有数据的模式：win、mac，至少一种——拉美只有 win，意大利 QZERTY、瑞典旧版只有 mac）、kpdl / kpco（小键盘 0x63、ABNT2 小键盘多的 0x85 出的字，取自 xkb，Mac 模式用）、
+  kpdl_win（Windows 模式的小键盘小数点：catalog.json 手写的照微软布局表，荷兰、冰岛、捷克、斯洛伐克是逗号、xkb 是句点；没写的同 kpdl）、caps_mac（Mac 模式 Caps 键帽写什么，拼音写 中/英）、
+  name_mac（macOS 现名）/ name_mac_cldr（CLDR 旧名）/ name_win / name_linux / name_android（没有那家数据的空着）。
+- ABNT2（巴西）：字表里多 0x87（右 Shift 左边那个 / ? 键）一行；小键盘多的 0x85 不在字表里（CLDR 不含小键盘），在清单的 kpco 一栏。
 - 读写在 `kbdtable.py`；App 的 Java 读法（`src/dev/douhua/FixedLegends.java`）照它写，FixedLegendsTest 直接读这几份文件。
 
 ## 许可

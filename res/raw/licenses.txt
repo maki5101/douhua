@@ -64,11 +64,15 @@ written authorization of the copyright holder.
 2. Android Open Source Project — keyboard layouts
 ----------------------------------------------------------------------
 Used for: res/raw/kbd_android.txt, generated from data/keyboards/Generic.kl
-and packages/InputDevices/res/raw/keyboard_layout_english_us.kcm,
-keyboard_layout_german.kcm of platform/frameworks/base.
+and the keyboard_layout_*.kcm files in packages/InputDevices/res/raw/ of
+platform/frameworks/base (the list of files is in the header of
+kbd_android.txt).
 
 Copyright (C) 2010 The Android Open Source Project
 Copyright (C) 2012 The Android Open Source Project
+Copyright (C) 2013 The Android Open Source Project
+Copyright (C) 2018 The Android Open Source Project
+Copyright (C) 2020 The Android Open Source Project
 
 Licensed under the Apache License, Version 2.0 (full text in section 5).
 

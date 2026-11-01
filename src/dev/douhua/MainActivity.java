@@ -892,6 +892,8 @@ public final class MainActivity extends Activity
         for (int i = 0; i < MENU_IDS.length; i++) {
             TextView b = Style.button(this, 15);
             b.setMaxLines(2);
+            // 缩到最小字号两行还放不下就在末尾写"…"，看得出被截了（"键盘"那一项带着布局名，长的名字 + 逐级缩时会这样，2026-11-01 审查发现）
+            b.setEllipsize(TextUtils.TruncateAt.END);
             b.setText(MENU_LABELS[i]);
             int id = MENU_IDS[i];
             b.setOnTouchListener((v, e) -> localTouch(v, e, id));
@@ -2015,7 +2017,10 @@ public final class MainActivity extends Activity
         // 逐级缩：写实际显示的是哪种（按上次量的页宽现算；键盘页没显示时照"显示的就是选的尺寸"写）
         int level = keyboardScreen.getVisibility() == View.VISIBLE ? keyboardScreen.fixedLevelNow() : 0;
         if (!boards.fixedSelected()) board.setText(R.string.kbd_menu_douhua);
-        else if (ladder.isEmpty()) board.setText(R.string.kbd_menu_no_data);   // 键帽数据读不出来：照样显示豆花布局（FixedLayout.forLegends）
+        else if (ladder.isEmpty() && !boards.modeAvailable()) {   // 这个布局没有这种模式的数据（拉美的 Mac 模式、意大利 QZERTY / 瑞典旧版的 Windows 模式；设置页选不出来）：照样显示豆花布局
+            board.setText(getString(R.string.kbd_menu_no_mode, FixedData.langName(this, boards.lang()),
+                    getString(FixedLayout.MAC.equals(boards.mode()) ? R.string.kbd_mode_mac : R.string.kbd_mode_win)));
+        } else if (ladder.isEmpty()) board.setText(R.string.kbd_menu_no_data);   // 键帽数据读不出来：照样显示豆花布局（FixedLayout.forEntry）
         else if (level < 0) board.setText(R.string.kbd_menu_narrow);   // 连笔记本都放不下
         else if (level > 0) board.setText(getString(R.string.kbd_menu_stepped, FixedData.shortName(this, boards.spec()),
                 FixedData.sizeName(this, ladder.get(0).size), FixedData.sizeName(this, ladder.get(level).size)));

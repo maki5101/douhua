@@ -34,7 +34,8 @@ trap 'rm -rf "$OUT"' EXIT
 # 主机实测扫描许发哪些键、一段怎么拆成拍（KeyScan）、
 # 实体键盘第 1B 批（FixedLegends：读 res/raw 的键帽数据、抽查值；FixedLayout / FixedPanel：几何、每区块每行的范围、分流、小红点在真 ThinkPad 的位置、
 # 空格那一排的三个鼠标键、键帽齐全；KeyboardPlan.planFixed：默认位置、触控板、窄窗口退回豆花布局；Boards：切换键盘不动豆花布局的 kb_ 设置；
-# 笔记本尺寸（照 ThinkPad，方向键两层）和逐级缩（KeyboardPlan.fixedLevel / fitFixedRect、FixedSizing：显示哪一级、用哪份位置、拖动怎么换回））、
+# 笔记本尺寸（照 ThinkPad，方向键两层）和逐级缩（KeyboardPlan.fixedLevel / fitFixedRect、FixedSizing：显示哪一级、用哪份位置、拖动怎么换回）；
+# 第 2 批：巴西 ABNT2 的几何、拼音的 中/英、土耳其的 i / İ，设置页语言列表的名字 / 排序 / 没数据的模式灰掉（Boards））、
 # 手柄页（GamepadTouch：单键 / 面键簇 / 十字键 / 摇杆 / N64 的 C 键的触摸模型、收尾回中立；GamepadPlan：15 个预设和自定义的自动排；
 # GamepadSpec：字样、轮换、自定义存成一行再读回来；GamepadConfig 编解码、手柄描述符和两路合并（HidTest、ServerPartsTest 的 GamepadMux））
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \

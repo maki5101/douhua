@@ -1,6 +1,7 @@
 # kbd_win.txt：豆花儿实体键盘的键帽字，主机是 Windows（CLDR 的 Windows 10 数据）。自动生成，勿手改。
 # 生成：python3 tools/kbd/gen_layouts.py（数据源、版本、校验见 tools/kbd/sources.json；格式见 tools/kbd/README.md「数据格式」）。
 # 每行：HID 用法码（十六进制，PC 惯例的位置）、普通、Shift、AltGr、AltGr+Shift；空 = 没有字，\* = 死键，\\ = 反斜杠，\uXXXX = 看不见的字。
+# Windows 没有的布局（只有 Mac 有的那一套：se-legacy、it-qzerty）这里没有那一段。
 # 数据：Unicode CLDR keyboards（老平台数据，最后一版在 release-43，44 起删了） release-43（https://github.com/unicode-org/cldr/tree/release-43/keyboards）。
 # Copyright © 1991-2023 Unicode, Inc.
 # 许可：Unicode License（CLDR 43 发布时用的 Unicode, Inc. License Agreement – Data Files and Software，条款见 https://www.unicode.org/copyright.html；全文随开源许可页一起放）
@@ -8,8 +9,36 @@
 #!platform win
 #!source cldr release-43
 #!file cldr windows/_platform.xml c73b915742ef0a9640646314864954db09efc905a4754dd6536a69319272f331
+#!file cldr windows/cs-t-k0-windows.xml 526dc705f4bc4169fb6ae129da630ca4bcdf1bf7728af116935f86fca25cbe2f
+#!file cldr windows/da-t-k0-windows.xml 9cb9f590ba81e695fb6256945f7c10f0483de447d4f5efe086eeffd9216215e1
+#!file cldr windows/de-CH-t-k0-windows.xml 40ec4e3d951c95bc39fb61a74da8fbf828aa8f6b50758b901359725e97c6e727
 #!file cldr windows/de-t-k0-windows.xml 37568b0cd7984fc8181724da89b850f43514240767bde8d8cb647db2ff5a2607
+#!file cldr windows/en-GB-t-k0-windows.xml 31dc99b45aae6ad5c648034b3842b1302e3c3ec840c6eef2ac50be29882aed40
+#!file cldr windows/en-t-k0-windows-extended.xml 59d0054041ba53cc7033e8e250e98b617371d66e7634a6835b56695da1683767
 #!file cldr windows/en-t-k0-windows.xml 3a5b8bb3931a5672cec7b271be1746de27de9e3c6c6677158859f114ce557a0b
+#!file cldr windows/es-419-t-k0-windows.xml d46a72e1e99536519d0e74af784c127935f1683da3fd0789d965a1fe47fe69ce
+#!file cldr windows/es-t-k0-windows.xml af5a172b94686ecc9a912f89fe879206dcd0d3db337e0ac591747d00bbb2b997
+#!file cldr windows/fi-t-k0-windows.xml b1bd390d1bd5aecaf6d886f5c40a8ae61c1482bcb410988fce4d5866a79d888c
+#!file cldr windows/fr-BE-t-k0-windows.xml 6dbe82cabbac8e4b4b8c2c85491ceb51ee0d69b24d1264c88e90633b598f62eb
+#!file cldr windows/fr-CA-t-k0-windows.xml 0f846b897b8c5051971544472add9cd72e5a369c26e033047c63fb8a975bf0ee
+#!file cldr windows/fr-CH-t-k0-windows.xml 45dda9c80f4f6010065748b142a18c34fedd97fd51282c2d19f60218d0780979
+#!file cldr windows/fr-t-k0-windows.xml 96c8b474463fa9bdc6042650f33c7f52b9b8222a85c0815301d07fbfca8552fa
+#!file cldr windows/ga-t-k0-windows.xml 9d6b4fff46f4f7f6661d0afb046ca2c60a69ef67609c7c19d6fe7bedb4fb2a0e
+#!file cldr windows/hu-t-k0-windows.xml 39f5185bc232f2c40a05c57e49069d59d9230a98c79a8315fcd04fd2964da2b0
+#!file cldr windows/is-t-k0-windows.xml fc6d84c97521952cacf66b82190580f449032e7eca2de09ab5b1756fa951a405
+#!file cldr windows/it-t-k0-windows.xml 231192550555787965d5ed02896ac2c098748c368d7b98fce01a260dbea04696
+#!file cldr windows/nb-t-k0-windows.xml 69e4c142e37ca4ea9fcc926ac595c5e791db56b7747dc975db5dfb27fe7aafdc
+#!file cldr windows/nl-t-k0-windows.xml d6d31c02d02025a829e8a13715016e6dc056ee923dcd049f47bca39ed64678d9
+#!file cldr windows/pl-t-k0-windows-extended.xml 2fc3009cf04bb4db7271eb596e6813c61020ac878f74ad07671c62e225137fe3
+#!file cldr windows/pt-PT-t-k0-windows.xml 957e856a32988f69a56789bd9a3bf537d34faf6d0e2a800a276913f4ba1a2b3b
+#!file cldr windows/pt-t-k0-windows-var.xml 824c3c7b3463a9e3429de72675b5c90999a9a4a52f95525f5fea3d075abb8592
+#!file cldr windows/ro-t-k0-windows.xml b898499970ba39cb548f7edfdf200b44f6d6d8fe51b8c4226e13fdd296c4541b
+#!file cldr windows/sk-t-k0-windows.xml 34bb86fbfdf39903ee1eb43abfb1e3b346910843d1642939becedccfada8cf7d
+#!file cldr windows/sl-t-k0-windows.xml 9d928657fba2d8fb92baad3a6c7bd2404d4cd61faaf5df3a2110d64fe54dd9ef
+#!file cldr windows/sv-t-k0-windows.xml e27e7adf49bfc269e899a2d1007967e83a4e928ab136aa1c67b149ea3a5d1b3c
+#!file cldr windows/tr-t-k0-windows-legacy.xml 1e7a248aa3d6aee80531e68a8190ce8663c0857e00662f37543274d8436c874c
+#!file cldr windows/tr-t-k0-windows.xml 6b6e2b60c34e23bebed43b758908b7e78b9871dc701765f4994ae03e6d432b7c
+#!file cldr windows/zh-t-k0-windows.xml ff41bfc5215b35552cfa2ea8d393bb3e33e007cf4d4c45ae4bc5eccf2694d526
 
 @us
 04	a	A
@@ -61,6 +90,406 @@
 38	/	?
 64	\\	|
 
+@us-intl
+04	a	A	á	Á
+05	b	B
+06	c	C	©	¢
+07	d	D	ð	Ð
+08	e	E	é	É
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I	í	Í
+0d	j	J
+0e	k	K
+0f	l	L	ø	Ø
+10	m	M	µ
+11	n	N	ñ	Ñ
+12	o	O	ó	Ó
+13	p	P	ö	Ö
+14	q	Q	ä	Ä
+15	r	R	®
+16	s	S	ß	§
+17	t	T	þ	Þ
+18	u	U	ú	Ú
+19	v	V
+1a	w	W	å	Å
+1b	x	X
+1c	y	Y	ü	Ü
+1d	z	Z	æ	Æ
+1e	1	!	¡	¹
+1f	2	@	²
+20	3	#	³
+21	4	$	¤	£
+22	5	%	€
+23	6	\*^	¼
+24	7	&	½
+25	8	*	¾
+26	9	(	‘
+27	0	)	’
+2d	-	_	¥
+2e	=	+	×	÷
+2f	[	{	«
+30	]	}	»
+31	\\	|	¬	¦
+33	;	:	¶	°
+34	\*'	\*"	´	¨
+35	\*`	\*~
+36	,	<	ç	Ç
+37	.	>
+38	/	?	¿
+64	\\	|
+
+@gb
+04	a	A	á	Á
+05	b	B
+06	c	C
+07	d	D
+08	e	E	é	É
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I	í	Í
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O	ó	Ó
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U	ú	Ú
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"
+20	3	£
+21	4	$	€
+22	5	%
+23	6	^
+24	7	&
+25	8	*
+26	9	(
+27	0	)
+2d	-	_
+2e	=	+
+2f	[	{
+30	]	}
+31	#	~	\\	|
+33	;	:
+34	'	@
+35	`	¬	¦
+36	,	<
+37	.	>
+38	/	?
+64	\\	|
+
+@ie
+04	a	A	á	Á
+05	b	B
+06	c	C
+07	d	D
+08	e	E	é	É
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I	í	Í
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O	ó	Ó
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U	ú	Ú
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"
+20	3	£
+21	4	$	€
+22	5	%
+23	6	^
+24	7	&
+25	8	*
+26	9	(
+27	0	)
+2d	-	_
+2e	=	+
+2f	[	{
+30	]	}
+31	#	~
+33	;	:
+34	'	@	\*´	`
+35	\*`	¬	¦	¦
+36	,	<
+37	.	>
+38	/	?
+64	\\	|
+
+@nl
+04	a	A
+05	b	B
+06	c	C	¢
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M	µ
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R	¶
+16	s	S	ß
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X	»
+1c	y	Y
+1d	z	Z	«
+1e	1	!	¹
+1f	2	"	²
+20	3	#	³
+21	4	$	¼
+22	5	%	½
+23	6	&	¾
+24	7	_	£
+25	8	(	{
+26	9	)	}
+27	0	'
+2d	/	?	\\
+2e	°	\*~	\*¸
+2f	\*¨	\*^
+30	*	|
+31	<	>
+33	+	±
+34	\*´	\*`
+35	@	§	¬
+36	,	;
+37	.	:	·
+38	-	=
+64	]	[	¦
+
+@ro
+04	a	A
+05	b	B
+06	c	C	©
+07	d	D	đ	Đ
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L	ł	Ł
+10	m	M
+11	n	N
+12	o	O
+13	p	P	§
+14	q	Q
+15	r	R
+16	s	S	ß
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!	\*~
+1f	2	@	\*ˇ
+20	3	#	\*^
+21	4	$	\*˘
+22	5	%	\*°
+23	6	^	\*˛
+24	7	&	\*`
+25	8	*	\*˙
+26	9	(	\*´
+27	0	)	\*˝
+2d	-	_	\*¨	–
+2e	=	+	\*¸	±
+2f	ă	Ă	[	{
+30	î	Î	]	}
+31	â	Â	\\	|
+33	ș	Ș	;	:
+34	ț	Ț	'	"
+35	„	”	`	~
+36	,	;	<	«
+37	.	:	>	»
+38	/	?
+64	\\	|
+
+@fr
+04	q	Q
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	,	?
+11	n	N
+12	o	O
+13	p	P
+14	a	A
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	z	Z
+1b	x	X
+1c	y	Y
+1d	w	W
+1e	&	1
+1f	é	2	\*~
+20	"	3	#
+21	'	4	{
+22	(	5	[
+23	-	6	|
+24	è	7	\*`
+25	_	8	\\
+26	ç	9	^
+27	à	0	@
+2d	)	°	]
+2e	=	+	}
+2f	\*^	\*¨
+30	$	£	¤
+31	*	µ
+33	m	M
+34	ù	%
+35	²
+36	;	.
+37	:	/
+38	!	§
+64	<	>
+
+@be
+04	q	Q
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	,	?
+11	n	N
+12	o	O
+13	p	P
+14	a	A
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	z	Z
+1b	x	X
+1c	y	Y
+1d	w	W
+1e	&	1	|
+1f	é	2	@
+20	"	3	#
+21	'	4	{
+22	(	5	[
+23	§	6	^
+24	è	7
+25	!	8
+26	ç	9	{
+27	à	0	}
+2d	)	°
+2e	-	_
+2f	\*^	\*¨	[
+30	$	*	]
+31	µ	£	\*`	\*`
+33	m	M
+34	ù	%	\*´	\*´
+35	²	³
+36	;	.
+37	:	/
+38	=	+	\*~	\*~
+64	<	>	\\
+
+@ca-fr
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X	»
+1c	y	Y
+1d	z	Z	«
+1e	1	!
+1f	2	@
+20	3	#
+21	4	$	¤
+22	5	%
+23	6	?
+24	7	&	{
+25	8	*	}
+26	9	(	[
+27	0	)	]
+2d	-	_
+2e	=	+	¬
+2f	\*^	\*¨	\*`
+30	ç	Ç	\*~
+31	à	À
+33	;	:	°
+34	è	È
+35	/	\\	|
+36	,	'	<
+37	.	"	>
+38	é	É
+64	ù	Ù
+
 @de
 04	a	A
 05	b	B
@@ -110,3 +539,912 @@
 37	.	:
 38	-	_
 64	<	>	|
+
+@at = de
+
+@ch-de
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	z	Z
+1d	y	Y
+1e	1	+	¦
+1f	2	"	@
+20	3	*	#
+21	4	ç	°
+22	5	%	§
+23	6	&	¬
+24	7	/	|
+25	8	(	¢
+26	9	)
+27	0	=
+2d	'	?	\*´
+2e	\*^	\*`	\*~
+2f	ü	è	[
+30	\*¨	!	]
+31	$	£	}
+33	ö	é
+34	ä	à	{
+35	§	°
+36	,	;
+37	.	:
+38	-	_
+64	<	>	\\
+
+@ch-fr
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	z	Z
+1d	y	Y
+1e	1	+	¦
+1f	2	"	@
+20	3	*	#
+21	4	ç	°
+22	5	%	§
+23	6	&	¬
+24	7	/	|
+25	8	(	¢
+26	9	)
+27	0	=
+2d	'	?	\*´
+2e	\*^	\*`	\*~
+2f	è	ü	[
+30	\*¨	!	]
+31	$	£	}
+33	é	ö
+34	à	ä	{
+35	§	°
+36	,	;
+37	.	:
+38	-	_
+64	<	>	\\
+
+@se
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M	µ
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"	@
+20	3	#	£
+21	4	¤	$
+22	5	%	€
+23	6	&
+24	7	/	{
+25	8	(	[
+26	9	)	]
+27	0	=	}
+2d	+	?	\\
+2e	\*´	\*`
+2f	å	Å
+30	\*¨	\*^	\*~
+31	'	*
+33	ö	Ö
+34	ä	Ä
+35	§	½
+36	,	;
+37	.	:
+38	-	_
+64	<	>	|
+
+@fi = se
+
+@dk
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M	µ
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"	@
+20	3	#	£
+21	4	¤	$
+22	5	%	€
+23	6	&
+24	7	/	{
+25	8	(	[
+26	9	)	]
+27	0	=	}
+2d	+	?
+2e	\*´	\*`	|
+2f	å	Å
+30	\*¨	\*^	\*~
+31	'	*
+33	æ	Æ
+34	ø	Ø
+35	½	§
+36	,	;
+37	.	:
+38	-	_
+64	<	>	\\
+
+@no
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M	µ
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"	@
+20	3	#	£
+21	4	¤	$
+22	5	%	€
+23	6	&
+24	7	/	{
+25	8	(	[
+26	9	)	]
+27	0	=	}
+2d	+	?
+2e	\\	\*`	\*´
+2f	å	Å
+30	\*¨	\*^	\*~
+31	'	*
+33	ø	Ø
+34	æ	Æ
+35	|	§
+36	,	;
+37	.	:
+38	-	_
+64	<	>
+
+@is
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M	µ
+11	n	N
+12	o	O
+13	p	P
+14	q	Q	@
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"
+20	3	#
+21	4	$
+22	5	%	€
+23	6	&
+24	7	/	{
+25	8	(	[
+26	9	)	]
+27	0	=	}
+2d	ö	Ö	\\
+2e	-	_
+2f	ð	Ð
+30	'	?	~
+31	+	*	\*`
+33	æ	Æ
+34	\*´	'	\*^
+35	\*°	\*¨	°
+36	,	;
+37	.	:
+38	þ	Þ
+64	<	>	|
+
+@es
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!	|
+1f	2	"	@
+20	3	·	#
+21	4	$	\*~
+22	5	%	€
+23	6	&	¬
+24	7	/
+25	8	(
+26	9	)
+27	0	=
+2d	'	?
+2e	¡	¿
+2f	\*`	\*^	[
+30	+	*	]
+31	ç	Ç	}
+33	ñ	Ñ
+34	\*´	\*¨	{
+35	º	ª	\\
+36	,	;
+37	.	:
+38	-	_
+64	<	>
+
+@latam
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q	@
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"
+20	3	#
+21	4	$
+22	5	%
+23	6	&
+24	7	/
+25	8	(
+26	9	)
+27	0	=
+2d	'	?	\\
+2e	¿	¡
+2f	\*´	\*¨
+30	+	*	~
+31	}	]	\*`
+33	ñ	Ñ
+34	{	[	\*^
+35	|	°	¬
+36	,	;
+37	.	:
+38	-	_
+64	<	>
+
+@pt
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"	@
+20	3	#	£
+21	4	$	§
+22	5	%	€
+23	6	&
+24	7	/	{
+25	8	(	[
+26	9	)	]
+27	0	=	}
+2d	'	?
+2e	«	»
+2f	+	*	\*¨
+30	\*´	\*`	]
+31	\*~	\*^
+33	ç	Ç
+34	º	ª
+35	\\	|
+36	,	;
+37	.	:
+38	-	_
+64	<	>
+
+@br
+04	a	A
+05	b	B
+06	c	C	₢
+07	d	D
+08	e	E	°
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q	/
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W	?
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!	¹
+1f	2	@	²
+20	3	#	³
+21	4	$	£
+22	5	%	¢
+23	6	\*¨	¬
+24	7	&
+25	8	*
+26	9	(
+27	0	)
+2d	-	_
+2e	=	+	§
+2f	\*´	\*`
+30	[	{	ª
+31	]	}	º
+33	ç	Ç
+34	\*~	\*^
+35	'	"
+36	,	<
+37	.	>
+38	;	:
+64	\\	|
+87	/	?	°
+
+@it
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"
+20	3	£
+21	4	$
+22	5	%	€
+23	6	&
+24	7	/
+25	8	(
+26	9	)
+27	0	=
+2d	'	?
+2e	ì	^
+2f	è	é	[	{
+30	+	*	]	}
+31	ù	§
+33	ò	ç	@
+34	à	°	#
+35	\\	|
+36	,	;
+37	.	:
+38	-	_
+64	<	>
+
+@hr
+04	a	A
+05	b	B	{
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F	[
+0a	g	G	]
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K	ł
+0f	l	L	Ł
+10	m	M	§
+11	n	N	}
+12	o	O
+13	p	P
+14	q	Q	\\
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V	@
+1a	w	W	|
+1b	x	X
+1c	z	Z
+1d	y	Y
+1e	1	!	~
+1f	2	"	\*ˇ
+20	3	#	\*^
+21	4	$	\*˘
+22	5	%	\*°
+23	6	&	\*˛
+24	7	/	`
+25	8	(	\*˙
+26	9	)	\*´
+27	0	=	\*˝
+2d	'	?	\*¨
+2e	+	*	\*¸
+2f	š	Š	÷
+30	đ	Đ	×
+31	ž	Ž	¤
+33	č	Č
+34	ć	Ć	ß
+35	\*¸	\*¨
+36	,	;	<
+37	.	:	>
+38	-	_
+64	<	>
+
+@si = hr
+
+@cz
+04	a	A
+05	b	B	{
+06	c	C	&
+07	d	D	Đ
+08	e	E	€
+09	f	F	[
+0a	g	G	]
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K	ł
+0f	l	L	Ł
+10	m	M
+11	n	N	}
+12	o	O
+13	p	P
+14	q	Q	\\
+15	r	R
+16	s	S	đ
+17	t	T
+18	u	U
+19	v	V	@
+1a	w	W	|
+1b	x	X	#
+1c	z	Z
+1d	y	Y
+1e	+	1	~
+1f	ě	2	\*ˇ
+20	š	3	\*^
+21	č	4	\*˘
+22	ř	5	\*°
+23	ž	6	\*˛
+24	ý	7	\*`
+25	á	8	\*˙
+26	í	9	\*´
+27	é	0	\*˝
+2d	=	%	\*¨
+2e	\*´	\*ˇ	\*¸
+2f	ú	/	÷
+30	)	(	×
+31	\*¨	'	¤
+33	ů	"	$
+34	§	!	ß
+35	;	\*°
+36	,	?	<
+37	.	:	>
+38	-	_	*
+64	\\	|
+
+@sk
+04	a	A
+05	b	B	{
+06	c	C	&
+07	d	D	Đ
+08	e	E	€
+09	f	F	[
+0a	g	G	]
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K	ł
+0f	l	L	Ł
+10	m	M
+11	n	N	}
+12	o	O
+13	p	P	'
+14	q	Q	\\
+15	r	R
+16	s	S	đ
+17	t	T
+18	u	U
+19	v	V	@
+1a	w	W	|
+1b	x	X	#
+1c	z	Z
+1d	y	Y	>
+1e	+	1	~
+1f	ľ	2	\*ˇ
+20	š	3	\*^
+21	č	4	\*˘
+22	ť	5	\*°
+23	ž	6	\*˛
+24	ý	7	`
+25	á	8	\*˙
+26	í	9	\*´
+27	é	0	\*˝
+2d	=	%	\*¨
+2e	\*´	\*ˇ	\*¸
+2f	ú	/	÷
+30	ä	(	×
+31	ň	)	¤
+33	ô	"	$
+34	§	!	ß
+35	;	\*°
+36	,	?	<
+37	.	:	>
+38	-	_	*
+64	&	*	<
+
+@hu
+04	a	A	ä
+05	b	B	{
+06	c	C	&
+07	d	D	Đ
+08	e	E	Ä
+09	f	F	[
+0a	g	G	]
+0b	h	H
+0c	i	I	Í
+0d	j	J	í
+0e	k	K	ł
+0f	l	L	Ł
+10	m	M	<
+11	n	N	}
+12	o	O
+13	p	P
+14	q	Q	\\
+15	r	R
+16	s	S	đ
+17	t	T
+18	u	U	€
+19	v	V	@
+1a	w	W	|
+1b	x	X	#
+1c	z	Z
+1d	y	Y	>
+1e	1	'	~
+1f	2	"	\*ˇ
+20	3	+	\*^
+21	4	!	\*˘
+22	5	%	\*°
+23	6	/	\*˛
+24	7	=	`
+25	8	(	\*˙
+26	9	)	\*´
+27	ö	Ö	\*˝
+2d	ü	Ü	\*¨
+2e	ó	Ó	\*¸
+2f	ő	Ő	÷
+30	ú	Ú	×
+31	ű	Ű	¤
+33	é	É	$
+34	á	Á	ß
+35	0	§
+36	,	?	;
+37	.	:	>
+38	-	_	*
+64	í	Í	<
+
+@pl
+04	a	A	ą	Ą
+05	b	B
+06	c	C	ć	Ć
+07	d	D
+08	e	E	ę	Ę
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L	ł	Ł
+10	m	M
+11	n	N	ń	Ń
+12	o	O	ó	Ó
+13	p	P
+14	q	Q
+15	r	R
+16	s	S	ś	Ś
+17	t	T
+18	u	U	€
+19	v	V
+1a	w	W
+1b	x	X	ź	Ź
+1c	y	Y
+1d	z	Z	ż	Ż
+1e	1	!
+1f	2	@
+20	3	#
+21	4	$
+22	5	%
+23	6	^
+24	7	&
+25	8	*
+26	9	(
+27	0	)
+2d	-	_
+2e	=	+
+2f	[	{
+30	]	}
+31	\\	|
+33	;	:
+34	'	"
+35	`	\*~
+36	,	<
+37	.	>
+38	/	?
+64	\\	|
+
+@tr-q
+04	a	A	æ	Æ
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	ı	I	i	İ
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q	@
+15	r	R
+16	s	S	ß
+17	t	T	₺
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!	>
+1f	2	'	£
+20	3	\*^	#
+21	4	+	$
+22	5	%	½
+23	6	&
+24	7	/	{
+25	8	(	[
+26	9	)	]
+27	0	=	}
+2d	*	?	\\
+2e	-	_	|
+2f	ğ	Ğ	\*¨
+30	ü	Ü	\*~
+31	,	;	\*`
+33	ş	Ş	\*´
+34	i	İ
+35	"	é	<
+36	ö	Ö
+37	ç	Ç
+38	.	:
+64	<	>	|
+
+@tr-f
+04	u	U	æ	Æ
+05	ç	Ç
+06	v	V	¢	©
+07	e	E	€
+08	ğ	Ğ
+09	a	A		ª
+0a	ü	Ü
+0b	t	T	₺
+0c	n	N
+0d	k	K
+0e	m	M
+0f	l	L
+10	s	S	µ	º
+11	z	Z
+12	h	H	ø	Ø
+13	p	P	£
+14	f	F	@
+15	ı	I	¶	®
+16	i	İ	ß	§
+17	o	O
+18	r	R
+19	c	C
+1a	g	G
+1b	ö	Ö	»	>
+1c	d	D	¥
+1d	j	J	«	<
+1e	1	!	¹	¡
+1f	2	"	²
+20	3	\*^	#	³
+21	4	$	¼	¤
+22	5	%	½
+23	6	&	¾
+24	7	'	{
+25	8	(	[
+26	9	)	]
+27	0	=	}
+2d	/	?	\\	¿
+2e	-	_	|
+2f	q	Q	\*¨
+30	w	W	\*~
+31	x	X	\*`
+33	y	Y	\*´
+34	ş	Ş
+35	+	*	¬
+36	b	B	×
+37	.	:	÷
+38	,	;	\u00AD
+64	<	>	|	¦
+
+@cn-pinyin = us

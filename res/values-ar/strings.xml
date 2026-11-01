@@ -498,15 +498,18 @@
     <string name="gp_arcade6">أركيد 6 أزرار</string>
     <string name="tab_keyboard">لوحة المفاتيح</string>
     <string name="kbd_menu_douhua">لوحة المفاتيح: دوهوا</string>
-    <string name="kbd_menu_fixed">لوحة المفاتيح: فعلية (%1$s)</string>
+    <string name="kbd_menu_fixed">لوحة المفاتيح: فعلية · %1$s</string>
     <string name="kbd_menu_narrow">لوحة المفاتيح: فعلية (ضيقة هنا، تُعرض دوهوا)</string>
-    <string name="kbd_menu_stepped">لوحة المفاتيح: فعلية (%1$s؛ %2$s لا تتسع، تُعرض %3$s)</string>
+    <string name="kbd_menu_stepped">لوحة المفاتيح: فعلية · %1$s (%2$s لا تتسع، تُعرض %3$s)</string>
     <string name="kbd_menu_no_data">لوحة المفاتيح: فعلية (تعذرت قراءة البيانات، تُعرض دوهوا)</string>
+    <string name="kbd_menu_no_mode">لوحة المفاتيح: فعلية · %1$s (لا بيانات لوضع %2$s، تُعرض دوهوا)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
-    <string name="kbd_lang_us">الإنجليزية (الولايات المتحدة)</string>
-    <string name="kbd_lang_de">الألمانية</string>
+    <string name="kbd_var_intl">دولي</string>
+    <string name="kbd_var_legacy">قديم</string>
+    <string name="kbd_var_pinyin">بينيين</string>
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
+    <string name="kbd_mode_unavailable">%1$s (لا بيانات لهذا التخطيط)</string>
     <string name="sec_kbd_board">أي لوحة مفاتيح</string>
     <string name="kbd_board">تستخدم شاشة لوحة المفاتيح</string>
     <string name="kbd_board_douhua">تخطيط دوهوا</string>
@@ -515,9 +518,16 @@
     <string name="sec_kbd_fixed">لوحة مفاتيح فعلية</string>
     <string name="kbd_lang">التخطيط (ما تعرضه المفاتيح)</string>
     <string name="kbd_host_names">اختر التخطيط نفسه على الكمبيوتر أو الجهاز اللوحي: اسمه على Mac وiPad «%1$s» وعلى Windows «%2$s».</string>
+    <string name="kbd_host_names_win">اختر التخطيط نفسه على الكمبيوتر أو الجهاز اللوحي: اسمه على Windows «%1$s». لا توجد بيانات لهذا التخطيط في وضع Mac.</string>
+    <string name="kbd_host_names_mac">اختر التخطيط نفسه على الكمبيوتر أو الجهاز اللوحي: اسمه على Mac وiPad «%1$s». لا يوجد هذا التخطيط على Windows، لذا لا توجد بيانات له في وضع Windows.</string>
+    <string name="kbd_lang_hosts">Mac: %1$s · Windows: %2$s</string>
+    <string name="kbd_lang_hosts_win">Windows: %1$s</string>
+    <string name="kbd_lang_hosts_mac">Mac: %1$s · غير موجود على Windows</string>
+    <string name="kbd_lang_no_mode">لا توجد بيانات مفاتيح لوضع %1$s؛ غيّر الوضع لاختياره</string>
     <string name="kbd_shape">الشكل</string>
     <string name="kbd_shape_ansi">ANSI (أمريكي، Enter في صف واحد)</string>
     <string name="kbd_shape_iso">ISO (Enter على شكل L، ومفتاح إضافي يسار Z)</string>
+    <string name="kbd_shape_abnt2">ABNT2 (البرازيل: Enter على شكل L، ومفتاح / ? يسار Shift الأيمن)</string>
     <string name="kbd_size">الحجم</string>
     <string name="kbd_size_tkl">بدون لوحة أرقام (TKL، %1$d مفتاحًا)</string>
     <string name="kbd_size_full">كاملة (مع لوحة أرقام، %1$d مفتاحًا)</string>
@@ -531,6 +541,7 @@
     <string name="kbd_host_note">يرسل دوهوا مواضع المفاتيح، أما الحرف المكتوب فيحدده تخطيط لوحة المفاتيح المضبوط على الكمبيوتر أو الجهاز اللوحي. اضبط التخطيط نفسه هناك لتطابق المفاتيح ما تكتبه. في وضع سطح المكتب «هناك» هو هذا الهاتف: في إعدادات لوحة المفاتيح الفعلية للهاتف اختر التخطيط نفسه لـ Douhua Keyboard.</string>
     <string name="kbd_open_hw">فتح إعدادات لوحة المفاتيح الفعلية للهاتف</string>
     <string name="kbd_no_data">تعذرت قراءة بيانات لوحة المفاتيح الفعلية</string>
+    <string name="kbd_no_mode_data">لا توجد بيانات مفاتيح لـ%1$s في وضع %2$s، لذلك تعرض شاشة لوحة المفاتيح تخطيط دوهوا. اختر وضعًا أو تخطيطًا آخر.</string>
     <string name="sec_kbd_douhua">تخطيط دوهوا</string>
     <string name="licenses">تراخيص المصادر المفتوحة</string>
 </resources>

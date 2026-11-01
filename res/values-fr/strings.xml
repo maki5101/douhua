@@ -498,15 +498,18 @@
     <string name="gp_arcade6">Arcade 6 boutons</string>
     <string name="tab_keyboard">Clavier</string>
     <string name="kbd_menu_douhua">Clavier : Douhua</string>
-    <string name="kbd_menu_fixed">Clavier : physique (%1$s)</string>
+    <string name="kbd_menu_fixed">Clavier : physique · %1$s</string>
     <string name="kbd_menu_narrow">Clavier : physique (trop étroit ici, Douhua affiché)</string>
-    <string name="kbd_menu_stepped">Clavier : physique (%1$s ; %2$s ne tient pas, %3$s affiché)</string>
+    <string name="kbd_menu_stepped">Clavier : physique · %1$s (%2$s → %3$s)</string>
     <string name="kbd_menu_no_data">Clavier : physique (données illisibles, Douhua affiché)</string>
+    <string name="kbd_menu_no_mode">Clavier : physique · %1$s (pas de données en mode %2$s, Douhua affiché)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
-    <string name="kbd_lang_us">Anglais (États-Unis)</string>
-    <string name="kbd_lang_de">Allemand</string>
+    <string name="kbd_var_intl">International</string>
+    <string name="kbd_var_legacy">Ancien</string>
+    <string name="kbd_var_pinyin">Pinyin</string>
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
+    <string name="kbd_mode_unavailable">%1$s (pas de données pour cette disposition)</string>
     <string name="sec_kbd_board">Quel clavier</string>
     <string name="kbd_board">L\'écran clavier utilise</string>
     <string name="kbd_board_douhua">Disposition Douhua</string>
@@ -515,9 +518,16 @@
     <string name="sec_kbd_fixed">Clavier physique</string>
     <string name="kbd_lang">Disposition (ce qu\'affichent les touches)</string>
     <string name="kbd_host_names">Choisissez la même disposition sur l\'ordinateur ou la tablette : elle s\'appelle « %1$s » sur Mac et iPad, « %2$s » sous Windows.</string>
+    <string name="kbd_host_names_win">Choisissez la même disposition sur l\'ordinateur ou la tablette : sous Windows elle s\'appelle « %1$s ». Cette disposition n\'a pas de données pour le mode Mac.</string>
+    <string name="kbd_host_names_mac">Choisissez la même disposition sur l\'ordinateur ou la tablette : elle s\'appelle « %1$s » sur Mac et iPad. Windows n\'a pas cette disposition, donc pas de données pour le mode Windows.</string>
+    <string name="kbd_lang_hosts">Mac : %1$s · Windows : %2$s</string>
+    <string name="kbd_lang_hosts_win">Windows : %1$s</string>
+    <string name="kbd_lang_hosts_mac">Mac : %1$s · absente de Windows</string>
+    <string name="kbd_lang_no_mode">Pas de données de touches en mode %1$s ; changez de mode pour la choisir</string>
     <string name="kbd_shape">Forme</string>
     <string name="kbd_shape_ansi">ANSI (US, Entrée sur une rangée)</string>
     <string name="kbd_shape_iso">ISO (Entrée en L, touche en plus à gauche de Z)</string>
+    <string name="kbd_shape_abnt2">ABNT2 (Brésil : Entrée en L, touche / ? à gauche du Maj droit)</string>
     <string name="kbd_size">Taille</string>
     <string name="kbd_size_tkl">Sans pavé numérique (TKL, %1$d touches)</string>
     <string name="kbd_size_full">Complet (avec pavé numérique, %1$d touches)</string>
@@ -531,6 +541,7 @@
     <string name="kbd_host_note">Douhua envoie la position des touches ; le caractère tapé dépend de la disposition réglée sur l\'ordinateur ou la tablette. Réglez-y la même disposition pour que les touches correspondent à ce qui s\'écrit. En mode bureau, « là-bas » c\'est ce téléphone : dans les réglages du clavier physique du téléphone, choisissez la même disposition pour Douhua Keyboard.</string>
     <string name="kbd_open_hw">Ouvrir les réglages du clavier physique du téléphone</string>
     <string name="kbd_no_data">Impossible de lire les données du clavier physique</string>
+    <string name="kbd_no_mode_data">%1$s n\'a pas de données de touches en mode %2$s : l\'écran clavier affiche la disposition Douhua. Choisissez un autre mode ou une autre disposition.</string>
     <string name="sec_kbd_douhua">Disposition Douhua</string>
     <string name="licenses">Licences open source</string>
 </resources>

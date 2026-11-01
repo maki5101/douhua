@@ -317,7 +317,7 @@ final class FixedPanel {
      * ③ 三个鼠标键各至少 keyW（Sizes.holeWidth）。三个 keyW 宽的键放不下时空格缩短，最短 KeyRows.STICK_SPACE_MIN 份（1 个字母键宽）；
      * 还放不下就让到最宽（空格剩 1 份），三个键最窄 minKey；再窄就不让（三个鼠标键不显示，红点照样有）。
      * 实体键盘的空格在一排的中间（两边是修饰键），所以空位两边各剩一段空格（发同一个键），哪只手的拇指都按得到。
-     * 红点那条竖线在空格里偏左（TKL / 全尺寸 ANSI / ISO 都是空格 3.75–10u、红点 6.75u），右边那段多 0.25u；笔记本的空格 4.25–9.25u 正好以红点为中线。
+     * 红点那条竖线在空格里偏左（TKL / 全尺寸 ANSI / ISO / ABNT2 都是空格 3.75–10u、红点 6.75u），右边那段多 0.25u；笔记本的空格 4.25–9.25u 正好以红点为中线。
      * 笔记本多一步（{@link #LAPTOP_SPACE_MIN}）：上面几步都让不出时，三个键各 minKey、空格缩到刚好放得下，最短 0.75 份——
      * 照"三个键 ≥ keyW > 空格 ≥ 1 份 > 三个键 ≥ minKey > 空格 ≥ 0.75 份"的先后，空格、键宽随面板宽连续变，面板一格 ≥ minKey 就一定让得出。
      */
@@ -422,13 +422,19 @@ final class FixedPanel {
         return c == null || FixedLegends.printable(c.text) == null ? null : c;
     }
 
-    /** 字母那种键：普通层是一个字母，Shift 层是它的大写（a / A、ü / Ü），只画一个字、跟着 Shift / Caps 换大小写（同豆花布局）。 */
-    private static boolean letterLike(FixedLegends.Cell n, FixedLegends.Cell s) {
+    /**
+     * 字母那种键：普通层是一个字母，Shift 层是它的大写（a / A、ü / Ü），只画一个字、跟着 Shift / Caps 换大小写（同豆花布局）。
+     * 大写按通用规则比（Locale.ROOT），另认土耳其语的 i / İ（第 2 批，土耳其 Q / F：带点的 i 大写是 İ、不带点的 ı 大写是 I；
+     * 只按通用规则比的话 i 那个键画成上下两层 İ / i，和别的字母键不一样）。别的布局里普通层是 i 的键 Shift 层都是 I，结果不变。
+     */
+    static boolean letterLike(FixedLegends.Cell n, FixedLegends.Cell s) {
         if (n == null || s == null || n.dead || s.dead) return false;
         if (n.text.codePointCount(0, n.text.length()) != 1 || !Character.isLetter(n.text.codePointAt(0))) return false;
         String up = n.text.toUpperCase(Locale.ROOT);
-        return !up.equals(n.text) && up.equals(s.text);
+        return !up.equals(n.text) && (up.equals(s.text) || n.text.toUpperCase(TURKISH).equals(s.text));
     }
+
+    private static final Locale TURKISH = Locale.forLanguageTag("tr");
 
     /**
      * 字母类的键这时出大写吗（2026-11-01，Caps 的显示）：Windows 模式 Shift ⊕ Caps（Windows / Linux / 安卓的大写锁定 + Shift 出小写），

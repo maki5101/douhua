@@ -482,9 +482,12 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
 
     /**
      * "键盘"页上面两节：用哪块键盘（豆花布局 / 实体键盘，同 ⋯ 菜单里的"键盘"那一项），实体键盘是哪一块。
-     * 实体键盘一块 = 语言（键帽上画哪套字）× 形状（ANSI / ISO，德语只有 ISO）× 尺寸（笔记本 / TKL / 全尺寸，逐级缩的起点）× 模式（Windows / Mac）；
+     * 实体键盘一块 = 语言（键帽上画哪套字）× 形状（ANSI / ISO / ABNT2，德语只有 ISO、巴西只有 ABNT2）× 尺寸（笔记本 / TKL / 全尺寸，逐级缩的起点）× 模式（Windows / Mac）；
      * 模式是用户 2026-11-01 定的（"第三方键盘都可以调一个 Windows 模式、一个 Mac 模式，Mac 模式跟 iPad 就是通用的"），不按主机认、不问主机是什么系统。
      * 改了回到键盘页才生效（MainActivity.applyBoards）。换语言、形状要重画选项（德语只有 ISO），整页重建。
+     * 第 2 批（2026-11-01）：语言 34 个，点开是一个按名字排的列表（每项下面一行小字写它在 Mac / Windows 里叫什么，{@link #langDialog}）；
+     * 某布局在某种模式下没有键帽数据（拉美没有 Mac 的；意大利 QZERTY、瑞典旧版只有 Mac 的）：选着那种模式时列表里这个布局灰掉、写原因，选着这个布局时"模式"里那种模式灰掉
+     * （Boards.langChoices / modeAvailable），不会选出一块没字的键盘；存着的组合要是正好没数据，键盘页照旧退回豆花布局，这里标红一行写原因。
      */
     private void keyboardSection() {
         header(R.string.sec_kbd_board);
@@ -499,26 +502,22 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             return;
         }
         Boards.Spec spec = boards.spec();
-        String[] langs = new String[catalog.size()];
-        int cur = 0;
-        for (int i = 0; i < langs.length; i++) {
-            langs[i] = FixedData.langName(this, catalog.get(i).id);
-            if (catalog.get(i).id.equals(spec.lang)) cur = i;
-        }
-        choiceRow(getString(R.string.kbd_lang), langs, cur, i -> {
-            boards.setLang(catalog.get(i).id);
-            rebuildLater();   // 能选的形状、主机里的名字跟着变
-        });
+        langRow(spec);
         FixedLegends.Layout lang = FixedLegends.find(catalog, spec.lang);
         if (lang != null) {
-            TextView names = text(getString(R.string.kbd_host_names, lang.nameMac, lang.nameWin), 13, 0xFF9AA0A6);
-            list.addView(names);
+            // 两种都有 / 只有 Windows（拉美）/ 只有 Mac（意大利 QZERTY、瑞典旧版：Windows 没有这一套）
+            String hosts = !lang.hasMode(FixedLayout.WIN) ? getString(R.string.kbd_host_names_mac, lang.nameMac)
+                    : lang.hasMode(FixedLayout.MAC) ? getString(R.string.kbd_host_names, lang.nameMac, lang.nameWin)
+                    : getString(R.string.kbd_host_names_win, lang.nameWin);
+            list.addView(text(hosts, 13, 0xFF9AA0A6));
             List<String> shapes = lang.shapes;
             String[] shapeNames = new String[shapes.size()];
             int sc = 0;
             for (int i = 0; i < shapeNames.length; i++) {
-                shapeNames[i] = getString(FixedLayout.ISO.equals(shapes.get(i)) ? R.string.kbd_shape_iso : R.string.kbd_shape_ansi);
-                if (shapes.get(i).equals(spec.shape)) sc = i;
+                String sh = shapes.get(i);
+                shapeNames[i] = getString(FixedLayout.ISO.equals(sh) ? R.string.kbd_shape_iso
+                        : FixedLayout.ABNT2.equals(sh) ? R.string.kbd_shape_abnt2 : R.string.kbd_shape_ansi);
+                if (sh.equals(spec.shape)) sc = i;
             }
             choiceRow(getString(R.string.kbd_shape), shapeNames, sc, i -> {
                 boards.setShape(shapes.get(i));
@@ -537,13 +536,25 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         }
         choiceRow(getString(R.string.kbd_size), sizeNames, sizeAt, i -> boards.setSize(sizes[i]));
         list.addView(text(getString(R.string.kbd_size_note), 13, 0xFF9AA0A6));
-        String[] modeNames = {getString(R.string.kbd_mode_win), getString(R.string.kbd_mode_mac)};
-        choiceRow(getString(R.string.kbd_mode), modeNames, FixedLayout.MAC.equals(spec.mode) ? 1 : 0, i -> {
-            boards.setMode(i == 1 ? FixedLayout.MAC : FixedLayout.WIN);
-            rebuildLater();   // 键数（Mac 没有 Ins）跟着变
+        // 模式：这个布局没有数据的那种灰掉、写原因（拉美没有 Mac 的，意大利 QZERTY、瑞典旧版没有 Windows 的）
+        String[] modes = {FixedLayout.WIN, FixedLayout.MAC};
+        int[] modeLabels = {R.string.kbd_mode_win, R.string.kbd_mode_mac};
+        String[] modeNames = new String[modes.length];
+        boolean[] modeOn = new boolean[modes.length];
+        for (int i = 0; i < modes.length; i++) {
+            modeOn[i] = Boards.modeAvailable(catalog, spec.lang, modes[i]);
+            modeNames[i] = modeOn[i] ? getString(modeLabels[i]) : getString(R.string.kbd_mode_unavailable, getString(modeLabels[i]));
+        }
+        choiceRow(getString(R.string.kbd_mode), modeNames, modeOn, FixedLayout.MAC.equals(spec.mode) ? 1 : 0, i -> {
+            boards.setMode(modes[i]);
+            rebuildLater();   // 键数（Mac 没有 Ins）、语言列表里灰掉哪些跟着变
         });
         list.addView(text(getString(R.string.kbd_mode_hint), 13, 0xFF9AA0A6));
-        if (FixedData.table(this, spec.lang, spec.mode) == null) {   // 照理不会；读不出来时键盘页照样显示豆花布局（FixedLayout.forLegends）
+        if (!boards.modeAvailable()) {
+            // 存着的组合没有数据（设置页选不出来，以后清单变了之类）：键盘页退回豆花布局，这里写明原因
+            list.addView(text(getString(R.string.kbd_no_mode_data, FixedData.langName(this, spec.lang),
+                    getString(FixedLayout.MAC.equals(spec.mode) ? R.string.kbd_mode_mac : R.string.kbd_mode_win)), 14, 0xFFE07A5F));
+        } else if (FixedData.table(this, spec.lang, spec.mode) == null) {   // 照理不会；读不出来时键盘页照样显示豆花布局（FixedLayout.forEntry）
             list.addView(text(getString(R.string.kbd_no_data), 14, 0xFFE07A5F));
         }
         TextView note = text(getString(R.string.kbd_host_note), 13, 0xFF9AA0A6);
@@ -562,6 +573,90 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             });
             list.addView(open);
         }
+    }
+
+    /** "布局"那一行：名字 + 现在选的写在右边（同 {@link #choiceRow} 的样子），点一下弹 {@link #langDialog}。 */
+    private void langRow(Boards.Spec spec) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(12), 0, dp(12));
+        TextView name = text(getString(R.string.kbd_lang), 16, 0xFFE8E8E8);
+        TextView value = text(FixedData.langName(this, spec.lang), 15, 0xFF8AB4F8);
+        value.setGravity(Gravity.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.addView(value, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
+        row.setOnClickListener(v -> langDialog(spec));
+        list.addView(row);
+    }
+
+    /**
+     * 选语言的列表（三十多项，单选框列不下、看不清）：按界面语言的名字排（Boards.langChoices），每项两行——名字、下面一行小字写它在 Mac / Windows 里叫什么
+     * （清单的 name_mac 是 macOS 现名、name_win 是 Windows 里的名字），现在选的那项蓝字；现在的模式下没有数据的灰掉、点不了，第三行写原因。
+     * 打开时滚到现在选的那项。
+     */
+    private void langDialog(Boards.Spec spec) {
+        List<Boards.LangChoice> choices = FixedData.langChoices(this, spec.mode);
+        String modeName = getString(FixedLayout.MAC.equals(spec.mode) ? R.string.kbd_mode_mac : R.string.kbd_mode_win);
+        int cur = 0;
+        for (int i = 0; i < choices.size(); i++) if (choices.get(i).layout.id.equals(spec.lang)) cur = i;
+        android.widget.BaseAdapter adapter = new android.widget.BaseAdapter() {
+            @Override
+            public int getCount() {
+                return choices.size();
+            }
+
+            @Override
+            public Object getItem(int position) {
+                return choices.get(position);
+            }
+
+            @Override
+            public long getItemId(int position) {
+                return position;
+            }
+
+            @Override
+            public boolean areAllItemsEnabled() {
+                return false;
+            }
+
+            @Override
+            public boolean isEnabled(int position) {
+                return choices.get(position).enabled;
+            }
+
+            @Override
+            public View getView(int position, View convert, ViewGroup parent) {
+                Boards.LangChoice c = choices.get(position);
+                FixedLegends.Layout l = c.layout;
+                boolean current = l.id.equals(spec.lang);
+                LinearLayout box = new LinearLayout(SettingsActivity.this);
+                box.setOrientation(LinearLayout.VERTICAL);
+                box.setPadding(dp(24), dp(10), dp(24), dp(10));
+                TextView n = text(c.name, 16, !c.enabled ? 0xFF6E7378 : current ? 0xFF8AB4F8 : 0xFFE8E8E8);
+                if (current) n.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                box.addView(n);
+                String hosts = !l.hasMode(FixedLayout.WIN) ? getString(R.string.kbd_lang_hosts_mac, l.nameMac)
+                        : l.hasMode(FixedLayout.MAC) ? getString(R.string.kbd_lang_hosts, l.nameMac, l.nameWin)
+                        : getString(R.string.kbd_lang_hosts_win, l.nameWin);
+                box.addView(text(hosts, 12, c.enabled ? 0xFF9AA0A6 : 0xFF6E7378));
+                if (!c.enabled) box.addView(text(getString(R.string.kbd_lang_no_mode, modeName), 12, 0xFFE0A33E));
+                box.setEnabled(c.enabled);
+                return box;
+            }
+        };
+        AlertDialog d = new AlertDialog.Builder(this)
+                .setTitle(R.string.kbd_lang)
+                .setAdapter(adapter, (dlg, which) -> {
+                    Boards.LangChoice c = choices.get(which);
+                    if (!c.enabled) return;   // ListView 本来就不派灰掉的项，保险
+                    boards.setLang(c.layout.id);
+                    rebuildLater();   // 能选的形状、主机里的名字、哪种模式灰掉跟着变
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .create();
+        d.show();
+        d.getListView().setSelection(Math.max(0, cur - 2));
     }
 
     // ═══════════ 开源许可 ═══════════
@@ -1341,6 +1436,11 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
 
     /** 几选一（名字 + 选中的写在右边，点一下弹单选框），同 {@link #actionRow} 的样子。 */
     private void choiceRow(String label, String[] options, int checked, IntConsumer onPick) {
+        choiceRow(label, options, null, checked, onPick);
+    }
+
+    /** 同上，enabled[i] 假的那一项灰掉、点不了（null = 都能选）；写原因由调用方写进 options[i]。 */
+    private void choiceRow(String label, String[] options, boolean[] enabled, int checked, IntConsumer onPick) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(12), 0, dp(12));
@@ -1350,16 +1450,41 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         row.addView(value, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
         int[] current = {checked};
-        row.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setTitle(label)
-                .setSingleChoiceItems(options, current[0], (d, which) -> {
-                    d.dismiss();
-                    current[0] = which;
-                    value.setText(options[which]);
-                    onPick.accept(which);
-                })
-                .setNegativeButton(R.string.cancel, null)
-                .show());
+        row.setOnClickListener(v -> {
+            AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle(label).setNegativeButton(R.string.cancel, null);
+            android.content.DialogInterface.OnClickListener pick = (d, which) -> {
+                if (enabled != null && !enabled[which]) return;
+                d.dismiss();
+                current[0] = which;
+                value.setText(options[which]);
+                onPick.accept(which);
+            };
+            if (enabled == null) {
+                b.setSingleChoiceItems(options, current[0], pick);
+            } else {
+                // 灰掉的项：适配器说它不能点（ListView 不派点击）、画成禁用的样子
+                ArrayAdapter<String> a = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_single_choice, options) {
+                    @Override
+                    public boolean areAllItemsEnabled() {
+                        return false;
+                    }
+
+                    @Override
+                    public boolean isEnabled(int position) {
+                        return enabled[position];
+                    }
+
+                    @Override
+                    public View getView(int position, View convert, ViewGroup parent) {
+                        View view = super.getView(position, convert, parent);
+                        view.setEnabled(enabled[position]);
+                        return view;
+                    }
+                };
+                b.setSingleChoiceItems(a, current[0], pick);
+            }
+            b.show();
+        });
         list.addView(row);
     }
 

@@ -498,15 +498,18 @@
     <string name="gp_arcade6">Arcade 6-button</string>
     <string name="tab_keyboard">Keyboard</string>
     <string name="kbd_menu_douhua">Keyboard: Douhua</string>
-    <string name="kbd_menu_fixed">Keyboard: physical (%1$s)</string>
+    <string name="kbd_menu_fixed">Keyboard: physical · %1$s</string>
     <string name="kbd_menu_narrow">Keyboard: physical (too narrow here, showing Douhua)</string>
-    <string name="kbd_menu_stepped">Keyboard: physical (%1$s; %2$s doesn\'t fit, showing %3$s)</string>
+    <string name="kbd_menu_stepped">Keyboard: physical · %1$s (%2$s → %3$s)</string>
     <string name="kbd_menu_no_data">Keyboard: physical (no key data, showing Douhua)</string>
+    <string name="kbd_menu_no_mode">Keyboard: physical · %1$s (no %2$s-mode data, showing Douhua)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
-    <string name="kbd_lang_us">US English</string>
-    <string name="kbd_lang_de">German</string>
+    <string name="kbd_var_intl">International</string>
+    <string name="kbd_var_legacy">Legacy</string>
+    <string name="kbd_var_pinyin">Pinyin</string>
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
+    <string name="kbd_mode_unavailable">%1$s (no data for this layout)</string>
     <string name="sec_kbd_board">Which keyboard</string>
     <string name="kbd_board">Keyboard screen uses</string>
     <string name="kbd_board_douhua">Douhua layout</string>
@@ -515,9 +518,16 @@
     <string name="sec_kbd_fixed">Physical keyboard</string>
     <string name="kbd_lang">Layout (what the keys show)</string>
     <string name="kbd_host_names">Pick the same layout on the computer or tablet: on Mac and iPad it is called “%1$s”, on Windows “%2$s”.</string>
+    <string name="kbd_host_names_win">Pick the same layout on the computer or tablet: on Windows it is called “%1$s”. This layout has no Mac-mode data.</string>
+    <string name="kbd_host_names_mac">Pick the same layout on the computer or tablet: on Mac and iPad it is called “%1$s”. Windows has no such layout, so this one has no Windows-mode data.</string>
+    <string name="kbd_lang_hosts">Mac: %1$s · Windows: %2$s</string>
+    <string name="kbd_lang_hosts_win">Windows: %1$s</string>
+    <string name="kbd_lang_hosts_mac">Mac: %1$s · not on Windows</string>
+    <string name="kbd_lang_no_mode">No key data for %1$s mode; switch modes to pick it</string>
     <string name="kbd_shape">Shape</string>
     <string name="kbd_shape_ansi">ANSI (US, one-row Enter)</string>
     <string name="kbd_shape_iso">ISO (L-shaped Enter, extra key left of Z)</string>
+    <string name="kbd_shape_abnt2">ABNT2 (Brazil: L-shaped Enter, extra / ? key left of right Shift)</string>
     <string name="kbd_size">Size</string>
     <string name="kbd_size_tkl">Tenkeyless (TKL, %1$d keys)</string>
     <string name="kbd_size_full">Full size (with number pad, %1$d keys)</string>
@@ -531,6 +541,7 @@
     <string name="kbd_host_note">Douhua sends key positions; what gets typed depends on the keyboard layout set on the computer or tablet. Set the same layout there and the keys will match what you type. In desktop mode \"there\" is this phone: in the phone\'s physical keyboard settings pick the same layout for Douhua Keyboard.</string>
     <string name="kbd_open_hw">Open the phone\'s physical keyboard settings</string>
     <string name="kbd_no_data">Couldn\'t read the physical keyboard data</string>
+    <string name="kbd_no_mode_data">%1$s has no key data for %2$s mode, so the keyboard screen shows the Douhua layout. Pick another mode or layout.</string>
     <string name="sec_kbd_douhua">Douhua layout</string>
     <string name="licenses">Open-source licenses</string>
 </resources>

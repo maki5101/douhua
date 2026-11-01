@@ -498,15 +498,18 @@
     <string name="gp_arcade6">Arcade 6 tasti</string>
     <string name="tab_keyboard">Tastiera</string>
     <string name="kbd_menu_douhua">Tastiera: Douhua</string>
-    <string name="kbd_menu_fixed">Tastiera: fisica (%1$s)</string>
+    <string name="kbd_menu_fixed">Tastiera: fisica · %1$s</string>
     <string name="kbd_menu_narrow">Tastiera: fisica (troppo stretta qui, mostro Douhua)</string>
-    <string name="kbd_menu_stepped">Tastiera: fisica (%1$s; %2$s non entra, mostro %3$s)</string>
+    <string name="kbd_menu_stepped">Tastiera: fisica · %1$s (%2$s → %3$s)</string>
     <string name="kbd_menu_no_data">Tastiera: fisica (dati illeggibili, mostro Douhua)</string>
+    <string name="kbd_menu_no_mode">Tastiera: fisica · %1$s (nessun dato per la modalità %2$s, mostro Douhua)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
-    <string name="kbd_lang_us">Inglese (USA)</string>
-    <string name="kbd_lang_de">Tedesco</string>
+    <string name="kbd_var_intl">Internazionale</string>
+    <string name="kbd_var_legacy">Precedente</string>
+    <string name="kbd_var_pinyin">Pinyin</string>
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
+    <string name="kbd_mode_unavailable">%1$s (nessun dato per questo layout)</string>
     <string name="sec_kbd_board">Quale tastiera</string>
     <string name="kbd_board">La schermata tastiera usa</string>
     <string name="kbd_board_douhua">Layout Douhua</string>
@@ -515,9 +518,16 @@
     <string name="sec_kbd_fixed">Tastiera fisica</string>
     <string name="kbd_lang">Layout (cosa mostrano i tasti)</string>
     <string name="kbd_host_names">Scegli lo stesso layout sul computer o tablet: su Mac e iPad si chiama «%1$s», su Windows «%2$s».</string>
+    <string name="kbd_host_names_win">Scegli lo stesso layout sul computer o tablet: su Windows si chiama «%1$s». Questo layout non ha dati per la modalità Mac.</string>
+    <string name="kbd_host_names_mac">Scegli lo stesso layout sul computer o tablet: su Mac e iPad si chiama «%1$s». Windows non ha questo layout, quindi non ci sono dati per la modalità Windows.</string>
+    <string name="kbd_lang_hosts">Mac: %1$s · Windows: %2$s</string>
+    <string name="kbd_lang_hosts_win">Windows: %1$s</string>
+    <string name="kbd_lang_hosts_mac">Mac: %1$s · non su Windows</string>
+    <string name="kbd_lang_no_mode">Nessun dato dei tasti per la modalità %1$s; cambia modalità per sceglierlo</string>
     <string name="kbd_shape">Forma</string>
     <string name="kbd_shape_ansi">ANSI (USA, Invio su una riga)</string>
     <string name="kbd_shape_iso">ISO (Invio a L, tasto in più a sinistra della Z)</string>
+    <string name="kbd_shape_abnt2">ABNT2 (Brasile: Invio a L, tasto / ? a sinistra del Maiusc destro)</string>
     <string name="kbd_size">Dimensione</string>
     <string name="kbd_size_tkl">Senza tastierino numerico (TKL, %1$d tasti)</string>
     <string name="kbd_size_full">Completa (con tastierino numerico, %1$d tasti)</string>
@@ -531,6 +541,7 @@
     <string name="kbd_host_note">Douhua invia la posizione dei tasti; il carattere digitato dipende dal layout impostato sul computer o tablet. Imposta lo stesso layout lì e i tasti corrisponderanno a ciò che scrivi. In modalità desktop «lì» è questo telefono: nelle impostazioni della tastiera fisica del telefono scegli lo stesso layout per Douhua Keyboard.</string>
     <string name="kbd_open_hw">Apri le impostazioni della tastiera fisica del telefono</string>
     <string name="kbd_no_data">Impossibile leggere i dati della tastiera fisica</string>
+    <string name="kbd_no_mode_data">%1$s non ha dati dei tasti per la modalità %2$s: la schermata tastiera mostra il layout Douhua. Scegli un\'altra modalità o un altro layout.</string>
     <string name="sec_kbd_douhua">Layout Douhua</string>
     <string name="licenses">Licenze open source</string>
 </resources>

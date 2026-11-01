@@ -1,5 +1,41 @@
-# kbd_catalog.txt：豆花儿实体键盘的布局清单。自动生成（tools/kbd/gen_layouts.py，手写的部分在 tools/kbd/catalog.json），勿手改。
-# 每行：id、shape、shapes、kpdl、name_mac、name_win、name_linux、name_android（tab 分隔）。shape = 默认形状，shapes = 能选的形状，
-# kpdl = 小键盘小数点（NumLock 开着）出的字（取自 xkb），name_* = 各家主机设置里这个布局叫什么（mac / win 是 CLDR 里的旧名，android 凭记忆）。
-us	ansi	ansi,iso	.	U.S.	US	English (US)	English (US)
-de	iso	iso	,	German	German	German	German
+# kbd_catalog.txt：豆花儿实体键盘的布局清单。自动生成（tools/kbd/gen_layouts.py，手写的部分在 tools/kbd/catalog.json、mac_names.json），勿手改。
+# 每行一个布局，栏见下面 #!columns（tab 分隔，读的时候按这一行认栏）。shape = 默认形状，shapes = 能选的形状，modes = 有数据的模式（win / mac），
+# kpdl / kpco = 小键盘小数点（0x63）、ABNT2 小键盘多的那个键（0x85）出的字（NumLock 开着，取自 xkb；不是 ABNT2 的 kpco 空着；Mac 模式用这两个），
+# kpdl_win = Windows 模式的小键盘小数点（catalog.json 手写的 kpdl_win，照微软布局表；没写的同 kpdl；没有 Windows 数据的空着），
+# caps_mac = Mac 模式 Caps 键帽写什么（空 = 照旧），name_mac = macOS 现名（mac_names.json，凭记忆）、name_mac_cldr = CLDR 里的旧名，
+# name_win / name_linux / name_android = 各家主机设置里叫什么；variant 小写的是 strings.xml 里 kbd_var_<它> 的词，别的照写。
+#!columns id locale variant shape shapes modes kpdl kpdl_win kpco caps_mac name_mac name_mac_cldr name_win name_linux name_android
+us	en-US		ansi	ansi,iso	win,mac	.	.			U.S.	U.S.	US	English (US)	English (US)
+us-intl	en-US	intl	ansi	ansi,iso	win,mac	.	.			U.S. International – PC	USInternational-PC	United States-International	English (US, intl., with dead keys)	English (US), International style
+gb	en-GB		iso	iso	win,mac	.	.			British	British	United Kingdom	English (UK)	English (UK)
+ie	ga-IE		iso	iso	win,mac	.	.			Irish	Irish	Irish	Irish	
+nl	nl-NL		iso	iso	win,mac	.	,			Dutch	Dutch	Dutch	Dutch	
+ro	ro-RO		iso	iso	win,mac	,	,			Romanian – Standard	Romanian-Standard	Romanian (Standard)	Romanian (standard)	
+fr	fr-FR		iso	iso	win,mac	.	.			French	French	French	French	French
+be	fr-BE		iso	iso	win,mac	.	.			Belgian	Belgian	Belgian French	Belgian	Belgian
+ca-fr	fr-CA		iso	iso	win,mac	.	.			Canadian French – CSA	Canadian - CSA	Canadian Multilingual Standard	Canadian (CSA)	French (Canada)
+de	de-DE		iso	iso	win,mac	,	,			German	German	German	German	German
+at	de-AT		iso	iso	win,mac	,	,			Austrian	Austrian	German	German (Austria)	
+ch-de	de-CH		iso	iso	win,mac	.	.			Swiss German	Swiss German	Swiss German	German (Switzerland)	Swiss German
+ch-fr	fr-CH		iso	iso	win,mac	.	.			Swiss French	Swiss French	Swiss French	French (Switzerland)	Swiss French
+se	sv-SE		iso	iso	win,mac	,	,			Swedish	Swedish - Pro	Swedish	Swedish	Swedish
+se-legacy	sv-SE	legacy	iso	iso	mac	,				Swedish – Legacy	Swedish		Swedish	
+fi	fi-FI		iso	iso	win,mac	,	,			Finnish	Finnish	Finnish	Finnish	Finnish
+dk	da-DK		iso	iso	win,mac	,	,			Danish	Danish	Danish	Danish	Danish
+no	no-NO		iso	iso	win,mac	,	,			Norwegian	Norwegian	Norwegian	Norwegian	Norwegian
+is	is-IS		iso	iso	win,mac	.	,			Icelandic	Icelandic	Icelandic	Icelandic	Icelandic
+es	es-ES		iso	iso	win,mac	.	.			Spanish – ISO	Spanish - ISO	Spanish	Spanish	Spanish
+latam	es-419		iso	iso	win	.	.					Latin American	Spanish (Latin American)	Spanish (Latin)
+pt	pt-PT		iso	iso	win,mac	.	.			Portuguese	Portuguese	Portuguese	Portuguese	Portuguese
+br	pt-BR		abnt2	abnt2	win,mac	,	,	.		Brazilian – ABNT2	Brazilian-ABNT2	Portuguese (Brazil ABNT2)	Portuguese (Brazil)	Brazilian
+it	it-IT		iso	iso	win,mac	.	.			Italian	Italian - Pro	Italian	Italian	Italian
+it-qzerty	it-IT	QZERTY	iso	iso	mac	.				Italian – QZERTY	Italian		Italian (Macintosh)	
+hr	hr-HR		iso	iso	win,mac	,	,			Croatian – QWERTZ	Croatian-PC	Croatian	Croatian	Croatian
+si	sl-SI		iso	iso	win,mac	,	,			Slovenian	Slovenian	Slovenian	Slovenian	Slovenian
+cz	cs-CZ		iso	iso	win,mac	.	,			Czech	Czech	Czech	Czech	Czech
+sk	sk-SK		iso	iso	win,mac	.	,			Slovak	Slovak	Slovak	Slovak	Slovak
+hu	hu-HU		iso	iso	win,mac	,	,			Hungarian	Hungarian	Hungarian	Hungarian	Hungarian
+pl	pl-PL		ansi	ansi,iso	win,mac	,	,			Polish	Polish Pro	Polish (Programmers)	Polish	Polish
+tr-q	tr-TR	Q	iso	iso	win,mac	,	,			Turkish Q	Turkish-QWERTY-PC	Turkish Q	Turkish	Turkish
+tr-f	tr-TR	F	iso	iso	win,mac	,	,			Turkish F	Turkish	Turkish F	Turkish (F)	Turkish F
+cn-pinyin	zh-CN	pinyin	ansi	ansi	win,mac	.	.		中/英	Pinyin – Simplified	U.S.	Chinese (Simplified) - US	Chinese	English (US)

@@ -236,7 +236,7 @@ def analyze(scan, tables, catalog):
 
     # ── 小键盘小数点 ──
     gk = got_of(kt.KEYPAD_DECIMAL, 0)
-    kpdl = catalog.get(layout, {}).get('kpdl', '')
+    kpdl = kt.keypad_decimal(catalog.get(layout, {}), platform)
     rec_k = by_i.get(next((s['i'] for s in steps if s['usage'] == kt.KEYPAD_DECIMAL), -1))
     keys_k = [e.get('key') for e in (rec_k or {}).get('ev', []) if e.get('t') == 'd']
     if gk is None:
@@ -244,7 +244,8 @@ def analyze(scan, tables, catalog):
     elif 'Delete' in keys_k or (gk['ch'] is None):
         premise('kpdl', 'unknown', '小键盘小数点：主机的 NumLock 关着（收到 Delete / 没出字），看不出')
     else:
-        premise('kpdl', 'ok' if gk['ch'] == kpdl else 'bad', '小键盘小数点：期望 %r（取自 xkb），收到 %s' % (kpdl, show(gk)))
+        premise('kpdl', 'ok' if gk['ch'] == kpdl else 'bad', '小键盘小数点：期望 %r（%s），收到 %s'
+                % (kpdl, '照微软布局表' if platform == 'win' else '取自 xkb', show(gk)))
 
     # ── 对齐：每一步的 e.code 对不对 ──
     bad_codes = []
@@ -338,7 +339,7 @@ def simulate(tables, catalog, host, layout, source=None, iso_codes=False, tweak=
             code = 'IntlBackslash' if u == 0x35 else 'Backquote'
         tail = [{'t': 'd', 'key': ' ', 'code': 'Space'}, {'t': 'd', 'key': 'Tab', 'code': 'Tab'}]
         if u == kt.KEYPAD_DECIMAL:
-            ch = catalog[layout]['kpdl']
+            ch = kt.keypad_decimal(catalog[layout], platform)
             rec = {'ev': [{'t': 'd', 'key': ch, 'code': code}] + tail, 'text': ch + ' '}
         else:
             c = t.get(u, [None] * 4)[s['layer']]

@@ -14,8 +14,9 @@ import java.util.Locale;
 /**
  * 实体键盘的数据从 res/raw 读进来（布局清单、Windows / Mac 两份键帽字），进程里读一次缓存着；文件几 KB，主线程上读。
  * 解析规则在纯 Java 的 FixedLegends（离线测）。读不出来（照理不会，文件是生成好打进 APK 的）时清单是空的、字表是 null，
- * 字表是 null 时 {@link #ladder} 是空的（FixedLayout.forLegends；这个布局这种模式的字表里没有那一段也一样）：
- * 选了实体键盘也照样显示豆花布局（KeyboardScreen 拿不到布局就不换），⋯ 菜单写"数据读不出来"，设置页那一节标红一行，日志里记一行。
+ * 字表是 null 时 {@link #ladder} 是空的（FixedLayout.forEntry；这个布局这种模式的字表里没有那一段也一样，比如拉美的 Mac 模式）：
+ * 选了实体键盘也照样显示豆花布局（KeyboardScreen 拿不到布局就不换），⋯ 菜单写"数据读不出来"（没有这种模式的数据时写"没有 Mac 模式的数据"），
+ * 设置页那一节标红一行，日志里记一行。
  */
 final class FixedData {
     private FixedData() {
@@ -54,14 +55,15 @@ final class FixedData {
 
     /**
      * 拼逐级缩的几级（FixedLayout.ladder：选的尺寸往下，全尺寸 → TKL → 笔记本）：每级一块，右 Alt 写不写 AltGr 看 Windows 字表有没有第三层，
-     * 小键盘小数点看清单；字表读不出来返回空列表（见类注释）。
+     * 小键盘小数点、ABNT2 小键盘多的那个键、Mac 模式的 Caps 键帽（拼音写 中/英）看清单（FixedLayout.forEntry）；
+     * 字表读不出来、这个布局这种模式没有数据（拉美的 Mac 模式）返回空列表（见类注释）。
      */
     static List<FixedLayout> ladder(Context c, Boards.Spec spec) {
         FixedLegends.Layout l = FixedLegends.find(catalog(c), spec.lang);
         FixedLegends.Table t = table(c, spec.lang, spec.mode);
         List<FixedLayout> out = new ArrayList<>();
         for (String size : FixedLayout.ladder(spec.size)) {
-            FixedLayout f = FixedLayout.forLegends(spec.shape, size, spec.mode, t, l == null ? "." : l.kpdl);
+            FixedLayout f = FixedLayout.forEntry(spec.shape, size, spec.mode, t, l);
             if (f == null) return new ArrayList<>();
             out.add(f);
         }
@@ -74,15 +76,41 @@ final class FixedData {
                 : FixedLayout.LAPTOP.equals(size) ? R.string.kbd_size_short_laptop : R.string.kbd_size_short_tkl);
     }
 
-    /** 布局在界面语言里叫什么（美式、德语；以后的布局没写进 strings 的用 Locale 自己翻）。 */
+    /**
+     * 布局在界面语言里叫什么（规则在纯 Java 的 Boards.langName：同一种语言有几个地区才带地区，"法语（加拿大）""瑞典语 · 旧版"）；
+     * 清单里没有这个布局就写 id。
+     */
     static String langName(Context c, String lang) {
-        if ("us".equals(lang)) return c.getString(R.string.kbd_lang_us);
-        if ("de".equals(lang)) return c.getString(R.string.kbd_lang_de);
-        String tag = FixedLegends.LOCALE_TAGS.get(lang);
-        return tag == null ? lang : Locale.forLanguageTag(tag).getDisplayName(c.getResources().getConfiguration().getLocales().get(0));
+        List<FixedLegends.Layout> cat = catalog(c);
+        FixedLegends.Layout l = FixedLegends.find(cat, lang);
+        if (l == null) return lang;
+        return Boards.langName(cat, l, uiLocale(c), w -> variantWord(c, w), c.getString(R.string.kbd_name_short));
     }
 
-    /** 短名字（⋯ 菜单里写的）："德语 · Mac"。 */
+    /** 设置页的语言列表（Boards.langChoices：按界面语言的名字排，mode 下没有数据的灰掉）。 */
+    static List<Boards.LangChoice> langChoices(Context c, String mode) {
+        return Boards.langChoices(catalog(c), mode, uiLocale(c), w -> variantWord(c, w), c.getString(R.string.kbd_name_short));
+    }
+
+    static Locale uiLocale(Context c) {
+        return c.getResources().getConfiguration().getLocales().get(0);
+    }
+
+    /** 区分词：小写的翻译（strings.xml 的 kbd_var_*，加新词要在这里和九个 strings.xml 一起加）；认不出返回 null（照原样写）。 */
+    static String variantWord(Context c, String word) {
+        switch (word) {
+            case "intl":
+                return c.getString(R.string.kbd_var_intl);
+            case "legacy":
+                return c.getString(R.string.kbd_var_legacy);
+            case "pinyin":
+                return c.getString(R.string.kbd_var_pinyin);
+            default:
+                return null;
+        }
+    }
+
+    /** 短名字（⋯ 菜单里写的）："德语（德国） · Mac"。 */
     static String shortName(Context c, Boards.Spec spec) {
         return c.getString(R.string.kbd_name_short, langName(c, spec.lang),
                 c.getString(FixedLayout.MAC.equals(spec.mode) ? R.string.kbd_mode_mac : R.string.kbd_mode_win));

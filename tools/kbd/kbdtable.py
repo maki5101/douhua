@@ -44,7 +44,7 @@ for _i, _u in enumerate([0x1D, 0x1B, 0x06, 0x19, 0x05, 0x11, 0x10, 0x36, 0x37, 0
 # HID 用法码 → Linux evdev 键码（内核 drivers/hid/hid-input.c 的 hid_keyboard[]；0x31 和 0x32 都是 43 KEY_BACKSLASH）。
 # 安卓的 Generic.kl 也按这个键码查键名。
 HID_TO_EVDEV = {0x2C: 57, 0x2D: 12, 0x2E: 13, 0x2F: 26, 0x30: 27, 0x31: 43, 0x32: 43, 0x33: 39, 0x34: 40, 0x35: 41,
-                0x36: 51, 0x37: 52, 0x38: 53, 0x63: 83, 0x64: 86, 0x87: 89, 0x89: 124}
+                0x36: 51, 0x37: 52, 0x38: 53, 0x63: 83, 0x64: 86, 0x85: 121, 0x87: 89, 0x89: 124}
 for _i, _e in enumerate([30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45,
                          21, 44]):
     HID_TO_EVDEV[0x04 + _i] = _e
@@ -55,7 +55,7 @@ for _i in range(10):
 # Mac 把豆花当 ISO 键盘时会对调 0x35 / 0x64，那时网页看到的 code 也跟着对调（Chromium 按 Mac 虚拟键码给 code）。
 HID_TO_CODE = {0x2B: 'Tab', 0x2C: 'Space', 0x2D: 'Minus', 0x2E: 'Equal', 0x2F: 'BracketLeft', 0x30: 'BracketRight',
                0x31: 'Backslash', 0x32: 'Backslash', 0x33: 'Semicolon', 0x34: 'Quote', 0x35: 'Backquote', 0x36: 'Comma',
-               0x37: 'Period', 0x38: 'Slash', 0x63: 'NumpadDecimal', 0x64: 'IntlBackslash', 0x87: 'IntlRo',
+               0x37: 'Period', 0x38: 'Slash', 0x63: 'NumpadDecimal', 0x64: 'IntlBackslash', 0x85: 'NumpadComma', 0x87: 'IntlRo',
                0x89: 'IntlYen'}
 for _i in range(26):
     HID_TO_CODE[0x04 + _i] = 'Key' + chr(ord('A') + _i)
@@ -64,7 +64,7 @@ for _i in range(10):
 
 # 给人看的位置名（美式键帽上的字）
 USAGE_LABEL = {0x2D: '-', 0x2E: '=', 0x2F: '[', 0x30: ']', 0x31: '\\（0x31）', 0x32: '#（0x32）', 0x33: ';', 0x34: "'",
-               0x35: '`（0x35，1 左边）', 0x36: ',', 0x37: '.', 0x38: '/', 0x63: '小键盘 .（0x63）',
+               0x35: '`（0x35，1 左边）', 0x36: ',', 0x37: '.', 0x38: '/', 0x63: '小键盘 .（0x63）', 0x85: '小键盘 ABNT2 多的那个键（0x85）',
                0x64: '<>（0x64，Z 左边）', 0x87: 'ろ（0x87）', 0x89: '¥（0x89）'}
 for _i in range(26):
     USAGE_LABEL[0x04 + _i] = chr(ord('A') + _i)
@@ -83,9 +83,28 @@ TABLE_USAGES = list(range(0x04, 0x28)) + [0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x33, 0x
 # 死键规范成"带间距的附加符号"（KCM 写成组合附加符号 U+0300…，xkb 写成 dead_* 键符，统一成 CLDR 的写法）
 COMBINING_TO_SPACING = {'̀': '`', '́': '´', '̂': '^', '̃': '~', '̄': '¯', '̆': '˘',
                         '̇': '˙', '̈': '¨', '̊': '˚', '̋': '˝', '̌': 'ˇ', '̧': '¸',
-                        '̨': '˛'}
+                        '̨': '˛',
+                        # AOSP english_us_intl 的 ' 键用 U+030D / U+030E 当死键，安卓自己把它们认成 ACCENT_APOSTROPHE / ACCENT_QUOTATION_MARK
+                        # （KeyCharacterMap.java 的 sCombiningToAccent，凭记忆；KCM 里这个键的 label 就是 '）
+                        '\u030d': "'", '\u030e': '"'}
 # 死键允许是哪些字（不变量：死键只在附加符号上）。没有带间距形式的（比如下加点）留组合附加符号本身。
-DEAD_OK = set(COMBINING_TO_SPACING.values()) | {"'", '"', '°', '̣', '̱', 'ˆ', '˜'}
+DEAD_OK = set(COMBINING_TO_SPACING.values()) | {"'", '"', '°', '̣', '̱', 'ˆ', '˜',
+                                                 # xkb 那几个没有带间距形式的（gen_layouts.XKB_DEAD）：斜线、下逗号、钩、角
+                                                 '\u0335', '\u0326', '\u0309', '\u031b'}
+# 死键不是附加符号、但数据里就是这么写的（个别布局，写明理由；check_tables.py 和 FixedLegendsTest 照这张表放过）：
+#   (平台, 布局): {字: 理由}
+DEAD_EXCEPTIONS = {
+    ('mac', 'cz'): {',': 'Mac 捷克 ⌥- 是写成 , 的死键（, + g = ģ，下加逗号 / 软音符）', '-': 'Mac 捷克 ⌥= 是写成 - 的死键（- + a = ā，长音符）'},
+    ('mac', 'sk'): {',': 'Mac 斯洛伐克同捷克', '-': 'Mac 斯洛伐克同捷克'},
+    ('mac', 'hu'): {'–': 'Mac 匈牙利 ⌥⇧, 是写成 – 的死键（– + l = ł，斜线）'},
+    ('linux', '*'): {'¤': 'xkb 的 dead_currency（死键 + e = €）', 'µ': 'xkb 的 dead_greek（死键 + 字母 = 希腊字母）'},
+}
+
+
+def dead_ok(platform, layout, text):
+    """这一格死键的字说得过去吗：附加符号，或者 DEAD_EXCEPTIONS 里写了理由的。"""
+    return (text in DEAD_OK or text in DEAD_EXCEPTIONS.get((platform, layout), {})
+            or text in DEAD_EXCEPTIONS.get((platform, '*'), {}))
 
 
 # ═══════════ 一格的写法 ═══════════
@@ -240,20 +259,45 @@ def load_tables(raw_dir=None):
     return out
 
 
-CATALOG_COLUMNS = ('id', 'shape', 'shapes', 'kpdl', 'name_mac', 'name_win', 'name_linux', 'name_android')
+# kbd_catalog.txt 的栏（顺序 = 生成时写的顺序；文件头 '#!columns' 一行照写，读的时候按它认，以后加栏不用动读法）：
+#   id、locale（起名字用的语言 + 地区）、variant（区分词：小写的是 strings.xml 里 kbd_var_<它> 的词，别的照写）、
+#   shape / shapes（默认形状 / 能选的形状）、modes（有数据的模式：win、mac，至少一种）、kpdl / kpco（小键盘小数点 0x63、ABNT2 小键盘多的 0x85 出的字，取自 xkb）、
+#   kpdl_win（Windows 的小键盘小数点：catalog.json 手写的、照微软布局表，没写的同 kpdl；没有 Windows 数据的空着）、
+#   caps_mac（Mac 模式 Caps 键帽写什么，空 = 照旧）、name_mac（macOS 现名，mac_names.json 换的，凭记忆）、name_mac_cldr（CLDR 里的旧名）、
+#   name_win / name_linux / name_android（各家主机设置里叫什么；没有那家数据的空着）
+CATALOG_COLUMNS = ('id', 'locale', 'variant', 'shape', 'shapes', 'modes', 'kpdl', 'kpdl_win', 'kpco', 'caps_mac', 'name_mac', 'name_mac_cldr',
+                   'name_win', 'name_linux', 'name_android')
+CATALOG_LISTS = ('shapes', 'modes')   # 逗号分开的栏
+
+
+def keypad_decimal(row, platform):
+    """清单的一行在这家主机上小键盘小数点（0x63）出什么：Windows 照 kpdl_win（微软布局表），别家照 kpdl（xkb）。"""
+    return (row.get('kpdl_win') or row.get('kpdl', '')) if platform == 'win' else row.get('kpdl', '')
 
 
 def read_catalog(raw_dir=None):
-    """kbd_catalog.txt → [{id, shape, shapes, kpdl, name_*}]"""
+    """kbd_catalog.txt → [{栏名: 值}]（shapes、modes 是列表）。栏名按文件头的 '#!columns' 认；没有这一行、或者缺 CATALOG_COLUMNS 里的栏就失败。"""
     rows = []
+    columns = None
     with open(os.path.join(raw_dir or RAW_DIR, 'kbd_catalog.txt'), encoding='utf-8') as f:
         for line in f:
             line = line.rstrip('\n')
+            if line.startswith('#!columns'):
+                columns = line.split()[1:]
+                missing = [c for c in CATALOG_COLUMNS if c not in columns]
+                if missing:
+                    raise ValueError('kbd_catalog.txt 缺栏：%s' % ', '.join(missing))
+                continue
             if not line or line.startswith('#'):
                 continue
+            if columns is None:
+                raise ValueError('kbd_catalog.txt 没有 #!columns 那一行')
             cols = [unescape_text(c) for c in line.split('\t')]
-            row = dict(zip(CATALOG_COLUMNS, cols))
-            row['shapes'] = row['shapes'].split(',')
+            if len(cols) != len(columns):
+                raise ValueError('kbd_catalog.txt 这一行 %d 栏，文件头写的是 %d 栏：%s' % (len(cols), len(columns), line))
+            row = dict(zip(columns, cols))
+            for c in CATALOG_LISTS:
+                row[c] = row[c].split(',') if row[c] else []
             rows.append(row)
     return rows
 
@@ -268,6 +312,7 @@ def section_name(platform, layout, iso_type=False):
 # 扫描发哪些键：主键区出字的全部位置，加 0x32（核它是不是和 0x31 一样）、0x64；普通层最后加一个小键盘的小数点（核小数点出 , 还是 .）。
 SCAN_USAGES = list(range(0x04, 0x28)) + [0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x64]
 KEYPAD_DECIMAL = 0x63
+KEYPAD_COMMA = 0x85   # ABNT2 小键盘多的那个键（Brazil：出 .，0x63 出 ,）
 MOD_LSHIFT, MOD_LALT, MOD_RALT = 0x02, 0x04, 0x40
 
 

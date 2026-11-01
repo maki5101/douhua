@@ -1,0 +1,46 @@
+{
+  "_说明": [
+    "手写：CLDR osx 数据里的布局名（macOS 10.9 / 2013 年的叫法）→ 现在 macOS / iPadOS 里叫什么。gen_layouts.py 用它写 kbd_catalog.txt 的 name_mac（现名），",
+    "name_mac_cldr 照写 CLDR 的旧名。catalog.json 里某项自己写了 name_mac 的（比如中文拼音：主机里选的是拼音输入法）以那个为准。",
+    "**现名除 checked 里那两条外全凭记忆，没在主机上看过：要用户在 iPad（设置 → 通用 → 键盘 → 实体键盘，路径凭记忆）或 Mac 的输入法设置里核对，对不上就改这里重新生成。**",
+    "iPadOS 实体键盘的布局名是不是和 macOS 一样也没核。没写进来的 CLDR 名照原样用。"
+  ],
+  "names": {
+    "U.S.": "U.S.",
+    "USInternational-PC": "U.S. International – PC",
+    "British": "British",
+    "Irish": "Irish",
+    "Dutch": "Dutch",
+    "Romanian-Standard": "Romanian – Standard",
+    "French": "French",
+    "Belgian": "Belgian",
+    "Canadian - CSA": "Canadian French – CSA",
+    "German": "German",
+    "Austrian": "Austrian",
+    "Swiss German": "Swiss German",
+    "Swiss French": "Swiss French",
+    "Swedish - Pro": "Swedish",
+    "Swedish": "Swedish – Legacy",
+    "Finnish": "Finnish",
+    "Danish": "Danish",
+    "Norwegian": "Norwegian",
+    "Icelandic": "Icelandic",
+    "Spanish - ISO": "Spanish – ISO",
+    "Portuguese": "Portuguese",
+    "Brazilian-ABNT2": "Brazilian – ABNT2",
+    "Italian - Pro": "Italian",
+    "Italian": "Italian – QZERTY",
+    "Croatian-PC": "Croatian – QWERTZ",
+    "Slovenian": "Slovenian",
+    "Czech": "Czech",
+    "Slovak": "Slovak",
+    "Hungarian": "Hungarian",
+    "Polish Pro": "Polish",
+    "Turkish-QWERTY-PC": "Turkish Q",
+    "Turkish": "Turkish F"
+  },
+  "checked": {
+    "Swedish - Pro": "macOS 12 Monterey 起叫 Swedish（苹果社区文档 https://discussions.apple.com/docs/DOC-250004926，调研 kbd-data.md §2.1 核过）",
+    "Swedish": "macOS 12 Monterey 起叫 Swedish – Legacy（同上）"
+  }
+}

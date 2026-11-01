@@ -498,15 +498,18 @@
     <string name="gp_arcade6">アーケード 6 ボタン</string>
     <string name="tab_keyboard">キーボード</string>
     <string name="kbd_menu_douhua">キーボード：豆花</string>
-    <string name="kbd_menu_fixed">キーボード：物理（%1$s）</string>
+    <string name="kbd_menu_fixed">キーボード：物理 · %1$s</string>
     <string name="kbd_menu_narrow">キーボード：物理（ここは狭いので豆花を表示中）</string>
-    <string name="kbd_menu_stepped">キーボード：物理（%1$s、%2$sは入らないので %3$s を表示中）</string>
+    <string name="kbd_menu_stepped">キーボード：物理 · %1$s（%2$s → %3$s）</string>
     <string name="kbd_menu_no_data">キーボード：物理（データを読めないので豆花を表示中）</string>
+    <string name="kbd_menu_no_mode">キーボード：物理 · %1$s（%2$s モードのデータがないので豆花を表示中）</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
-    <string name="kbd_lang_us">英語（US）</string>
-    <string name="kbd_lang_de">ドイツ語</string>
+    <string name="kbd_var_intl">インターナショナル</string>
+    <string name="kbd_var_legacy">旧式</string>
+    <string name="kbd_var_pinyin">ピンイン</string>
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
+    <string name="kbd_mode_unavailable">%1$s（この配列のデータなし）</string>
     <string name="sec_kbd_board">使うキーボード</string>
     <string name="kbd_board">キーボード画面で使う</string>
     <string name="kbd_board_douhua">豆花の配列</string>
@@ -515,9 +518,16 @@
     <string name="sec_kbd_fixed">物理キーボード</string>
     <string name="kbd_lang">配列（キートップの文字）</string>
     <string name="kbd_host_names">パソコン / タブレット側でも同じ配列を選んでください：Mac と iPad では「%1$s」、Windows では「%2$s」という名前です。</string>
+    <string name="kbd_host_names_win">パソコン / タブレット側でも同じ配列を選んでください：Windows では「%1$s」という名前です。この配列には Mac モードのデータがありません。</string>
+    <string name="kbd_host_names_mac">パソコン / タブレット側でも同じ配列を選んでください：Mac と iPad では「%1$s」という名前です。Windows にはこの配列がないため、Windows モードのデータはありません。</string>
+    <string name="kbd_lang_hosts">Mac：%1$s · Windows：%2$s</string>
+    <string name="kbd_lang_hosts_win">Windows：%1$s</string>
+    <string name="kbd_lang_hosts_mac">Mac：%1$s · Windows にはなし</string>
+    <string name="kbd_lang_no_mode">%1$s モードのキーデータがありません。モードを切り替えると選べます</string>
     <string name="kbd_shape">形状</string>
     <string name="kbd_shape_ansi">ANSI（US、横長の Enter）</string>
     <string name="kbd_shape_iso">ISO（L 字の Enter、Z の左にキーが 1 つ多い）</string>
+    <string name="kbd_shape_abnt2">ABNT2（ブラジル：L 字の Enter、右 Shift の左に / ? キー）</string>
     <string name="kbd_size">サイズ</string>
     <string name="kbd_size_tkl">テンキーレス（TKL、%1$d キー）</string>
     <string name="kbd_size_full">フルサイズ（テンキー付き、%1$d キー）</string>
@@ -531,6 +541,7 @@
     <string name="kbd_host_note">豆花が送るのはキーの位置で、入力される文字はパソコン / タブレット側のキーボード配列で決まります。向こうでも同じ配列にすれば、キートップの文字と入力される文字が一致します。デスクトップモードでは「向こう」はこのスマホです：スマホの設定の物理キーボードで Douhua Keyboard に同じ配列を選んでください。</string>
     <string name="kbd_open_hw">スマホの物理キーボード設定を開く</string>
     <string name="kbd_no_data">物理キーボードのデータを読み込めません</string>
+    <string name="kbd_no_mode_data">%1$sには %2$s モードのキーデータがないため、キーボード画面では豆花の配列を表示しています。別のモードか配列を選んでください。</string>
     <string name="sec_kbd_douhua">豆花の配列</string>
     <string name="licenses">オープンソースライセンス</string>
 </resources>

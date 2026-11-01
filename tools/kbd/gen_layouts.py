@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""实体键盘键帽数据的生成器（第 1A 批：美式、德语 × Mac / Windows / Linux / 安卓四家主机）。
+"""实体键盘键帽数据的生成器：第 1A 批美式、德语，第 2 批（2026-11-01）补齐拉丁字母布局（catalog.json），× Mac / Windows / Linux / 安卓四家主机。
 
 输入：
   sources.json   钉死的原始数据：CLDR release-43 的 keyboards/osx、keyboards/windows（按 sha256），
                  AOSP 的 KCM + Generic.kl（GitHub 镜像，按 git blob + sha256），本机的 xkeyboard-config（核对版本号）+ libxkbcommon。
-  catalog.json   手写：生成哪些布局、每家用哪个源文件。
-输出（res/raw/，进 APK；第 1B 批的键帽才读，现在没人读）：
+  catalog.json   手写：生成哪些布局、每家用哪个源文件（mac / android 可以是 null = 那家没有这个布局）、起名字用的语言 / 区分词。
+  mac_names.json 手写：CLDR 里的 macOS 旧名 → 现名（凭记忆，要用户在 iPad 上核对）。
+输出（res/raw/，进 APK；App 读 kbd_win、kbd_mac 和 kbd_catalog，kbd_linux / kbd_android 只给扫描工具用）：
   kbd_mac.txt、kbd_win.txt、kbd_linux.txt、kbd_android.txt   每家一份：每个布局一段，每个键 4 层的字（普通 / Shift / 第三层 / 第三层+Shift）
-  kbd_catalog.txt                                            布局清单（默认形状、小键盘小数点、各家主机里叫什么）
+  kbd_catalog.txt                                            布局清单（起名字的语言 / 区分词、形状、有数据的模式、小键盘、各家主机里叫什么）
   格式见 tools/kbd/README.md「数据格式」，读写在 kbdtable.py。
 
 原始文件不进仓库：缓存在 .cache/kbd/（不进 git），每次都按 sha256 核对，对不上就失败；缓存里没有就下载（--offline 不下载、直接失败）。
@@ -223,7 +224,9 @@ def win_table(cells):
 # dead_* 键符 → 规范写法（带间距的附加符号；没有带间距形式的留组合附加符号）。不认识的直接失败，免得悄悄画错。
 XKB_DEAD = {'grave': '`', 'acute': '´', 'circumflex': '^', 'tilde': '~', 'diaeresis': '¨', 'abovering': '˚',
             'cedilla': '¸', 'caron': 'ˇ', 'macron': '¯', 'breve': '˘', 'abovedot': '˙', 'doubleacute': '˝',
-            'ogonek': '˛', 'belowdot': '\u0323', 'belowmacron': '\u0331'}
+            'ogonek': '˛', 'belowdot': '\u0323', 'belowmacron': '\u0331',
+            # 第 2 批加的（没有带间距形式的留组合附加符号）：斜线（ø 那种）、下逗号（ș）、钩（ả）、角（ơ）、货币符号（AltGr+Shift 的 ¤ 死键）、希腊字母死键
+            'stroke': '\u0335', 'belowcomma': '\u0326', 'hook': '\u0309', 'horn': '\u031B', 'currency': '¤', 'greek': 'µ'}
 
 
 class Names(ctypes.Structure):
@@ -311,14 +314,22 @@ class Xkb:
             self.L.xkb_state_unref(st)
         return out
 
-    def kpdl(self, km):
-        """小键盘小数点（NumLock 开着）出什么字。"""
+    def keypad(self, km, usage):
+        """小键盘上这个键（NumLock 开着）出什么字。"""
         st = self.L.xkb_state_new(km)
         self.L.xkb_state_update_mask(st, 0, 0, self._mask(km, 'Mod2'), 0, 0, 0)
-        sym = self.L.xkb_state_key_get_one_sym(st, kt.HID_TO_EVDEV[kt.KEYPAD_DECIMAL] + 8)
+        sym = self.L.xkb_state_key_get_one_sym(st, kt.HID_TO_EVDEV[usage] + 8)
         self.L.xkb_state_unref(st)
         c = self.L.xkb_keysym_to_utf32(sym) if sym else 0
         return chr(c) if c else ''
+
+    def kpdl(self, km):
+        """小键盘小数点（0x63）出什么字。"""
+        return self.keypad(km, kt.KEYPAD_DECIMAL)
+
+    def kpco(self, km):
+        """ABNT2 小键盘多出来的那个键（HID 0x85 → evdev KEY_KPCOMMA → xkb <KPPT>）出什么字。"""
+        return self.keypad(km, kt.KEYPAD_COMMA)
 
 
 def xkb_version(pc_path):
@@ -524,9 +535,39 @@ def dedupe(sections):
     return aliases
 
 
+def mac_name_now(names, cldr_name):
+    """CLDR 里的 macOS 旧名 → 现名（mac_names.json；没写的照原样）。"""
+    return names.get(cldr_name, cldr_name)
+
+
+def check_catalog(catalog):
+    """catalog.json 自己的规矩：id 不重复、能当段名；形状、模式认得；默认形状在能选的里面；Windows、Mac 至少有一种（只有 Mac 有的那一套 win 写 null）；
+    手写的 Windows 小键盘小数点（kpdl_win）只能是 . 或 ,，而且要有 Windows 的数据。"""
+    seen = set()
+    for lay in catalog['layouts']:
+        lid = lay.get('id', '')
+        if not re.match(r'^[\w-]+$', lid) or lid in seen:
+            raise GenError('catalog.json：id %r 重复或者不能当段名（只许字母、数字、_、-）' % lid)
+        seen.add(lid)
+        for key in ('locale', 'shape', 'shapes', 'linux'):
+            if not lay.get(key):
+                raise GenError('catalog.json：%s 缺 %s' % (lid, key))
+        if not lay.get('win') and not lay.get('mac'):
+            raise GenError('catalog.json：%s 的 win、mac 都没有（至少要有一种模式的数据）' % lid)
+        if 'kpdl_win' in lay and (lay['kpdl_win'] not in ('.', ',') or not lay.get('win')):
+            raise GenError('catalog.json：%s 的 kpdl_win %r 不对（只能是 . 或 ,，而且要有 Windows 的数据）' % (lid, lay['kpdl_win']))
+        if any(sh not in SHAPES for sh in lay['shapes']) or lay['shape'] not in lay['shapes']:
+            raise GenError('catalog.json：%s 的形状 %s / %s 不对（认得的：%s）' % (lid, lay['shape'], lay['shapes'], '、'.join(SHAPES)))
+
+
+SHAPES = ('ansi', 'iso', 'abnt2')
+
+
 def generate(out_dir, offline):
     sources = load_json('sources.json')
     catalog = load_json('catalog.json')
+    mac_names = load_json('mac_names.json')['names']
+    check_catalog(catalog)
     S = sources['sources']
     used = {'cldr': set(), 'aosp': set()}
 
@@ -549,19 +590,37 @@ def generate(out_dir, offline):
     aosp_files = [kl_path]
     for lay in catalog['layouts']:
         lid = lay['id']
-        mac_name, cells = parse_cldr(src('cldr', lay['mac']), 'osx')
-        mac[lid], mac[lid + '.iso'] = mac_tables(cells)
-        win_name, cells = parse_cldr(src('cldr', lay['win']), 'windows')
-        win[lid] = win_table(cells)
+        modes = []
+        win_name = ''
+        if lay.get('win'):
+            win_name, cells = parse_cldr(src('cldr', lay['win']), 'windows')
+            win[lid] = win_table(cells)
+            modes.append('win')
+        mac_cldr = mac_now = ''
+        if lay.get('mac'):
+            mac_cldr, cells = parse_cldr(src('cldr', lay['mac']), 'osx')
+            mac[lid], mac[lid + '.iso'] = mac_tables(cells)
+            mac_now = lay.get('name_mac') or mac_name_now(mac_names, mac_cldr)
+            modes.append('mac')
         km = xkb.keymap(lay['linux']['layout'], lay['linux']['variant'])
         linux[lid] = xkb.table(km, kt.TABLE_USAGES)
         kpdl = xkb.kpdl(km)
+        # Windows 模式的小键盘小数点：catalog.json 手写了（微软布局表核过和 xkb 不一样的）就用它，不然照 xkb；没有 Windows 的数据空着
+        kpdl_win = (lay.get('kpdl_win') or kpdl) if lay.get('win') else ''
+        kpco = xkb.kpco(km) if 'abnt2' in lay['shapes'] else ''
         xkb.L.xkb_keymap_unref(km)
-        kcm_path = src('aosp', lay['android'])
-        aosp_files.append(kcm_path)
-        android[lid] = android_table(kcm_path, kl_path)
-        rows.append([lid, lay['shape'], ','.join(lay['shapes']), kpdl, mac_name, win_name,
-                     xkb_description(xk['rules'], lay['linux']['layout'], lay['linux']['variant']), lay['android_name']])
+        if lay.get('android'):
+            kcm_path = src('aosp', lay['android'])
+            if kcm_path not in aosp_files:
+                aosp_files.append(kcm_path)
+            android[lid] = android_table(kcm_path, kl_path)
+        row = {'id': lid, 'locale': lay['locale'], 'variant': lay.get('variant', ''), 'shape': lay['shape'],
+               'shapes': ','.join(lay['shapes']), 'modes': ','.join(modes), 'kpdl': kpdl, 'kpdl_win': kpdl_win, 'kpco': kpco,
+               'caps_mac': lay.get('caps_mac', '') if lay.get('mac') else '', 'name_mac': mac_now, 'name_mac_cldr': mac_cldr,
+               'name_win': (lay.get('name_win') or win_name) if lay.get('win') else '',
+               'name_linux': xkb_description(xk['rules'], lay['linux']['layout'], lay['linux']['variant']),
+               'name_android': lay.get('android_name', '') if lay.get('android') else ''}
+        rows.append([row[c] for c in kt.CATALOG_COLUMNS])
 
     def file_lines(src_id, prefix=''):
         """'#!file 源 路径 sha256'：这份输出用到的每个原始文件（check_tables.py 拿它和 sources.json 核对）。"""
@@ -574,27 +633,35 @@ def generate(out_dir, offline):
 
     kt.write_table_file(os.path.join(out_dir, 'kbd_mac.txt'), header('mac', ' macOS / iPadOS（iPadOS 假设和同名 macOS 布局一样，待实测）', [
         'Mac 每个布局两段：<id> = macOS 把豆花当 ANSI 键盘（不对调）；<id>.iso = 当 ISO 键盘（对调 0x35 / 0x64，见方案 §7.3）。',
-        'CLDR osx 的数据是 macOS 10.9（2013 年）的，现名和个别字可能变过。'] + cldr_notice) + [
+        'CLDR osx 的数据是 macOS 10.9（2013 年）的，现名和个别字可能变过；CLDR 里没有的布局（%s）这里没有那一段。'
+        % '、'.join(l['id'] for l in catalog['layouts'] if not l.get('mac'))] + cldr_notice) + [
         '!source cldr ' + S['cldr']['version']] + file_lines('cldr', 'osx/'), mac, dedupe(mac))
 
-    kt.write_table_file(os.path.join(out_dir, 'kbd_win.txt'), header('win', ' Windows（CLDR 的 Windows 10 数据）', cldr_notice) + [
+    kt.write_table_file(os.path.join(out_dir, 'kbd_win.txt'), header('win', ' Windows（CLDR 的 Windows 10 数据）', [
+        'Windows 没有的布局（只有 Mac 有的那一套：%s）这里没有那一段。' % '、'.join(l['id'] for l in catalog['layouts'] if not l.get('win'))]
+        + cldr_notice) + [
         '!source cldr ' + S['cldr']['version']] + file_lines('cldr', 'windows/'), win, dedupe(win))
 
-    kt.write_table_file(os.path.join(out_dir, 'kbd_linux.txt'), header('linux', ' Linux（xkb 默认变体，model pc105）', [
+    kt.write_table_file(os.path.join(out_dir, 'kbd_linux.txt'), header('linux', ' Linux（xkb，model pc105）', [
         '数据：%s %s（%s），用本机 libxkbcommon 编译取字。' % (S['xkb']['name'], S['xkb']['version'], S['xkb']['url']),
         S['xkb']['copyright'], '许可：' + S['xkb']['license']]) + [
         '!source xkb ' + S['xkb']['version']], linux, dedupe(linux))
 
     kt.write_table_file(os.path.join(out_dir, 'kbd_android.txt'), header('android', '安卓（AOSP 的外接键盘布局；三星改没改过不知道）', [
-        '数据：%s（%s），%s。' % (S['aosp']['name'], S['aosp']['url'], S['aosp']['version'])] + aosp_copyrights(aosp_files) + [
-        '许可：' + S['aosp']['license']]) + [
+        '数据：%s（%s），%s。AOSP 没有的布局（%s）这里没有那一段。' % (S['aosp']['name'], S['aosp']['url'], S['aosp']['version'],
+                                                         '、'.join(l['id'] for l in catalog['layouts'] if not l.get('android')))]
+        + aosp_copyrights(aosp_files) + ['许可：' + S['aosp']['license']]) + [
         '!source aosp ' + S['aosp']['repo']] + file_lines('aosp'), android, dedupe(android))
 
-    cat = ['kbd_catalog.txt：豆花儿实体键盘的布局清单。自动生成（tools/kbd/gen_layouts.py，手写的部分在 tools/kbd/catalog.json），勿手改。',
-           '每行：' + '、'.join(kt.CATALOG_COLUMNS) + '（tab 分隔）。shape = 默认形状，shapes = 能选的形状，',
-           'kpdl = 小键盘小数点（NumLock 开着）出的字（取自 xkb），name_* = 各家主机设置里这个布局叫什么（mac / win 是 CLDR 里的旧名，android 凭记忆）。']
+    cat = ['kbd_catalog.txt：豆花儿实体键盘的布局清单。自动生成（tools/kbd/gen_layouts.py，手写的部分在 tools/kbd/catalog.json、mac_names.json），勿手改。',
+           '每行一个布局，栏见下面 #!columns（tab 分隔，读的时候按这一行认栏）。shape = 默认形状，shapes = 能选的形状，modes = 有数据的模式（win / mac），',
+           'kpdl / kpco = 小键盘小数点（0x63）、ABNT2 小键盘多的那个键（0x85）出的字（NumLock 开着，取自 xkb；不是 ABNT2 的 kpco 空着；Mac 模式用这两个），',
+           'kpdl_win = Windows 模式的小键盘小数点（catalog.json 手写的 kpdl_win，照微软布局表；没写的同 kpdl；没有 Windows 数据的空着），',
+           'caps_mac = Mac 模式 Caps 键帽写什么（空 = 照旧），name_mac = macOS 现名（mac_names.json，凭记忆）、name_mac_cldr = CLDR 里的旧名，',
+           'name_win / name_linux / name_android = 各家主机设置里叫什么；variant 小写的是 strings.xml 里 kbd_var_<它> 的词，别的照写。']
     with open(os.path.join(out_dir, 'kbd_catalog.txt'), 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join('# ' + c for c in cat) + '\n')
+        f.write('#!columns ' + ' '.join(kt.CATALOG_COLUMNS) + '\n')
         for r in rows:
             f.write('\t'.join(kt.escape_field(c) for c in r) + '\n')
     return {'mac': mac, 'win': win, 'linux': linux, 'android': android, 'catalog': rows}
@@ -655,6 +722,29 @@ def selftest():
     check(not kcm_matches(M_ALT | M_ALT_R, 0), '基本层不认右 Alt')
     check(not kcm_matches(M_ALT | M_ALT_R, KCM_META['lalt']), 'lalt 不认右 Alt')
 
+    # 第 2 批：KCM 的 U+030D / U+030E 死键、catalog.json 的规矩、Mac 现名
+    check(make_cell('\u030d', True) == ("'", True) and make_cell('\u030e', True) == ('"', True), "KCM 的 U+030D / U+030E 死键规范成 ' \"")
+    check(make_cell('\u030d', False) == ('\u030d', False), '不是死键的组合附加符号不换')
+    check(mac_name_now({'Swedish - Pro': 'Swedish'}, 'Swedish - Pro') == 'Swedish' and mac_name_now({}, 'Dutch') == 'Dutch',
+          'Mac 现名：写了就换，没写照旧')
+    good = {'id': 'xx', 'locale': 'en-US', 'shape': 'ansi', 'shapes': ['ansi'], 'win': 'w', 'linux': {'layout': 'us'}}
+    for bad, what in ((dict(good, id='x y'), 'id 有空格'), (dict(good, shape='iso'), '默认形状不在能选的里面'),
+                      (dict(good, shapes=['ansi', 'jis']), '不认识的形状'), (dict(good, win=None), 'Windows、Mac 的数据都没有'),
+                      (dict(good, kpdl_win=';'), 'kpdl_win 不是 . 或 ,'), (dict(good, win=None, mac='m', kpdl_win=','), '没有 Windows 数据却写了 kpdl_win')):
+        try:
+            check_catalog({'layouts': [bad]})
+            check(False, 'catalog.json 的规矩：%s 应该失败' % what)
+        except GenError:
+            check(True, what)
+    try:
+        check_catalog({'layouts': [good, dict(good)]})
+        check(False, 'catalog.json 的规矩：id 重复应该失败')
+    except GenError:
+        check(True, 'id 重复')
+    check_catalog({'layouts': [good, dict(good, id='br', shape='abnt2', shapes=['abnt2'], mac=None),
+                               dict(good, id='mo', win=None, mac='m'), dict(good, id='kp', kpdl_win=',')]})
+    check(True, 'abnt2、没有 Mac 数据、只有 Mac 数据（win 写 null）、手写 kpdl_win 都认')
+
     # 文件格式往返
     with tempfile.TemporaryDirectory(prefix='kbd-selftest-') as d:   # 用完就删（tools/test.sh 每跑一次都会走这里）
         sections = {
@@ -676,6 +766,28 @@ def selftest():
         check('@yy = xx' in text, '完全一样的表写成别名')
         check('\\u00A0' in text and '\\uF8FF' in text and '\\uDB40\\uDC01' in text and '\\*´' in text, '看不见的字转义、死键标记')
         check('\\\\' in text and '\t\n' not in text, '反斜杠转义、行尾不留空格')
+        # 清单：按 #!columns 认栏；没有这一行、缺栏、栏数不对都失败
+        cols = list(kt.CATALOG_COLUMNS)
+        row = {c: '' for c in cols}
+        row.update(id='xx', locale='en-US', shape='ansi', shapes='ansi,iso', modes='win', kpdl='.', kpdl_win=',')
+        cat = os.path.join(d, 'kbd_catalog.txt')
+
+        def write_cat(columns, values):
+            with open(cat, 'w', encoding='utf-8') as f:
+                f.write('# 注释\n' + ('#!columns ' + ' '.join(columns) + '\n' if columns else '') + '\t'.join(values) + '\n')
+        rev = cols[::-1]
+        write_cat(rev, [row[c] for c in rev])
+        back = kt.read_catalog(d)
+        check(back[0]['id'] == 'xx' and back[0]['shapes'] == ['ansi', 'iso'] and back[0]['modes'] == ['win'], '清单按 #!columns 认栏（顺序随便）')
+        for columns, values, what in ((None, [row[c] for c in cols], '没有 #!columns'),
+                                      (cols[:-1], [row[c] for c in cols[:-1]], '缺一栏'),
+                                      (cols, [row[c] for c in cols[:-1]], '栏数不对')):
+            write_cat(columns, values)
+            try:
+                kt.read_catalog(d)
+                check(False, '清单%s应该失败' % what)
+            except ValueError:
+                check(True, what)
 
     # xkb：要本机的 libxkbcommon 和 xkb 数据，没有就跳过
     skipped = None
@@ -688,6 +800,9 @@ def selftest():
         check(td_[0x2E][0] == ('´', True), 'xkb de：´ 是死键')
         check(td_[0x1C][0] == ('z', False) and td_[0x1D][0] == ('y', False), 'xkb de：QWERTZ')
         check(xkb.kpdl(de) == ',' and xkb.kpdl(us) == '.', 'xkb 小键盘小数点：de 逗号、us 句点')
+        br = xkb.keymap('br')
+        check(xkb.kpdl(br) == ',' and xkb.kpco(br) == '.', 'xkb br（ABNT2）：小键盘小数点 0x63 出逗号、多出来的 0x85 出句点')
+        check(xkb.table(br, kt.TABLE_USAGES)[0x87][:2] == [('/', False), ('?', False)], 'xkb br：右 Shift 左边那个键（0x87）是 / ?')
     except (GenError, OSError) as e:
         skipped = str(e)
     if fails:

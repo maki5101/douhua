@@ -178,6 +178,7 @@ final class KeyRows {
      * 实体键盘（第 1B 批，FixedLayout）用同一条规则，另外几个只在实体键盘上有的键：ISO 的 Z 左边那个键（0x64，德语 < > |）算标点（普通键；
      * 0x32 本来就在标点那一段里，现在回车左边那个键发 0x31）；小键盘的数字和小数点（0x59–0x63）是普通键，
      * 其余（Num、/ * - +、小键盘回车）是功能键，同主界面数字键盘的 {@link #numpadFunctionKey}。豆花布局里没有这些用法码，结果不变。
+     * 第 2 批的巴西 ABNT2 多两个：右 Shift 左边的 / ?（0x87）算标点，小键盘多的那个键（0x85，巴西写 "."）同小数点算普通键。
      */
     static boolean functionKey(Key key, boolean shortcut) {
         if (key.special || shortcut) return true;
@@ -186,8 +187,9 @@ final class KeyRows {
         if ((mods & ~(SHIFT | 0x20)) != 0) return true;   // 左右 Shift 以外的修饰键：组合键
         boolean letterOrDigit = usage >= 0x04 && usage <= 0x27;   // a–z、1–0
         boolean punct = usage == 0x2C || (usage >= 0x2D && usage <= 0x38)   // 空格、- = [ ] \ # ; ' ` , . /
-                || usage == 0x64;   // ISO 的 Z 左边那个键
-        boolean keypad = usage >= 0x59 && usage <= 0x63;   // 小键盘 1–9、0、小数点
+                || usage == 0x64    // ISO 的 Z 左边那个键
+                || usage == 0x87;   // ABNT2 右 Shift 左边的 / ?
+        boolean keypad = usage >= 0x59 && usage <= 0x63 || usage == 0x85;   // 小键盘 1–9、0、小数点，ABNT2 小键盘多的那个键
         return !(letterOrDigit || punct || keypad);
     }
 

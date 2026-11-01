@@ -9,7 +9,7 @@ import java.util.List;
  * 实体键盘的几何（第 1B 批，2026-11-01），纯 Java（离线测，FixedLayoutTest）：每个键在哪、多宽、发哪个 HID 用法码，单位 u（1u = 一个字母键连缝）。
  * 豆花布局（KeyRows）每行按份数铺满，画不出实体键盘的 L 形回车、两行高的键、几个区块之间的空，所以另起一套，KeyRows 不动。
  *
- * 一块 = 形状（ANSI / ISO）× 尺寸（笔记本 / TKL / 全尺寸）× 模式（Windows / Mac）：形状只管主键区五行，模式只管最下一排、编辑区和几个键名，
+ * 一块 = 形状（ANSI / ISO / ABNT2）× 尺寸（笔记本 / TKL / 全尺寸）× 模式（Windows / Mac）：形状只管主键区五行（ABNT2 还管小键盘右列），模式只管最下一排、编辑区和几个键名，
  * 尺寸管有没有编辑区、数字小键盘（笔记本另有自己的 F 行和最下一排，见下面）。语言（键帽上的字）不在这里，在 FixedLegends（出字的键 name 是 null，字按用法码查表）。
  *
  * 竖着：F 行（第 0 行）、隔 0.25u、主键区五行（第 1–5 行：数字行、Q 行、A 行、Z 行、空格那一排），一共 6.25u 高（{@link #ROW_TOP}）。
@@ -31,11 +31,20 @@ import java.util.List;
  *   说明苹果 ISO 键盘这两个位置报的码和 PC 惯例相反；macOS 的虚拟键码 kVK_ISO_Section（0x0A，就是 § 那个键）在不对调时对应 HID 0x64
  *   （Chromium dom_code_data.inc，协调者核过）。主机怎么认（macOS 把豆花当 ANSI 还是 ISO、iPad 一律当美式）是主机的事，没在真机上验证。
  *
+ * 巴西 ABNT2（{@link #ABNT2}，第 2 批，2026-11-01；尺寸照本机 xkb 的 geometry/pc 里的 abnt2，形态调研 kbd-form §2.4）：主键区第 1–3 行、回车同 ISO，
+ * 第 4 行左 Shift 1.25 · Z 左边那个键（0x64，巴西是 \ |）· Z–M · , . ; · **「/ ?」键 1u（0x87 International1，和 JIS 的ろ同一个码）** · **右 Shift 只有 1.75u**；
+ * 全尺寸的小键盘右列 + 不是两行高，拆成两个 1u：+（0x57）在 7 8 9 那一行、**0x85（Keypad Comma，微软表里写 "Brazilian Keypad ."）在 4 5 6 那一行**，
+ * 键帽写清单的 kpco（巴西是 "."），左下的小数点（0x63）写 kpdl（巴西是 ","）。键数比 ISO 多两个（全尺寸 Windows 107，TKL / 笔记本多一个 0x87）。
+ * **Mac 模式的 ABNT2 不对调 1 左边和 Z 左边那两个键**（照 PC 惯例 1 左边 0x35、Z 左边 0x64），和 ISO 不一样：苹果不做 ABNT2 键盘，没有"苹果键盘怎么发"可照；
+ * CLDR 里 macOS 的 Brazilian-ABNT2 把 ' " 放在 0x35（键码 50）、\ | 放在 0x64（键码 10），不对调那段按 PC 惯例的码查出来正好是 ABNT2 键帽上印的字
+ * （1 左边 ' "、Z 左边 \ |），和 Windows 模式一样；对调的话 1 左边会画成 \ |。主机怎么认（macOS 把豆花当哪种键盘）照旧是主机的事，没在真机上验证。
+ *
  * 笔记本尺寸（{@link #LAPTOP}，2026-11-01，用户："没有 Insert 那些键的情况下，把方向键也得塞进来，就是有点类似于笔记本键盘那种"）：照 ThinkPad 排，
  * 尺寸从联想 TrackPoint Keyboard II 用户指南的整机插图上量的（方案 design-laptop §2.1；那块外接键盘就是 ThinkPad 笔记本的排法），15u 宽 = 主键区的宽，只有一个区块。
  * - F 行（1 行高，照 TKL）：Esc 1.125 · F1–F12 各 0.8125（四个一组，组间 0.1875）· 隔 0.1875 · Home End Ins 各 0.8125 · Del 1.125。
  *   真机 F 行只有约 0.7 个键高，这里照 TKL 用 1 行高（F 键本来就窄，再矮太难按），第 0–4 行的竖向排法和 TKL 一模一样。
- * - 第 1–4 行：和 TKL 的主键区一模一样（右 Shift 照旧 2.75u，不缩短：真 ThinkPad 的右 Shift 是满的，Z 那一行也挤不下 PgUp ↑ PgDn）。
+ * - 第 1–4 行：和 TKL 的主键区一模一样（右 Shift 照旧 2.75u，不缩短：真 ThinkPad 的右 Shift 是满的，Z 那一行也挤不下 PgUp ↑ PgDn；
+ *   ABNT2 同 TKL 的 ABNT2：右 Shift 1.75u、左边是 / ?）。
  * - 最下一排：一行、1.25 行高（{@link #height} 6.5）。Ctrl ·（⋯ 槽）· Super · Alt · 空格 5u（正好以红点为中线）· AltGr / Alt · PrtSc · Ctrl，
  *   右下角 2.8125u 是方向键，照真机分上下两层（{@link Key#y0} / {@link Key#y1}，各 0.625 行）：上层 PgUp ↑ PgDn、下层 ← ↓ →。
  *   真机下层比整排往下伸出一截，这里改成整排加高到 1.25 行，别的键跟着高、下面不留空着的机身。最下一排是一行，只有方向键竖着分两层：
@@ -47,10 +56,14 @@ import java.util.List;
  *   F 行 Ins 那格空着，声明成空格子（{@link #blanks}），不在任何范围里，按了什么都不发生。
  * - 所有坐标都是 1/16u 的整数倍（浮点里是精确值，相邻两个键前一个的 x + w 和后一个的 x 是同一个数，摆到像素后一定共用边界）：
  *   右 Ctrl 和三个方向键各 0.9375，没取真机的 1 + 3 × 0.917。
- * - 键数：Windows 83 / 84（ANSI / ISO），Mac 82 / 83。比 TKL 少 ScrLk、Pause、右 Super、Menu（真机靠 Fn 组合键出，第 3 批做 Fn 层时再说）。
+ * - 键数：Windows 83 / 84 / 85（ANSI / ISO / ABNT2），Mac 82 / 83 / 84。比 TKL 少 ScrLk、Pause、右 Super、Menu（真机靠 Fn 组合键出，第 3 批做 Fn 层时再说）。
+ *
+ * 中文拼音（清单的 caps_mac，第 2 批）：Mac 模式 Caps 键帽写"中/英"（苹果中文键盘印的就是它），Windows 模式照旧写 Caps；发的码不变（0x39）。
  */
 final class FixedLayout {
-    static final String ANSI = "ansi", ISO = "iso";
+    static final String ANSI = "ansi", ISO = "iso", ABNT2 = "abnt2";
+    /** 能拼的形状（JIS / 韩国第 5 批）。 */
+    static final String[] SHAPES = {ANSI, ISO, ABNT2};
     static final String TKL = "tkl", FULL = "full", LAPTOP = "laptop";
     /** 从大到小（逐级缩的顺序，{@link #ladder}）。 */
     static final String[] SIZES_DESC = {FULL, TKL, LAPTOP};
@@ -181,8 +194,14 @@ final class FixedLayout {
         return MAC.equals(mode);
     }
 
+    /** ISO 型（L 形回车、Z 左边多一个键 0x64）：ISO 和 ABNT2 都是。 */
     boolean iso() {
-        return ISO.equals(shape);
+        return ISO.equals(shape) || ABNT2.equals(shape);
+    }
+
+    /** 巴西 ABNT2（比 ISO 多 / ? 键 0x87、全尺寸小键盘多 0x85）。 */
+    boolean abnt2() {
+        return ABNT2.equals(shape);
     }
 
     boolean full() {
@@ -238,7 +257,7 @@ final class FixedLayout {
 
     /** 能选的值，认不出的换成默认的（ANSI、TKL、Windows）。 */
     static String validShape(String s) {
-        return ISO.equals(s) ? ISO : ANSI;
+        return ISO.equals(s) ? ISO : ABNT2.equals(s) ? ABNT2 : ANSI;
     }
 
     static String validSize(String s) {
@@ -274,14 +293,35 @@ final class FixedLayout {
     }
 
     /**
+     * 同 {@link #forLegends}，小键盘的字、Mac 模式的 Caps 键帽照布局清单的这一行（小数点按模式取 Layout.kpdl(mode)——Windows 模式照微软布局表的 kpdl_win、
+     * Mac 模式照 xkb 的 kpdl；kpco、caps_mac；entry 是 null 时照默认的：小数点 "."、Caps）。FixedData.ladder 用这个。
+     */
+    static FixedLayout forEntry(String shape, String size, String mode, FixedLegends.Table legends, FixedLegends.Layout entry) {
+        if (legends == null) return null;
+        return entry == null ? build(shape, size, mode, legends.hasThird(), ".")
+                : build(shape, size, mode, legends.hasThird(), entry.kpdl(mode), entry.kpco, entry.capsMac);
+    }
+
+    /**
      * 拼一块键盘。altGr = 右 Alt 写 AltGr（这个布局在 Windows 上有第三层的字；美式没有，写 Alt），Mac 模式不看；
      * kpdl = 小键盘小数点出的字（布局清单的 kpdl，德语是 ","）。
      */
     static FixedLayout build(String shape, String size, String mode, boolean altGr, String kpdl) {
+        return build(shape, size, mode, altGr, kpdl, null, null);
+    }
+
+    /**
+     * 同上，另给 kpco = ABNT2 小键盘多的那个键（0x85）写的字（清单的 kpco，巴西是 "."；空 / null 写 "."，别的形状没有这个键），
+     * capsMac = Mac 模式 Caps 键帽写什么（清单的 caps_mac，中文拼音是"中/英"；空 / null 照旧写 Caps，Windows 模式不看）。
+     */
+    static FixedLayout build(String shape, String size, String mode, boolean altGr, String kpdl, String kpco, String capsMac) {
         shape = validShape(shape);
         size = validSize(size);
         mode = validMode(mode);
-        boolean mac = MAC.equals(mode), iso = ISO.equals(shape), full = FULL.equals(size), laptop = LAPTOP.equals(size);
+        boolean mac = MAC.equals(mode), abnt2 = ABNT2.equals(shape), iso = ISO.equals(shape) || abnt2;
+        boolean full = FULL.equals(size), laptop = LAPTOP.equals(size);
+        // 1 左边、Z 左边那两个键照真苹果 ISO 键盘对调：只在 Mac 模式的 ISO（ABNT2 不对调，见类注释）
+        boolean appleSwap = mac && iso && !abnt2;
         List<Key> k = new ArrayList<>();
         List<float[]> blanks = new ArrayList<>();
 
@@ -319,8 +359,8 @@ final class FixedLayout {
         }
 
         // ── 第 1 行：数字行 ──
-        // 1 左边那个键：ANSI 两种模式都是 0x35；ISO 时 Windows 0x35、Mac 照真苹果 ISO 键盘发 0x64（见类注释）
-        k.add(key(iso && mac ? 0x64 : 0x35, MAIN, 1, 0, 1, null));
+        // 1 左边那个键：ANSI 两种模式都是 0x35；ISO 时 Windows 0x35、Mac 照真苹果 ISO 键盘发 0x64（见类注释）；ABNT2 两种模式都是 0x35
+        k.add(key(appleSwap ? 0x64 : 0x35, MAIN, 1, 0, 1, null));
         for (int i = 0; i < 10; i++) k.add(key(0x1E + i, MAIN, 1, 1 + i, 1, null));
         k.add(key(0x2D, MAIN, 1, 11, 1, null));
         k.add(key(0x2E, MAIN, 1, 12, 1, null));
@@ -349,7 +389,7 @@ final class FixedLayout {
         }
 
         // ── 第 3 行：A 行 ──
-        k.add(key(0x39, MAIN, 3, 0, 1.75f, "Caps"));
+        k.add(key(0x39, MAIN, 3, 0, 1.75f, mac && capsMac != null && !capsMac.isEmpty() ? capsMac : "Caps"));
         letters(k, 3, 1.75f, "asdfghjkl");
         k.add(key(0x33, MAIN, 3, 10.75f, 1, null));
         k.add(key(0x34, MAIN, 3, 11.75f, 1, null));
@@ -359,7 +399,7 @@ final class FixedLayout {
         // ── 第 4 行：Z 行 ──
         if (iso) {
             k.add(key(0xE1, MAIN, 4, 0, 1.25f, "⇧"));
-            k.add(key(mac ? 0x35 : 0x64, MAIN, 4, 1.25f, 1, null));   // Z 左边那个键：Windows 0x64、Mac 0x35（见类注释）
+            k.add(key(appleSwap ? 0x35 : 0x64, MAIN, 4, 1.25f, 1, null));   // Z 左边那个键：Windows 0x64、Mac 0x35（见类注释）；ABNT2 两种模式都是 0x64
         } else {
             k.add(key(0xE1, MAIN, 4, 0, 2.25f, "⇧"));
         }
@@ -367,7 +407,13 @@ final class FixedLayout {
         k.add(key(0x36, MAIN, 4, 9.25f, 1, null));
         k.add(key(0x37, MAIN, 4, 10.25f, 1, null));
         k.add(key(0x38, MAIN, 4, 11.25f, 1, null));
-        k.add(key(0xE5, MAIN, 4, 12.25f, 2.75f, "⇧"));
+        if (abnt2) {
+            // ABNT2：右 Shift 左边多一个 / ?（0x87），右 Shift 只剩 1.75u
+            k.add(key(0x87, MAIN, 4, 12.25f, 1, null));
+            k.add(key(0xE5, MAIN, 4, 13.25f, 1.75f, "⇧"));
+        } else {
+            k.add(key(0xE5, MAIN, 4, 12.25f, 2.75f, "⇧"));
+        }
         if (!laptop) k.add(key(0x52, EDIT, 4, EDIT_LEFT + 1, 1, "↑"));
 
         // ── 第 5 行：空格那一排 ──
@@ -438,7 +484,13 @@ final class FixedLayout {
             String[] digits = {"7", "8", "9", "4", "5", "6", "1", "2", "3"};
             int[] usages = {0x5F, 0x60, 0x61, 0x5C, 0x5D, 0x5E, 0x59, 0x5A, 0x5B};
             for (int i = 0; i < 9; i++) k.add(key(usages[i], NUMPAD, 2 + i / 3, p + i % 3, 1, digits[i]));
-            k.add(new Key(0x57, false, NUMPAD, 2, 2, p + 3, 1, 0, 0, "+"));
+            if (abnt2) {
+                // ABNT2：右列的 + 只有一行高，下面 4 5 6 那一行是 0x85（巴西写 "."）
+                k.add(key(0x57, NUMPAD, 2, p + 3, 1, "+"));
+                k.add(key(0x85, NUMPAD, 3, p + 3, 1, kpco == null || kpco.isEmpty() ? "." : kpco));
+            } else {
+                k.add(new Key(0x57, false, NUMPAD, 2, 2, p + 3, 1, 0, 0, "+"));
+            }
             k.add(new Key(0x58, false, NUMPAD, 4, 2, p + 3, 1, 0, 0, "↵"));
             k.add(key(0x62, NUMPAD, 5, p, 2, "0"));
             k.add(key(0x63, NUMPAD, 5, p + 2, 1, kpdl == null || kpdl.isEmpty() ? "." : kpdl));

@@ -1,5 +1,5 @@
 {
-  "_说明": "gen_layouts.py 用的原始数据源。原始文件不进仓库：第一次生成时下载到 cache_dir（.cache/ 不进 git），之后每次都按 sha256 核对，对不上就失败。sha256 是 2026-10-31 调研时下载的那份算的。",
+  "_说明": "gen_layouts.py 用的原始数据源。原始文件不进仓库：第一次生成时下载到 cache_dir（.cache/ 不进 git），之后每次都按 sha256 核对，对不上就失败。sha256：美式、德语那几个文件（和两个 _platform.xml、Generic.kl）是 2026-10-31 调研时下载的那份算的；第 2 批（2026-11-01）新加的是这次下载算的（CLDR 从 raw.githubusercontent.com 的 release-43 标签下，顺带核了旧的六个文件 sha256 不变；AOSP 从 GitHub 镜像 main 下，核了 git blob id 等于目录列表里的）。",
   "cache_dir": ".cache/kbd",
   "sources": {
     "cldr": {
@@ -16,7 +16,65 @@
         "osx/de-t-k0-osx.xml": "f66cf22d23ff8315f12b773de51c51679e3be3a5e48e46d8ab4c70cd80cb31ab",
         "windows/_platform.xml": "c73b915742ef0a9640646314864954db09efc905a4754dd6536a69319272f331",
         "windows/en-t-k0-windows.xml": "3a5b8bb3931a5672cec7b271be1746de27de9e3c6c6677158859f114ce557a0b",
-        "windows/de-t-k0-windows.xml": "37568b0cd7984fc8181724da89b850f43514240767bde8d8cb647db2ff5a2607"
+        "windows/de-t-k0-windows.xml": "37568b0cd7984fc8181724da89b850f43514240767bde8d8cb647db2ff5a2607",
+        "osx/en-t-k0-osx-extended-var.xml": "988d568df8d18f097274ba5b364391541c4677034ea72d3010ef317180e0221a",
+        "windows/en-t-k0-windows-extended.xml": "59d0054041ba53cc7033e8e250e98b617371d66e7634a6835b56695da1683767",
+        "osx/en-GB-t-k0-osx.xml": "0bb806094ffdf9fda3d028b63c35bc75153ff58c96501ebceacda22f12b9b916",
+        "windows/en-GB-t-k0-windows.xml": "31dc99b45aae6ad5c648034b3842b1302e3c3ec840c6eef2ac50be29882aed40",
+        "osx/ga-t-k0-osx.xml": "8ff1ccc94e55dcb9568ef9ad314575e4be1b0de3c2a467633d4790f4b07dde4c",
+        "windows/ga-t-k0-windows.xml": "9d6b4fff46f4f7f6661d0afb046ca2c60a69ef67609c7c19d6fe7bedb4fb2a0e",
+        "osx/nl-t-k0-osx.xml": "9ac839a07fef0525d174018c4bdb07e44cc9ba37b41bd85b1fd0ec3cd60b47be",
+        "windows/nl-t-k0-windows.xml": "d6d31c02d02025a829e8a13715016e6dc056ee923dcd049f47bca39ed64678d9",
+        "osx/ro-t-k0-osx-extended.xml": "939cbb7cc4c751f4ce890c25f0319f80505d452fa4b1d91f75336c550d5a2e68",
+        "windows/ro-t-k0-windows.xml": "b898499970ba39cb548f7edfdf200b44f6d6d8fe51b8c4226e13fdd296c4541b",
+        "osx/fr-t-k0-osx.xml": "8a2808c4e2f6a1035ad87b83ea929d9be3f2a0b30785fba31380fc709bdfb622",
+        "windows/fr-t-k0-windows.xml": "96c8b474463fa9bdc6042650f33c7f52b9b8222a85c0815301d07fbfca8552fa",
+        "osx/fr-BE-t-k0-osx.xml": "9fc0ec0847610b0a58775c56b521896d5afb4928f13d052cba16ded9848c1ee0",
+        "windows/fr-BE-t-k0-windows.xml": "6dbe82cabbac8e4b4b8c2c85491ceb51ee0d69b24d1264c88e90633b598f62eb",
+        "osx/fr-CA-t-k0-osx.xml": "2361fac0ccde0385610d9ad0505c4238fc60c5053385be0beff8c57ea95a738a",
+        "windows/fr-CA-t-k0-windows.xml": "0f846b897b8c5051971544472add9cd72e5a369c26e033047c63fb8a975bf0ee",
+        "osx/de-AT-t-k0-osx.xml": "c92c7729f2aa787a23d0a89ea59ff94c834b791e5afaab3cd49bef97863df5c2",
+        "osx/de-CH-t-k0-osx.xml": "c9be1318c84cdd1af7d443abf146fc8405d9cc5f419661a26962e844bfdac9c2",
+        "windows/de-CH-t-k0-windows.xml": "40ec4e3d951c95bc39fb61a74da8fbf828aa8f6b50758b901359725e97c6e727",
+        "osx/fr-CH-t-k0-osx.xml": "ea587b5ab9b7891d7d96ffcda77aeb7f9f29bdb36f8a9be467949a62937401b2",
+        "windows/fr-CH-t-k0-windows.xml": "45dda9c80f4f6010065748b142a18c34fedd97fd51282c2d19f60218d0780979",
+        "osx/sv-t-k0-osx-extended.xml": "29ae59e8c944041abd3528b1b40c2910a3aacd941e8c7a327a9c463fa3efd33e",
+        "windows/sv-t-k0-windows.xml": "e27e7adf49bfc269e899a2d1007967e83a4e928ab136aa1c67b149ea3a5d1b3c",
+        "osx/sv-t-k0-osx.xml": "8cf828a3f861a2bec9fb2fa5c209651aad016ff4c5f594333ee00d7cf786c730",
+        "osx/fi-t-k0-osx.xml": "e8d8bc10b24d110eafd056b4a7dfffdc3cdd070ed1f00abb5688bccc501e287b",
+        "windows/fi-t-k0-windows.xml": "b1bd390d1bd5aecaf6d886f5c40a8ae61c1482bcb410988fce4d5866a79d888c",
+        "osx/da-t-k0-osx.xml": "2372d8356dedf32930fb366a6d841f5fca7bf3828a67c04a83e1899991cc32cc",
+        "windows/da-t-k0-windows.xml": "9cb9f590ba81e695fb6256945f7c10f0483de447d4f5efe086eeffd9216215e1",
+        "osx/nb-t-k0-osx.xml": "b6b719579b19931f3e398a8d9316cb2152c509c419d366b658ddec6e9185edbc",
+        "windows/nb-t-k0-windows.xml": "69e4c142e37ca4ea9fcc926ac595c5e791db56b7747dc975db5dfb27fe7aafdc",
+        "osx/is-t-k0-osx.xml": "4098ca90a1b53f5d59e0be3d30669492859f4fd1a9d31850a032dfb203d9db26",
+        "windows/is-t-k0-windows.xml": "fc6d84c97521952cacf66b82190580f449032e7eca2de09ab5b1756fa951a405",
+        "osx/es-t-k0-osx-extended.xml": "5bb4526b7a0bb5f1a9161d35597ec45799532cc1ba8823df8f48037a7b1cb5cc",
+        "windows/es-t-k0-windows.xml": "af5a172b94686ecc9a912f89fe879206dcd0d3db337e0ac591747d00bbb2b997",
+        "windows/es-419-t-k0-windows.xml": "d46a72e1e99536519d0e74af784c127935f1683da3fd0789d965a1fe47fe69ce",
+        "osx/pt-PT-t-k0-osx.xml": "983da8baa3e576d70953ed3103a0a8b014070014de432c0623b1d1ee5f3d0841",
+        "windows/pt-PT-t-k0-windows.xml": "957e856a32988f69a56789bd9a3bf537d34faf6d0e2a800a276913f4ba1a2b3b",
+        "osx/pt-t-k0-osx-extended.xml": "27d473f7d9996da7ed5d49ef44ffc4b1c044e743c7baed93c27874810a5b155f",
+        "windows/pt-t-k0-windows-var.xml": "824c3c7b3463a9e3429de72675b5c90999a9a4a52f95525f5fea3d075abb8592",
+        "osx/it-t-k0-osx-extended.xml": "688aa0a1e267bf6c0faae9e29c360145286ab3269ab4cb658bbdba153d80cd9a",
+        "windows/it-t-k0-windows.xml": "231192550555787965d5ed02896ac2c098748c368d7b98fce01a260dbea04696",
+        "osx/it-t-k0-osx.xml": "e6734b5b7daa6df28fe69b6ffa523c61c9375146c69368e88b6cecab1a9fa4c9",
+        "osx/hr-t-k0-osx-var.xml": "bb23e49806dcc92ac0d2075bd3eb6d722fa22410e551f2a71cb06e4e54197791",
+        "windows/sl-t-k0-windows.xml": "9d928657fba2d8fb92baad3a6c7bd2404d4cd61faaf5df3a2110d64fe54dd9ef",
+        "osx/sl-t-k0-osx.xml": "1b43297d84ba27d888323480600b0a13b091875933086e067e6302c34b4bb260",
+        "osx/cs-t-k0-osx.xml": "154b83b66bb000edd7ee64af815989dbd385a8f24b6670d6c90141f99a3da518",
+        "windows/cs-t-k0-windows.xml": "526dc705f4bc4169fb6ae129da630ca4bcdf1bf7728af116935f86fca25cbe2f",
+        "osx/sk-t-k0-osx.xml": "d720505aca6091820f63778db278d006292b96db70bb32ecdfcf3afad342029b",
+        "windows/sk-t-k0-windows.xml": "34bb86fbfdf39903ee1eb43abfb1e3b346910843d1642939becedccfada8cf7d",
+        "osx/hu-t-k0-osx.xml": "3e467725786e9eab2d4b44a4047aa8b3a9095211f165f228ce0afce66d6057fc",
+        "windows/hu-t-k0-windows.xml": "39f5185bc232f2c40a05c57e49069d59d9230a98c79a8315fcd04fd2964da2b0",
+        "osx/pl-t-k0-osx-extended.xml": "3f083dae7d9168f1fc85cb2ad5002b4bc04992b89f435179fb5d96ef457c7252",
+        "windows/pl-t-k0-windows-extended.xml": "2fc3009cf04bb4db7271eb596e6813c61020ac878f74ad07671c62e225137fe3",
+        "osx/tr-t-k0-osx-qwerty-var.xml": "861c0a50b45a9fb222ee2c91f927077d65e81395108d6b6b92d4523ba85950df",
+        "windows/tr-t-k0-windows.xml": "6b6e2b60c34e23bebed43b758908b7e78b9871dc701765f4994ae03e6d432b7c",
+        "osx/tr-t-k0-osx.xml": "c61b76665c53ddd1de6b115669c9aed59134a2b7e9ec9d529067b8ee658ab54b",
+        "windows/tr-t-k0-windows-legacy.xml": "1e7a248aa3d6aee80531e68a8190ce8663c0857e00662f37543274d8436c874c",
+        "windows/zh-t-k0-windows.xml": "ff41bfc5215b35552cfa2ea8d393bb3e33e007cf4d4c45ae4bc5eccf2694d526"
       }
     },
     "aosp": {
@@ -25,12 +83,117 @@
       "url": "https://github.com/aosp-mirror/platform_frameworks_base",
       "fetch": "github-blob",
       "repo": "aosp-mirror/platform_frameworks_base",
-      "copyright": "Copyright (C) 2010-2012 The Android Open Source Project",
+      "copyright": "Copyright (C) 2010-2020 The Android Open Source Project（各文件头的年份不同，生成的 kbd_android.txt 文件头逐条列出）",
       "license": "Apache License, Version 2.0（http://www.apache.org/licenses/LICENSE-2.0）",
       "files": {
-        "data/keyboards/Generic.kl": {"blob": "2b0802b54c140d8f3879c04b3da3f332000814b6", "sha256": "c7a26444f42b9544c134b8e829a0e6ddefee03b4684643b373134622bc45fac3"},
-        "packages/InputDevices/res/raw/keyboard_layout_english_us.kcm": {"blob": "da76448ac1d02ca099a3d903d36091ee83234c9a", "sha256": "58b73013a9c12c9d12374f33c0db2c4dbb0f1f245024ef04c76928833576f6c3"},
-        "packages/InputDevices/res/raw/keyboard_layout_german.kcm": {"blob": "1fb0924904f08e7e1a724a50ee089f717c8aec5c", "sha256": "4b962306767b4d06217a851cfeec28f0bbb400baa562f83956b6c24d71a3c5bb"}
+        "data/keyboards/Generic.kl": {
+          "blob": "2b0802b54c140d8f3879c04b3da3f332000814b6",
+          "sha256": "c7a26444f42b9544c134b8e829a0e6ddefee03b4684643b373134622bc45fac3"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_english_us.kcm": {
+          "blob": "da76448ac1d02ca099a3d903d36091ee83234c9a",
+          "sha256": "58b73013a9c12c9d12374f33c0db2c4dbb0f1f245024ef04c76928833576f6c3"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_german.kcm": {
+          "blob": "1fb0924904f08e7e1a724a50ee089f717c8aec5c",
+          "sha256": "4b962306767b4d06217a851cfeec28f0bbb400baa562f83956b6c24d71a3c5bb"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_english_us_intl.kcm": {
+          "blob": "dff17b3739a921f46746f1ab58721d83972b290f",
+          "sha256": "46f599076212ea5895d22431c9a0d4aaa9cdeeadce7ec675cd4d4e9eae2b3253"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_english_uk.kcm": {
+          "blob": "854c2fdc71ce93912d9d2b417f612cdc15c94fce",
+          "sha256": "c604cde06622c92a7a538174f4125328d231eb2e067fa203884bd418e5b14e42"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_french.kcm": {
+          "blob": "4f4fb1b02d1a75407df0157316e7d7df28f875e6",
+          "sha256": "aeb366a4566b3608841c73751d219ff4fb3e52236404f61485e81c3732855764"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_belgian.kcm": {
+          "blob": "d5293115b8963a43cc485d2c1b563a927ee1819b",
+          "sha256": "49f5e81b2ddaaadde5a0de5157733a45f8954413006ceacc4c0b184345a514e9"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_french_ca.kcm": {
+          "blob": "723c187d818fecac5b816c49950a0228fbed22bd",
+          "sha256": "ccc6bb6326ec39079de06194d115ce8df0003e38281cfc451531daca002fe859"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_swiss_german.kcm": {
+          "blob": "9d6f3675ecc3b8463ec19a20bfd6068d7a254e58",
+          "sha256": "26693751aa4bd1c937d61e66636b075ca70763e4ff2ad7aed8a52e3041bf861a"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_swiss_french.kcm": {
+          "blob": "6476793caf16f059841c2d0bcbaf60703c56e73f",
+          "sha256": "5839b4ef4ce912fe6ac783efc9ae8a3a2f585ae2c9a43d55e1ba9664810362eb"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_swedish.kcm": {
+          "blob": "f12804ff62ab5a6a5e005323d8ac5e820e8b266d",
+          "sha256": "49f5d16956b3e0bbc211ee108ded1e92f73129769389f38fd7fb5aa953112e5c"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_finnish.kcm": {
+          "blob": "79096ad46147dfc543e1efbbc8f49fd6361416b6",
+          "sha256": "a138a98437d95c5b41a907ef4e9ac80f70d295dc6b2f5387d0ae6cc1320849e3"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_danish.kcm": {
+          "blob": "83ee8c3939d71eb922961988093dd57ec31fc0d5",
+          "sha256": "abfe47896fdc3360ae44df348f4b2d1c873dc49e1900cd24e385d4b6400959f2"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_norwegian.kcm": {
+          "blob": "cae1c9411f3e6077e4c971605cba94525fe756de",
+          "sha256": "a67362718d83196ae77da4828e15a50f290e4f46bb48b5cbfa839f6243e7165f"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_icelandic.kcm": {
+          "blob": "5131b4f513b213c113a2e7c2a97733af359f3a88",
+          "sha256": "09314f2c7db3900ddb36f90164eba10d185678f9f73b41f2bb81b53bdda3c8d9"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_spanish.kcm": {
+          "blob": "6a63e709ec152916bcedcffdc2f34a30c9459b29",
+          "sha256": "ce6628cb358d5fe36420e71d7c4b12ace4f1fc311b274277d3152f58376d6de6"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_spanish_latin.kcm": {
+          "blob": "29aab97fed5c0c5823acc277aa06af8121f52845",
+          "sha256": "ec7d72b0f862db30b74fe73e0db78840882cb9fe4bbfde972ae82a7510aa8473"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_portuguese.kcm": {
+          "blob": "6fe0e47c2d79522e2fd3f2f91ac9239e00aa6a6c",
+          "sha256": "761dde2289599255a683ddd8fba5379767c08296c49109b91cb78d2069bd8ce5"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_brazilian.kcm": {
+          "blob": "d9338b1fdab77bc53cc7db87e8dc58184873f9b5",
+          "sha256": "35cefbecaf845aac804e298e09c328ef87a4fab76e6db9714f35c50d21745fba"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_italian.kcm": {
+          "blob": "309d8b2149b012e37a866bbd644cde1c52cbff30",
+          "sha256": "50f55364c2531091f0cd4c0e5adbe6d509acdeb03c83e95e8a824b8de09c9071"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_croatian_and_slovenian.kcm": {
+          "blob": "1c774cce8c163cb4669f17f6a6755c8664ac9d23",
+          "sha256": "4b386a33a0f2c9e4c42da52b06d9399843623616a5d25e6f068bac3587eb15d8"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_czech.kcm": {
+          "blob": "08b012ea130c8f0414b2e9edc9c24f3c201d342a",
+          "sha256": "a7dd899467696567d032dbd223a26a7a47f95841e52e75ff10176d65608d65cb"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_slovak.kcm": {
+          "blob": "5065aa87ca6699e36598b7d12a07a65761f330f9",
+          "sha256": "a2f6dea4545e9af3f4bde34ec598603057f0d0a9ccaed16565be595c37e615e4"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_hungarian.kcm": {
+          "blob": "6c947c77ad3db3536e29295c25894af2aa38d15f",
+          "sha256": "1b3b4059bfc7f01ca87584c297e722d2e05e92a08435db34dc9804f21548b55d"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_polish.kcm": {
+          "blob": "66fbefc1757d0f8de8e9c3f2cc2256faa815f732",
+          "sha256": "7180f4aaebd38298261e7decb410786bea879c8e9269d53d9c103fdf8dca13a5"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_turkish.kcm": {
+          "blob": "2a8fcef73ea00bb4889001bab139fa9b5b6f2013",
+          "sha256": "94924d6b952af43cdadb807cf87848cc21fbfec82ada749d0a2d3f382a1b233c"
+        },
+        "packages/InputDevices/res/raw/keyboard_layout_turkish_f.kcm": {
+          "blob": "b27f6fa3b1aa8f9c8caf3e6166874b1f3b3c3209",
+          "sha256": "d9426296ed4c320ddc2d3e92034c95bb5136a2ce33a798b53024d48a7cda92fb"
+        }
       }
     },
     "xkb": {

@@ -498,15 +498,18 @@
     <string name="gp_arcade6">街机 6 键</string>
     <string name="tab_keyboard">键盘</string>
     <string name="kbd_menu_douhua">键盘：豆花儿</string>
-    <string name="kbd_menu_fixed">键盘：实体（%1$s）</string>
+    <string name="kbd_menu_fixed">键盘：实体 · %1$s</string>
     <string name="kbd_menu_narrow">键盘：实体（这里太窄，暂用豆花儿）</string>
-    <string name="kbd_menu_stepped">键盘：实体（%1$s；%2$s放不下，暂用 %3$s）</string>
+    <string name="kbd_menu_stepped">键盘：实体 · %1$s（%2$s → %3$s）</string>
     <string name="kbd_menu_no_data">键盘：实体（数据读不出来，暂用豆花儿）</string>
+    <string name="kbd_menu_no_mode">键盘：实体 · %1$s（没有 %2$s 模式的数据，暂用豆花儿）</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
-    <string name="kbd_lang_us">美式</string>
-    <string name="kbd_lang_de">德语</string>
+    <string name="kbd_var_intl">国际</string>
+    <string name="kbd_var_legacy">旧版</string>
+    <string name="kbd_var_pinyin">拼音</string>
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
+    <string name="kbd_mode_unavailable">%1$s（这个布局没有它的数据）</string>
     <string name="sec_kbd_board">用哪块键盘</string>
     <string name="kbd_board">键盘界面用</string>
     <string name="kbd_board_douhua">豆花儿布局</string>
@@ -515,9 +518,16 @@
     <string name="sec_kbd_fixed">实体键盘</string>
     <string name="kbd_lang">布局（键帽上画的字）</string>
     <string name="kbd_host_names">电脑 / 平板那边要选同一种布局：Mac 和 iPad 里叫「%1$s」，Windows 里叫「%2$s」。</string>
+    <string name="kbd_host_names_win">电脑 / 平板那边要选同一种布局：Windows 里叫「%1$s」。这个布局没有 Mac 模式的数据。</string>
+    <string name="kbd_host_names_mac">电脑 / 平板那边要选同一种布局：Mac 和 iPad 里叫「%1$s」。Windows 没有这一套，所以没有 Windows 模式的数据。</string>
+    <string name="kbd_lang_hosts">Mac：%1$s · Windows：%2$s</string>
+    <string name="kbd_lang_hosts_win">Windows：%1$s</string>
+    <string name="kbd_lang_hosts_mac">Mac：%1$s · Windows 没有这一套</string>
+    <string name="kbd_lang_no_mode">没有 %1$s 模式的键帽数据，换个模式才能选</string>
     <string name="kbd_shape">形状</string>
     <string name="kbd_shape_ansi">ANSI（美式，一字回车）</string>
     <string name="kbd_shape_iso">ISO（L 形回车，Z 左边多一个键）</string>
+    <string name="kbd_shape_abnt2">ABNT2（巴西，L 形回车，右 Shift 左边多一个 / ? 键）</string>
     <string name="kbd_size">尺寸</string>
     <string name="kbd_size_tkl">不带数字键盘（TKL，%1$d 键）</string>
     <string name="kbd_size_full">全尺寸（带数字键盘，%1$d 键）</string>
@@ -531,6 +541,7 @@
     <string name="kbd_host_note">豆花儿发的是键的位置，打出什么字由电脑 / 平板那边设的键盘布局定：那边设成同一种布局，键帽上画的才和打出来的一样。桌面模式下「那边」就是这台手机：在手机设置的实体键盘里给 Douhua Keyboard 选同一种布局。</string>
     <string name="kbd_open_hw">打开手机的实体键盘设置</string>
     <string name="kbd_no_data">实体键盘的数据读不出来</string>
+    <string name="kbd_no_mode_data">%1$s没有 %2$s 模式的键帽数据，键盘页暂用豆花儿布局。换个模式或布局就好。</string>
     <string name="sec_kbd_douhua">豆花儿布局</string>
     <string name="licenses">开源许可</string>
 </resources>

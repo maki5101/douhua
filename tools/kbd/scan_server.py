@@ -52,6 +52,9 @@ tables = kt.load_tables()
 catalog = {r['id']: r for r in kt.read_catalog()}
 if args.layout not in catalog:
     sys.exit('数据里没有布局 %s（有：%s）' % (args.layout, '、'.join(catalog)))
+if args.layout not in tables.get(platform, {}):
+    # 拉美没有 Mac 的、意大利 QZERTY / 瑞典旧版没有 Windows 和安卓的（catalog.json 里那家写 null）
+    sys.exit('%s 没有布局 %s 的数据（catalog.json 里那家写的 null），这一家扫不了' % (kt.PLATFORM_NAMES[platform], args.layout))
 third = kt.has_third_layer(tables, platform, args.layout)
 steps = kt.scan_plan(args.host, args.layout, third)
 table = tables[platform][args.layout]
@@ -62,7 +65,7 @@ l3_start = next((s['i'] for s in steps if s['layer'] >= 2), len(steps))
 def expected(t, s):
     u = 0x31 if s['usage'] == 0x32 else s['usage']   # 0x32 期望和 0x31 一样（要核的前提）
     if u == kt.KEYPAD_DECIMAL:
-        return [catalog[args.layout]['kpdl'], False] if s['layer'] == 0 else None
+        return [kt.keypad_decimal(catalog[args.layout], platform), False] if s['layer'] == 0 else None
     c = t.get(u, [None] * 4)[s['layer']]
     return list(c) if c else None
 

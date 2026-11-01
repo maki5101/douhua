@@ -1,16 +1,43 @@
 # kbd_android.txt：豆花儿实体键盘的键帽字，主机是安卓（AOSP 的外接键盘布局；三星改没改过不知道）。自动生成，勿手改。
 # 生成：python3 tools/kbd/gen_layouts.py（数据源、版本、校验见 tools/kbd/sources.json；格式见 tools/kbd/README.md「数据格式」）。
 # 每行：HID 用法码（十六进制，PC 惯例的位置）、普通、Shift、右 Alt、右 Alt+Shift；空 = 没有字，\* = 死键，\\ = 反斜杠，\uXXXX = 看不见的字。
-# 数据：AOSP frameworks/base 的外接键盘布局（GitHub 镜像 aosp-mirror/platform_frameworks_base，不是 googlesource 官方源）（https://github.com/aosp-mirror/platform_frameworks_base），按 git blob 钉死（blob id 不随分支变）。
+# 数据：AOSP frameworks/base 的外接键盘布局（GitHub 镜像 aosp-mirror/platform_frameworks_base，不是 googlesource 官方源）（https://github.com/aosp-mirror/platform_frameworks_base），按 git blob 钉死（blob id 不随分支变）。AOSP 没有的布局（ie、nl、ro、at、se-legacy、it-qzerty）这里没有那一段。
 # Copyright (C) 2010 The Android Open Source Project
 # Copyright (C) 2012 The Android Open Source Project
+# Copyright (C) 2013 The Android Open Source Project
+# Copyright (C) 2018 The Android Open Source Project
+# Copyright (C) 2020 The Android Open Source Project
 # 许可：Apache License, Version 2.0（http://www.apache.org/licenses/LICENSE-2.0）
 #
 #!platform android
 #!source aosp aosp-mirror/platform_frameworks_base
 #!file aosp data/keyboards/Generic.kl c7a26444f42b9544c134b8e829a0e6ddefee03b4684643b373134622bc45fac3
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_belgian.kcm 49f5e81b2ddaaadde5a0de5157733a45f8954413006ceacc4c0b184345a514e9
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_brazilian.kcm 35cefbecaf845aac804e298e09c328ef87a4fab76e6db9714f35c50d21745fba
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_croatian_and_slovenian.kcm 4b386a33a0f2c9e4c42da52b06d9399843623616a5d25e6f068bac3587eb15d8
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_czech.kcm a7dd899467696567d032dbd223a26a7a47f95841e52e75ff10176d65608d65cb
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_danish.kcm abfe47896fdc3360ae44df348f4b2d1c873dc49e1900cd24e385d4b6400959f2
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_english_uk.kcm c604cde06622c92a7a538174f4125328d231eb2e067fa203884bd418e5b14e42
 #!file aosp packages/InputDevices/res/raw/keyboard_layout_english_us.kcm 58b73013a9c12c9d12374f33c0db2c4dbb0f1f245024ef04c76928833576f6c3
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_english_us_intl.kcm 46f599076212ea5895d22431c9a0d4aaa9cdeeadce7ec675cd4d4e9eae2b3253
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_finnish.kcm a138a98437d95c5b41a907ef4e9ac80f70d295dc6b2f5387d0ae6cc1320849e3
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_french.kcm aeb366a4566b3608841c73751d219ff4fb3e52236404f61485e81c3732855764
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_french_ca.kcm ccc6bb6326ec39079de06194d115ce8df0003e38281cfc451531daca002fe859
 #!file aosp packages/InputDevices/res/raw/keyboard_layout_german.kcm 4b962306767b4d06217a851cfeec28f0bbb400baa562f83956b6c24d71a3c5bb
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_hungarian.kcm 1b3b4059bfc7f01ca87584c297e722d2e05e92a08435db34dc9804f21548b55d
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_icelandic.kcm 09314f2c7db3900ddb36f90164eba10d185678f9f73b41f2bb81b53bdda3c8d9
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_italian.kcm 50f55364c2531091f0cd4c0e5adbe6d509acdeb03c83e95e8a824b8de09c9071
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_norwegian.kcm a67362718d83196ae77da4828e15a50f290e4f46bb48b5cbfa839f6243e7165f
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_polish.kcm 7180f4aaebd38298261e7decb410786bea879c8e9269d53d9c103fdf8dca13a5
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_portuguese.kcm 761dde2289599255a683ddd8fba5379767c08296c49109b91cb78d2069bd8ce5
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_slovak.kcm a2f6dea4545e9af3f4bde34ec598603057f0d0a9ccaed16565be595c37e615e4
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_spanish.kcm ce6628cb358d5fe36420e71d7c4b12ace4f1fc311b274277d3152f58376d6de6
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_spanish_latin.kcm ec7d72b0f862db30b74fe73e0db78840882cb9fe4bbfde972ae82a7510aa8473
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_swedish.kcm 49f5d16956b3e0bbc211ee108ded1e92f73129769389f38fd7fb5aa953112e5c
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_swiss_french.kcm 5839b4ef4ce912fe6ac783efc9ae8a3a2f585ae2c9a43d55e1ba9664810362eb
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_swiss_german.kcm 26693751aa4bd1c937d61e66636b075ca70763e4ff2ad7aed8a52e3041bf861a
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_turkish.kcm 94924d6b952af43cdadb807cf87848cc21fbfec82ada749d0a2d3f382a1b233c
+#!file aosp packages/InputDevices/res/raw/keyboard_layout_turkish_f.kcm d9426296ed4c320ddc2d3e92034c95bb5136a2ce33a798b53024d48a7cda92fb
 
 @us
 04	a	A
@@ -62,6 +89,256 @@
 38	/	?
 64	\\	|
 
+@us-intl
+04	a	A	á	Á
+05	b	B
+06	c	C	©	¢
+07	d	D	ð	Ð
+08	e	E	é	É
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I	í	Í
+0d	j	J
+0e	k	K
+0f	l	L	ø	Ø
+10	m	M	µ	µ
+11	n	N	ñ	Ñ
+12	o	O	ó	Ó
+13	p	P	ö	Ö
+14	q	Q	ä	Ä
+15	r	R	®	®
+16	s	S	ß	§
+17	t	T	þ	Þ
+18	u	U	ú	Ú
+19	v	V
+1a	w	W	å	Å
+1b	x	X
+1c	y	Y	ü	Ü
+1d	z	Z	æ	Æ
+1e	1	!	¡	¹
+1f	2	@	²	²
+20	3	#	³	³
+21	4	$	¤	£
+22	5	%	€	€
+23	6	\*^	¼	¼
+24	7	&	½	½
+25	8	*	¾	¾
+26	9	(	‘	‘
+27	0	)	’	’
+2d	-	_	¥	¥
+2e	=	+	×	÷
+2f	[	{	«	«
+30	]	}	»	»
+31	\\	|	¬	¦
+33	;	:	¶	°
+34	\*'	\*"	´	¨
+35	\*`	\*~
+36	,	<	ç	Ç
+37	.	>
+38	/	?	¿	¿
+64	\\	|	¬	¦
+
+@gb
+04	a	A	á	Á
+05	b	B
+06	c	C	ç	Ç
+07	d	D
+08	e	E	é	É
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I	í	Í
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O	ó	Ó
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U	ú	Ú
+19	v	V
+1a	w	W	ẃ	Ẃ
+1b	x	X
+1c	y	Y	ý	Ý
+1d	z	Z
+1e	1	!
+1f	2	"	\*¨	\*¨
+20	3	£
+21	4	$	€	€
+22	5	%
+23	6	^	\*^	\*^
+24	7	&
+25	8	*
+26	9	(
+27	0	)
+2d	-	_
+2e	=	+
+2f	[	{
+30	]	}		|
+31	#	~	\*~	\\
+33	;	:
+34	'	@	\*´	`
+35	\*`	¬	¦	¦
+36	,	<
+37	.	>
+38	/	?
+64	\\	|
+
+@fr
+04	q	Q
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	,	?
+11	n	N
+12	o	O
+13	p	P
+14	a	A
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	z	Z
+1b	x	X
+1c	y	Y
+1d	w	W
+1e	&	1
+1f	é	2	\*~	\*~
+20	"	3	#	#
+21	'	4	{	{
+22	(	5	[	[
+23	-	6	|	|
+24	è	7	\*`	\*`
+25	_	8	\\	\\
+26	ç	9	^	^
+27	à	0	@	@
+2d	)	°	]	]
+2e	=	+	}	}
+2f	\*^	\*¨
+30	$	£	¤	¤
+31	*	µ
+33	m	M
+34	ù	%
+35	²	²
+36	;	.
+37	:	/
+38	!	§
+64	<	>
+
+@be
+04	q	Q
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	,	?
+11	n	N
+12	o	O
+13	p	P
+14	a	A
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	z	Z
+1b	x	X
+1c	y	Y
+1d	w	W
+1e	&	1	|	|
+1f	é	2	@	@
+20	"	3	#	#
+21	'	4
+22	(	5
+23	§	6	^	^
+24	è	7
+25	!	8
+26	ç	9	{	{
+27	à	0	}	}
+2d	)	°
+2e	-	_
+2f	\*^	\*¨	[	[
+30	$	*	]	]
+31	µ	£	\*`	\*`
+33	m	M
+34	ù	%	\*´	\*´
+35	²	³
+36	;	.
+37	:	/
+38	=	+	\*~	\*~
+64	<	>	\\	\\
+
+@ca-fr
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M	µ	µ
+11	n	N
+12	o	O	§	§
+13	p	P	¶	¶
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!	±	±
+1f	2	"	@	@
+20	3	/	£	£
+21	4	$	¢	¢
+22	5	%	¤	¤
+23	6	?	¬	¬
+24	7	&	¦	¦
+25	8	*	²	²
+26	9	(	³	³
+27	0	)	¼	¼
+2d	-	_	½	½
+2e	=	+	¾	¾
+2f	\*^	\*^	[	[
+30	\*¸	\*¨	]	]
+31	<	>	}	}
+33	;	:	~	~
+34	\*`	\*`	{	{
+35	#	|	\\	\\
+36	,	'	¯	¯
+37	.	.	\u00AD	\u00AD
+38	é	É	\*´	\*´
+64	«	»	°	°
+
 @de
 04	a	A
 05	b	B
@@ -111,3 +388,910 @@
 37	.	:
 38	-	_
 64	<	>	|	|
+
+@ch-de
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	z	Z
+1d	y	Y
+1e	1	+	¦	¦
+1f	2	"	@	@
+20	3	*	#	#
+21	4	ç	°	°
+22	5	%	§	§
+23	6	&	¬	¬
+24	7	/	|	|
+25	8	(	¢	¢
+26	9	)
+27	0	=
+2d	'	?	\*´	\*´
+2e	\*^	\*`	\*~	\*~
+2f	ü	è	[	[
+30	\*¨	!	]	]
+31	$	£	}	}
+33	ö	é
+34	ä	à	{	{
+35	§	°
+36	,	;
+37	.	:
+38	-	_
+64	<	>	\\	\\
+
+@ch-fr
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	z	Z
+1d	y	Y
+1e	1	+	¦	¦
+1f	2	"	@	@
+20	3	*	#	#
+21	4	ç	°	°
+22	5	%	§	§
+23	6	&	¬	¬
+24	7	/	|	|
+25	8	(	¢	¢
+26	9	)
+27	0	=
+2d	'	?	\*´	\*´
+2e	\*^	\*`	\*~	\*~
+2f	è	ü	[	[
+30	\*¨	!	]	]
+31	$	£	}	}
+33	é	ö
+34	à	ä	{	{
+35	§	°
+36	,	;
+37	.	:
+38	-	_
+64	<	>	\\	\\
+
+@se
+04	a	A	á	Á
+05	b	B	ʒ	Ʒ
+06	c	C	č	Č
+07	d	D	đ	Đ
+08	e	E	€	€
+09	f	F	ǥ	Ǥ
+0a	g	G	ǧ	Ǧ
+0b	h	H	ȟ	Ȟ
+0c	i	I	ï	Ï
+0d	j	J
+0e	k	K	ǩ	Ǩ
+0f	l	L
+10	m	M	µ	µ
+11	n	N	ŋ	Ŋ
+12	o	O	õ	Õ
+13	p	P
+14	q	Q	â	Â
+15	r	R
+16	s	S	š	Š
+17	t	T	ŧ	Ŧ
+18	u	U
+19	v	V	ǯ	Ǯ
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z	ž	Ž
+1e	1	!
+1f	2	"	@	@
+20	3	#	£	£
+21	4	¤	$	$
+22	5	%	€	€
+23	6	&
+24	7	/	{	{
+25	8	(	[	[
+26	9	)	]	]
+27	0	=	}	}
+2d	+	?	\\	\\
+2e	\*´	\*`
+2f	å	Å
+30	\*¨	\*^	\*~	\*~
+31	'	*
+33	ö	Ö	ø	Ø
+34	ä	Ä	æ	Æ
+35	§	½
+36	,	;
+37	.	:
+38	-	_
+64	<	>	|	|
+
+@fi = se
+
+@dk
+04	a	A	á	Á
+05	b	B	ʒ	Ʒ
+06	c	C	č	Č
+07	d	D	đ	Đ
+08	e	E	€	€
+09	f	F	ǥ	Ǥ
+0a	g	G	ǧ	Ǧ
+0b	h	H	ȟ	Ȟ
+0c	i	I	ï	Ï
+0d	j	J
+0e	k	K	ǩ	Ǩ
+0f	l	L
+10	m	M	µ	µ
+11	n	N	ŋ	Ŋ
+12	o	O	õ	Õ
+13	p	P
+14	q	Q	â	Â
+15	r	R
+16	s	S	š	Š
+17	t	T	ŧ	Ŧ
+18	u	U
+19	v	V	ǯ	Ǯ
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z	ž	Ž
+1e	1	!
+1f	2	"	@	@
+20	3	#	£	£
+21	4	¤	$	$
+22	5	%	€	€
+23	6	&
+24	7	/	{	{
+25	8	(	[	[
+26	9	)	]	]
+27	0	=	}	}
+2d	+	?
+2e	\*´	\*`	|	|
+2f	å	Å
+30	\*¨	\*^	\*~	\*~
+31	'	*
+33	æ	Æ	ä	Ä
+34	ø	Ø	ö	Ö
+35	½	§
+36	,	;
+37	.	:
+38	-	_
+64	<	>	\\	\\
+
+@no
+04	a	A	á	Á
+05	b	B	ʒ	Ʒ
+06	c	C	č	Č
+07	d	D	đ	Đ
+08	e	E	€	€
+09	f	F	ǥ	Ǥ
+0a	g	G	ǧ	Ǧ
+0b	h	H	ȟ	Ȟ
+0c	i	I	ï	Ï
+0d	j	J
+0e	k	K	ǩ	Ǩ
+0f	l	L
+10	m	M	µ	µ
+11	n	N	ŋ	Ŋ
+12	o	O	õ	Õ
+13	p	P
+14	q	Q	â	Â
+15	r	R
+16	s	S	š	Š
+17	t	T	ŧ	Ŧ
+18	u	U
+19	v	V	ǯ	Ǯ
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z	ž	Ž
+1e	1	!
+1f	2	"	@	@
+20	3	#	£	£
+21	4	¤	$	$
+22	5	%	€	€
+23	6	&
+24	7	/	{	{
+25	8	(	[	[
+26	9	)	]	]
+27	0	=	}	}
+2d	+	?
+2e	\\	\*`	\*´	\*´
+2f	å	Å
+30	\*¨	\*^	\*~	\*~
+31	'	*
+33	ø	Ø	ö	Ö
+34	æ	Æ	ä	Ä
+35	|	§
+36	,	;
+37	.	:
+38	-	_
+64	<	>
+
+@is
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M	µ	µ
+11	n	N
+12	o	O
+13	p	P
+14	q	Q	@	@
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"
+20	3	#
+21	4	$
+22	5	%	€	€
+23	6	&
+24	7	/	{	{
+25	8	(	[	[
+26	9	)	]	]
+27	0	=	}	}
+2d	ö	Ö	\\	\\
+2e	-	_
+2f	đ	Đ
+30	'	?	~	~
+31	+	*	`	`
+33	æ	Æ
+34	\*´	'	^	^
+35	\*˚	\*¨
+36	,	;
+37	.	:
+38	þ	Þ
+64	<	>	|	|
+
+@es
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!	|	|
+1f	2	"	@	@
+20	3	·	#	#
+21	4	$	\*~	\*~
+22	5	%	€	€
+23	6	&	¬	¬
+24	7	/
+25	8	(
+26	9	)
+27	0	=
+2d	'	?
+2e	¡	¿
+2f	\*`	\*^	[	[
+30	+	*	]	]
+31	ç	Ç	}	}
+33	ñ	Ñ
+34	\*´	\*¨	{	{
+35	º	ª	\\	\\
+36	,	;
+37	.	:
+38	-	_
+64	<	>
+
+@latam
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q	@	@
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"
+20	3	#
+21	4	$
+22	5	%
+23	6	&
+24	7	/
+25	8	(
+26	9	)
+27	0	=
+2d	'	?	\\	\\
+2e	¿	¡
+2f	\*´	\*¨	[	[
+30	+	*	\*~	\*~
+31	}	]	\*`	\*`
+33	ñ	Ñ
+34	{	[	\*^	\*^
+35	|	º	¬	¬
+36	,	;
+37	.	:
+38	-	_
+64	<	>
+
+@pt
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"	@	@
+20	3	#	£	£
+21	4	$	§	§
+22	5	%
+23	6	&
+24	7	/	{	{
+25	8	(	[	[
+26	9	)	]	]
+27	0	=	}	}
+2d	'	?
+2e	«	»
+2f	+	*	\*¨	\*¨
+30	\*´	\*`
+31	\*~	\*^
+33	ç	Ç
+34	º	ª
+35	\\	|
+36	,	;
+37	.	:
+38	-	_
+64	<	>	\\	\\
+
+@br
+04	a	A
+05	b	B
+06	c	C	₢	₢
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q	/	/
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W	?	?
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!	¹	¹
+1f	2	@	²	²
+20	3	#	³	³
+21	4	$	£	£
+22	5	%	¢	¢
+23	6	\*¨	¬	¬
+24	7	&
+25	8	*
+26	9	(
+27	0	)	}	}
+2d	-	_
+2e	=	+	§	§
+2f	\*´	\*`
+30	[	{	ª	ª
+31	]	}	º	º
+33	ç	Ç
+34	\*~	\*^
+35	'	"
+36	,	<
+37	.	>
+38	;	:
+64	\\	|
+87	/	?	°	°
+
+@it
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!
+1f	2	"
+20	3	£
+21	4	$
+22	5	%	€	€
+23	6	&
+24	7	/
+25	8	(
+26	9	)
+27	0	=
+2d	'	?
+2e	ì	^
+2f	è	é	[	{
+30	+	*	]	}
+31	ù	§
+33	ò	ç	@	@
+34	à	°	#	#
+35	\\	|
+36	,	;
+37	.	:
+38	-	_
+64	<	>
+
+@hr
+04	a	A
+05	b	B	{	{
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F	[	[
+0a	g	G	]	]
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K	ɨ	Ɨ
+0f	l	L	ł	Ł
+10	m	M	§	§
+11	n	N	}	}
+12	o	O
+13	p	P
+14	q	Q	\\	\\
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V	@	@
+1a	w	W	|	|
+1b	x	X
+1c	z	Z
+1d	y	Y
+1e	1	!	\*~	\*~
+1f	2	"	\*ˇ	\*ˇ
+20	3	#	\*^	\*^
+21	4	$	\*˘	\*˘
+22	5	%	\*˚	\*˚
+23	6	&	\*˛	\*˛
+24	7	/	\*`	\*`
+25	8	(	\*˙	\*˙
+26	9	)	\*´	\*´
+27	0	=	\*˝	\*˝
+2d	'	?	\*¨	\*¨
+2e	+	*	\*¸	\*¸
+2f	š	Š	÷	÷
+30	đ	Đ	×	×
+31	ž	Ž	¤	¤
+33	č	Č
+34	ć	Ć	ß	ß
+35	\*¸	\*¨
+36	,	;	<	<
+37	.	:	>	>
+38	-	_
+64	<	>
+
+@si = hr
+
+@cz
+04	a	A
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M	µ	µ
+11	n	N
+12	o	O
+13	p	P
+14	q	Q
+15	r	R
+16	s	S
+17	t	T
+18	u	U
+19	v	V	@	@
+1a	w	W
+1b	x	X
+1c	z	Z
+1d	y	Y
+1e	+	1	!	!
+1f	ě	2	@	@
+20	š	3	#	#
+21	č	4	$	$
+22	ř	5	%	%
+23	ž	6	^	^
+24	ý	7	&	&
+25	á	8	*	*
+26	í	9	(	(
+27	é	0	)	)
+2d	=	%	-	_
+2e	\*´	\*ˇ	=	+
+2f	ú	/	[	{
+30	)	(	]	}
+31	\*¨	'	\\	|
+33	ů	"	;	:
+34	§	!	¤	^
+35	;	°	`	~
+36	,	?	<	×
+37	.	:	>	÷
+38	-	_	/	?
+64	\\	|	ß	˝
+
+@sk
+04	a	A
+05	b	B	{	{
+06	c	C	&	&
+07	d	D	Đ	Đ
+08	e	E	€	€
+09	f	F	[	[
+0a	g	G	]	]
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K	ł	ł
+0f	l	L	Ł	Ł
+10	m	M
+11	n	N	}	}
+12	o	O
+13	p	P	'	'
+14	q	Q	\\	\\
+15	r	R
+16	s	S	đ	đ
+17	t	T
+18	u	U
+19	v	V	@	@
+1a	w	W	|	|
+1b	x	X	#	#
+1c	y	Y
+1d	z	Z	>	>
+1e	+	1	~	~
+1f	ľ	2	ˇ	ˇ
+20	š	3	\*^	\*^
+21	č	4	˘	˘
+22	ť	5	°	°
+23	ž	6	˛	˛
+24	ý	7	\*`	\*`
+25	á	8	˙	˙
+26	í	9	\*´	\*´
+27	é	0	˝	˝
+2d	=	%	\*¨	\*¨
+2e	\*´	\*ˇ	¸	¸
+2f	ú	/	÷	÷
+30	ä	(	×	×
+31	ň	)	¤	¤
+33	ô	"	$	$
+34	§	!	ß	ß
+35	;	°
+36	,	?	<	<
+37	.	:	>	>
+38	-	_	*	*
+64	&	*	<	<
+
+@hu
+04	a	A	ä	ä
+05	b	B	{	{
+06	c	C	&	&
+07	d	D	Đ	Đ
+08	e	E	Ä	Ä
+09	f	F	[	[
+0a	g	G	]	]
+0b	h	H
+0c	i	I	Í	Í
+0d	j	J	í	í
+0e	k	K	Ɨ	Ɨ
+0f	l	L	Ł	Ł
+10	m	M
+11	n	N	}	}
+12	o	O
+13	p	P
+14	q	Q	\\	\\
+15	r	R
+16	s	S	đ	đ
+17	t	T
+18	u	U	€	€
+19	v	V	@	@
+1a	w	W	|	|
+1b	x	X	#	#
+1c	z	Z
+1d	y	Y	>	>
+1e	1	!	\*~	\*~
+1f	2	"	\*ˇ	\*ˇ
+20	3	+	\*^	\*^
+21	4	!	\*˘	\*˘
+22	5	%	\*˚	\*˚
+23	6	/	\*˛	\*˛
+24	7	=	\*`	\*`
+25	8	(	\*˙	\*˙
+26	9	)	\*´	\*´
+27	ö	Ö	\*˝	\*˝
+2d	ü	Ü	\*¨	\*¨
+2e	ó	Ó	\*¸	\*¸
+2f	ő	Ő	÷	÷
+30	ú	Ú	×	×
+31	ű	Ű	¤	¤
+33	é	É	$	$
+34	á	Á	ß	ß
+35	0	§
+36	,	?	;	;
+37	.	:
+38	-	_	*	*
+64	í	Í	<	<
+
+@pl
+04	a	A	ą	Ą
+05	b	B
+06	c	C	ć	Ć
+07	d	D
+08	e	E	ę	Ę
+09	f	F
+0a	g	G
+0b	h	H
+0c	i	I
+0d	j	J
+0e	k	K
+0f	l	L	ł	Ł
+10	m	M
+11	n	N	ń	Ń
+12	o	O	ó	Ó
+13	p	P
+14	q	Q
+15	r	R
+16	s	S	ś	Ś
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X	ź	Ź
+1c	y	Y
+1d	z	Z	ż	Ż
+1e	1	!
+1f	2	@
+20	3	#
+21	4	$
+22	5	%
+23	6	^
+24	7	&
+25	8	*
+26	9	(
+27	0	)
+2d	-	_
+2e	=	+
+2f	[	{
+30	]	}
+31	\\	|
+33	;	:
+34	'	"
+35	`	~
+36	,	<
+37	.	>
+38	/	?
+64	\\	|
+
+@tr-q
+04	a	A	æ	Æ
+05	b	B
+06	c	C
+07	d	D
+08	e	E	€	€
+09	f	F
+0a	g	G
+0b	h	H
+0c	ı	I	i	İ
+0d	j	J
+0e	k	K
+0f	l	L
+10	m	M
+11	n	N
+12	o	O
+13	p	P
+14	q	Q	@	@
+15	r	R
+16	s	S	ß	ß
+17	t	T
+18	u	U
+19	v	V
+1a	w	W
+1b	x	X
+1c	y	Y
+1d	z	Z
+1e	1	!	>	>
+1f	2	'	£	£
+20	3	\*^	#	#
+21	4	+	$	$
+22	5	%	½	½
+23	6	&
+24	7	/	{	{
+25	8	(	[	[
+26	9	)	]	]
+27	0	=	}	}
+2d	*	?	\\	\\
+2e	-	_	|	|
+2f	ğ	Ğ	\*¨	\*¨
+30	ü	Ü	\*~	\*~
+31	,	;	\*`	\*`
+33	ş	Ş	\*´	\*´
+34	i	İ
+35	"	é	<	<
+36	ö	Ö
+37	ç	Ç
+38	.	:
+64	<	>	\\	\\
+
+@tr-f
+04	u	U	æ	Æ
+05	ç	Ç
+06	v	V	¢	©
+07	e	E	€	€
+08	ğ	Ğ
+09	a	A	ª	ª
+0a	ü	Ü
+0b	t	T	₺	₺
+0c	n	N
+0d	k	K
+0e	m	M
+0f	l	L
+10	s	S	µ	º
+11	z	Z
+12	h	H	ø	Ø
+13	p	P	£	£
+14	f	F	@	@
+15	ı	I	¶	®
+16	i	İ	ß	§
+17	o	O
+18	r	R
+19	c	C
+1a	g	G
+1b	ö	Ö	»	>
+1c	d	D	¥	¥
+1d	j	J	«	<
+1e	1	!	¹	¹
+1f	2	"	²	²
+20	3	^	#	#
+21	4	$	¼	¼
+22	5	%	½	½
+23	6	&	¾	¾
+24	7	'	{	{
+25	8	(	[	[
+26	9	)	]	]
+27	0	=	}	}
+2d	/	?	\\	\\
+2e	-	_	|	|
+2f	q	Q	"	"
+30	w	W	~	~
+31	x	X	`	`
+33	y	Y	´	´
+34	ş	Ş
+35	+	*	¬	¬
+36	b	B	×	×
+37	.	:	÷	÷
+38	,	;
+64	<	>	|	¦
+
+@cn-pinyin = us

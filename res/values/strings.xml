@@ -407,6 +407,10 @@
     <string name="key_borders">Key borders</string>
     <string name="theme_preview_pad">Touchpad</string>
     <string name="theme_note">Themes other than Pure black use a little more battery. While Douhua is open the screen shows the same picture for a long time, and brighter colors burn in more easily. Takes effect when you go back to the touchpad.</string>
+    <string name="sec_edge_margin">Screen edge margin</string>
+    <string name="edge_margin_lr">Left and right (dp)</string>
+    <string name="edge_margin_tb">Top and bottom (dp)</string>
+    <string name="edge_margin_note">The touchpad, keyboard and buttons stay this far from the screen edges; that strip isn\'t part of the touchpad or any key (many phones have their own edge gestures, and the fingers holding the phone often rest on the edges). In split screen or a pop-up window only the sides on a screen edge get the strip. Takes effect when you go back to the touchpad.</string>
     <string name="sec_pad_bg">Touchpad background</string>
     <string name="pad_bg_pick_photo">Choose from photos…</string>
     <string name="pad_bg_pick_file">Choose a file…</string>

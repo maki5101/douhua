@@ -39,7 +39,7 @@ import java.util.List;
  * - 三个鼠标键是键盘最下面一排（{@link Plan#keys}），横跨整块键盘（分裂时左半 + 中间 + 右半），高 {@link Sizes#keyH}。
  *   这一排算在键盘的框里（{@link Plan#block}：调大小、存的位置、默认位置都是连这一排的整块），从框的下沿切出来，键盘面板（键）变矮这么多；
  *   不另加在键盘下面：默认位置（竖屏占下面七成、横屏占满）下面本来就没地方，调大小时也只要拖一个框。面板剩下不到
- *   {@link #MOUSE_ROW_MIN_KEYS} × keyH 就不切（键会挤成一条条）。中键窄、左右键宽（{@link #middleKey}），中键对着红点。
+ *   {@link #MOUSE_ROW_MIN_KEYS} × keyH 就不切（键会挤成一条条）。中键窄、左右键宽（约 2.2 : 1 : 2.2，{@link #middleKey}），中键对着红点。
  * - 红点在键盘里：字母层 g、h、v、b 交界那一点（KeyRows.stickPoint）。分裂、两半中间留得出一列（{@link Sizes#stickColumn}：
  *   红点 + 两边各一条缝）时在这一列正中、不压键（{@link #STICK_COLUMN}；没调过大小时自动留这一列，两半相应变宽，自动分不分裂也按这一列算）；
  *   合并、或者两半挨得近时嵌在四个键的交界上，挨着的键各让出一个角（{@link #STICK_KEYS}），多大见 {@link #stickSize}；
@@ -85,8 +85,11 @@ final class KeyboardPlan {
      */
     static final float STICK_LETTER_SHARE = 0.16f;
     static final float STICK_MAX_SHARE = 0.25f;
-    /** 中键占三个键总宽的比例（ThinkPad 的左 : 中 : 右约 3 : 2 : 3，凭印象）。 */
-    static final float MIDDLE_SHARE = 0.25f;
+    /**
+     * 中键占三个键总宽的比例：真 ThinkPad 的左 : 中 : 右约 2.2 : 1 : 2.2（2026-11-01 照联想用户指南插图量的，各代 2.1–2.4 : 1），
+     * 中键 = 总宽 / 5.4。以前凭印象按 3 : 2 : 3（四分之一）。
+     */
+    static final float MIDDLE_SHARE = 1 / 5.4f;
     /** 键盘最下面那排三个鼠标键：切完键盘面板至少还有这么多个键高（{@link Sizes#keyH}），不然不切。 */
     static final int MOUSE_ROW_MIN_KEYS = 3;
 
@@ -150,8 +153,11 @@ final class KeyboardPlan {
         final int minMiddle;
         /** 键盘面板里每个键四边各缩进多少（KeyboardPanel 的 gap，2dp）：算键的实际矩形、让三个鼠标键那排和键对齐。 */
         final int capGap;
-        /** 三键条、键盘外面的红点离页面边至少多远（20dp：拿手机的手指常压在边上，同 ⋯、调整栏）。 */
-        final int edge;
+        /**
+         * 三键条、键盘外面的红点离页面左、上、右、下边至少多远（20dp：拿手机的手指常压在边上，同 ⋯、调整栏）。
+         * 页面因屏幕边缘留白往里收了的那几条边少留这么多（{@link #withEdges}、EdgeMargin.edges：照旧按屏幕边算）。
+         */
+        final int edgeL, edgeT, edgeR, edgeB;
 
         Sizes(int gap, int minPad, int minKey) {
             this(gap, minPad, minKey, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -159,6 +165,11 @@ final class KeyboardPlan {
 
         Sizes(int gap, int minPad, int minKey, int stick, int minStick, int keyW, int keyH, int keyGap, int minMiddle,
               int capGap, int edge) {
+            this(gap, minPad, minKey, stick, minStick, keyW, keyH, keyGap, minMiddle, capGap, new int[]{edge, edge, edge, edge});
+        }
+
+        private Sizes(int gap, int minPad, int minKey, int stick, int minStick, int keyW, int keyH, int keyGap, int minMiddle,
+                      int capGap, int[] edges) {
             this.gap = gap;
             this.minPad = minPad;
             this.minKey = minKey;
@@ -169,7 +180,15 @@ final class KeyboardPlan {
             this.keyGap = keyGap;
             this.minMiddle = minMiddle;
             this.capGap = capGap;
-            this.edge = edge;
+            this.edgeL = edges[0];
+            this.edgeT = edges[1];
+            this.edgeR = edges[2];
+            this.edgeB = edges[3];
+        }
+
+        /** 同一套尺寸，离页面四条边至少多远换成 edges {左, 上, 右, 下}（各边可以不一样）。 */
+        Sizes withEdges(int[] edges) {
+            return new Sizes(gap, minPad, minKey, stick, minStick, keyW, keyH, keyGap, minMiddle, capGap, edges);
         }
 
         /** 给了红点和鼠标键的尺寸（不然小红点当"关"、三键条不切）。 */
@@ -468,22 +487,22 @@ final class KeyboardPlan {
 
     /**
      * 三键条从触控板 pad（{左, 上, 右, 下}，页面坐标；页面 w × h）的上沿（top）或下沿切出来：高 keyH，和剩下的触控板隔 keyGap，
-     * 离页面四条边都至少 edge（贴着屏幕边那一截空着、不响应，同以前的工具栏）；中键窄、左右键宽（{@link #middleKey}，对着这一条的中线）。
+     * 离页面四条边都至少 edge（Sizes.edgeL / T / R / B；贴着屏幕边那一截空着、不响应，同以前的工具栏）；中键窄、左右键宽（{@link #middleKey}，对着这一条的中线）。
      * 返回 {剩下的触控板, 三键条}；三个键排不下、或者切完触控板短边不够 minPad，返回 null（不切，触控板照旧）。
      * 主界面的触控板也用它（窗口坐标）。
      */
     static int[][] cutBar(int[] pad, int w, int h, boolean top, Sizes s) {
         if (pad == null || s.keyH <= 0) return null;
-        int left = Math.max(pad[0], s.edge), right = Math.min(pad[2], w - s.edge);
+        int left = Math.max(pad[0], s.edgeL), right = Math.min(pad[2], w - s.edgeR);
         if (right - left < s.keysWidth()) return null;
         int barTop, barBottom;
         int[] rest;
         if (top) {
-            barTop = Math.max(pad[1], s.edge);
+            barTop = Math.max(pad[1], s.edgeT);
             barBottom = barTop + s.keyH;
             rest = new int[]{pad[0], barBottom + s.keyGap, pad[2], pad[3]};
         } else {
-            barBottom = Math.min(pad[3], h - s.edge);
+            barBottom = Math.min(pad[3], h - s.edgeB);
             barTop = barBottom - s.keyH;
             rest = new int[]{pad[0], pad[1], pad[2], barTop - s.keyGap};
         }
@@ -493,8 +512,9 @@ final class KeyboardPlan {
 
     /**
      * 三个鼠标键（bar {左, 上, 右, 下}，键盘最下面那排或者三键条）里中键的 {左, 右}：左右键宽、中键窄——三个键总宽的
-     * {@link #MIDDLE_SHARE}（照 ThinkPad），至少 minMiddle，左右键都不窄于中键（整排窄得三个一样宽都不到 minMiddle 时三个一样宽）；
-     * 中键对着 center（红点的中线，没红点时是这一排的中线），挪不过去就挪到最近的地方。键与键之间隔 keyGap。
+     * {@link #MIDDLE_SHARE}（照 ThinkPad 约 2.2 : 1 : 2.2），至少 minMiddle，左右键填满剩下的、都不窄于中键
+     * （整排窄得三个一样宽都不到 minMiddle 时三个一样宽）；中键对着 center（红点的中线，真 ThinkPad 的中键在红点正下方；
+     * 没红点时是这一排的中线），红点不在正中时左右键不一样宽，挪不过去就挪到最近的地方。键与键之间隔 keyGap。
      */
     static int[] middleKey(int[] bar, int center, Sizes s) {
         int inner = Math.max(0, bar[2] - bar[0] - 2 * s.keyGap);
@@ -510,7 +530,7 @@ final class KeyboardPlan {
      * 先放进键盘面板 panel 里 KeyRows.stickPoint 那一点（g、h、v、b 交界；分裂时两半中间那截的正中），多大见 {@link #stickSize}：
      * 压着键是 STICK_KEYS，不压（分裂中间那一列）是 STICK_COLUMN。
      * 嵌不下（键太小）就放到键盘的框 block 上面、隔一条缝，对着那一点（STICK_OUTSIDE）：边长不超过 stick、不小于 minStick，
-     * 离页面边至少 edge；上面没地方放下面，都没有返回 null（三个鼠标键照样有，轻点红点 = 左键的功能就没了）。
+     * 离页面边至少 edge（Sizes.edgeL / T / R / B）；上面没地方放下面，都没有返回 null（三个鼠标键照样有，轻点红点 = 左键的功能就没了）。
      */
     static int[] placeStick(int[] panel, int[] block, boolean split, int middle, int w, int h, Sizes s, KeyRows.Row[][] layers) {
         int pw = panel[2] - panel[0], ph = panel[3] - panel[1];
@@ -523,9 +543,9 @@ final class KeyboardPlan {
             boolean onKeys = maxShare(placed, l - panel[0], t - panel[1], size) > 0;
             return new int[]{l, t, l + size, t + size, onKeys ? STICK_KEYS : STICK_COLUMN};
         }
-        int across = w - 2 * s.edge;
-        int above = Math.min(across, block[1] - s.gap - s.edge);
-        int below = Math.min(across, h - s.edge - block[3] - s.gap);
+        int across = w - s.edgeL - s.edgeR;
+        int above = Math.min(across, block[1] - s.gap - s.edgeT);
+        int below = Math.min(across, h - s.edgeB - block[3] - s.gap);
         int top;
         if (above >= s.minStick) {
             size = Math.min(s.stick, above);
@@ -536,7 +556,7 @@ final class KeyboardPlan {
         } else {
             return null;
         }
-        int left = Math.max(s.edge, Math.min(cx - size / 2, w - s.edge - size));
+        int left = Math.max(s.edgeL, Math.min(cx - size / 2, w - s.edgeR - size));
         return new int[]{left, top, left + size, top + size, STICK_OUTSIDE};
     }
 
@@ -730,12 +750,22 @@ final class KeyboardPlan {
      * （触控板贴着屏幕上边时往下推）；推完还得整个在触控板里。
      */
     static int[] menuTop(int[] pad, int w, int h, int bw, int bh, int margin, int edge) {
+        return menuTop(pad, w, h, bw, bh, margin, same(edge));
+    }
+
+    /** 同上，离页面左、上、右、下边各至少 e[0..3]（页面因屏幕边缘留白往里收了的那几条边少留，EdgeMargin.edges）。 */
+    static int[] menuTop(int[] pad, int w, int h, int bw, int bh, int margin, int[] e) {
         if (pad == null) return null;
         int x = (pad[0] + pad[2] - bw) / 2;
-        int y = Math.max(pad[1] + margin, edge);
-        x = Math.min(Math.max(x, edge), w - edge - bw);
-        if (x < edge || y + bh > h - edge || x < pad[0] || y < pad[1] || x + bw > pad[2] || y + bh > pad[3]) return null;
+        int y = Math.max(pad[1] + margin, e[1]);
+        x = Math.min(Math.max(x, e[0]), w - e[2] - bw);
+        if (x < e[0] || y + bh > h - e[3] || x < pad[0] || y < pad[1] || x + bw > pad[2] || y + bh > pad[3]) return null;
         return new int[]{x, y};
+    }
+
+    /** 四条边一样的 {edge, edge, edge, edge}。 */
+    private static int[] same(int edge) {
+        return new int[]{edge, edge, edge, edge};
     }
 
     /**
@@ -763,10 +793,15 @@ final class KeyboardPlan {
      * 每列的项从上到下排满再排下一列，列数按行数重算（不会多出一列空的）。
      */
     static int[] menuGrid(int count, int w, int h, int edge, int pad, int gap, int maxW, int itemH, int minItemH, int minColW) {
+        return menuGrid(count, w, h, same(edge), pad, gap, maxW, itemH, minItemH, minColW);
+    }
+
+    /** 同上，"离页面边"按左、上、右、下各 e[0..3] 算（EdgeMargin.edges）。 */
+    static int[] menuGrid(int count, int w, int h, int[] e, int pad, int gap, int maxW, int itemH, int minItemH, int minColW) {
         count = Math.max(1, count);
-        for (int margin : new int[]{edge, 0}) {
+        for (int[] m : new int[][]{e, same(0)}) {
             for (int cols = 1; cols <= count; cols++) {
-                int[] g = grid(count, cols, w - 2 * margin, h - 2 * margin, pad, gap, maxW, itemH);
+                int[] g = grid(count, cols, w - m[0] - m[2], h - m[1] - m[3], pad, gap, maxW, itemH);
                 if (g == null) break;
                 if (cols > 1 && g[2] < minColW) break;   // 列太窄：不再加列（一列时再窄也只能这样）
                 if (g[3] >= minItemH) return g;
@@ -807,38 +842,58 @@ final class KeyboardPlan {
      * 地方够的话离页面边至少 edge（同 ⋯ 小方块，免得拿手机的手指碰到），不够就少留一点，绝不出屏。
      */
     static int[] menuPosition(int[] anchor, int mw, int mh, int w, int h, int edge, int gap, boolean center) {
-        int mx = Math.max(0, Math.min(edge, (w - mw) / 2));
-        int my = Math.max(0, Math.min(edge, (h - mh) / 2));
+        return menuPosition(anchor, mw, mh, w, h, same(edge), gap, center);
+    }
+
+    /**
+     * 同上，离页面左、上、右、下边各至少 e[0..3]（EdgeMargin.edges）；地方不够时两边按比例一起少留
+     * （四边一样时就是以前的"各留一半空余"）。
+     */
+    static int[] menuPosition(int[] anchor, int mw, int mh, int w, int h, int[] e, int gap, boolean center) {
+        int[] mx = room(e[0], e[2], w - mw);
+        int[] my = room(e[1], e[3], h - mh);
         boolean rightSide = anchor[0] + anchor[2] >= w;   // ⋯ 的中线在页面右半
         int left = center ? (anchor[0] + anchor[2] - mw) / 2 : rightSide ? anchor[2] - mw : anchor[0];
-        left = Math.max(mx, Math.min(left, w - mx - mw));
+        left = Math.max(mx[0], Math.min(left, w - mx[1] - mw));
         int below = anchor[3] + gap;
         int above = anchor[1] - gap - mh;
         int top;
-        if (below + mh <= h - my) {
+        if (below + mh <= h - my[1]) {
             top = below;
-        } else if (above >= my) {
+        } else if (above >= my[0]) {
             top = above;
         } else {
             top = h - anchor[3] >= anchor[1] ? below : above;
-            top = Math.max(my, Math.min(top, h - my - mh));
+            top = Math.max(my[0], Math.min(top, h - my[1] - mh));
             // 竖着躲不开 ⋯（挪进屏后还压着它）：放到它旁边——在右半放左边、在左半放右边，横着放得下才挪
             if (top < anchor[3] && anchor[1] < top + mh) {
                 int side = rightSide ? anchor[0] - gap - mw : anchor[2] + gap;
-                if (side >= mx && side + mw <= w - mx) left = side;
+                if (side >= mx[0] && side + mw <= w - mx[1]) left = side;
             }
         }
         return new int[]{Math.max(0, left), Math.max(0, top)};
     }
 
+    /** 一个方向上两头各留多少：a、b 放得下（a + b ≤ spare）就照留，不然按比例一起缩到正好放下，spare ≤ 0 时都是 0。 */
+    private static int[] room(int a, int b, int spare) {
+        if (spare <= 0 || a + b <= 0) return new int[2];
+        if (a + b <= spare) return new int[]{a, b};
+        return new int[]{a * spare / (a + b), b * spare / (a + b)};
+    }
+
     /**
      * 调整模式那条栏（高 barH）放在页面上面还是下面，返回它的上边：离那条屏幕边 edge（不贴边，同 ⋯）。
      * 哪边压着键盘（kbTop–kbBottom）少放哪边，一样（都不压，或者键盘占满高都压）放上面；拖键盘时跟着重算，键盘拖到哪边栏就让到另一边。
-     * 页面矮得连 2 × edge + barH 都不够就竖着居中。
+     * 页面矮得连 2 × edge + barH（上下各 edge）都不够就竖着居中。
      */
     static int adjustBarTop(int h, int barH, int edge, int kbTop, int kbBottom) {
-        int top = edge;
-        int bottom = h - edge - barH;
+        return adjustBarTop(h, barH, edge, edge, kbTop, kbBottom);
+    }
+
+    /** 同上，离页面上边至少 edgeTop、下边至少 edgeBottom（EdgeMargin.edges）。 */
+    static int adjustBarTop(int h, int barH, int edgeTop, int edgeBottom, int kbTop, int kbBottom) {
+        int top = edgeTop;
+        int bottom = h - edgeBottom - barH;
         if (bottom < top) return Math.max(0, (h - barH) / 2);
         int overTop = overlap(top, top + barH, kbTop, kbBottom);
         int overBottom = overlap(bottom, bottom + barH, kbTop, kbBottom);

@@ -25,6 +25,8 @@ import java.util.Arrays;
  * 菜单本身（连盖住整页的"点外面关菜单"）和主界面共用一份 MenuLayer，摆在根视图最上面，贴着这里的 ⋯ 弹出（{@link #menuAnchor}）；
  * 菜单里的项、点了做什么由 MainActivity 管。
  * 调整模式里临时出现一条"完成 / 恢复默认"（{@link #adjustBar}），离屏幕边 edgeInset，压着键盘少的那边（上 / 下）。
+ * 屏幕边缘留白（2026-11-01）时这一整屏由 MainActivity 往里收（键盘区跟着变小，存的大小位置是键盘区的比例、不动），
+ * "离屏幕边 edgeInset"照旧按屏幕边算：收进去多少，这里离各边就少留多少（{@link #setEdgeInsets}）。
  * 怎么摆（分不分裂、触控板放哪儿）由 {@link KeyboardPlan} 算，每次量尺寸时按当时的宽高、布局设置、触控板开关重算，
  * 拖分隔条、进出分屏、转屏、Fold 换屏都跟着变。
  *
@@ -86,13 +88,20 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     private final Listener listener;
     /** 触控板上的 ⋯、调整栏离屏幕边至少这么远（拿手机的手指常压在边上，贴边的按钮容易误触，用户反馈过）。 */
     private final int edgeInset;
+    /**
+     * 换成离本页各边（左、上、右、下）至少多远：本页因屏幕边缘留白往里收了的边少留那么多（EdgeMargin.edges），
+     * 没收的边（没开留白、分屏时不贴屏幕边的那条）还是 edgeInset。⋯、调整栏、三键条、放在键盘外面的红点都按它。
+     */
+    private final int[] edges = new int[4];
     private final int gap;
     private final int grab;
     /** 触控板上的 ⋯ 按得到的范围多大、离触控板顶边多远。 */
     private final int menuButtonW, menuButtonH, cornerMargin;
     /** 调整栏多高，按钮最宽多少、两边各留多少。 */
     private final int barHeight, barButtonMax, barMargin;
-    private final KeyboardPlan.Sizes sizes;
+    /** 尺寸门槛；sizes 是它按 {@link #edges} 换了离边距离的那份。 */
+    private final KeyboardPlan.Sizes baseSizes;
+    private KeyboardPlan.Sizes sizes;
 
     /** 合并时键盘在可用区域里的位置 {左, 上, 右, 下}，0–1；custom 为假时是默认位置（每次量尺寸按窗口重算）。 */
     private final float[] rect = new float[4];
@@ -200,8 +209,10 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         // 小红点按得到的范围最大 64dp（约 10 毫米；分裂中间那一列就这么大，画出来的红帽约 45dp），嵌在键里时按键的大小定、至少 32dp；
         // 三个鼠标键每个至少 44dp 宽、48dp 高（2026-11-01 用户嫌 36dp 的"基本上没法点"）、隔 4dp，中键至少 56dp；键帽四边缩进 2dp（同 KeyboardPanel）；
         // 离屏幕边 20dp。
-        sizes = new KeyboardPlan.Sizes(gap, Style.dp(context, 96), Style.dp(context, 32), Style.dp(context, 64), Style.dp(context, 32),
+        baseSizes = new KeyboardPlan.Sizes(gap, Style.dp(context, 96), Style.dp(context, 32), Style.dp(context, 64), Style.dp(context, 32),
                 Style.dp(context, 44), Style.dp(context, 48), Style.dp(context, 4), Style.dp(context, 56), Style.dp(context, 2), edgeInset);
+        Arrays.fill(edges, edgeInset);
+        sizes = baseSizes;
         // 叠放次序：触控板、键盘、小红点、三个鼠标键、⋯（压在触控板顶上）、调整栏（菜单在根视图的 MenuLayer 里，盖在这一整屏上面）
         addView(miniPad);
         addView(keyboard);
@@ -264,6 +275,17 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     @Override
     public void hideKeyPreview(View key) {
         if (key == previewKey) postDelayed(hidePreview, PREVIEW_LINGER_MS);
+    }
+
+    /**
+     * 本页离各边至少多远 {左, 上, 右, 下}（像素，EdgeMargin.edges 算好的）：MainActivity 因屏幕边缘留白把本页往里收了以后告诉这里，
+     * 收进去的边少留（照旧离屏幕边 edgeInset）。
+     */
+    void setEdgeInsets(int[] e) {
+        if (Arrays.equals(e, edges)) return;
+        System.arraycopy(e, 0, edges, 0, 4);
+        sizes = baseSizes.withEdges(edges);
+        requestLayout();
     }
 
     /** 存下的合并键盘位置（0–1）；null = 没调过，用默认位置（跟着窗口：宽窗口靠左三分之二，其它同以前）。 */
@@ -371,7 +393,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         // ⋯ 放触控板顶上正中（三键条在上沿时在三键条正下方）还是功能行上（选小红点、指点关着时没有触控板，一定在功能行上）：
         // 那块摆出来、离屏幕边够远的地方放得下就放那儿（areaLeft / areaTop 是 0，plan 的坐标就是本容器坐标）
         int[] corner = plan.menuArea == null ? null
-                : KeyboardPlan.menuTop(plan.menuArea, w, h, menuButtonW, menuButtonH, cornerMargin + plan.menuMargin, edgeInset);
+                : KeyboardPlan.menuTop(plan.menuArea, w, h, menuButtonW, menuButtonH, cornerMargin + plan.menuMargin, edges);
         menuOnPad = corner != null;
         if (menuOnPad) System.arraycopy(corner, 0, menuButtonAt, 0, 2);
         int showButton = menuOnPad && !adjusting ? VISIBLE : GONE;
@@ -415,7 +437,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         int barW = fitBar(w);
         adjustBar.measure(exactly(barW), exactly(barHeight));
         barLeft = (w - barW) / 2;
-        barTop = KeyboardPlan.adjustBarTop(h, barHeight, edgeInset, Math.round(blockRect.top), Math.round(blockRect.bottom));
+        barTop = KeyboardPlan.adjustBarTop(h, barHeight, edges[1], edges[3], Math.round(blockRect.top), Math.round(blockRect.bottom));
     }
 
     /** plan 里的矩形（键盘区坐标，null = 没有）换成本容器坐标。 */
@@ -451,13 +473,14 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     }
 
     /**
-     * 调整栏按钮的排法：一样宽、挤在中间，左右都离屏幕边至少 edgeInset，窗口窄放不下时一起缩（KeyboardPlan.barButtonWidth；
+     * 调整栏按钮的排法：一样宽、挤在中间，左右都离屏幕边至少 edgeInset（两边要的不一样时按要得多的那边算，栏照旧在正中），
+     * 窗口窄放不下时一起缩（KeyboardPlan.barButtonWidth；
      * 字号本来就自动缩）。宽度定死不用 wrap_content：按钮字号是自动缩小的，和 wrap_content 不搭。
      * 在量栏之前直接改 LayoutParams 的字段（不 setLayoutParams，免得在测量途中再请求布局）。返回整条栏多宽。
      */
     private int fitBar(int w) {
         int count = adjustBar.getChildCount();
-        int each = KeyboardPlan.barButtonWidth(w, count, edgeInset, barMargin, barButtonMax);
+        int each = KeyboardPlan.barButtonWidth(w, count, Math.max(edges[0], edges[2]), barMargin, barButtonMax);
         boolean changed = false;
         for (int i = 0; i < count; i++) {
             LinearLayout.LayoutParams p = (LinearLayout.LayoutParams) adjustBar.getChildAt(i).getLayoutParams();

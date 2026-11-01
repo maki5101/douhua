@@ -14,7 +14,8 @@ import java.util.Map;
 
 /**
  * 连续滚动、惯性滚动里不依赖 Android 的部分（tools/test.sh 直接跑）：
- * 带分辨率倍率的鼠标描述符（用一个小 HID 项解析器逐个字段比：输入报文和旧描述符一模一样、Feature 报告的样子对）、
+ * 带分辨率倍率的鼠标描述符（用一个小 HID 项解析器逐个字段比：输入报文和旧描述符一模一样、Feature 报告的样子对；
+ * 桌面模式 uhid 那份只有一个竖向倍率字段）、
  * 倍率字节的编解码、滚轮单位 → 计数的换算和拆帧（Hid.WheelOut）、CMD_CONFIG 编解码往返（ConfigCodec）、惯性的物理（ScrollInertia）。
  * 这些只证明代码照设计跑，证明不了主机认不认、手感对不对。
  */
@@ -25,11 +26,13 @@ public final class HidTest {
     public static void main(String[] args) throws Exception {
         hiresInputUnchanged();
         hiresFeatureShape();
+        hiresVerticalOnly();
         noFourByteItems();
         combinedIds();
         multiplierBytes();
         wheelOutGridSameAsBefore();
         wheelOutHires();
+        wheelOutVerticalOnly();
         wheelOutLowResSmooth();
         wheelOutSplitsFrames();
         wheelOutSkipsRemainderOnly();
@@ -61,6 +64,11 @@ public final class HidTest {
         boolean sizeCode3;
         /** 每种报告（kind + id）的总位数。 */
         final Map<String, Integer> bits = new HashMap<>();
+        /**
+         * 每种报告里带用法的主项有几个 = 内核的 report->maxfield（hid-core 的 hid_add_field：没有用法的补齐项不注册成字段，
+         * 一个主项不管 Report Count 多少是一个字段）。
+         */
+        final Map<String, Integer> maxfield = new HashMap<>();
         int openCollections;
     }
 
@@ -95,6 +103,9 @@ public final class HidTest {
                     boolean constant = (udata & 1) != 0;
                     String key = kind + "" + id;
                     int offset = out.bits.containsKey(key) ? out.bits.get(key) : 0;
+                    if (!usages.isEmpty() || umin >= 0) {
+                        out.maxfield.put(key, (out.maxfield.containsKey(key) ? out.maxfield.get(key) : 0) + 1);
+                    }
                     for (int c = 0; c < count; c++) {
                         Field f = new Field();
                         f.kind = kind;
@@ -196,6 +207,49 @@ public final class HidTest {
         eq(mult.get(0).offset, 0, "竖倍率在位 0–1");
         eq(mult.get(1).offset, 2, "横倍率在位 2–3");
         check(wheel.phyMin == 0 && wheel.phyMax == 0 && pan.phyMin == 0 && pan.phyMax == 0, "倍率后面的输入项物理范围复位成 0");
+    }
+
+    /**
+     * 桌面模式 uhid 那份（MOUSE_DESC_HIRES_V）：整个描述符只有一个 Feature 字段（竖向倍率），内核不用先 GET 就直接 SET
+     * （hid-input 的 __hidinput_change_resolution_multipliers 在 maxfield > 1 时先 GET、带 NO_INIT_REPORTS 就放弃）；
+     * 输入报文和旧的一字不差，Feature 报告 1 字节。
+     */
+    static void hiresVerticalOnly() {
+        Parsed old = parse(Hid.MOUSE_DESC), v = parse(Hid.MOUSE_DESC_HIRES_V);
+        eq(inputs(v), inputs(old), "uhid 的鼠标描述符：每个输入字段（用法、位置、位数、逻辑 / 物理范围）和旧的一样");
+        eq(v.bits.get("I0"), Hid.MOUSE_REPORT_SIZE * 8, "uhid：输入报文还是 7 字节");
+        eq(v.openCollections, 0, "uhid：集合都闭合了");
+        check(!v.sizeCode3, "uhid：没有 4 字节数据的项");
+        eq(v.bits.get("F0"), Hid.FEATURE_REPORT_SIZE * 8, "uhid：Feature 报告 1 字节");
+        eq(v.maxfield.get("F0"), 1, "uhid：Feature 报告里只有一个字段（内核的 maxfield = 1，不用先 GET）");
+        eq(parse(Hid.MOUSE_DESC_HIRES).maxfield.get("F0"), 2, "蓝牙那份照旧两个字段（竖、横）");
+        List<Field> feat = fieldsOf(v, 'F');
+        Field mult = null;
+        int multCount = 0, padBits = 0;
+        for (Field f : feat) {
+            if (f.usage == RES_MULT) {
+                mult = f;
+                multCount++;
+            } else {
+                check(f.usage == -1, "uhid：倍率以外的 Feature 位都是补齐：" + f.input());
+                padBits += f.bits;
+            }
+        }
+        eq(multCount, 1, "uhid：只有一个倍率字段");
+        eq(padBits, 6, "uhid：补齐 6 位");
+        check(mult != null && mult.bits == 2 && mult.offset == 0 && mult.logMin == 0 && mult.logMax == 1
+                        && mult.phyMin == 1 && mult.phyMax == Hid.RES_MULT && mult.collType == 2,
+                "uhid：倍率在位 0–1、逻辑 0..1、物理 1..8、在 Logical 集合里：" + (mult == null ? "没有" : mult.input()));
+        Field wheel = null, pan = null;
+        for (Field f : fieldsOf(v, 'I')) {
+            if (f.usage == WHEEL) wheel = f;
+            if (f.usage == AC_PAN) pan = f;
+        }
+        check(wheel != null && pan != null, "uhid：有竖滚轮和 AC Pan");
+        if (mult == null || wheel == null || pan == null) return;
+        eq(mult.collIndex, wheel.collIndex, "uhid：倍率和竖滚轮在同一个 Logical 集合里");
+        check(pan.collType == 2 && pan.collIndex != wheel.collIndex, "uhid：AC Pan 在自己的 Logical 集合里（那里没有倍率，一直 ×1）");
+        check(wheel.phyMin == 0 && wheel.phyMax == 0 && pan.phyMin == 0 && pan.phyMax == 0, "uhid：倍率后面的输入项物理范围复位成 0");
     }
 
     /** 蓝牙栈注册时 check_descriptor 把尺寸码 3（4 字节数据）当 3 字节走：描述符里一个都不能有。 */
@@ -304,6 +358,42 @@ public final class HidTest {
         f.frames.clear();
         w.mouse(r, 0, 0, 0, Hid.WHEEL_UNIT, -Hid.WHEEL_UNIT, 2000, f);
         eq(f.frames, Arrays.asList(oldReport(0, 0, 0, 1, -1)), "复位后又是一格一个计数");
+    }
+
+    /**
+     * uhid 那份的倍率：UhidMouse.setFeature / getFeature 只调 WheelOut.setUhidFeature / uhidFeatureReport（UhidMouse 依赖 android.*，
+     * 不进离线编译，所以换算收在 WheelOut 里、这里锁住）：只认竖向那两位，横向一直 ×1、照旧一格一格。
+     */
+    static void wheelOutVerticalOnly() {
+        Hid.WheelOut w = new Hid.WheelOut();
+        check(w.setUhidFeature(new byte[]{0, 1}), "uhid：内核设逻辑最大（前面垫着编号字节 0）认得出");
+        eq(w.multV() * 10 + w.multH(), 81, "uhid：内核设 1 → 竖 ×8、横 ×1");
+        eq(Arrays.toString(w.uhidFeatureReport()), "[1]", "uhid：×8 时内核来问回 1 个字节 0x01（只有竖向那两位）");
+        eq(w.uhidFeatureReport().length, Hid.FEATURE_REPORT_SIZE, "uhid：回的长度等于 Feature 报告长度");
+        w.setMultipliers(Hid.RES_MULT, Hid.RES_MULT);   // 就算横向被设成了 ×8，回的也只有竖向那两位
+        eq(Arrays.toString(w.uhidFeatureReport()), "[1]", "uhid：回的报告横向位一直是 0");
+        check(w.setUhidFeature(new byte[]{0, 0}), "uhid：内核设 0 认得出");
+        eq(w.multV() * 10 + w.multH(), 11, "uhid：内核设 0（设失败回滚到逻辑最小）→ 竖 ×1、横 ×1");
+        eq(Arrays.toString(w.uhidFeatureReport()), "[0]", "uhid：×1 时回 0");
+        check(w.setUhidFeature(new byte[]{1}), "uhid：不带编号字节的 1 认得出");
+        eq(w.multV() * 10 + w.multH(), 81, "uhid：不带编号字节的 1 → 竖 ×8、横 ×1");
+        check(w.setUhidFeature(new byte[]{(byte) 0xFD}), "uhid：0xFD 认得出");
+        eq(w.multV() * 10 + w.multH(), 81, "uhid：补齐位上有杂值也只看位 0–1，横向照样 ×1");
+        check(w.setUhidFeature(new byte[]{0x05}), "uhid：0x05 认得出");
+        eq(w.multV() * 10 + w.multH(), 81, "uhid：0x05（蓝牙那份里是竖横都 ×8）在 uhid 这份里横向照样 ×1");
+        check(w.setUhidFeature(new byte[]{0, 2}), "uhid：2 认得出");
+        eq(w.multV(), 1, "uhid：超出逻辑范围的值（2）当 ×1");
+        w.setUhidFeature(new byte[]{0, 1});
+        check(!w.setUhidFeature(new byte[0]), "uhid：空数据认不出");
+        check(!w.setUhidFeature(null), "uhid：null 认不出");
+        eq(w.multV() * 10 + w.multH(), 81, "uhid：认不出时倍率不变");
+
+        Frames f = new Frames();
+        byte[] r = new byte[Hid.MOUSE_REPORT_SIZE];
+        w.mouse(r, 0, 0, 0, 15, 15, 1000, f);
+        eq(f.wheel() * 10 + f.pan(), 10, "uhid：15 单位竖向出 1 个计数，横向不出（攒着）");
+        w.mouse(r, 0, 0, 0, 0, 105, 1016, f);
+        eq(f.pan(), 1, "uhid：横向攒满 120 单位才出一格");
     }
 
     static void wheelOutLowResSmooth() {

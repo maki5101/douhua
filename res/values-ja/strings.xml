@@ -407,6 +407,10 @@
     <string name="key_borders">キーの枠線</string>
     <string name="theme_preview_pad">タッチパッド</string>
     <string name="theme_note">ピュアブラック以外のテーマは少し電池を多く使います。豆花を開いている間は画面に同じ表示が長く続くため、明るい色ほど焼き付きやすくなります。タッチパッドに戻ると反映されます。</string>
+    <string name="sec_edge_margin">画面端の余白</string>
+    <string name="edge_margin_lr">左右（dp）</string>
+    <string name="edge_margin_tb">上下（dp）</string>
+    <string name="edge_margin_note">タッチパッド・キーボード・ボタンを画面の端からこの幅だけ離します。この帯はタッチパッドにもキーにもなりません（画面の端に独自の操作がある機種が多く、持つ手の指も端に触れがちです）。分割画面やポップアップでは画面の端に接している辺だけに付きます。タッチパッドに戻ると反映されます。</string>
     <string name="sec_pad_bg">タッチパッドの背景画像</string>
     <string name="pad_bg_pick_photo">写真から選ぶ…</string>
     <string name="pad_bg_pick_file">ファイルから選ぶ…</string>

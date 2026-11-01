@@ -407,6 +407,10 @@
     <string name="key_borders">按键边框</string>
     <string name="theme_preview_pad">触控板</string>
     <string name="theme_note">纯黑以外的主题更费电一点；豆花开着时屏幕长时间亮着同一画面，颜色越亮越容易烧屏。回到触控板后生效。</string>
+    <string name="sec_edge_margin">屏幕边缘留白</string>
+    <string name="edge_margin_lr">左右（dp）</string>
+    <string name="edge_margin_tb">上下（dp）</string>
+    <string name="edge_margin_note">触控板、键盘和按钮离屏幕边都留这么宽一条，这一条不算触控板也不算按键（不少手机在屏幕边上有自己的操作，拿手机时手指也常压在边上）。分屏 / 小窗时只留贴着屏幕边的那几条。回到触控板后生效。</string>
     <string name="sec_pad_bg">触控板背景图</string>
     <string name="pad_bg_pick_photo">从相册选…</string>
     <string name="pad_bg_pick_file">从文件选…</string>

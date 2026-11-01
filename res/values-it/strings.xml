@@ -407,6 +407,10 @@
     <string name="key_borders">Bordi dei tasti</string>
     <string name="theme_preview_pad">Touchpad</string>
     <string name="theme_note">I temi diversi da Nero puro consumano un po\' più di batteria. Con Douhua aperto lo schermo mostra a lungo la stessa immagine e i colori chiari si imprimono più facilmente. Si applica quando torni al touchpad.</string>
+    <string name="sec_edge_margin">Margine dal bordo dello schermo</string>
+    <string name="edge_margin_lr">Sinistra e destra (dp)</string>
+    <string name="edge_margin_tb">Sopra e sotto (dp)</string>
+    <string name="edge_margin_note">Touchpad, tastiera e pulsanti restano a questa distanza dai bordi dello schermo; la striscia non conta né come touchpad né come tasto (molti telefoni hanno gesti propri sui bordi e le dita che reggono il telefono ci si appoggiano spesso). In schermo diviso o in finestra pop-up solo sui lati che toccano un bordo dello schermo. Si applica quando torni al touchpad.</string>
     <string name="sec_pad_bg">Immagine di sfondo del touchpad</string>
     <string name="pad_bg_pick_photo">Scegli dalle foto…</string>
     <string name="pad_bg_pick_file">Scegli un file…</string>

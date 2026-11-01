@@ -360,6 +360,14 @@ final class Prefs {
         sp.edit().putString("settings_tab", id).apply();
     }
 
+    /** 屏幕边缘留白（设置 → 外观）：左右、上下各留多宽（dp，0–48、步长 2，默认各 8；怎么用见 EdgeMargin）。 */
+    static final String EDGE_MARGIN_LR = "edge_margin_lr", EDGE_MARGIN_TB = "edge_margin_tb";
+
+    /** horizontal = 左右两条边那个设置，不然上下。 */
+    int edgeMarginDp(boolean horizontal) {
+        return EdgeMargin.clampDp(getInt(horizontal ? EDGE_MARGIN_LR : EDGE_MARGIN_TB, EdgeMargin.DEFAULT_DP));
+    }
+
     /** 键帽画边框（Gboard 的同名开关）；默认开。 */
     boolean keyBorders() {
         return getBool("key_borders", true);

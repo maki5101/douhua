@@ -9,9 +9,10 @@ import android.view.ViewGroup;
 
 /**
  * 一排左 / 中 / 右三个鼠标键（照 ThinkPad 小红点下面那三个）：键盘页选小红点时键盘最下面那排、触控板上沿 / 下沿的三键条都是它。
- * 中键窄、左右键宽（{@link #setMiddle}，宽度由 KeyboardPlan.middleKey 定，中键对着红点），没设时三个键平分；键与键之间隔 gap。
- * 键帽照主题画（底色、边框同按钮条，一直有边框），不写字：左 / 右键靠中键那一侧画一道细红线，
- * 中键画三个小凹点（照 ThinkPad 的样子，凭记忆）。不写字也就不用翻译。
+ * 中键窄、左右键宽（{@link #setMiddle}，宽度由 KeyboardPlan.middleKey 定，约 2.2 : 1 : 2.2，中键对着红点），没设时三个键平分；键与键之间隔 gap。
+ * 键帽照主题画（底色、边框同按钮条，一直有边框），不写字，照真 ThinkPad（2026-11-01 对着联想用户指南的插图核过）：
+ * 左 / 右键靠用户那条长边（下沿，屏幕下方那条边；三键条在触控板上沿时也一样）横着一道红线、几乎占满键宽；
+ * 中键没有红线，上沿附近横着一排 7 个小点。真机的中键是上宽下窄的梯形，这里照旧画圆角矩形（和区域一样是矩形）。不写字也就不用翻译。
  * 触摸不在这里处理：服务接管 / 本地分流时按报上去的区域（Proto.REGION_MOUSE_BUTTON）认；服务连着没接管时 MainActivity 给每个键装触摸监听。
  */
 final class MouseKeys extends ViewGroup {
@@ -119,18 +120,21 @@ final class MouseKeys extends ViewGroup {
             stroke.setStrokeWidth(sw);
             stroke.setColor(t.border);
             c.drawRoundRect(box, radius, radius, stroke);
-            mark.setColor(t.stick);
-            float cy = getHeight() / 2f;
-            if (mask == Proto.BUTTON_MIDDLE) {   // 中键：三个小凹点
+            if (mask == Proto.BUTTON_MIDDLE) {
+                // 中键：上沿附近一排 7 个小点（真机在靠键盘那一侧）；点距最多 5dp，键窄时（三个一样宽）收紧，整排不进两头的圆角
                 mark.setColor(t.text);
-                float dr = 1.5f * density, step = 6 * density;
-                for (int i = -1; i <= 1; i++) c.drawCircle(getWidth() / 2f + i * step, cy, dr, mark);
+                float step = Math.min(5 * density, Math.max(0, getWidth() - 2 * radius - 4 * density) / 6f);
+                float dr = Math.min(1.2f * density, step * 0.3f);
+                float cy = sw + 7 * density;
+                for (int i = -3; i <= 3; i++) c.drawCircle(getWidth() / 2f + i * step, cy, dr, mark);
                 return;
             }
-            // 左 / 右键：靠中键那一侧一道细红线（竖着，占键高的一半）
-            float lw = 2 * density, len = getHeight() * 0.5f;
-            float x = mask == Proto.BUTTON_LEFT ? getWidth() - 8 * density - lw : 8 * density;
-            box.set(x, cy - len / 2, x + lw, cy + len / 2);
+            // 左 / 右键：靠用户那条长边（下沿）横着一道红线，2dp 粗，两头各让开圆角、几乎占满键宽
+            mark.setColor(t.stick);
+            float lw = 2 * density;
+            float bottom = getHeight() - sw - 3 * density;
+            float inset = sw + 5 * density;
+            box.set(inset, bottom - lw, getWidth() - inset, bottom);
             c.drawRoundRect(box, lw / 2, lw / 2, mark);
         }
     }

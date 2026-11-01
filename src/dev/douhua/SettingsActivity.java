@@ -389,9 +389,10 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         list = pages[3];
         airSection();
 
-        // 外观：主题、按键边框……，触控板背景图，震动
+        // 外观：主题、按键边框……，屏幕边缘留白，触控板背景图，震动
         list = pages[4];
         appearance();
+        edgeMargin();
         header(R.string.sec_pad_bg);
         padBg.build(list);
         header(R.string.sec_haptics);
@@ -655,6 +656,16 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         });
         list.addView(borders);
         list.addView(text(getString(R.string.theme_note), 13, 0xFF9A9A9A));
+    }
+
+    /**
+     * 屏幕边缘留白：左右、上下两个滑块（dp，0–48、步长 2，默认各 8）+ 一句说明。主界面回去时（applyPrefs）才把各页往里收（EdgeMargin）。
+     */
+    private void edgeMargin() {
+        header(R.string.sec_edge_margin);
+        sliderInt(R.string.edge_margin_lr, Prefs.EDGE_MARGIN_LR, EdgeMargin.DEFAULT_DP, 0, EdgeMargin.MAX_DP, EdgeMargin.STEP_DP);
+        sliderInt(R.string.edge_margin_tb, Prefs.EDGE_MARGIN_TB, EdgeMargin.DEFAULT_DP, 0, EdgeMargin.MAX_DP, EdgeMargin.STEP_DP);
+        list.addView(text(getString(R.string.edge_margin_note), 13, 0xFF9A9A9A));
     }
 
     /** 主题的名字：配色方案自己的名字（Nord……）各语言都不翻译，纯黑 / 深色 / 海蓝 / 高对比 / 浅色 / 樱花 / 薄荷翻译。 */

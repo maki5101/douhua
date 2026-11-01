@@ -6,7 +6,7 @@ import android.view.ViewGroup;
 
 /**
  * 主界面的触控板（连四个角上的小按钮）+ 顶上正中的 ⋯（2026-11-01：和键盘页一样，点开是 键盘 / 设置 / 旋转 / 退出）
- * + 可选的三键条（设置 → 触控板里的开关，放触控板上沿 / 下沿；高 48dp，中键窄、左右键宽）。
+ * + 可选的三键条（设置 → 触控板里的开关，放触控板上沿 / 下沿；高 48dp，中键窄、左右键宽，照 ThinkPad 约 2.2 : 1 : 2.2、中键在正中）。
  * 三键条从触控板里切出来（不是盖在上面）：角上的小按钮、底部状态字、边缘滚动带都跟着留在剩下的触控板里。
  * 怎么切和键盘页一样（KeyboardPlan.cutBar）：离窗口四条边至少 20dp（拿手机的手指常压在边上）、切完触控板短边不够 96dp 就不切。
  * ⋯ 也和键盘页一样（KeyboardPlan.menuTop）：剩下的触控板顶上正中、离窗口边至少 20dp，三键条在上沿时在三键条正下方隔一条缝；
@@ -22,6 +22,11 @@ final class PadStack extends ViewGroup {
     /** ⋯ 按得到的范围（同键盘页：56 × 36dp，不画框）。 */
     private final int menuW, menuH;
     private final KeyboardPlan.Sizes sizes;
+    /**
+     * 三键条、⋯ 离窗口边至少多远（20dp）。按窗口算（不是按主界面那一页）：屏幕边缘留白时页面往里收了，触控板跟着在里面，
+     * 这里照旧离屏幕边 20dp，留白比 20dp 宽时三键条、⋯ 本来就在触控板里、自然更靠里（不用另外知道留白多少）。
+     */
+    private final int edge;
     private int keysMode = KeyboardPlan.KEYS_OFF;
     private boolean keysShown;
     private final int[] loc = new int[2];
@@ -35,8 +40,9 @@ final class PadStack extends ViewGroup {
         menuW = Style.dp(c, 56);
         menuH = Style.dp(c, 36);
         // 同键盘页（KeyboardScreen）：缝 8、触控板短边 96、三个键各至少 44 × 48（2026-11-01 从 36 加高）、隔 4、中键至少 56、离边 20（dp）
+        edge = Style.dp(c, 20);
         sizes = new KeyboardPlan.Sizes(Style.dp(c, 8), Style.dp(c, 96), Style.dp(c, 32), Style.dp(c, 64), Style.dp(c, 32),
-                Style.dp(c, 44), Style.dp(c, 48), Style.dp(c, 4), Style.dp(c, 56), Style.dp(c, 2), Style.dp(c, 20));
+                Style.dp(c, 44), Style.dp(c, 48), Style.dp(c, 4), Style.dp(c, 56), Style.dp(c, 2), edge);
         addView(padFrame);
         addView(keys);
         addView(menuButton);
@@ -92,7 +98,7 @@ final class PadStack extends ViewGroup {
             area = new int[]{p[0], cut[1][3], p[2], p[3]};
             margin = sizes.gap;
         }
-        int[] at = KeyboardPlan.padMenuTop(area, rw, rh, menuW, menuH, margin, sizes.edge);
+        int[] at = KeyboardPlan.padMenuTop(area, rw, rh, menuW, menuH, margin, edge);
         place(menuButton, at[0] - loc[0], at[1] - loc[1], at[0] - loc[0] + menuW, at[1] - loc[1] + menuH);
         pad.setMenuChip(at[0] + menuW / 2f - p[0], at[1] + menuH / 2f - p[1]);
     }

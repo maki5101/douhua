@@ -4,11 +4,14 @@ import android.content.Context;
 import android.view.View;
 import android.view.ViewGroup;
 
+import java.util.Arrays;
+
 /**
  * ⋯ 菜单，主界面和键盘页共用这一份（2026-11-01：每块触控板顶上正中都有 ⋯）：盖住整页的"点外面关菜单"（{@link #outside}）
  * + 菜单本身（{@link #panel}，一格格的项）。豆花自己画，不用 PopupMenu / Dialog：服务独占触摸屏时 App 收不到手指，只能靠报区域
  * （MainActivity.collectRegions：菜单开着时只报菜单这一组）。
- * 摆在根视图最上面一层、铺满整页；菜单贴着当前那一屏的 ⋯ 弹出（{@link Host#menuAnchor}，KeyboardPlan.menuPosition），不出屏。
+ * 摆在根视图最上面一层、铺满整页（屏幕边缘留白时和别的页一样往里收：留白那一条连"点外面"都不算，按了菜单照样开着）；
+ * 菜单贴着当前那一屏的 ⋯ 弹出（{@link Host#menuAnchor}，KeyboardPlan.menuPosition），不出屏。
  * 项多、窗口矮时怎么排见 KeyboardPlan.menuGrid：先压矮每项，还放不下再分列（先排满第一列），最矮的窗口再贴边、缩。
  * 项是哪些、点了做什么由 MainActivity 管：项是 panel 的子 view，只排显示着的（这一屏没有的项 GONE）。
  *
@@ -29,6 +32,8 @@ final class MenuLayer extends ViewGroup {
     private final Host host;
     /** 菜单离页面边、离 ⋯ 多远（同以前键盘页：20dp、8dp）。 */
     private final int edge, gap;
+    /** 离本层各边（左、上、右、下）至少多远：往里收了的边少留（{@link #setEdgeInsets}，照旧离屏幕边 edge），没收的边是 edge。 */
+    private final int[] edges = new int[4];
     /** 菜单四周、项与项之间（6dp），每项最宽（208dp：菜单连四周最宽 220dp）、最高 / 压到最矮（44 / 36dp），分列时每列最窄（120dp）。 */
     private final int pad, itemGap, maxItemW, itemH, minItemH, minColW;
     private final int[] me = new int[2];
@@ -47,12 +52,20 @@ final class MenuLayer extends ViewGroup {
         itemH = Style.dp(c, 44);
         minItemH = Style.dp(c, 36);
         minColW = Style.dp(c, 120);
+        Arrays.fill(edges, edge);
         panel = new Panel(c, pad, itemGap);
         // 底板可点：服务没接管时（View 自己收触摸）挡住底下的"点外面"，按在项与项之间的缝里不当点外面
         panel.setClickable(true);
         addView(outside);
         addView(panel);
         setVisibility(GONE);
+    }
+
+    /** 本层离各边至少多远 {左, 上, 右, 下}（像素，EdgeMargin.edges 算好的）：MainActivity 因屏幕边缘留白把本层往里收了以后告诉这里。 */
+    void setEdgeInsets(int[] e) {
+        if (Arrays.equals(e, edges)) return;
+        System.arraycopy(e, 0, edges, 0, 4);
+        requestLayout();
     }
 
     /** 菜单底板：项加在它里面（{@link ViewGroup#addView}），底色由 MainActivity 按主题上。 */
@@ -75,7 +88,7 @@ final class MenuLayer extends ViewGroup {
         int h = MeasureSpec.getSize(heightSpec);
         setMeasuredDimension(w, h);
         outside.measure(exactly(w), exactly(h));
-        int[] g = KeyboardPlan.menuGrid(panel.visibleCount(), w, h, edge, pad, itemGap, maxItemW, itemH, minItemH, minColW);
+        int[] g = KeyboardPlan.menuGrid(panel.visibleCount(), w, h, edges, pad, itemGap, maxItemW, itemH, minItemH, minColW);
         panel.setGrid(g[0], g[1], g[2], g[3]);
         panel.measure(exactly(g[4]), exactly(g[5]));
     }
@@ -93,7 +106,7 @@ final class MenuLayer extends ViewGroup {
         getLocationInWindow(me);
         int[] a = {anchor[0] - me[0], anchor[1] - me[1], anchor[2] - me[0], anchor[3] - me[1]};
         int mw = panel.getMeasuredWidth(), mh = panel.getMeasuredHeight();
-        int[] at = KeyboardPlan.menuPosition(a, mw, mh, getWidth(), getHeight(), edge, gap, center);
+        int[] at = KeyboardPlan.menuPosition(a, mw, mh, getWidth(), getHeight(), edges, gap, center);
         panel.layout(at[0], at[1], at[0] + mw, at[1] + mh);
     }
 

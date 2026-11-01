@@ -20,6 +20,7 @@ OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 # 只编译不依赖 Android 的部分：手势识别、触摸分流、HID 报文、多点触控解码、触摸屏查找、空中鼠标、
 # 键盘面板自己收触摸时的多指定键（KeyFingers）、键位和分裂键盘的分行 / 摆放（KeyRows）、键盘界面怎么摆（KeyboardPlan）、
+# 屏幕边缘留白（EdgeMargin：哪几条边留、留多少，收进去的页面交给 KeyboardPlan 后离屏幕边还够不够远）、
 # 分屏透传的分流和注入流拼装（TouchSplit、InjectStream）、
 # 服务的会话交接部件（独占锁、顶替策略、方向锁定、心跳和释放原因）、日志限频、带超时的子进程、实体键（设备挑选、判断状态机）、
 # TouchRouter 的一次性定时器（OneShotTimer：撤掉 / 取代后在等锁的那次不调）、
@@ -50,6 +51,7 @@ trap 'rm -rf "$OUT"' EXIT
     src/dev/douhua/KeyFingers.java test/dev/douhua/KeyFingersTest.java \
     src/dev/douhua/KeyRows.java test/dev/douhua/KeyRowsTest.java \
     src/dev/douhua/KeyboardPlan.java test/dev/douhua/KeyboardPlanTest.java \
+    src/dev/douhua/EdgeMargin.java test/dev/douhua/EdgeMarginTest.java \
     src/dev/douhua/HardKeys.java src/dev/douhua/AirPointer.java \
     test/dev/douhua/AirMouseTest.java \
     tools/typelog/KeyReplay.java \
@@ -75,6 +77,7 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyFingersTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyRowsTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyboardPlanTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.EdgeMarginTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.AirMouseTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.adb.AdbCryptoTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.adb.AdbProtocolTest

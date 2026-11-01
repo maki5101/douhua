@@ -407,6 +407,10 @@
     <string name="key_borders">Tastenränder</string>
     <string name="theme_preview_pad">Touchpad</string>
     <string name="theme_note">Designs außer Reines Schwarz brauchen etwas mehr Akku. Solange Douhua offen ist, zeigt der Bildschirm lange dasselbe Bild – helle Farben brennen leichter ein. Wirkt, sobald du zum Touchpad zurückkehrst.</string>
+    <string name="sec_edge_margin">Abstand zum Bildschirmrand</string>
+    <string name="edge_margin_lr">Links und rechts (dp)</string>
+    <string name="edge_margin_tb">Oben und unten (dp)</string>
+    <string name="edge_margin_note">Touchpad, Tastatur und Tasten halten diesen Abstand zum Bildschirmrand; der Streifen zählt weder als Touchpad noch als Taste (viele Handys haben eigene Randgesten, und die Finger, die das Handy halten, liegen oft am Rand). Bei geteiltem Bildschirm oder im Pop-up-Fenster nur an den Seiten, die am Bildschirmrand liegen. Wirkt, sobald du zum Touchpad zurückkehrst.</string>
     <string name="sec_pad_bg">Touchpad-Hintergrundbild</string>
     <string name="pad_bg_pick_photo">Aus Fotos wählen…</string>
     <string name="pad_bg_pick_file">Datei wählen…</string>

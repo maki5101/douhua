@@ -407,6 +407,10 @@
     <string name="key_borders">Bordures des touches</string>
     <string name="theme_preview_pad">Pavé tactile</string>
     <string name="theme_note">Les thèmes autres que Noir pur consomment un peu plus de batterie. Quand Douhua est ouvert, l\'écran affiche longtemps la même image, et les couleurs claires marquent plus facilement l\'écran. Prend effet au retour sur le pavé tactile.</string>
+    <string name="sec_edge_margin">Marge au bord de l\'écran</string>
+    <string name="edge_margin_lr">Gauche et droite (dp)</string>
+    <string name="edge_margin_tb">Haut et bas (dp)</string>
+    <string name="edge_margin_note">Le pavé tactile, le clavier et les boutons restent à cette distance des bords de l\'écran ; cette bande ne compte ni comme pavé tactile ni comme touche (beaucoup de téléphones ont leurs propres gestes sur les bords, et les doigts qui tiennent le téléphone s\'y posent souvent). En écran partagé ou en fenêtre flottante, seuls les côtés qui touchent un bord de l\'écran en ont une. Prend effet au retour sur le pavé tactile.</string>
     <string name="sec_pad_bg">Image de fond du pavé tactile</string>
     <string name="pad_bg_pick_photo">Choisir dans les photos…</string>
     <string name="pad_bg_pick_file">Choisir un fichier…</string>

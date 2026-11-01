@@ -407,6 +407,10 @@
     <string name="key_borders">Bordes de las teclas</string>
     <string name="theme_preview_pad">Panel táctil</string>
     <string name="theme_note">Los temas distintos de Negro puro gastan un poco más de batería. Con Douhua abierto la pantalla muestra la misma imagen mucho tiempo y los colores claros se marcan con más facilidad. Se aplica al volver al panel táctil.</string>
+    <string name="sec_edge_margin">Margen en el borde de la pantalla</string>
+    <string name="edge_margin_lr">Izquierda y derecha (dp)</string>
+    <string name="edge_margin_tb">Arriba y abajo (dp)</string>
+    <string name="edge_margin_note">El panel táctil, el teclado y los botones quedan a esta distancia de los bordes de la pantalla; esa franja no cuenta como panel táctil ni como tecla (muchos teléfonos tienen gestos propios en los bordes y los dedos que sujetan el teléfono suelen apoyarse ahí). En pantalla dividida o ventana emergente solo en los lados que tocan un borde de la pantalla. Se aplica al volver al panel táctil.</string>
     <string name="sec_pad_bg">Imagen de fondo del panel táctil</string>
     <string name="pad_bg_pick_photo">Elegir de las fotos…</string>
     <string name="pad_bg_pick_file">Elegir un archivo…</string>

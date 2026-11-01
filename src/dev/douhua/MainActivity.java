@@ -49,6 +49,7 @@ import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
@@ -242,6 +243,11 @@ public final class MainActivity extends Activity
      * 小窗被拖走（只挪位置不改大小，不会重新布局、不重报区域）后触点和区域照样对得上。
      */
     private final int[] layoutOrigin = new int[2];
+    /**
+     * 屏幕边缘留白（设置 → 外观的"左右""上下"，dp）和现在各页往里收了多少（左 / 上 / 右 / 下，像素），见 {@link #updateEdgeMargins}。
+     */
+    private int edgeLrDp = EdgeMargin.DEFAULT_DP, edgeTbDp = EdgeMargin.DEFAULT_DP;
+    private final int[] pageMargins = new int[4];
     /** 上次报给服务的手势带宽度（左 / 上 / 右 / 下，像素，上边含小窗的标题栏），{@link #dispatchTouchEvent} 认"窗口范围过时了"用。 */
     private final int[] reportedBand = new int[4];
     private final int[] tmpLoc = new int[2];
@@ -397,6 +403,8 @@ public final class MainActivity extends Activity
         Style.setTheme(Theme.byId(prefs.theme()), prefs.keyBorders());
         shownTheme = Style.theme();
         shownBorders = Style.keyBorders();
+        edgeLrDp = prefs.edgeMarginDp(true);
+        edgeTbDp = prefs.edgeMarginDp(false);
         setContentView(buildUi());
     }
 
@@ -498,6 +506,9 @@ public final class MainActivity extends Activity
     /** 设置页改完回来：按新设置更新按钮和震动强度，参数发给服务（蓝牙模式下给本地分流）。 */
     private void applyPrefs() {
         applyTheme();
+        edgeLrDp = prefs.edgeMarginDp(true);
+        edgeTbDp = prefs.edgeMarginDp(false);
+        updateEdgeMargins();
         btMode = prefs.btMode();
         updateHostKind();
         if (!btMode && airOn) setAirMode(false);
@@ -681,7 +692,41 @@ public final class MainActivity extends Activity
         // ── ⋯ 菜单：两屏共用，盖在最上面（不开时 GONE） ──
         root.addView(buildMenu(), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        updateEdgeMargins();   // 还没布局：按系统给的窗口范围先收好，第一次布局就是对的
         return root;
+    }
+
+    /**
+     * 屏幕边缘留白（设置 → 外观，2026-11-01）：四页（主界面、键盘屏、空中鼠标页、⋯ 菜单那一层）整体往里收，贴着屏幕边的那几条边
+     * 各留一条页面底色（根视图的底色），那一条不报区域、View 自己收触摸时也没有东西接（EdgeMargin 算哪几条边留、留多少）。
+     * 按窗口在屏上的范围（同报给服务的：decor 的 getLocationOnScreen + 大小）和整块屏（getMaximumWindowMetrics）判断，
+     * 当前方向的坐标，所以转屏后"左右"还是当前方向的左右两条边；decor 还没量好时先按系统给的窗口范围（getCurrentWindowMetrics）。
+     * 键盘屏、菜单那一层另外知道各边收了多少：它们"离屏幕边 20dp"的规矩照旧按屏幕边算（EdgeMargin.edges）。
+     * 布局完一次（窗口大小变了、小窗挪了）、心跳兜底、设置改了都来这里比一下，变了才重新摆（摆完根视图的布局监听照常重报区域）。
+     */
+    private void updateEdgeMargins() {
+        if (menuLayer == null) return;   // buildUi 还没建完
+        View decor = getWindow().getDecorView();
+        int[] window;
+        if (decor.getWidth() > 0 && decor.getHeight() > 0) {
+            decor.getLocationOnScreen(tmpLoc);
+            window = new int[]{tmpLoc[0], tmpLoc[1], tmpLoc[0] + decor.getWidth(), tmpLoc[1] + decor.getHeight()};
+        } else {
+            Rect b = getWindowManager().getCurrentWindowMetrics().getBounds();
+            window = new int[]{b.left, b.top, b.right, b.bottom};
+        }
+        Rect s = getWindowManager().getMaximumWindowMetrics().getBounds();
+        int[] m = EdgeMargin.margins(window, new int[]{s.left, s.top, s.right, s.bottom}, dp(edgeLrDp), dp(edgeTbDp));
+        if (Arrays.equals(m, pageMargins)) return;
+        System.arraycopy(m, 0, pageMargins, 0, 4);
+        for (View page : new View[]{mainRow, keyboardScreen, airOverlay, menuLayer}) {
+            FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) page.getLayoutParams();
+            p.setMargins(m[0], m[1], m[2], m[3]);   // 按物理左右（不是 start / end）：从右往左的语言下也一样
+            page.setLayoutParams(p);
+        }
+        int[] e = EdgeMargin.edges(m, dp(20));
+        keyboardScreen.setEdgeInsets(e);
+        menuLayer.setEdgeInsets(e);
     }
 
     /** 触控板 + 四角的小按钮（一直显示；动作、设成"无"时藏起来在 applyPrefs 里定）。按物理左右放，从右往左的语言下也不镜像。 */
@@ -1085,9 +1130,10 @@ public final class MainActivity extends Activity
         updateStatus();
     }
 
-    /** 窗口在屏幕上的位置和上次报区域时不一样了（小窗被拖走）：重报。 */
+    /** 窗口在屏幕上的位置和上次报区域时不一样了（小窗被拖走）：重报。先看屏幕边缘留白要不要换（小窗拖到贴着屏幕边、拖离屏幕边）。 */
     private void checkWindowMoved() {
         if (pad == null) return;
+        updateEdgeMargins();
         getWindow().getDecorView().getLocationOnScreen(tmpLoc);
         if (tmpLoc[0] != layoutOrigin[0] || tmpLoc[1] != layoutOrigin[1]) pushLayout();
     }

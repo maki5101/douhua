@@ -52,6 +52,7 @@ public final class KeyboardPlanTest {
         stickSavedSplit();
         middleKeys();
         cutBar();
+        perSideEdges();
         padKeysInPlan();
         stickRouting();
         stickSweep();
@@ -782,7 +783,7 @@ public final class KeyboardPlanTest {
         eq(p.stick, new int[]{418, 138, 482, 202}, "红点 64、在这一列正中，竖着和两行的交界齐平");
         KeyRows.Placed a = find(KeyboardPlan.placedLayers(L9, 900, 298, true, 80, T).get(0), "a");
         check(a.bottom + 2 == (p.stick[1] + p.stick[3]) / 2, "红点中心 = a 那一行的下沿（连缩进）");
-        eq(p.middleKey, new int[]{339, 561}, "中键 222（总宽的四分之一）、对着红点；左右键各 333");
+        eq(p.middleKey, new int[]{368, 532}, "中键 164（三个键总宽 888 / 5.4）、对着红点；左右键各 362（2.2 : 1 : 2.2）");
         KeyboardPlan.Plan pad = plan(KeyboardPlan.MODE_AUTO, true, 900, 350, null, true);
         check(p.leftHalf[2] - p.leftHalf[0] > pad.leftHalf[2] - pad.leftHalf[0], "两半比触控板时的三分之一宽");
         near(p.splitCell[2], (410 + GAP / 2f) / 900, "折算成格子：右边到这一列的中线减半条缝");
@@ -854,7 +855,8 @@ public final class KeyboardPlanTest {
         }
         int c = (p.stick[0] + p.stick[2]) / 2;
         check(Math.abs((p.middleKey[0] + p.middleKey[1]) / 2 - c) <= 1, "中键对着红点：" + Arrays.toString(p.middleKey));
-        check(p.middleKey[1] - p.middleKey[0] == 97, "中键 97（388 的四分之一）");
+        check(p.middleKey[1] - p.middleKey[0] == 72, "中键 72（388 / 5.4）");
+        eq(p.middleKey, new int[]{184, 256}, "红点在 0.55 宽处：左键 178、右键 138（左右填满剩下的，不等宽）");
         // 宽窗口合并、没调过：键盘占满（以前给红点组让出右边一列）
         p = stickPlan(KeyboardPlan.MODE_MERGE, 900, 350, null, null, true);
         eq(p.block, new int[]{0, 0, 900, 350}, "宽窗口合并：框占满");
@@ -881,17 +883,27 @@ public final class KeyboardPlanTest {
         check(p.keys == null && p.middleKey == null && Arrays.equals(p.keyboard, p.block), "框 160 高：不切，键盘面板就是整个框");
     }
 
-    /** 中键：总宽的四分之一、至少 56，左右键不比它窄；对着给的中线，挪不过去就挪到最近的地方。 */
+    /**
+     * 中键：三个键总宽的 1 / 5.4（照真 ThinkPad 左 : 中 : 右约 2.2 : 1 : 2.2）、至少 56，左右键填满剩下的、不比它窄；
+     * 对着给的中线，挪不过去就挪到最近的地方。
+     */
     static void middleKeys() {
-        eq(KeyboardPlan.middleKey(new int[]{0, 0, 400, 48}, 200, T), new int[]{151, 249}, "400 宽：中键 98、居中");
-        eq(KeyboardPlan.middleKey(new int[]{0, 0, 400, 48}, 300, T), new int[]{200, 298}, "对着 300 挪不过去：右键只剩和中键一样宽");
-        eq(KeyboardPlan.middleKey(new int[]{0, 0, 400, 48}, 0, T), new int[]{102, 200}, "往左挪到左键和中键一样宽");
-        eq(KeyboardPlan.middleKey(new int[]{0, 0, 200, 48}, 100, T), new int[]{72, 128}, "200 宽：四分之一不到 56，取 56");
+        eq(KeyboardPlan.middleKey(new int[]{0, 0, 400, 48}, 200, T), new int[]{164, 237}, "400 宽：中键 73（392 / 5.4）、居中");
+        eq(KeyboardPlan.middleKey(new int[]{0, 0, 400, 48}, 300, T), new int[]{250, 323}, "对着 300 挪不过去：右键只剩和中键一样宽");
+        eq(KeyboardPlan.middleKey(new int[]{0, 0, 400, 48}, 0, T), new int[]{77, 150}, "往左挪到左键和中键一样宽");
+        eq(KeyboardPlan.middleKey(new int[]{0, 0, 320, 48}, 160, T), new int[]{131, 189}, "320 宽：312 / 5.4 = 58，刚过 56");
+        eq(KeyboardPlan.middleKey(new int[]{0, 0, 300, 48}, 150, T), new int[]{122, 178}, "300 宽：292 / 5.4 不到 56，取 56、左右各 118");
+        eq(KeyboardPlan.middleKey(new int[]{0, 0, 200, 48}, 100, T), new int[]{72, 128}, "200 宽：取 56");
         eq(KeyboardPlan.middleKey(new int[]{0, 0, 150, 48}, 75, T), new int[]{52, 99}, "150 宽：三个一样宽（47）都不到 56，就三个一样宽");
-        // 三键条也照这个分（主界面、键盘页的触控板）
+        // 比例：宽的一排左 : 中 : 右 = 2.2 : 1 : 2.2（取整差不到 1 像素）
+        int[] w = KeyboardPlan.middleKey(new int[]{0, 0, 1000, 48}, 500, T);
+        int mid = w[1] - w[0], left = w[0] - 4, right = 1000 - w[1] - 4;
+        check(mid == 184 && left == right && Math.abs(left - 2.2f * mid) <= 1.1f, "1000 宽：2.2 : 1 : 2.2：" + left + " : " + mid + " : " + right);
+        // 三键条也照这个分（主界面、键盘页的触控板），中键在正中；中键宽是单数时左右差 1 像素
         int[][] c = KeyboardPlan.cutBar(new int[]{0, 0, 400, 232}, 400, 800, false, T);
         int[] m = KeyboardPlan.middleKey(c[1], (c[1][0] + c[1][2]) / 2, T);
-        check(m[1] - m[0] == 88 && m[0] - 4 - c[1][0] == c[1][2] - m[1] - 4, "三键条 360 宽：中键 88、左右一样宽：" + Arrays.toString(m));
+        check(m[1] - m[0] == 65 && Math.abs((m[0] - 4 - c[1][0]) - (c[1][2] - m[1] - 4)) <= 1,
+                "三键条 360 宽：中键 65（352 / 5.4）、左右差不到 1：" + Arrays.toString(m));
     }
 
     /** 存过格子：中间够一列就在这一列正中；合拢了嵌在缝上；拉开一点（不到一列）照样在正中。 */
@@ -908,6 +920,60 @@ public final class KeyboardPlanTest {
     }
 
     /** 三键条从触控板上沿 / 下沿切出来（48 高）。 */
+    /**
+     * 屏幕边缘留白（2026-11-01）：页面往里收了的边"离页面边"少留（EdgeMargin.edges），各边不一样时 ⋯、菜单、调整栏、三键条、
+     * 放在键盘外面的红点照各边的算；四边一样时（一个数的旧接口）和以前一模一样。
+     */
+    static void perSideEdges() {
+        int[] pad = {0, 0, 400, 300};
+        eq(KeyboardPlan.menuTop(pad, 400, 600, BW, BH, 0, new int[]{20, 12, 20, 20}), new int[]{172, 12}, "⋯：上边收了 8，离页面顶边只要 12");
+        eq(KeyboardPlan.menuTop(pad, 400, 600, BW, BH, 0, EDGE), new int[]{172, 20}, "⋯：一个数时四边 20（同以前）");
+        int[] right = {300, 0, 400, 300};
+        eq(KeyboardPlan.menuTop(right, 400, 600, BW, BH, 0, new int[]{20, 20, 40, 20}), new int[]{304, 20}, "⋯：右边要 40，往左推到 304");
+        eq(KeyboardPlan.menuTop(right, 400, 600, BW, BH, 0, EDGE), new int[]{322, 20}, "⋯：右边 20 时在触控板正中");
+        check(KeyboardPlan.menuTop(pad, 400, 50, BW, BH, 0, new int[]{20, 12, 20, 12}) == null, "⋯：页面矮得上下留不出：放不下");
+        // 菜单：左边收了 20 以上（e[0] = 0）时可以贴着页面左边；地方不够时两边按比例少留
+        int[] leftAnchor = {0, 20, 56, 56};
+        eq(KeyboardPlan.menuPosition(leftAnchor, 220, 200, 400, 600, new int[]{0, 20, 20, 20}, 8, false), new int[]{0, 64},
+                "菜单：左边不用再留，贴着页面左边");
+        eq(KeyboardPlan.menuPosition(leftAnchor, 220, 200, 400, 600, EDGE, 8, false), new int[]{20, 64}, "菜单：一个数时离左边 20");
+        int[] rightAnchor = {170, 20, 226, 56};
+        eq(KeyboardPlan.menuPosition(rightAnchor, 220, 200, 230, 600, new int[]{0, 20, 30, 20}, 8, false), new int[]{0, 64},
+                "菜单：只空 10，左边要 0、右边要 30：全给右边");
+        eq(KeyboardPlan.menuPosition(rightAnchor, 220, 200, 230, 600, EDGE, 8, false), new int[]{5, 64},
+                "菜单：一个数时两边各一半（同以前）");
+        // 菜单怎么排：上下都收了 20 以上（e 的上下是 0），七项一列每项还是 44；一个数时只有 41
+        int[] g = KeyboardPlan.menuGrid(7, 360, 380, new int[]{20, 0, 20, 0}, 6, 6, 208, 44, 36, 120);
+        check(g[0] == 1 && g[3] == 44, "菜单：上下不用再留，一列每项 44：" + Arrays.toString(g));
+        g = KeyboardPlan.menuGrid(7, 360, 380, EDGE, 6, 6, 208, 44, 36, 120);
+        check(g[0] == 1 && g[3] == 41, "菜单：一个数时一列每项 41：" + Arrays.toString(g));
+        // 调整栏：上边要 12、下边 0
+        check(KeyboardPlan.adjustBarTop(400, 36, 12, 0, 200, 400) == 12, "调整栏：键盘在下半，放上面、离页面顶边 12");
+        check(KeyboardPlan.adjustBarTop(400, 36, 12, 0, 0, 200) == 364, "调整栏：键盘在上半，放下面、贴着页面下边");
+        check(KeyboardPlan.adjustBarTop(400, 36, EDGE, 0, 200) == KeyboardPlan.adjustBarTop(400, 36, EDGE, EDGE, 0, 200),
+                "调整栏：一个数 = 上下一样");
+        // 三键条：下边收了 16（只要 4）
+        KeyboardPlan.Sizes t4 = T.withEdges(new int[]{20, 20, 20, 4});
+        int[][] c = KeyboardPlan.cutBar(new int[]{0, 0, 400, 300}, 400, 300, false, t4);
+        eq(c[1], new int[]{20, 248, 380, 296}, "三键条：下边只要 4");
+        c = KeyboardPlan.cutBar(new int[]{0, 0, 400, 300}, 400, 300, false, T);
+        eq(c[1], new int[]{20, 232, 380, 280}, "三键条：四边 20 时离下边 20");
+        c = KeyboardPlan.cutBar(new int[]{0, 0, 400, 300}, 400, 300, true, T.withEdges(new int[]{0, 0, 30, 0}));
+        eq(c[1], new int[]{0, 0, 370, 48}, "三键条：左、上不用留，右边 30");
+        // 四边一样的 withEdges = 原来那份
+        KeyboardPlan.Sizes even = T.withEdges(new int[]{EDGE, EDGE, EDGE, EDGE});
+        for (int mode : new int[]{KeyboardPlan.MODE_AUTO, KeyboardPlan.MODE_SPLIT, KeyboardPlan.MODE_MERGE}) {
+            for (int pointer : new int[]{KeyboardPlan.POINTER_PAD, KeyboardPlan.POINTER_STICK}) {
+                for (int[] wh : new int[][]{{400, 800}, {900, 350}, {300, 260}}) {
+                    KeyboardPlan.Plan a = KeyboardPlan.plan(mode, pointer, KeyboardPlan.KEYS_TOP, wh[0], wh[1], null, null, wh[0] > wh[1], T, L9);
+                    KeyboardPlan.Plan b = KeyboardPlan.plan(mode, pointer, KeyboardPlan.KEYS_TOP, wh[0], wh[1], null, null, wh[0] > wh[1], even, L9);
+                    check(same(a, b) && Arrays.equals(a.keys, b.keys) && Arrays.equals(a.stick, b.stick),
+                            "四边 20 的 withEdges 和原来一样：" + mode + " " + pointer + " " + Arrays.toString(wh));
+                }
+            }
+        }
+    }
+
     static void cutBar() {
         int[][] c = KeyboardPlan.cutBar(new int[]{0, 0, 400, 232}, 400, 800, false, T);
         eq(c[1], new int[]{20, 184, 380, 232}, "下沿：贴着触控板下边，左右离屏幕边 20");
@@ -1119,6 +1185,7 @@ public final class KeyboardPlanTest {
             int mid = m[1] - m[0], left = m[0] - 4 - r[0], right = r[2] - m[1] - 4, inner = r[2] - r[0] - 8;
             if (left < mid || right < mid) return "左右键比中键窄：" + left + " / " + mid + " / " + right;
             if (mid < Math.min(56, inner / 3)) return "中键太窄：" + mid;
+            if (inner / 5.4f >= 56 && Math.abs(mid - inner / 5.4f) > 1) return "中键不是总宽的 1 / 5.4：" + mid + " / " + inner;
             if (pointer == KeyboardPlan.POINTER_STICK) {
                 if (r[0] != b[0] + 2 || r[2] != b[2] - 2 || r[3] != b[3] - 2 || r[1] != k[3] + 2) return "最下面那排没贴着框的下沿、没和键对齐";
                 if (k[3] - k[1] < 3 * 48) return "切完键盘面板太矮";

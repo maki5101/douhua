@@ -34,7 +34,10 @@ public final class Hid {
     public static final int WHEEL_UNIT = 120;
     /** 分辨率倍率（Resolution Multiplier）的最大值：主机设了，每 1/8 格报一个计数（8 能整除 120；滚轮字段 8 位，一帧最多约 15.9 格）。 */
     public static final int RES_MULT = 8;
-    /** 带倍率的鼠标描述符里 Feature 报告的长度（竖、横两个倍率各 2 位 + 4 位补齐）。 */
+    /**
+     * 带倍率的鼠标描述符里 Feature 报告的长度：蓝牙那份（{@link #MOUSE_DESC_HIRES}）竖、横两个倍率各 2 位 + 4 位补齐，
+     * uhid 那份（{@link #MOUSE_DESC_HIRES_V}）只有竖向倍率 2 位 + 6 位补齐，都是 1 个字节、竖向都在位 0–1。
+     */
     public static final int FEATURE_REPORT_SIZE = 1;
 
     /** 鼠标：5 个按键 + 16 位相对 X/Y + 竖向滚轮 + 横向滚轮（AC Pan）。 */
@@ -86,7 +89,7 @@ public final class Hid {
      * "Resolution Multiplier"（逻辑 0..1 = 物理 ×1..×8），各自和它管的滚轮包在一个 Logical 集合里（倍率只作用于同一个
      * Logical 集合里的控件，Linux hid-core 的 hid_apply_multiplier）。主机设成 1（×8）就表示能处理小数格，之后每 1/8 格报一个计数；
      * 不设（默认 0 = ×1）照旧一格一格。写法照微软 "Enhanced Wheel Support" 和 QEMU 2026 高精度滚轮补丁。
-     * 桌面模式下 uhid 一直用它（服务回应内核的 SET / GET_REPORT，见 server.Uhid）；蓝牙模式跟着"连续滚动"开关（BtHid）。
+     * 只有蓝牙模式用，跟着"连续滚动"开关（BtHid）；桌面模式的 uhid 用只带竖向倍率的 {@link #MOUSE_DESC_HIRES_V}。
      * 不用 4 字节数据的项：蓝牙栈 check_descriptor 把尺寸码 3 当 3 字节走（HidTest 锁住）。
      */
     public static final byte[] MOUSE_DESC_HIRES = {
@@ -146,6 +149,74 @@ public final class Hid {
             0x75, 0x04,                    //       Report Size (4)
             (byte) 0x95, 0x01,             //       Report Count (1)
             (byte) 0xB1, 0x01,             //       Feature (Const) 补齐到一个字节
+            0x05, 0x0C,                    //       Usage Page (Consumer)
+            0x0A, 0x38, 0x02,              //       Usage (AC Pan)
+            0x15, (byte) 0x81,             //       Logical Minimum (-127)
+            0x25, 0x7F,                    //       Logical Maximum (127)
+            0x75, 0x08,                    //       Report Size (8)
+            (byte) 0x95, 0x01,             //       Report Count (1)
+            (byte) 0x81, 0x06,             //       Input (Data,Var,Rel)
+            (byte) 0xC0,                   //     End Collection
+            (byte) 0xC0,                   //   End Collection
+            (byte) 0xC0,                   // End Collection
+    };
+
+    /**
+     * 桌面模式 uhid 的鼠标：和 {@link #MOUSE_DESC_HIRES} 一样，只是横滚轮（AC Pan）那个 Logical 集合里没有倍率——
+     * 整个描述符只有一个 Feature 字段（竖向倍率 2 位 + 6 位补齐，1 个字节），横向一直 ×1、照旧一格一格。输入报文还是和
+     * {@link #MOUSE_DESC} 一个字节都不差（HidTest 逐字段比）。
+     * 为什么只留一个：主线内核 hid-input.c 的 __hidinput_change_resolution_multipliers 在一个 Feature 报告里有不止一个
+     * 字段（maxfield > 1）时要先 GET 当前值再 SET，设备带 HID_QUIRK_NO_INIT_REPORTS 就直接放弃、一个请求都不发；只有一个字段时
+     * 不用先 GET、直接 SET。主力机三星内核建两个倍率的那份时只发来 START、OPEN，一个 GET / SET 都没有（2026-11-01 服务日志），
+     * 推测落在"放弃"那条路上（三星内核看不到，没核实）。补齐的常量项没有用法，内核不把它算成字段。
+     */
+    public static final byte[] MOUSE_DESC_HIRES_V = {
+            0x05, 0x01,                    // Usage Page (Generic Desktop)
+            0x09, 0x02,                    // Usage (Mouse)
+            (byte) 0xA1, 0x01,             // Collection (Application)
+            0x09, 0x01,                    //   Usage (Pointer)
+            (byte) 0xA1, 0x00,             //   Collection (Physical)
+            0x05, 0x09,                    //     Usage Page (Button)
+            0x19, 0x01,                    //     Usage Minimum (1)
+            0x29, 0x05,                    //     Usage Maximum (5)
+            0x15, 0x00,                    //     Logical Minimum (0)
+            0x25, 0x01,                    //     Logical Maximum (1)
+            (byte) 0x95, 0x05,             //     Report Count (5)
+            0x75, 0x01,                    //     Report Size (1)
+            (byte) 0x81, 0x02,             //     Input (Data,Var,Abs)
+            (byte) 0x95, 0x01,             //     Report Count (1)
+            0x75, 0x03,                    //     Report Size (3)
+            (byte) 0x81, 0x01,             //     Input (Const) 补齐到一个字节
+            0x05, 0x01,                    //     Usage Page (Generic Desktop)
+            0x09, 0x30,                    //     Usage (X)
+            0x09, 0x31,                    //     Usage (Y)
+            0x16, 0x01, (byte) 0x80,       //     Logical Minimum (-32767)
+            0x26, (byte) 0xFF, 0x7F,       //     Logical Maximum (32767)
+            0x75, 0x10,                    //     Report Size (16)
+            (byte) 0x95, 0x02,             //     Report Count (2)
+            (byte) 0x81, 0x06,             //     Input (Data,Var,Rel)
+            (byte) 0xA1, 0x02,             //     Collection (Logical)：竖滚轮和它的倍率
+            0x09, 0x48,                    //       Usage (Resolution Multiplier)
+            0x15, 0x00,                    //       Logical Minimum (0)
+            0x25, 0x01,                    //       Logical Maximum (1)
+            0x35, 0x01,                    //       Physical Minimum (1)
+            0x45, 0x08,                    //       Physical Maximum (8)
+            0x75, 0x02,                    //       Report Size (2)
+            (byte) 0x95, 0x01,             //       Report Count (1)
+            (byte) 0xB1, 0x02,             //       Feature (Data,Var,Abs)
+            0x75, 0x06,                    //       Report Size (6)
+            (byte) 0x95, 0x01,             //       Report Count (1)
+            (byte) 0xB1, 0x01,             //       Feature (Const) 补齐到一个字节
+            0x35, 0x00,                    //       Physical Minimum (0) 复位，别让后面的输入项继承 1..8
+            0x45, 0x00,                    //       Physical Maximum (0)
+            0x09, 0x38,                    //       Usage (Wheel)
+            0x15, (byte) 0x81,             //       Logical Minimum (-127)
+            0x25, 0x7F,                    //       Logical Maximum (127)
+            0x75, 0x08,                    //       Report Size (8)
+            (byte) 0x95, 0x01,             //       Report Count (1)
+            (byte) 0x81, 0x06,             //       Input (Data,Var,Rel)
+            (byte) 0xC0,                   //     End Collection
+            (byte) 0xA1, 0x02,             //     Collection (Logical)：横滚轮，不带倍率（一直 ×1）
             0x05, 0x0C,                    //       Usage Page (Consumer)
             0x0A, 0x38, 0x02,              //       Usage (AC Pan)
             0x15, (byte) 0x81,             //       Logical Minimum (-127)
@@ -321,7 +392,10 @@ public final class Hid {
 
     // ═══════════ 滚轮的分辨率倍率 ═══════════
 
-    /** 两个倍率（×1 / ×8）→ Feature 报告的那一个字节：位 0–1 竖、位 2–3 横（0 = ×1，1 = ×8），位 4–7 补齐。 */
+    /**
+     * 两个倍率（×1 / ×8）→ Feature 报告的那一个字节：位 0–1 竖、位 2–3 横（0 = ×1，1 = ×8），位 4–7 补齐。
+     * uhid 那份（{@link #MOUSE_DESC_HIRES_V}）位 2–7 都是补齐：横向传 1，出来的就只有竖向那两位。
+     */
     public static int multiplierByte(int vertical, int horizontal) {
         return (vertical > 1 ? 1 : 0) | (horizontal > 1 ? 1 : 0) << 2;
     }
@@ -391,6 +465,22 @@ public final class Hid {
         /** 主机来问时回的 Feature 字节。 */
         public int featureByte() {
             return multiplierByte(multV, multH);
+        }
+
+        /**
+         * uhid 那份（{@link #MOUSE_DESC_HIRES_V}）内核设倍率：只看竖向那两位（位 2–7 是补齐，有杂值也不管），横向不带倍率、一直 ×1；
+         * 认不出（空 / null）返回 false、倍率不变。UhidMouse.setFeature 只调它（UhidMouse 依赖 android.*、不进离线编译，换算锁在这里）。
+         */
+        public boolean setUhidFeature(byte[] data) {
+            int b = Hid.featureByte(data, -1);
+            if (b < 0) return false;
+            setMultipliers(multiplierV(b), 1);
+            return true;
+        }
+
+        /** uhid 那份内核来问时回的 Feature 报告：1 个字节，只有竖向那两位（补齐位全 0）。UhidMouse.getFeature 只调它。 */
+        public byte[] uhidFeatureReport() {
+            return new byte[]{(byte) multiplierByte(multV, 1)};
         }
 
         /** 一帧鼠标（wheelUnits / panUnits 是 1/120 格）：换算、拆帧，逐帧写进 report 交给 sink。now 是毫秒时间（清余数用）。 */

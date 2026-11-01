@@ -1977,9 +1977,9 @@ public final class MainActivity extends Activity
             return;
         }
         boolean landscape = keyboardScreen.isLandscape();
-        if (keyboardScreen.isFixedShown()) {   // 实体键盘：只恢复它现在这个尺寸、这种指点、这个方向的那份
-            boards.resetRect(landscape);
-            keyboardScreen.setFixedRect(null);
+        if (keyboardScreen.isFixedShown()) {   // 实体键盘：只恢复显示着的那个尺寸（逐级缩）、这种指点、这个方向的那份
+            String size = keyboardScreen.resetFixedRect();
+            if (size != null) boards.resetRect(size, landscape);
             return;
         }
         int pointer = prefs.keyboardPointer();   // 只恢复眼下这种指点状态的那份（触控板 / 小红点 / 关各记各的）
@@ -2011,9 +2011,14 @@ public final class MainActivity extends Activity
         menuItems.get(menuIndex(KB_LAYOUT_ID)).setText(mode == KeyboardPlan.MODE_SPLIT ? R.string.kb_layout_split
                 : mode == KeyboardPlan.MODE_MERGE ? R.string.kb_layout_merge : R.string.kb_layout_auto);
         TextView board = menuItems.get(menuIndex(MENU_BOARD_ID));
+        List<FixedLayout> ladder = fixedKeyboard.ladder();
+        // 逐级缩：写实际显示的是哪种（按上次量的页宽现算；键盘页没显示时照"显示的就是选的尺寸"写）
+        int level = keyboardScreen.getVisibility() == View.VISIBLE ? keyboardScreen.fixedLevelNow() : 0;
         if (!boards.fixedSelected()) board.setText(R.string.kbd_menu_douhua);
-        else if (fixedKeyboard.layout() == null) board.setText(R.string.kbd_menu_no_data);   // 键帽数据读不出来：照样显示豆花布局（FixedLayout.forLegends）
-        else if (keyboardScreen.getVisibility() == View.VISIBLE && !keyboardScreen.fixedFitsNow()) board.setText(R.string.kbd_menu_narrow);
+        else if (ladder.isEmpty()) board.setText(R.string.kbd_menu_no_data);   // 键帽数据读不出来：照样显示豆花布局（FixedLayout.forLegends）
+        else if (level < 0) board.setText(R.string.kbd_menu_narrow);   // 连笔记本都放不下
+        else if (level > 0) board.setText(getString(R.string.kbd_menu_stepped, FixedData.shortName(this, boards.spec()),
+                FixedData.sizeName(this, ladder.get(0).size), FixedData.sizeName(this, ladder.get(level).size)));
         else board.setText(getString(R.string.kbd_menu_fixed, FixedData.shortName(this, boards.spec())));
         int pointer = keyboardScreen.isFixedShown() ? boards.pointer() : prefs.keyboardPointer();
         menuItems.get(menuIndex(KB_POINTER_ID)).setText(pointer == KeyboardPlan.POINTER_STICK ? R.string.kb_pointer_stick
@@ -2022,9 +2027,9 @@ public final class MainActivity extends Activity
     }
 
     @Override
-    public void onKeyboardRectChanged(boolean landscape, boolean split, boolean fixed, float[] rect) {
-        if (fixed) {   // 实体键盘存它自己那份（现在这个尺寸、这种指点），不碰豆花布局的 kb_*
-            boards.setRect(landscape, rect);
+    public void onKeyboardRectChanged(boolean landscape, boolean split, String fixedSize, float[] rect) {
+        if (fixedSize != null) {   // 实体键盘存它自己那份（显示着的那个尺寸、这种指点），不碰豆花布局的 kb_*
+            boards.setRect(fixedSize, landscape, rect);
             return;
         }
         int pointer = prefs.keyboardPointer();
@@ -2038,30 +2043,30 @@ public final class MainActivity extends Activity
         int pointer = prefs.keyboardPointer();
         keyboardScreen.setRect(prefs.savedKeyboardRect(landscape, pointer));
         keyboardScreen.setSplitRect(prefs.savedSplitRect(landscape, pointer));
-        keyboardScreen.setFixedRect(boards.savedRect(landscape));   // 实体键盘自己那份（尺寸 × 指点 × 横竖屏）
+        keyboardScreen.setFixedRects(boards.savedRects(landscape));   // 实体键盘自己那几份（尺寸 × 指点 × 横竖屏；显示哪个尺寸用哪份）
     }
 
     @Override
     public void onKeyboardFaceChanged() {
-        // 实体键盘放不下 / 又放得下了（转屏、拖分隔条）：菜单开着的话"布局"那一项跟着出现 / 消失，"键盘""指点"的字跟着换
+        // 实体键盘放不下 / 又放得下了 / 逐级缩换了一级（转屏、拖分隔条）：菜单开着的话"布局"那一项跟着出现 / 消失，"键盘""指点"的字跟着换
         if (menuLayer.isOpen()) refreshMenuItems();
         updateMenuLabels();
         pushLayout();
     }
 
     /**
-     * 实体键盘的设置（设置页改完回来、打开时）：是哪一块（语言、形状、尺寸、模式）、选没选它、它自己的指点。
-     * 设置没变就不重建面板（setBoard 会松开按着的键）。
+     * 实体键盘的设置（设置页改完回来、打开时）：是哪一块（语言、形状、尺寸、模式；尺寸是逐级缩的起点，几级一起拼好）、选没选它、它自己的指点、
+     * 各个尺寸存的大小位置。设置没变就不重建面板（setBoards 会松开按着的键）。
      */
     private void applyBoards() {
         Boards.Spec spec = boards.spec();
-        if (!spec.equals(shownSpec) || fixedKeyboard.layout() == null) {
+        if (!spec.equals(shownSpec) || fixedKeyboard.ladder().isEmpty()) {
             shownSpec = spec;
-            fixedKeyboard.setBoard(FixedData.layout(this, spec), FixedData.table(this, spec.lang, spec.mode));
+            keyboardScreen.setFixedBoards(FixedData.ladder(this, spec), FixedData.table(this, spec.lang, spec.mode));
         }
         keyboardScreen.setFixedWanted(boards.fixedSelected());
         keyboardScreen.setFixedPointer(boards.pointer());
-        keyboardScreen.setFixedRect(boards.savedRect(keyboardScreen.isLandscape()));
+        keyboardScreen.setFixedRects(boards.savedRects(keyboardScreen.isLandscape()));
     }
 
     /** 面板上现在是哪一块实体键盘（applyBoards 比它，没变不重建）。 */

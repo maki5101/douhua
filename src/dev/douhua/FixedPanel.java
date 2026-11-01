@@ -105,7 +105,10 @@ final class FixedPanel {
         return legends;
     }
 
-    /** ⋯ 放在 Esc 和 F1 之间的槽里（小触控板上没摆出 ⋯ 时）。键会换（多一个）：调用方先松开按着的。 */
+    /**
+     * ⋯ 放在槽里（小触控板上没摆出 ⋯ 时；TKL / 全尺寸的槽在 Esc 和 F1 之间，笔记本的在左下角 Ctrl 右边、左 Ctrl 跟着变窄）。
+     * 键会换（多一个）：调用方先松开按着的。
+     */
     void setMenuKey(boolean on) {
         if (on == menuKey) return;
         menuKey = on;
@@ -198,8 +201,8 @@ final class FixedPanel {
         }
         segs.addAll(segments(layout, keys, w, h, gap, hole));
         for (FixedLayout.Range r : layout.ranges(menuKey)) {
-            ranges.add(new int[]{px(r.left, w, layout.width), px(r.top, h, FixedLayout.HEIGHT),
-                    px(r.right, w, layout.width), px(r.bottom, h, FixedLayout.HEIGHT)});
+            ranges.add(new int[]{px(r.left, w, layout.width), px(r.top, h, layout.height),
+                    px(r.right, w, layout.width), px(r.bottom, h, layout.height)});
         }
         for (int i = 0; i < n; i++) boxes[i] = null;
         for (Seg s : segs) {
@@ -256,7 +259,7 @@ final class FixedPanel {
 
     /**
      * 每个键的每一段（面板像素，四边缩进 gap），顺序同 keys（一个键的几段挨着）。hole = 空格那一排让出的空位 {左, 右}（null = 不让）：
-     * 空格切成左右两段，各从空格原来的边到空位的边。
+     * 空格切成左右两段，各从空格原来的边到空位的边。竖着按这一块的行表（笔记本最下一排 1.25 行高，方向键只占上层 / 下层那一截）。
      */
     static List<Seg> segments(FixedLayout layout, List<FixedLayout.Key> keys, int w, int h, int gap, int[] hole) {
         List<Seg> out = new ArrayList<>();
@@ -266,7 +269,7 @@ final class FixedPanel {
                 float[] s = k.span(r);
                 if (s == null) continue;
                 int l = px(s[0], w, layout.width), rr = px(s[1], w, layout.width);
-                int t = px(FixedLayout.rowTop(r), h, FixedLayout.HEIGHT), b = px(FixedLayout.rowBottom(r), h, FixedLayout.HEIGHT);
+                int t = px(layout.segTop(k, r), h, layout.height), b = px(layout.segBottom(k, r), h, layout.height);
                 if (hole != null && k.id == 0x2C && hole[0] > l && hole[1] < rr) {
                     out.add(new Seg(i, l + gap, t + gap, hole[0] - gap, b - gap));
                     out.add(new Seg(i, hole[1] + gap, t + gap, rr - gap, b - gap));
@@ -294,13 +297,19 @@ final class FixedPanel {
      * thinkpad-real 调研第一节第 3 条），gap = 键帽四边缩进多少。
      */
     static int[] stickPoint(FixedLayout layout, int w, int h, int gap) {
-        return new int[]{px(layout.stickU(), w, layout.width), px(FixedLayout.rowTop(4), h, FixedLayout.HEIGHT) - gap};
+        return new int[]{px(layout.stickU(), w, layout.width), px(layout.rowTop(4), h, layout.height) - gap};
     }
 
-    /** 空格那一排的上沿（面板像素）：三个鼠标键从这里铺到面板下沿，红点的切口不过这条线。 */
-    static int spaceRowTop(int h) {
-        return px(FixedLayout.rowTop(5), h, FixedLayout.HEIGHT);
+    /** 空格那一排的上沿（面板像素，这一块的面板高 h）：三个鼠标键从这里铺到面板下沿，红点的切口不过这条线。 */
+    static int spaceRowTop(FixedLayout layout, int h) {
+        return px(layout.rowTop(FixedLayout.SPACE_ROW), h, layout.height);
     }
+
+    /**
+     * 笔记本上空格两段最短剩多少（份，2026-11-01 协调者定）：只要笔记本放得下（一格 ≥ 32dp），三个鼠标键就一定在（用户单手用小红点时离不开这三个键）。
+     * 笔记本的空格只有 5u，照 TKL 的"最短 1 份"在面板不到约 540dp 宽时让不出三个 minKey 宽的键；只在这时才往下缩，缩到刚好放得下为止，最短 0.75 份。
+     */
+    static final float LAPTOP_SPACE_MIN = 0.75f;
 
     /**
      * 小红点状态下空格那一排在中间让出的空位 {左, 右}（面板 x，面板宽 w），让不出返回 null。规则同豆花布局（KeyboardPlan.stickHole）：
@@ -308,7 +317,9 @@ final class FixedPanel {
      * ③ 三个鼠标键各至少 keyW（Sizes.holeWidth）。三个 keyW 宽的键放不下时空格缩短，最短 KeyRows.STICK_SPACE_MIN 份（1 个字母键宽）；
      * 还放不下就让到最宽（空格剩 1 份），三个键最窄 minKey；再窄就不让（三个鼠标键不显示，红点照样有）。
      * 实体键盘的空格在一排的中间（两边是修饰键），所以空位两边各剩一段空格（发同一个键），哪只手的拇指都按得到。
-     * 红点那条竖线在空格里偏左（ANSI / ISO 都是空格 3.75–10u、红点 6.75u），右边那段多 0.25u。
+     * 红点那条竖线在空格里偏左（TKL / 全尺寸 ANSI / ISO 都是空格 3.75–10u、红点 6.75u），右边那段多 0.25u；笔记本的空格 4.25–9.25u 正好以红点为中线。
+     * 笔记本多一步（{@link #LAPTOP_SPACE_MIN}）：上面几步都让不出时，三个键各 minKey、空格缩到刚好放得下，最短 0.75 份——
+     * 照"三个键 ≥ keyW > 空格 ≥ 1 份 > 三个键 ≥ minKey > 空格 ≥ 0.75 份"的先后，空格、键宽随面板宽连续变，面板一格 ≥ minKey 就一定让得出。
      */
     static int[] stickHole(FixedLayout layout, int w, KeyboardPlan.Sizes s) {
         FixedLayout.Key space = layout.find(0x2C);
@@ -322,6 +333,11 @@ final class FixedPanel {
         int hw = Math.max(hwPref, (s.holeWidth(s.keyW) + 1) / 2);
         if (hw <= hwMax && hw > 0) return new int[]{cx - hw, cx + hw};
         if (hwMax > 0 && 2 * hwMax >= s.holeWidth(s.minKey)) return new int[]{cx - hwMax, cx + hwMax};
+        if (layout.laptop()) {
+            int need = (s.holeWidth(s.minKey) + 1) / 2;   // 三个键各 minKey
+            int hwLaptop = narrow - Math.round(unit * LAPTOP_SPACE_MIN);
+            if (need > 0 && need <= hwLaptop) return new int[]{cx - need, cx + need};
+        }
         return null;
     }
 
@@ -366,8 +382,8 @@ final class FixedPanel {
         if (stickHit != null && stickCut > 0) {
             out.add(new TouchRouter.Region(Proto.REGION_STICK, Proto.STICK_ID, stickHit[0], stickHit[1], stickHit[2], stickHit[3]));
         }
-        if (hole != null && height > 0) {
-            out.add(new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, 0, hole[0], spaceRowTop(height), hole[1], height));
+        if (hole != null && height > 0 && layout != null) {
+            out.add(new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, 0, hole[0], spaceRowTop(layout, height), hole[1], height));
         }
         return out.toArray(new TouchRouter.Region[0]);
     }

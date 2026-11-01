@@ -500,6 +500,7 @@
     <string name="kbd_menu_douhua">Keyboard: Douhua</string>
     <string name="kbd_menu_fixed">Keyboard: physical (%1$s)</string>
     <string name="kbd_menu_narrow">Keyboard: physical (too narrow here, showing Douhua)</string>
+    <string name="kbd_menu_stepped">Keyboard: physical (%1$s; %2$s doesn\'t fit, showing %3$s)</string>
     <string name="kbd_menu_no_data">Keyboard: physical (no key data, showing Douhua)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
     <string name="kbd_lang_us">US English</string>
@@ -510,7 +511,7 @@
     <string name="kbd_board">Keyboard screen uses</string>
     <string name="kbd_board_douhua">Douhua layout</string>
     <string name="kbd_board_fixed">Physical keyboard</string>
-    <string name="kbd_board_note">You can also switch with \"Keyboard\" in the ⋯ menu. Both keep their settings when you switch: the Douhua layout\'s size and position, split, bottom row and current layer stay as they were. Where the window is too narrow for the physical keyboard (a key under 32dp, e.g. a phone held upright) the Douhua layout is shown for now; turn sideways and the physical keyboard comes back.</string>
+    <string name="kbd_board_note">You can also switch with \"Keyboard\" in the ⋯ menu. Both keep their settings when you switch: the Douhua layout\'s size and position, split, bottom row and current layer stay as they were. Where not even the laptop size fits (a letter key under 32dp, e.g. a phone held upright) the Douhua layout is shown for now; turn sideways and the physical keyboard comes back.</string>
     <string name="sec_kbd_fixed">Physical keyboard</string>
     <string name="kbd_lang">Layout (what the keys show)</string>
     <string name="kbd_host_names">Pick the same layout on the computer or tablet: on Mac and iPad it is called “%1$s”, on Windows “%2$s”.</string>
@@ -520,6 +521,11 @@
     <string name="kbd_size">Size</string>
     <string name="kbd_size_tkl">Tenkeyless (TKL, %1$d keys)</string>
     <string name="kbd_size_full">Full size (with number pad, %1$d keys)</string>
+    <string name="kbd_size_laptop">Laptop (ThinkPad-style, arrows bottom right, %1$d keys)</string>
+    <string name="kbd_size_short_full">full size</string>
+    <string name="kbd_size_short_tkl">TKL</string>
+    <string name="kbd_size_short_laptop">laptop</string>
+    <string name="kbd_size_note">When the chosen size doesn\'t fit the window (a letter key under 32dp) it steps down one size at a time: full size → TKL → laptop; only if the laptop size doesn\'t fit either is the Douhua layout shown. It steps back up when the window gets wider. Each size keeps its own size and position.</string>
     <string name="kbd_mode">Mode</string>
     <string name="kbd_mode_hint">Mac mode is an Apple keyboard: bottom row ⌃ ⌥ ⌘ (Option sends Alt, Command sends ⌘), keys show what a Mac types; use it for iPad too. Windows mode is a PC keyboard: Ctrl, Super, Alt, AltGr, ☰, keys show what Windows types; use it for Linux and Android too.</string>
     <string name="kbd_host_note">Douhua sends key positions; what gets typed depends on the keyboard layout set on the computer or tablet. Set the same layout there and the keys will match what you type. In desktop mode \"there\" is this phone: in the phone\'s physical keyboard settings pick the same layout for Douhua Keyboard.</string>

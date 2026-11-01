@@ -17,6 +17,8 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 键盘界面：整页都是键盘区（键盘 + 小触控板），没有工具栏那一行（2026-10-30，用户嫌四个按钮占地方）。
@@ -43,10 +45,13 @@ import java.util.Arrays;
  * 分裂时两半对称着调（2026-10-30）：拖哪一半的边，另一半镜像跟着动——内侧边 = 两半一起变宽 / 变窄（中间的触控板跟着变窄 / 变宽），
  * 外侧边 = 两半一起往里收 / 推回屏幕边，上下边 = 一起变高变矮，拖中间 = 一起上下挪（不左右挪：一挪就不对称了）。几何和约束在 KeyboardPlan。
  *
- * 实体键盘（第 1B 批，2026-11-01）：设置里 / ⋯ 菜单里选了实体键盘（{@link #setFixedWanted}），而且这个窗口放得下（KeyboardPlan.fixedFits：一格 ≥ 32dp），
- * 就显示实体键盘那块面板（FixedKeyboardView），照 KeyboardPlan.planFixed 摆；放不下时这个窗口里暂时显示豆花布局（选的不变，⋯ 菜单写明），
- * 横过来 / 拖宽了自动回去（{@link #isFixedShown}、Listener.onKeyboardFaceChanged）。两块面板都在、同一时刻只显示一块，换的时候藏起来的那块
- * 松开手指、收掉按下的样子；豆花布局的状态（层、分裂、大小位置）不动。实体键盘自己记指点和大小位置（Boards），不分裂、调大小同合并的拖法。
+ * 实体键盘（第 1B 批，2026-11-01）：设置里 / ⋯ 菜单里选了实体键盘（{@link #setFixedWanted}），就显示实体键盘那块面板（FixedKeyboardView），
+ * 照 KeyboardPlan.planFixed 摆。逐级缩（2026-11-01 笔记本尺寸）：设置里选的尺寸是起点，这个窗口一格不到 32dp 就一级一级往下换
+ * （全尺寸 → TKL → 笔记本，KeyboardPlan.fixedLevel），笔记本也放不下才暂时显示豆花布局（选的不变，⋯ 菜单写实际显示的是哪种），
+ * 横过来 / 拖宽了自动换回（{@link #isFixedShown}、Listener.onKeyboardFaceChanged）。显示哪一级、用哪份大小位置、调大小怎么存都在纯 Java 的
+ * {@link FixedSizing}（大小位置按显示着的那个尺寸取、存）。两块面板都在、同一时刻只显示一块，换的时候藏起来的那块松开手指、收掉按下的样子；
+ * 换级时实体键盘那块自己收的手指同样松开（FixedKeyboardView.useLevel）。豆花布局的状态（层、分裂、大小位置）不动。
+ * 实体键盘自己记指点和大小位置（Boards），不分裂、调大小同合并的拖法。
  *
  * 轻微对齐（不能太强，手机屏小）：
  * - 拖中间时明显是上下拖就只上下动，明显是左右拖就只左右动；之后侧向又拖出一大截才放开限制。
@@ -57,11 +62,11 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     interface Listener {
         /**
          * 调整完一次（手指抬起），存起来。split = 调的是分裂键盘：rect 是左半格子（KeyboardPlan），不然是合并键盘在可用区域里的位置，都是 0–1；
-         * fixed = 调的是实体键盘（存进它自己那份，Boards）。
+         * fixedSize = 调的是实体键盘（显示着的那个尺寸，存进它自己那份，Boards.setRect）；null = 豆花布局。
          */
-        void onKeyboardRectChanged(boolean landscape, boolean split, boolean fixed, float[] rect);
+        void onKeyboardRectChanged(boolean landscape, boolean split, String fixedSize, float[] rect);
 
-        /** 显示的那块面板换了（实体键盘放不下 / 又放得下了）：菜单里的项、字跟着换。量尺寸时发现的，post 过来。 */
+        /** 显示的那块面板换了（实体键盘放不下 / 又放得下了 / 逐级缩换了一级）：菜单里的项、字跟着换。量尺寸时发现的，post 过来。 */
         void onKeyboardFaceChanged();
 
         /** 吸附到了居中 / 边缘（轻震一下）。 */
@@ -88,7 +93,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
 
     private final TrackpadView miniPad;
     private final KeyboardPanel keyboard;
-    /** 实体键盘那块面板（选了、放得下才显示，{@link #fixedShown}）。 */
+    /** 实体键盘那块面板（选了、逐级缩挑得出一级才显示，{@link #fixedShown}）。 */
     private final FixedKeyboardView fixed;
     /** 小红点、三个鼠标键（键盘最下面那排，或者触控板的三键条：同一组 view，只有一种会显示）。 */
     private final TrackPointView stick;
@@ -137,12 +142,12 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     private final float[] cellBeforeDown = new float[4];
     /** 这一下拖的是分裂键盘；拖的是右半（左右位移要镜像成左半的）；拖的是实体键盘。 */
     private boolean dragSplit, mirror, dragFixed;
-    /** 选了实体键盘；这次量尺寸实际显示的是实体键盘（选了、而且这个窗口放得下）。 */
+    /** 选了实体键盘；这次量尺寸实际显示的是实体键盘（选了、而且逐级缩挑得出一级）。 */
     private boolean fixedWanted, fixedShown;
-    /** 实体键盘自己的指点、大小位置（0–1；fixedCustom 为假时是默认位置，每次量尺寸按窗口重算）。 */
+    /** 实体键盘自己的指点。 */
     private int fixedPointer = KeyboardPlan.POINTER_PAD;
-    private final float[] fixedRect = new float[4];
-    private boolean fixedCustom;
+    /** 实体键盘逐级缩的状态：显示哪一级、各个尺寸存的大小位置、调大小拖的那份（纯 Java，离线测）。 */
+    private final FixedSizing sizing = new FixedSizing();
     private int layoutMode = KeyboardPlan.MODE_AUTO;
     /** 指点：KeyboardPlan.POINTER_*；触控板的三键条：KeyboardPlan.KEYS_*。 */
     private int pointer = KeyboardPlan.POINTER_PAD;
@@ -350,8 +355,8 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     }
 
     /**
-     * 选了实体键盘（true）还是豆花布局。真显示哪块要等量尺寸时看这个窗口放不放得下（{@link #isFixedShown}）；
-     * 实体键盘还没设过（{@link FixedKeyboardView#layout} 是 null）时照样显示豆花布局。
+     * 选了实体键盘（true）还是豆花布局。真显示哪块、哪一级要等量尺寸时看这个窗口放不放得下（{@link #isFixedShown}）；
+     * 实体键盘还没设过（{@link #setFixedBoards} 给的是空的）时照样显示豆花布局。
      */
     void setFixedWanted(boolean on) {
         fixedWanted = on;
@@ -364,21 +369,51 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         requestLayout();
     }
 
-    /** 实体键盘存下的大小位置（0–1，现在这个尺寸、指点、方向的那份）；null = 没调过，用默认位置（KeyboardPlan.fixedDefaultRect）。 */
-    void setFixedRect(float[] saved) {
-        fixedCustom = saved != null;
-        if (fixedCustom) System.arraycopy(saved, 0, fixedRect, 0, 4);
+    /**
+     * 换一块实体键盘：逐级缩的几级（FixedData.ladder，第 0 级是选的尺寸；读不出数据是空的）和字表。面板和逐级缩的状态拿同一份，
+     * 这是唯一的入口。量尺寸时按窗口挑一级。
+     */
+    void setFixedBoards(List<FixedLayout> ladder, FixedLegends.Table legends) {
+        fixed.setBoards(ladder, legends);
+        sizing.setLadder(ladder);
+        dropFixedDrag();
         requestLayout();
     }
 
-    /** 这次量尺寸显示的是实体键盘吗（选了、而且放得下）。 */
+    /**
+     * 实体键盘各个尺寸存下的大小位置（尺寸 → 0–1，现在这种指点、这个方向的那几份，Boards.savedRects；没调过的尺寸没有这一项，用默认位置）。
+     * 显示哪个尺寸就用哪份（逐级缩）。
+     */
+    void setFixedRects(Map<String, float[]> saved) {
+        sizing.setSaved(saved);
+        dropFixedDrag();
+        requestLayout();
+    }
+
+    /** 实体键盘正拖着的这一下作废（FixedSizing 已经丢掉它）：之后的移动不再改工作副本，抬起什么都不存。 */
+    private void dropFixedDrag() {
+        if (dragFixed) handle = HANDLE_NONE;
+    }
+
+    /** 这次量尺寸显示的是实体键盘吗（选了、而且逐级缩挑得出一级）。 */
     boolean isFixedShown() {
         return fixedShown;
     }
 
-    /** 按上次量的宽度，实体键盘在这个窗口里放得下吗（刚换键盘、还没重新量的时候，⋯ 菜单的字照它写）。 */
-    boolean fixedFitsNow() {
-        return KeyboardPlan.fixedFits(fixed.layout(), areaWidth, sizes);
+    /**
+     * 按上次量的宽度，实体键盘在这个窗口里显示逐级缩的第几级（0 = 选的那个尺寸；-1 = 笔记本也放不下 / 没数据，暂用豆花布局）。
+     * 不看选没选实体键盘：刚从菜单换成实体键盘、还没重新量的那一下，⋯ 菜单的字也写得对。
+     */
+    int fixedLevelNow() {
+        return KeyboardPlan.fixedLevel(fixed.ladder(), areaWidth, sizes);
+    }
+
+    /** 恢复默认（调整栏）：显示着的那个尺寸回到默认位置，返回要在 Boards 里清的尺寸（没显示实体键盘返回 null）。 */
+    String resetFixedRect() {
+        String sz = sizing.reset();
+        dropFixedDrag();
+        requestLayout();
+        return sz;
     }
 
     /** 显示着的那块面板（区域、按下的样子只给它）。 */
@@ -462,8 +497,11 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         areaTop = 0;
         areaWidth = w;
         areaHeight = h;
-        // 选了实体键盘、这个窗口放得下才显示它，不然这个窗口里暂时显示豆花布局（换了要藏起来的那块先松开手指、收掉按下的样子）
-        boolean showFixed = fixedWanted && KeyboardPlan.fixedFits(fixed.layout(), areaWidth, sizes);
+        // 选了实体键盘就逐级缩挑一级（一格 ≥ 32dp 的第一级），笔记本也放不下才在这个窗口里暂时显示豆花布局
+        // （换了要藏起来的那块先松开手指、收掉按下的样子；换级时实体键盘自己收的手指由 useLevel 松开）
+        boolean changed = sizing.update(fixedWanted, areaWidth, sizes);
+        boolean showFixed = sizing.level() >= 0;
+        if (showFixed) fixed.useLevel(sizing.level());   // 同一级什么都不做
         if (showFixed != fixedShown) {
             fixedShown = showFixed;
             KeyboardFace hidden = showFixed ? keyboard : fixed;
@@ -471,13 +509,15 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
             hidden.clearPressed();
             keyboard.setVisibility(showFixed ? GONE : VISIBLE);
             fixed.setVisibility(showFixed ? VISIBLE : GONE);
-            handle = HANDLE_NONE;   // 正拖着的那一下作废（拖的是另一块）
+        }
+        if (changed) {
+            handle = HANDLE_NONE;   // 正拖着的那一下作废（拖的是另一块 / 另一个尺寸，FixedSizing 也已经丢掉这一下）
             post(listener::onKeyboardFaceChanged);
         }
         KeyboardPlan.Plan plan;
         if (fixedShown) {
-            plan = KeyboardPlan.planFixed(fixedPointer, keysMode, areaWidth, areaHeight, fixedCustom ? fixedRect : null, fixed.layout(), sizes);
-            if (!fixedCustom) System.arraycopy(plan.rect, 0, fixedRect, 0, 4);
+            plan = KeyboardPlan.planFixed(fixedPointer, keysMode, areaWidth, areaHeight, sizing.planInput(), sizing.layout(), sizes);
+            sizing.planned(plan.rect);   // 撑过的 / 默认的：调大小从它开始
         } else {
             // 小红点嵌在键里能多大、底行和快捷行让多宽的空位要按键算：功能行带 ⋯（选小红点时没有触控板，⋯ 一定在功能行上）、现在的底行和快捷行
             plan = KeyboardPlan.plan(layoutMode, pointer, keysMode, areaWidth, areaHeight,
@@ -742,21 +782,23 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
                 handle = split ? pickSplitHandle(x, y) : pickHandle(x, y);
                 lastX = x;
                 lastY = y;
-                // 分裂时从实际摆出来的格子开始（存下的在这个窗口里可能被约束撑开过）；按下前的那份留着，没拖动就换回去
+                // 分裂时从实际摆出来的格子开始（存下的在这个窗口里可能被约束撑开过）；按下前的那份留着，没拖动就换回去。
+                // 实体键盘同样从显示着的那份开始（FixedSizing.beginDrag，存过的在窄窗口里可能被撑开过）
                 System.arraycopy(splitCell, 0, cellBeforeDown, 0, 4);
                 if (dragSplit && handle != HANDLE_NONE) System.arraycopy(planCell, 0, splitCell, 0, 4);
+                if (dragFixed && handle != HANDLE_NONE) sizing.beginDrag();
                 float[] cur = current();
                 System.arraycopy(cur, 0, raw, 0, 4);
                 axis = AXIS_UNDECIDED;
                 moveX = moveY = 0;
                 snapped = 0;
-                customAtDown = dragSplit ? splitCustom : dragFixed ? fixedCustom : custom;
+                customAtDown = dragSplit ? splitCustom : custom;
                 System.arraycopy(cur, 0, rectAtDown, 0, 4);
                 // 从默认位置开始拖：之后就是用户自己的位置了（抬起时存）。拖的途中就要置上，不然量尺寸时会把它换回默认位置
+                // （实体键盘在 FixedSizing.beginDrag 里置）
                 if (handle != HANDLE_NONE) {
                     if (dragSplit) splitCustom = true;
-                    else if (dragFixed) fixedCustom = true;
-                    else custom = true;
+                    else if (!dragFixed) custom = true;
                 }
                 return handle != HANDLE_NONE;
             }
@@ -770,20 +812,22 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
                 return true;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
-                if (handle != HANDLE_NONE) {
+                if (handle != HANDLE_NONE && dragFixed) {
+                    // 实体键盘：没拖动就换回按下前那份、不存；拖了就存进显示着的那个尺寸（中途换过级的这一下早已作废，handle 也清了）
+                    FixedSizing.Save sv = sizing.endDrag();
+                    if (sv != null) listener.onKeyboardRectChanged(isLandscape(), false, sv.size, sv.rect);
+                } else if (handle != HANDLE_NONE) {
                     // 比 rect 而不是记"动过没有"：方向还没判断出来时不动、拖出去又吸回原位，都不算调过。
                     // 不然点一下就把这个窗口的默认位置（宽窗口是三分之二宽）存进横 / 竖屏那一份，别的窗口也跟着用它
                     if (Arrays.equals(current(), rectAtDown)) {
                         if (dragSplit) {
                             splitCustom = customAtDown;
                             System.arraycopy(cellBeforeDown, 0, splitCell, 0, 4);
-                        } else if (dragFixed) {
-                            fixedCustom = customAtDown;
                         } else {
                             custom = customAtDown;
                         }
                     } else {
-                        listener.onKeyboardRectChanged(isLandscape(), dragSplit, dragFixed, current().clone());
+                        listener.onKeyboardRectChanged(isLandscape(), dragSplit, null, current().clone());
                     }
                 }
                 handle = HANDLE_NONE;
@@ -793,9 +837,9 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         }
     }
 
-    /** 这一下拖的是哪份：分裂的左半格子、实体键盘的位置，或者合并的键盘位置（都是吸附后显示的那份）。 */
+    /** 这一下拖的是哪份：分裂的左半格子、实体键盘的位置（显示着的那个尺寸的工作副本），或者合并的键盘位置（都是吸附后显示的那份）。 */
     private float[] current() {
-        return dragSplit ? splitCell : dragFixed ? fixedRect : rect;
+        return dragSplit ? splitCell : dragFixed ? sizing.work() : rect;
     }
 
     /**
@@ -804,7 +848,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
      */
     private float minWidth() {
         if (!dragFixed) return MIN_WIDTH;
-        return KeyboardPlan.fixedMinWidth(fixed.layout(), areaWidth, sizes);
+        return KeyboardPlan.fixedMinWidth(sizing.layout(), areaWidth, sizes);
     }
 
     private int pickHandle(float x, float y) {
@@ -918,7 +962,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         float sy = Style.dp(getContext(), SNAP_DP) / Math.max(1f, areaHeight);
         int h = snapHandle();
         if (h == 0) return 0;
-        return dragSplit ? KeyboardSnap.applySplit(raw, splitCell, h, sx, sy) : KeyboardSnap.apply(raw, dragFixed ? fixedRect : rect, h, sx, sy);
+        return dragSplit ? KeyboardSnap.applySplit(raw, splitCell, h, sx, sy) : KeyboardSnap.apply(raw, dragFixed ? sizing.work() : rect, h, sx, sy);
     }
 
     /** HANDLE_* → KeyboardSnap 的边（分裂时按左半说），没按到边是 0。 */

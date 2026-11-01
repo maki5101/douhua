@@ -482,7 +482,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
 
     /**
      * "键盘"页上面两节：用哪块键盘（豆花布局 / 实体键盘，同 ⋯ 菜单里的"键盘"那一项），实体键盘是哪一块。
-     * 实体键盘一块 = 语言（键帽上画哪套字）× 形状（ANSI / ISO，德语只有 ISO）× 尺寸（TKL / 全尺寸）× 模式（Windows / Mac）；
+     * 实体键盘一块 = 语言（键帽上画哪套字）× 形状（ANSI / ISO，德语只有 ISO）× 尺寸（笔记本 / TKL / 全尺寸，逐级缩的起点）× 模式（Windows / Mac）；
      * 模式是用户 2026-11-01 定的（"第三方键盘都可以调一个 Windows 模式、一个 Mac 模式，Mac 模式跟 iPad 就是通用的"），不按主机认、不问主机是什么系统。
      * 改了回到键盘页才生效（MainActivity.applyBoards）。换语言、形状要重画选项（德语只有 ISO），整页重建。
      */
@@ -525,13 +525,18 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 rebuildLater();   // 尺寸后面写的键数跟着变
             });
         }
-        String[] sizes = {FixedLayout.TKL, FixedLayout.FULL};
-        String[] sizeNames = new String[2];
-        for (int i = 0; i < 2; i++) {
+        // 从小到大：笔记本（照 ThinkPad）/ TKL / 全尺寸，键数照当前的形状、模式现算。选的是逐级缩的起点（窗口放不下就往小换，见 kbd_size_note）
+        String[] sizes = {FixedLayout.LAPTOP, FixedLayout.TKL, FixedLayout.FULL};
+        int[] sizeLabels = {R.string.kbd_size_laptop, R.string.kbd_size_tkl, R.string.kbd_size_full};
+        String[] sizeNames = new String[sizes.length];
+        int sizeAt = 1;
+        for (int i = 0; i < sizes.length; i++) {
             int keys = FixedLayout.build(spec.shape, sizes[i], spec.mode, false, ".").keys.size();
-            sizeNames[i] = getString(i == 0 ? R.string.kbd_size_tkl : R.string.kbd_size_full, keys);
+            sizeNames[i] = getString(sizeLabels[i], keys);
+            if (sizes[i].equals(spec.size)) sizeAt = i;
         }
-        choiceRow(getString(R.string.kbd_size), sizeNames, FixedLayout.FULL.equals(spec.size) ? 1 : 0, i -> boards.setSize(sizes[i]));
+        choiceRow(getString(R.string.kbd_size), sizeNames, sizeAt, i -> boards.setSize(sizes[i]));
+        list.addView(text(getString(R.string.kbd_size_note), 13, 0xFF9AA0A6));
         String[] modeNames = {getString(R.string.kbd_mode_win), getString(R.string.kbd_mode_mac)};
         choiceRow(getString(R.string.kbd_mode), modeNames, FixedLayout.MAC.equals(spec.mode) ? 1 : 0, i -> {
             boards.setMode(i == 1 ? FixedLayout.MAC : FixedLayout.WIN);

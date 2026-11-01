@@ -10,7 +10,8 @@ import java.util.TreeMap;
 
 /**
  * Boards 的离线测试（方案 §4.4）：一份"豆花布局的每个键都存过值"的表，来回切换、改实体键盘的每一项、在实体键盘上换指点 / 调大小 / 恢复默认，
- * 最后 kb_ 开头的键集合和每个值都和开始时逐个相等；Boards 只写 kbd_ / kbx_ 开头的键。另测默认值、形状跟着布局走、大小位置按尺寸 × 指点 × 横竖屏分开。
+ * 最后 kb_ 开头的键集合和每个值都和开始时逐个相等；Boards 只写 kbd_ / kbx_ 开头的键。另测默认值、形状跟着布局走、大小位置按尺寸 × 指点 × 横竖屏分开
+ * （2026-11-01 笔记本尺寸：三个尺寸各存各的，存取都显式给尺寸——逐级缩时存的是显示着的那个尺寸，savedRects 一次给齐三份）。
  */
 public final class BoardsTest {
     private static int failures;
@@ -46,7 +47,7 @@ public final class BoardsTest {
         check(!b.fixedSelected(), "没选过：豆花布局（老用户升级后和以前一样）");
         eq(b.spec().toString(), "us/ansi/tkl/win", "实体键盘默认：美式 ANSI TKL Windows 模式");
         check(b.pointer() == KeyboardPlan.POINTER_PAD, "实体键盘的指点默认触控板");
-        check(b.savedRect(true) == null && b.savedRect(false) == null, "没调过大小位置");
+        check(b.savedRect(b.size(), true) == null && b.savedRect(b.size(), false) == null && b.savedRects(true).isEmpty(), "没调过大小位置");
         b.select(true);
         check(b.fixedSelected(), "选实体键盘");
         b.select(false);
@@ -70,6 +71,11 @@ public final class BoardsTest {
         eq(b.shape(), "ansi", "换回美式：存的 ANSI 还在");
         b.setSize("bogus");
         eq(b.size(), "tkl", "认不出的尺寸当 TKL");
+        b.setSize(FixedLayout.LAPTOP);
+        eq(b.size(), "laptop", "笔记本尺寸");
+        MapStore raw = new MapStore();
+        raw.putString(Boards.KEY_SIZE, "huge");
+        eq(new Boards(raw, catalog).size(), "tkl", "存着认不出的尺寸也当 TKL");
         b.setMode(FixedLayout.MAC);
         eq(b.mode(), "mac", "Mac 模式");
     }
@@ -78,22 +84,36 @@ public final class BoardsTest {
         MapStore s = new MapStore();
         Boards b = new Boards(s, catalog);
         float[] r1 = {0.1f, 0.2f, 0.9f, 1};
-        b.setRect(true, r1);
-        check(eq4(b.savedRect(true), r1), "存下横屏的");
-        check(b.savedRect(false) == null, "竖屏的另一份");
+        String tkl = FixedLayout.TKL;
+        b.setRect(tkl, true, r1);
+        check(eq4(b.savedRect(tkl, true), r1), "存下横屏的");
+        check(b.savedRect(tkl, false) == null, "竖屏的另一份");
+        check(b.savedRect(FixedLayout.FULL, true) == null, "全尺寸另一份（换尺寸各回各的）");
         b.setSize(FixedLayout.FULL);
-        check(b.savedRect(true) == null, "全尺寸另一份（换尺寸各回各的）");
-        b.setSize(FixedLayout.TKL);
-        check(eq4(b.savedRect(true), r1), "换回 TKL 还在");
+        check(eq4(b.savedRect(tkl, true), r1), "选的尺寸换了，TKL 那份照样在（存取按给的尺寸，不按选的）");
         b.setPointer(KeyboardPlan.POINTER_STICK);
-        check(b.savedRect(true) == null, "小红点另一份（有触控板时避让、没有时不避让）");
+        check(b.savedRect(tkl, true) == null, "小红点另一份（有触控板时避让、没有时不避让）");
         b.setPointer(KeyboardPlan.POINTER_PAD);
         b.setLang("de");
         b.setMode(FixedLayout.MAC);
-        check(eq4(b.savedRect(true), r1), "换语言、模式不挪");
-        b.resetRect(true);
-        check(b.savedRect(true) == null, "恢复默认只清这一份");
-        for (String size : new String[]{FixedLayout.TKL, FixedLayout.FULL}) {
+        check(eq4(b.savedRect(tkl, true), r1), "换语言、模式不挪");
+        // 笔记本（逐级缩时存的是显示着的那个尺寸）：三个尺寸各存各的
+        float[] r2 = {0, 0.3f, 0.7f, 1}, r3 = {0.2f, 0, 1, 0.9f};
+        b.setRect(FixedLayout.LAPTOP, true, r2);
+        check(eq4(b.savedRect(FixedLayout.LAPTOP, true), r2) && eq4(b.savedRect(tkl, true), r1), "存笔记本不碰 TKL");
+        b.setRect(FixedLayout.FULL, true, r3);
+        java.util.Map<String, float[]> all = b.savedRects(true);
+        check(all.size() == 3 && eq4(all.get(FixedLayout.FULL), r3) && eq4(all.get(tkl), r1) && eq4(all.get(FixedLayout.LAPTOP), r2), "savedRects：三份都在、值对得上");
+        check(b.savedRects(false).isEmpty(), "savedRects：竖屏一份都没存");
+        b.resetRect(FixedLayout.LAPTOP, true);
+        check(b.savedRect(FixedLayout.LAPTOP, true) == null && eq4(b.savedRect(tkl, true), r1) && eq4(b.savedRect(FixedLayout.FULL, true), r3),
+                "恢复默认只清给的那个尺寸");
+        all = b.savedRects(true);
+        check(all.size() == 2 && !all.containsKey(FixedLayout.LAPTOP), "savedRects 只含存过的那几项");
+        b.resetRect(tkl, true);
+        check(b.savedRect(tkl, true) == null, "恢复默认只清这一份");
+        check(Boards.rectKey(FixedLayout.LAPTOP, KeyboardPlan.POINTER_PAD, true).equals("kbx_laptop_pad_land_"), "笔记本的键名 kbx_laptop_pad_land_");
+        for (String size : FixedLayout.SIZES_DESC) {
             for (int p = 0; p < 3; p++) {
                 for (boolean land : new boolean[]{true, false}) {
                     String k = Boards.rectKey(size, p, land);
@@ -141,12 +161,12 @@ public final class BoardsTest {
                     case 0: b.select(rnd.nextBoolean()); break;
                     case 1: b.setLang(rnd.nextBoolean() ? "us" : "de"); break;
                     case 2: b.setShape(rnd.nextBoolean() ? FixedLayout.ANSI : FixedLayout.ISO); break;
-                    case 3: b.setSize(rnd.nextBoolean() ? FixedLayout.TKL : FixedLayout.FULL); break;
+                    case 3: b.setSize(FixedLayout.SIZES_DESC[rnd.nextInt(3)]); break;
                     case 4: b.setMode(rnd.nextBoolean() ? FixedLayout.WIN : FixedLayout.MAC); break;
                     case 5: b.setPointer(rnd.nextInt(3)); break;
-                    case 6: b.setRect(rnd.nextBoolean(), new float[]{rnd.nextFloat() * 0.3f, rnd.nextFloat() * 0.3f, 0.7f, 1}); break;
-                    case 7: b.resetRect(rnd.nextBoolean()); break;
-                    default: b.spec(); b.savedRect(rnd.nextBoolean()); b.fixedSelected(); break;
+                    case 6: b.setRect(FixedLayout.SIZES_DESC[rnd.nextInt(3)], rnd.nextBoolean(), new float[]{rnd.nextFloat() * 0.3f, rnd.nextFloat() * 0.3f, 0.7f, 1}); break;
+                    case 7: b.resetRect(FixedLayout.SIZES_DESC[rnd.nextInt(3)], rnd.nextBoolean()); break;
+                    default: b.spec(); b.savedRect(FixedLayout.SIZES_DESC[rnd.nextInt(3)], rnd.nextBoolean()); b.savedRects(rnd.nextBoolean()); b.fixedSelected(); break;
                 }
             }
             Map<String, Object> after = new TreeMap<>();

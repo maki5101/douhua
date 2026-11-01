@@ -14,7 +14,7 @@ import java.util.Locale;
 /**
  * 实体键盘的数据从 res/raw 读进来（布局清单、Windows / Mac 两份键帽字），进程里读一次缓存着；文件几 KB，主线程上读。
  * 解析规则在纯 Java 的 FixedLegends（离线测）。读不出来（照理不会，文件是生成好打进 APK 的）时清单是空的、字表是 null，
- * 字表是 null 时 {@link #layout} 也是 null（FixedLayout.forLegends；这个布局这种模式的字表里没有那一段也一样）：
+ * 字表是 null 时 {@link #ladder} 是空的（FixedLayout.forLegends；这个布局这种模式的字表里没有那一段也一样）：
  * 选了实体键盘也照样显示豆花布局（KeyboardScreen 拿不到布局就不换），⋯ 菜单写"数据读不出来"，设置页那一节标红一行，日志里记一行。
  */
 final class FixedData {
@@ -52,10 +52,26 @@ final class FixedData {
         return f == null ? null : f.sections.get(lang);
     }
 
-    /** 拼这一块：右 Alt 写不写 AltGr 看 Windows 字表有没有第三层，小键盘小数点看清单；字表读不出来返回 null（见类注释）。 */
-    static FixedLayout layout(Context c, Boards.Spec spec) {
+    /**
+     * 拼逐级缩的几级（FixedLayout.ladder：选的尺寸往下，全尺寸 → TKL → 笔记本）：每级一块，右 Alt 写不写 AltGr 看 Windows 字表有没有第三层，
+     * 小键盘小数点看清单；字表读不出来返回空列表（见类注释）。
+     */
+    static List<FixedLayout> ladder(Context c, Boards.Spec spec) {
         FixedLegends.Layout l = FixedLegends.find(catalog(c), spec.lang);
-        return FixedLayout.forLegends(spec.shape, spec.size, spec.mode, table(c, spec.lang, spec.mode), l == null ? "." : l.kpdl);
+        FixedLegends.Table t = table(c, spec.lang, spec.mode);
+        List<FixedLayout> out = new ArrayList<>();
+        for (String size : FixedLayout.ladder(spec.size)) {
+            FixedLayout f = FixedLayout.forLegends(spec.shape, size, spec.mode, t, l == null ? "." : l.kpdl);
+            if (f == null) return new ArrayList<>();
+            out.add(f);
+        }
+        return out;
+    }
+
+    /** 尺寸的短名字（⋯ 菜单里"全尺寸放不下，暂用 TKL"那种）。 */
+    static String sizeName(Context c, String size) {
+        return c.getString(FixedLayout.FULL.equals(size) ? R.string.kbd_size_short_full
+                : FixedLayout.LAPTOP.equals(size) ? R.string.kbd_size_short_laptop : R.string.kbd_size_short_tkl);
     }
 
     /** 布局在界面语言里叫什么（美式、德语；以后的布局没写进 strings 的用 Locale 自己翻）。 */

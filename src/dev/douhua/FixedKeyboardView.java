@@ -58,16 +58,43 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         applyTheme();
     }
 
-    /** 换一块键盘（设置页改了语言 / 形状 / 尺寸 / 模式）。按着的键先松开。 */
-    void setBoard(FixedLayout layout, FixedLegends.Table legends) {
+    /** 逐级缩的几级（选的尺寸往下，FixedData.ladder），字表各级共用。 */
+    private List<FixedLayout> ladder = new ArrayList<>();
+    private FixedLegends.Table legends;
+
+    /**
+     * 换一块键盘（设置页改了语言 / 形状 / 尺寸 / 模式）：逐级缩的几级（第 0 级是选的尺寸；读不出数据是空的，KeyboardScreen 就照样显示豆花布局）。
+     * 先摆第 0 级，量尺寸时 KeyboardScreen 按窗口挑一级（{@link #useLevel}）。按着的键先松开。
+     */
+    void setBoards(List<FixedLayout> ladder, FixedLegends.Table legends) {
+        this.ladder = ladder == null ? new ArrayList<>() : new ArrayList<>(ladder);
+        this.legends = legends;
         dropTouches();
-        model.setBoard(layout, legends);
+        model.setBoard(this.ladder.isEmpty() ? null : this.ladder.get(0), legends);
         resizeState();
         requestLayout();
         invalidate();
     }
 
-    /** 当前这块（没设过 / 读不出数据是 null：KeyboardScreen 就照样显示豆花布局）。 */
+    /**
+     * 换到第 i 级（KeyboardScreen 量尺寸、挑出的那一级变了时，在量这块面板之前调）：和现在显示的是同一块就什么都不做；
+     * 不然面板自己收的手指先松开（不算点击）、按下的样子和放大提示收掉，再换键（数组跟着换，下标对得上新的键）。
+     */
+    void useLevel(int i) {
+        if (i < 0 || i >= ladder.size() || ladder.get(i) == model.layout()) return;
+        dropTouches();
+        model.setBoard(ladder.get(i), legends);
+        resizeState();
+        requestLayout();
+        invalidate();
+    }
+
+    /** 逐级缩的几级（读不出数据是空的）。 */
+    List<FixedLayout> ladder() {
+        return ladder;
+    }
+
+    /** 现在显示的这块（没设过 / 读不出数据是 null：KeyboardScreen 就照样显示豆花布局）。 */
     FixedLayout layout() {
         return model.layout();
     }
@@ -168,7 +195,7 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     }
 
     /**
-     * 面板自己收的手指按着的键松开（不算点击，KEY_CANCEL）、按下的样子和放大提示收掉（换键盘、换 ⋯ / 空位前）。
+     * 面板自己收的手指按着的键松开（不算点击，KEY_CANCEL）、按下的样子和放大提示收掉（换键盘、逐级缩换级、换 ⋯ / 空位前）。
      * 实体键盘没有换层，这几样都是改设置 / 换窗口，不在打字中途，照旧全部当取消（豆花布局换层时按 Key 对象保住还显示着的键）。
      */
     private void dropTouches() {

@@ -500,6 +500,7 @@
     <string name="kbd_menu_douhua">键盘：豆花儿</string>
     <string name="kbd_menu_fixed">键盘：实体（%1$s）</string>
     <string name="kbd_menu_narrow">键盘：实体（这里太窄，暂用豆花儿）</string>
+    <string name="kbd_menu_stepped">键盘：实体（%1$s；%2$s放不下，暂用 %3$s）</string>
     <string name="kbd_menu_no_data">键盘：实体（数据读不出来，暂用豆花儿）</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
     <string name="kbd_lang_us">美式</string>
@@ -510,7 +511,7 @@
     <string name="kbd_board">键盘界面用</string>
     <string name="kbd_board_douhua">豆花儿布局</string>
     <string name="kbd_board_fixed">实体键盘</string>
-    <string name="kbd_board_note">⋯ 菜单里的「键盘」一项也能换。换来换去两边的设置都留着：豆花儿布局的大小位置、分裂、最下面一排、停在哪一层都不变。窗口太窄、放不下实体键盘时（一个键不到 32dp，比如手机竖着拿）先用豆花儿布局，横过来自动换回实体键盘。</string>
+    <string name="kbd_board_note">⋯ 菜单里的「键盘」一项也能换。换来换去两边的设置都留着：豆花儿布局的大小位置、分裂、最下面一排、停在哪一层都不变。连笔记本尺寸都放不下时（一个字母键不到 32dp，比如手机竖着拿）先用豆花儿布局，横过来自动换回实体键盘。</string>
     <string name="sec_kbd_fixed">实体键盘</string>
     <string name="kbd_lang">布局（键帽上画的字）</string>
     <string name="kbd_host_names">电脑 / 平板那边要选同一种布局：Mac 和 iPad 里叫「%1$s」，Windows 里叫「%2$s」。</string>
@@ -520,6 +521,11 @@
     <string name="kbd_size">尺寸</string>
     <string name="kbd_size_tkl">不带数字键盘（TKL，%1$d 键）</string>
     <string name="kbd_size_full">全尺寸（带数字键盘，%1$d 键）</string>
+    <string name="kbd_size_laptop">笔记本（照 ThinkPad，方向键在右下角，%1$d 键）</string>
+    <string name="kbd_size_short_full">全尺寸</string>
+    <string name="kbd_size_short_tkl">TKL</string>
+    <string name="kbd_size_short_laptop">笔记本</string>
+    <string name="kbd_size_note">窗口放不下选的尺寸时（一个字母键不到 32dp）自动一级一级换小：全尺寸 → TKL → 笔记本，笔记本也放不下才暂用豆花儿布局；窗口变宽了自动换回。大小位置每种尺寸各记一份。</string>
     <string name="kbd_mode">模式</string>
     <string name="kbd_mode_hint">Mac 模式照苹果键盘：最下一排 ⌃ ⌥ ⌘（Option 发 Alt、Command 发 ⌘），键帽画 Mac 上打出的字，连 iPad 也用它。Windows 模式是 PC 键盘：Ctrl、Super、Alt、AltGr、☰，键帽画 Windows 上打出的字，连 Linux、安卓也用它。</string>
     <string name="kbd_host_note">豆花儿发的是键的位置，打出什么字由电脑 / 平板那边设的键盘布局定：那边设成同一种布局，键帽上画的才和打出来的一样。桌面模式下「那边」就是这台手机：在手机设置的实体键盘里给 Douhua Keyboard 选同一种布局。</string>

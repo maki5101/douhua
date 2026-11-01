@@ -33,7 +33,8 @@ trap 'rm -rf "$OUT"' EXIT
 # 触控板背景图怎么摆（PadFit：五种显示方式、焦点、吸附、平铺相位、按形状挑设置、解码多大）、
 # 主机实测扫描许发哪些键、一段怎么拆成拍（KeyScan）、
 # 实体键盘第 1B 批（FixedLegends：读 res/raw 的键帽数据、抽查值；FixedLayout / FixedPanel：几何、每区块每行的范围、分流、小红点在真 ThinkPad 的位置、
-# 空格那一排的三个鼠标键、键帽齐全；KeyboardPlan.planFixed：默认位置、触控板、窄窗口退回豆花布局；Boards：切换键盘不动豆花布局的 kb_ 设置）、
+# 空格那一排的三个鼠标键、键帽齐全；KeyboardPlan.planFixed：默认位置、触控板、窄窗口退回豆花布局；Boards：切换键盘不动豆花布局的 kb_ 设置；
+# 笔记本尺寸（照 ThinkPad，方向键两层）和逐级缩（KeyboardPlan.fixedLevel / fitFixedRect、FixedSizing：显示哪一级、用哪份位置、拖动怎么换回））、
 # 手柄页（GamepadTouch：单键 / 面键簇 / 十字键 / 摇杆 / N64 的 C 键的触摸模型、收尾回中立；GamepadPlan：15 个预设和自定义的自动排；
 # GamepadSpec：字样、轮换、自定义存成一行再读回来；GamepadConfig 编解码、手柄描述符和两路合并（HidTest、ServerPartsTest 的 GamepadMux））
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \
@@ -57,6 +58,7 @@ trap 'rm -rf "$OUT"' EXIT
     src/dev/douhua/KeyRows.java test/dev/douhua/KeyRowsTest.java \
     src/dev/douhua/KeyboardPlan.java test/dev/douhua/KeyboardPlanTest.java \
     src/dev/douhua/FixedLegends.java src/dev/douhua/FixedLayout.java src/dev/douhua/FixedPanel.java src/dev/douhua/Boards.java \
+    src/dev/douhua/FixedSizing.java \
     test/dev/douhua/FixedLegendsTest.java test/dev/douhua/FixedLayoutTest.java test/dev/douhua/BoardsTest.java \
     src/dev/douhua/EdgeMargin.java test/dev/douhua/EdgeMarginTest.java \
     src/dev/douhua/HardKeys.java src/dev/douhua/AirPointer.java \

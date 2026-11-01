@@ -500,6 +500,7 @@
     <string name="kbd_menu_douhua">Clavier : Douhua</string>
     <string name="kbd_menu_fixed">Clavier : physique (%1$s)</string>
     <string name="kbd_menu_narrow">Clavier : physique (trop étroit ici, Douhua affiché)</string>
+    <string name="kbd_menu_stepped">Clavier : physique (%1$s ; %2$s ne tient pas, %3$s affiché)</string>
     <string name="kbd_menu_no_data">Clavier : physique (données illisibles, Douhua affiché)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
     <string name="kbd_lang_us">Anglais (États-Unis)</string>
@@ -510,7 +511,7 @@
     <string name="kbd_board">L\'écran clavier utilise</string>
     <string name="kbd_board_douhua">Disposition Douhua</string>
     <string name="kbd_board_fixed">Clavier physique</string>
-    <string name="kbd_board_note">Vous pouvez aussi changer avec « Clavier » dans le menu ⋯. Les deux gardent leurs réglages : taille et position de la disposition Douhua, clavier scindé, rangée du bas et couche affichée ne changent pas. Si la fenêtre est trop étroite pour le clavier physique (touche de moins de 32 dp, par ex. téléphone tenu droit), la disposition Douhua s\'affiche en attendant ; tournez l\'appareil et le clavier physique revient.</string>
+    <string name="kbd_board_note">Vous pouvez aussi changer avec « Clavier » dans le menu ⋯. Les deux gardent leurs réglages : taille et position de la disposition Douhua, clavier scindé, rangée du bas et couche affichée ne changent pas. Si même le format portable ne tient pas (touche de lettre de moins de 32 dp, par ex. téléphone tenu droit), la disposition Douhua s\'affiche en attendant ; tournez l\'appareil et le clavier physique revient.</string>
     <string name="sec_kbd_fixed">Clavier physique</string>
     <string name="kbd_lang">Disposition (ce qu\'affichent les touches)</string>
     <string name="kbd_host_names">Choisissez la même disposition sur l\'ordinateur ou la tablette : elle s\'appelle « %1$s » sur Mac et iPad, « %2$s » sous Windows.</string>
@@ -520,6 +521,11 @@
     <string name="kbd_size">Taille</string>
     <string name="kbd_size_tkl">Sans pavé numérique (TKL, %1$d touches)</string>
     <string name="kbd_size_full">Complet (avec pavé numérique, %1$d touches)</string>
+    <string name="kbd_size_laptop">Portable (façon ThinkPad, flèches en bas à droite, %1$d touches)</string>
+    <string name="kbd_size_short_full">complet</string>
+    <string name="kbd_size_short_tkl">TKL</string>
+    <string name="kbd_size_short_laptop">portable</string>
+    <string name="kbd_size_note">Si la taille choisie ne tient pas dans la fenêtre (touche de lettre de moins de 32 dp), elle descend d\'un cran à la fois : complet → TKL → portable ; la disposition Douhua ne s\'affiche que si même le format portable ne tient pas. Elle remonte quand la fenêtre s\'élargit. Chaque format garde sa propre taille et position.</string>
     <string name="kbd_mode">Mode</string>
     <string name="kbd_mode_hint">Le mode Mac imite un clavier Apple : rangée du bas ⌃ ⌥ ⌘ (Option envoie Alt, Commande envoie ⌘), les touches montrent ce que tape un Mac ; à utiliser aussi pour l\'iPad. Le mode Windows est un clavier PC : Ctrl, Super, Alt, AltGr, ☰, les touches montrent ce que tape Windows ; à utiliser aussi pour Linux et Android.</string>
     <string name="kbd_host_note">Douhua envoie la position des touches ; le caractère tapé dépend de la disposition réglée sur l\'ordinateur ou la tablette. Réglez-y la même disposition pour que les touches correspondent à ce qui s\'écrit. En mode bureau, « là-bas » c\'est ce téléphone : dans les réglages du clavier physique du téléphone, choisissez la même disposition pour Douhua Keyboard.</string>

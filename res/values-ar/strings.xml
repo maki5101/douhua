@@ -500,6 +500,7 @@
     <string name="kbd_menu_douhua">لوحة المفاتيح: دوهوا</string>
     <string name="kbd_menu_fixed">لوحة المفاتيح: فعلية (%1$s)</string>
     <string name="kbd_menu_narrow">لوحة المفاتيح: فعلية (ضيقة هنا، تُعرض دوهوا)</string>
+    <string name="kbd_menu_stepped">لوحة المفاتيح: فعلية (%1$s؛ %2$s لا تتسع، تُعرض %3$s)</string>
     <string name="kbd_menu_no_data">لوحة المفاتيح: فعلية (تعذرت قراءة البيانات، تُعرض دوهوا)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
     <string name="kbd_lang_us">الإنجليزية (الولايات المتحدة)</string>
@@ -510,7 +511,7 @@
     <string name="kbd_board">تستخدم شاشة لوحة المفاتيح</string>
     <string name="kbd_board_douhua">تخطيط دوهوا</string>
     <string name="kbd_board_fixed">لوحة مفاتيح فعلية</string>
-    <string name="kbd_board_note">يمكنك التبديل أيضًا من «لوحة المفاتيح» في قائمة ⋯. يحتفظ كل منهما بإعداداته عند التبديل: حجم تخطيط دوهوا وموضعه والتقسيم والصف السفلي والطبقة المعروضة تبقى كما هي. إذا كانت النافذة أضيق من أن تتسع للوحة الفعلية (مفتاح أصغر من 32dp، مثل الهاتف في الوضع الرأسي) يُعرض تخطيط دوهوا مؤقتًا، وعند تدوير الجهاز أفقيًا تعود اللوحة الفعلية.</string>
+    <string name="kbd_board_note">يمكنك التبديل أيضًا من «لوحة المفاتيح» في قائمة ⋯. يحتفظ كل منهما بإعداداته عند التبديل: حجم تخطيط دوهوا وموضعه والتقسيم والصف السفلي والطبقة المعروضة تبقى كما هي. إذا لم يتسع حتى حجم الحاسوب المحمول (مفتاح حرف أصغر من 32dp، مثل الهاتف في الوضع الرأسي) يُعرض تخطيط دوهوا مؤقتًا، وعند تدوير الجهاز أفقيًا تعود اللوحة الفعلية.</string>
     <string name="sec_kbd_fixed">لوحة مفاتيح فعلية</string>
     <string name="kbd_lang">التخطيط (ما تعرضه المفاتيح)</string>
     <string name="kbd_host_names">اختر التخطيط نفسه على الكمبيوتر أو الجهاز اللوحي: اسمه على Mac وiPad «%1$s» وعلى Windows «%2$s».</string>
@@ -520,6 +521,11 @@
     <string name="kbd_size">الحجم</string>
     <string name="kbd_size_tkl">بدون لوحة أرقام (TKL، %1$d مفتاحًا)</string>
     <string name="kbd_size_full">كاملة (مع لوحة أرقام، %1$d مفتاحًا)</string>
+    <string name="kbd_size_laptop">حاسوب محمول (على طريقة ThinkPad، الأسهم أسفل اليمين، %1$d مفتاحًا)</string>
+    <string name="kbd_size_short_full">كاملة</string>
+    <string name="kbd_size_short_tkl">TKL</string>
+    <string name="kbd_size_short_laptop">حاسوب محمول</string>
+    <string name="kbd_size_note">إذا لم يتسع الحجم المختار للنافذة (مفتاح حرف أصغر من 32dp) يُصغَّر خطوةً خطوة: كاملة ثم TKL ثم حاسوب محمول، ولا يُعرض تخطيط دوهوا إلا إذا لم يتسع حجم الحاسوب المحمول أيضًا. يعود تلقائيًا عندما تتسع النافذة. لكل حجم حجمه وموضعه المحفوظان.</string>
     <string name="kbd_mode">الوضع</string>
     <string name="kbd_mode_hint">وضع Mac لوحة مفاتيح Apple: الصف السفلي ⌃ ⌥ ⌘ (يرسل Option مفتاح Alt ويرسل Command ⌘)، وتعرض المفاتيح ما يكتبه Mac؛ استخدمه لـ iPad أيضًا. وضع Windows لوحة مفاتيح كمبيوتر شخصي: Ctrl وSuper وAlt وAltGr و☰، وتعرض المفاتيح ما يكتبه Windows؛ استخدمه لـ Linux وAndroid أيضًا.</string>
     <string name="kbd_host_note">يرسل دوهوا مواضع المفاتيح، أما الحرف المكتوب فيحدده تخطيط لوحة المفاتيح المضبوط على الكمبيوتر أو الجهاز اللوحي. اضبط التخطيط نفسه هناك لتطابق المفاتيح ما تكتبه. في وضع سطح المكتب «هناك» هو هذا الهاتف: في إعدادات لوحة المفاتيح الفعلية للهاتف اختر التخطيط نفسه لـ Douhua Keyboard.</string>

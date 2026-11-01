@@ -38,22 +38,23 @@
 | `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停；描述符跟着"连续滚动"开关（变了就注销、重新注册，descriptorChanged），回应主机设 / 问滚轮倍率 |
 | `src/dev/douhua/Haptics.java` | 震动：点击、咔嗒、颗粒、拖动时的持续轻震、按键的"嗒"、惯性的"放开 / 刹住"（调试版设置里能挑候选波形，正式包用默认） |
 | `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；几屏共用的 ⋯ 菜单的项（主界面 键盘 / 手柄 / 设置 / 旋转 / 退出，键盘屏 键盘（豆花 / 实体，MENU_BOARD_ID 418，switchBoard 只写 kbd_board）/ 收起键盘 / 调整大小 / 布局（只在显示豆花布局时）/ 指点（显示着的那块自己的）/ 手柄 / 设置 / 旋转 / 退出，手柄页 预设 / 返回触控板 / 设置 / 旋转 / 退出；"手柄"只在桌面模式）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：五页往里收）；手柄页的进出（setGamepadMode：桌面模式下手柄页走本地分流，CMD_GAMEPAD 发给服务）、吞自己手柄的键和摇杆（dispatchKeyEvent / dispatchGenericMotionEvent）；修饰键 / Caps 的显示（2026-11-01）：onModifiers(锁住, 按着, 快锁了) → showKeyState 两块面板都画；Caps 的显示只有这一份（static capsShown，服务 MSG_CAPS / 本地分流只报"翻一下"，换了主机——蓝牙地址变了、蓝牙 ↔ 桌面模式——在 updateHostKind 里归"关"）；本地分流的按键定时器 localKeyTimer；onLocalKey(key, action)（KEY_DOWN / KEY_UP / KEY_CANCEL，数字键盘、动作里的组合键同）；进空中鼠标 / 手柄页替服务解开锁定发 CMD_UNLATCH（link.unlatch） |
+| `src/dev/douhua/FixedSizing.java` | 实体键盘逐级缩的状态（2026-11-01），纯 Java（离线测，FixedLayoutTest.sizing，含随机序列）：这次显示哪一级（update：KeyboardPlan.fixedLevel 按整页宽现算、不做回差）、用哪份大小位置（按显示着的那个尺寸取：缩成笔记本就用笔记本那份）、调大小从显示着的（撑开过的）那份开始拖（beginDrag）、没拖动就换回、拖了就存进显示着的那个尺寸（endDrag 返回 Save）、中途换级 / 换存的那几份 / 换键盘这一下作废、恢复默认（reset）；KeyboardScreen 只调它 |
 | `src/dev/douhua/KeyboardFace.java` | 键盘页上两块面板（豆花布局 KeyboardPanel、实体键盘 FixedKeyboardView）对外的共同方法（第 1B 批）：修饰键、按下的样子、松开、主题、报区域、⋯ 键、空位、红点；KeyboardScreen.face 给显示着的那块；setKeyState(锁住, 按着, 快锁了, caps)（2026-11-01 起取代 setModifiers：高亮 = 锁住 \| 快锁了 和 Caps 的显示，键帽上的字照 锁住 \| 按着 换） |
 | `src/dev/douhua/FixedLegends.java` | 实体键盘的键帽字（res/raw/kbd_win / kbd_mac）和布局清单（kbd_catalog）的读法，纯 Java（离线测，FixedLegendsTest）：格式照 tools/kbd/kbdtable.py（段、别名、死键 `\*`、转义），读不出就抛异常；四层（普通 / Shift / 第三层 / 第三层+Shift）；画不画得出来（printable：私用区的苹果标、组合附加符号不画）；布局 id → 语言标签（LOCALE_TAGS）。Mac 模式查不对调那段（`<id>`，不读 `<id>.iso`） |
-| `src/dev/douhua/FixedLayout.java` | 实体键盘的几何（第 1B 批），纯 Java（离线测，FixedLayoutTest）：形状（ANSI / ISO）× 尺寸（TKL / 全尺寸）× 模式（Windows / Mac）拼一块，单位 u（F 行 + 隔 0.25u + 主键区五行，6.25u 高；主键区 15u、编辑区、小键盘）；每个键的用法码（Windows 照 PC 惯例；Mac 底行 ⌃ ⌥ ⌘ 空格 ⌘ ⌥ 🌐 ⌃、F13–F15、没有 Ins / Menu，ISO 的 1 左边发 0x64、Z 左边发 0x35 照真苹果 ISO 键盘）、L 形回车（x2 / w2）、两行高的小键盘 + / Enter；Esc 和 F1 之间的 ⋯ 槽（menu）；键盘范围每区块每行一块（ranges：伸到相邻行 / 区块空隙的中线、外圈到面板边，没有键的格子不在任何一块里）；小红点那条竖线（stickU：G 的右边 = B 的中线）；Windows 模式右 Alt 是不是 AltGr（altGr：字表有第三层才是，美式不是；Mac 模式一律假）；照字表拼（forLegends：字表是 null 就不拼、返回 null） |
-| `src/dev/douhua/FixedPanel.java` | 实体键盘摆到像素以后，纯 Java（离线测，FixedLayoutTest）：每个键按行切成几段矩形（segments，相邻键共用边界、四边缩进 gap）、范围、报给服务的区域（regions：段在前、范围在后）、面板自己收触摸时哪根手指按哪个键（keyAt：KeyFingers + nearestKey，红点圆、空位是洞）；小红点在真 ThinkPad 的位置（stickPoint：G|H 的缝、G / H 键帽下沿）、空格那一排让给三个鼠标键的空位（stickHole：以红点为中线对称，规则同豆花布局的 stickHole，空格切成左右两段）、碰到切口的键（KeyboardPlan.cuts）和字挪多少（labelShift）、角上小字放哪个角；键帽上画哪几个字（glyphs：字母一个、数字标点上下两层、第三层角上小字，锁着 Shift / 第三层时不会出的压暗，死键；第三层 = Mac 的任一 Option、Windows 有 AltGr 的布局的右 Alt，layer）、放大提示（preview）、主次键帽（functionKey）、L 形回车的形状（shape）、几个键帽（capBoxes：空格被空位切开时两个）；Caps 的显示（2026-11-01）：字母类的键 Windows 模式 Shift ⊕ Caps、Mac 模式 Shift ∨ Caps（upper），glyphs / preview 带 caps，active 看 锁住 \| 快锁了 和 Caps 键（0x39） |
-| `src/dev/douhua/Boards.java` | 键盘页用哪块（豆花布局 / 实体键盘，kbd_board）和实体键盘自己的设置（kbx_lang / shape / size / mode / pointer、大小位置 kbx_<尺寸>_<指点>_<land|port>_*），纯 Java（离线测，BoardsTest），跑在 Store 接口上（App 里是 Prefs.store）；一个 kb_ 开头的键都不读不写；形状按布局清单核（德语只有 ISO，存的值不动） |
-| `src/dev/douhua/FixedData.java` | 实体键盘的数据从 res/raw 读进来（进程里读一次缓存），拼布局（右 Alt 写不写 AltGr 看字表有没有第三层、小键盘小数点看清单；字表读不出来 / 没有这一段时布局是 null，键盘页照样显示豆花布局）、布局在界面语言里叫什么、开源许可页的文本 |
-| `src/dev/douhua/FixedKeyboardView.java` | 实体键盘的面板（第 1B 批）：一个 View 自己画全部键帽（L 形回车、两三层字、死键强调色、左右八个修饰键高亮、被小红点切到的键用 Style.CutCap 画），自己收触摸（服务没接管时，照 FixedPanel.keyAt）；规则全在 FixedPanel；高亮看 锁住 \| 快锁了 和 Caps、字看 锁住 \| 按着 和 Caps（setKeyState → FixedPanel.active / glyphs / preview 带 caps），自己收的手指被取消 / 换键盘时发 KEY_CANCEL；Esc 和 F1 中间的 ⋯ 槽（KeyRows.menuKey）画成强调色的底 + 反差字、不描边（同豆花布局的 ⋯ 键，2026-11-01） |
+| `src/dev/douhua/FixedLayout.java` | 实体键盘的几何（第 1B 批），纯 Java（离线测，FixedLayoutTest）：形状（ANSI / ISO）× 尺寸（笔记本 / TKL / 全尺寸）× 模式（Windows / Mac）拼一块，单位 u（F 行 + 隔 0.25u + 主键区五行，6.25u 高——笔记本 6.5，最下一排 1.25 行；主键区 15u、编辑区、小键盘；行表、总高、区块数是实例的：rowTop / rowBottom / height / clusterCount）；笔记本（2026-11-01，照 ThinkPad：F 行 Esc · F1–F12 · Home End Ins Del，第 1–4 行同 TKL，最下一排 Ctrl ·（⋯ 槽）· Super · Alt · 空格 5u · AltGr · PrtSc · Ctrl · 方向键两层——Key.y0 / y1 竖向子区间，segTop / segBottom；Mac 模式 PrtSc 那格是 🌐、F 行 Ins 那格是声明的空格子 blanks，不在任何范围里）；两份键表（keys / ⋯ 在槽里的那份，笔记本的左 Ctrl 换成窄的）；逐级缩的几级（ladder：全尺寸 → TKL → 笔记本，只缩不涨）；每个键的用法码（Windows 照 PC 惯例；Mac 底行 ⌃ ⌥ ⌘ 空格 ⌘ ⌥ 🌐 ⌃、F13–F15、没有 Ins / Menu，ISO 的 1 左边发 0x64、Z 左边发 0x35 照真苹果 ISO 键盘）、L 形回车（x2 / w2）、两行高的小键盘 + / Enter；⋯ 槽（menu：TKL / 全尺寸在 Esc 和 F1 之间，笔记本在左下角 Ctrl 右边）；键盘范围每区块每行一块（ranges：伸到相邻行 / 区块空隙的中线、外圈到面板边，没有键的格子不在任何一块里；只占一截的键——笔记本方向键——每层单独一块，addSegments）；小红点那条竖线（stickU：G 的右边 = B 的中线）；Windows 模式右 Alt 是不是 AltGr（altGr：字表有第三层才是，美式不是；Mac 模式一律假）；照字表拼（forLegends：字表是 null 就不拼、返回 null） |
+| `src/dev/douhua/FixedPanel.java` | 实体键盘摆到像素以后，纯 Java（离线测，FixedLayoutTest）：每个键按行切成几段矩形（segments，相邻键共用边界、四边缩进 gap；竖着按这一块的行表，笔记本的方向键只占上层 / 下层那一截）、范围、报给服务的区域（regions：段在前、范围在后）、面板自己收触摸时哪根手指按哪个键（keyAt：KeyFingers + nearestKey，红点圆、空位是洞）；小红点在真 ThinkPad 的位置（stickPoint：G|H 的缝、G / H 键帽下沿）、空格那一排让给三个鼠标键的空位（stickHole：以红点为中线对称，规则同豆花布局的 stickHole，空格切成左右两段；笔记本多一步：空格最短 0.75 份 LAPTOP_SPACE_MIN，一格 ≥ 32dp 就一定让得出；空格那一排的上沿 spaceRowTop 带布局参数）、碰到切口的键（KeyboardPlan.cuts）和字挪多少（labelShift）、角上小字放哪个角；键帽上画哪几个字（glyphs：字母一个、数字标点上下两层、第三层角上小字，锁着 Shift / 第三层时不会出的压暗，死键；第三层 = Mac 的任一 Option、Windows 有 AltGr 的布局的右 Alt，layer）、放大提示（preview）、主次键帽（functionKey）、L 形回车的形状（shape）、几个键帽（capBoxes：空格被空位切开时两个）；Caps 的显示（2026-11-01）：字母类的键 Windows 模式 Shift ⊕ Caps、Mac 模式 Shift ∨ Caps（upper），glyphs / preview 带 caps，active 看 锁住 \| 快锁了 和 Caps 键（0x39） |
+| `src/dev/douhua/Boards.java` | 键盘页用哪块（豆花布局 / 实体键盘，kbd_board）和实体键盘自己的设置（kbx_lang / shape / size（tkl / full / laptop，逐级缩的起点）/ mode / pointer、大小位置 kbx_<尺寸>_<指点>_<land|port>_*——存取都显式给尺寸：savedRect / setRect / resetRect(尺寸, …)，逐级缩时是显示着的那个；savedRects 一次给三个尺寸存过的那几份），纯 Java（离线测，BoardsTest），跑在 Store 接口上（App 里是 Prefs.store）；一个 kb_ 开头的键都不读不写；形状按布局清单核（德语只有 ISO，存的值不动） |
+| `src/dev/douhua/FixedData.java` | 实体键盘的数据从 res/raw 读进来（进程里读一次缓存），拼逐级缩的几级（ladder：选的尺寸往下每级一块；右 Alt 写不写 AltGr 看字表有没有第三层、小键盘小数点看清单；字表读不出来 / 没有这一段时是空列表，键盘页照样显示豆花布局）、尺寸的短名字（sizeName，⋯ 菜单用）、布局在界面语言里叫什么、开源许可页的文本 |
+| `src/dev/douhua/FixedKeyboardView.java` | 实体键盘的面板（第 1B 批）：逐级缩的几级（setBoards / ladder）、量尺寸时换到哪一级（useLevel：换级先松开自己收的手指）；一个 View 自己画全部键帽（L 形回车、两三层字、死键强调色、左右八个修饰键高亮、被小红点切到的键用 Style.CutCap 画），自己收触摸（服务没接管时，照 FixedPanel.keyAt）；规则全在 FixedPanel；高亮看 锁住 \| 快锁了 和 Caps、字看 锁住 \| 按着 和 Caps（setKeyState → FixedPanel.active / glyphs / preview 带 caps），自己收的手指被取消 / 换键盘时发 KEY_CANCEL；Esc 和 F1 中间的 ⋯ 槽（KeyRows.menuKey）画成强调色的底 + 反差字、不描边（同豆花布局的 ⋯ 键，2026-11-01） |
 | `src/dev/douhua/KeyboardPanel.java` | 外接键盘的键帽、触摸、高亮（键位本身在 KeyRows；第 1B 批起叫"豆花布局"，implements KeyboardFace，切到实体键盘再切回来不销毁），键 id = 用法码 \| 自带修饰键 << 8；自己摆放键帽（ViewGroup，所有键帽是直接子 view，按 KeyRows.place 摆）；报区域时键后面报键盘范围（REGION_KEYBOARD：整块一块，分裂时左右两半各一块）；功能行带不带最右边的 ⋯ 键（setMenuKey，小触控板上没摆出 ⋯ 时带，menuKeyRect 给菜单定位）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键；嵌在键里的小红点圆里、让给三个鼠标键的空位里不算任何键）；三层的全部行交给 KeyboardPlan 算红点多大、空位多宽（layers）；键帽照 KeyRows.capKeys 建（含小红点状态底行的 before / after）；小红点状态（2026-11-01）：底行在中间让出空位、快捷行分得开时也让（setHole(hole, spread)，KeyRows.place 的 hole / spread），红点嵌在键里时碰到切口的键帽沿圆弧画（setStick → Style.keyLook 的 cut）、字竖着挪开（上下内边距，KeyboardPlan.labelShift）；三层、两种布局的键帽各建一次，换层 / 分裂只切显示；键帽文字 / 高亮没变的键不重设；修饰键 / Caps 的样子（2026-11-01，setKeyState：KeyRows.capText 定键帽上的字、KeyRows.lit 定高亮）；合并键的键帽带右上角小字（Style.keyButton 的 corner → CornerKey），按着 0.4 秒放大提示换成角上那个字；自己收触摸时按下发 KEY_DOWN、抬起 KEY_UP、被取消 / 消失 KEY_CANCEL；换层、分裂 / 合拢、⋯ 键、让位、重建底行都走 changeKeys：按 Key 对象（Cap）把手指重新对上（KeyFingers.remap），还显示着的键照旧按着，只有真消失的当取消松开（服务接管时的 releaseTouches 照旧全部取消）；功能行最右的 ⋯ 键画成强调色的底 + 反差字、不带边框（look → Style.menuKeyLook，2026-11-01） |
 | `src/dev/douhua/KeyRows.java` | 键位和排布，纯 Java（离线测，KeyRowsTest）：键（Key）、每行整块 / 分裂时左右两半各是哪些键（Row）、键盘区宽 ≥ 2 × 高（shouldSplit）、每个键摆在哪（place）；分裂时两半中间放触控板（各三分之一宽）或只隔一条缝（leftEnd 的 middle），只隔一条缝时两块键盘范围伸到缝的中线（areaEnd / areaStart）；同一个键两种布局用同一个 Key 对象；功能行两份（topRows：不带 / 带最右边的 ⋯，⋯ 是特殊键 MENU_BUTTON_ID = 303）；哪些键算功能键（functionKey；数字键盘另有 numpadFunctionKey，"-" 在那里算运算符），主题按它分主次上色；一层的全部行（rows / layers，KeyboardPanel 和 KeyboardPlan 共用）；小红点嵌在哪（stickPoint：字母层 g|h、v|b 的缝和 a–l / z–m 两行交界那一点，只有整块）；小红点状态下底行、快捷行让出空位（Row 的 before / after：底行 ?123 [,.] 空格（缩短，STICK_SPACE 1.5 份、最短 STICK_SPACE_MIN 1 份，只有它跟着空位伸缩）│ 空位 │ 空格 ↵；spread：快捷行按个数分到两边 spreadLeft，place 的 spread 为假时照旧铺满；holeUnits / holeTop / holeBottom 给 KeyboardPlan 算空位）；所有布局下会显示的键（capKeys，KeyboardPanel 照它建键帽）；小红点状态底行的两个新键（2026-11-01）：COMMA_PERIOD（Proto.dualKey(0x36, 0x37)，点一下 , 按住 .，Key.corner = "." 右上角小字，占 , 原来的 1 份）、STICK_SPACE_R（右边的空格，另一个键帽、同一个 id，占 . 原来的 1 份；份数没变，空位 / 红点 / 鼠标键全都不变）；键帽上的字 capText（Shift = 锁住 \| 按着、字母连苹果设备 Shift ∨ Caps 别的 Shift ⊕ Caps）、高亮 lit（修饰键左右八个看 锁住 \| 快锁了、Caps 看显示）；哪个键是 ⋯（menuKey：豆花布局的 ⋯ 键、实体键盘的 ⋯ 槽同一个编号，两块面板按它画强调色的 ⋯） |
-| `src/dev/douhua/KeyboardPlan.java` | 键盘界面怎么摆，纯 Java（离线测，KeyboardPlanTest；实体键盘那部分 FixedLayoutTest）：实体键盘（第 1B 批：fixedFits 一格 ≥ 32dp 才显示、fixedDefaultRect 按"行高 ≈ 键宽 × 1.1"的自然比例（守调大小的约束：不比 fixedMinWidth 窄——一格 ≥ 32dp、不比 MIN_HEIGHT 矮）、planFixed：不分裂、触控板同合并、⋯ 在触控板顶上或 Esc–F1 的槽里、小红点在 G / H / B 中间 + 空格那一排的三个鼠标键；红点嵌在键里多大 / 嵌不下放哪和豆花布局共用 placeStickAt）；布局（自动 / 分裂 / 合并）轮换、分不分裂（键太窄不分）、分裂 / 合并时键盘占哪块、触控板放在空得最多的一侧（太小不放）、宽窗口没调过大小时的默认位置（触控板显示且放得下才三分之二宽）；⋯ 菜单的几何（menuTop：⋯ 放触控板顶上正中、padMenuTop：主界面的 ⋯ 放不下也照样放、menuPosition：菜单弹在哪不出屏、menuGrid：项多窗口矮时先压矮再分列、adjustBarTop：调整栏放上还是下、barButtonWidth：调整栏按钮宽度）；分裂时对称调大小的几何（左半"格子"、默认格子、fitSplit 按窗口守约束、dragSplit 拖法和约束）；指点三选一（POINTER_PAD / STICK / NONE，nextPointer）：小红点照真的 ThinkPad 键盘摆（2026-11-01）、固定合并（不管"布局"）——三个鼠标键铺满底行、快捷行在中间让出的空位（stickHole：以红点为中线对称、空格尽量长、三个键各 ≥ 44dp，放不下就空格最短、三个键最窄 32dp；holeKeys 铺法，Plan.hole / keys / middleKey；快捷行分到两边后每个键连缝 ≥ 32dp 才也让位、三个键跨两行，不然只占空格那一排，shortcutsSpread / Plan.spread），红点在 KeyRows.stickPoint（placeStick：嵌在四个键的交界、挨着的键被和红点同心的圆切掉一块，stickRadius 按每层每个键被切掉的面积 cutShare（精确算）、键上的字躲不躲得开 labelShift 定多大，Plan.cut 是切口半径；嵌不下放键盘外面上 / 下 / 旁边），中键窄、左右键宽、中键对着红点（middleKey，三键条也用）；触控板的三键条（cutBar，上沿 / 下沿，主界面也用）、⋯ 放哪（Plan.menuArea / menuMargin；没有触控板时回功能行）；离页面边的距离可以各边不一样（Sizes.edgeL / T / R / B、withEdges，menuTop / menuGrid / menuPosition / adjustBarTop 各有带 {左, 上, 右, 下} 的版本，屏幕边缘留白用） |
+| `src/dev/douhua/KeyboardPlan.java` | 键盘界面怎么摆，纯 Java（离线测，KeyboardPlanTest；实体键盘那部分 FixedLayoutTest）：实体键盘（第 1B 批：fixedFits 一格 ≥ 32dp 才显示、逐级缩挑第一个放得下的 fixedLevel（2026-11-01）、存的位置在窄窗口里撑到一格 32dp 才显示 fitFixedRect（存的不改）、fixedDefaultRect 按"行高 ≈ 键宽 × 1.1"的自然比例（守调大小的约束：不比 fixedMinWidth 窄——一格 ≥ 32dp、不比 MIN_HEIGHT 矮）、planFixed：不分裂、触控板同合并、⋯ 在触控板顶上或这个尺寸的 ⋯ 槽里（Esc–F1 / 笔记本左下角 Ctrl 右边）、小红点在 G / H / B 中间 + 空格那一排的三个鼠标键；红点嵌在键里多大 / 嵌不下放哪和豆花布局共用 placeStickAt）；布局（自动 / 分裂 / 合并）轮换、分不分裂（键太窄不分）、分裂 / 合并时键盘占哪块、触控板放在空得最多的一侧（太小不放）、宽窗口没调过大小时的默认位置（触控板显示且放得下才三分之二宽）；⋯ 菜单的几何（menuTop：⋯ 放触控板顶上正中、padMenuTop：主界面的 ⋯ 放不下也照样放、menuPosition：菜单弹在哪不出屏、menuGrid：项多窗口矮时先压矮再分列、adjustBarTop：调整栏放上还是下、barButtonWidth：调整栏按钮宽度）；分裂时对称调大小的几何（左半"格子"、默认格子、fitSplit 按窗口守约束、dragSplit 拖法和约束）；指点三选一（POINTER_PAD / STICK / NONE，nextPointer）：小红点照真的 ThinkPad 键盘摆（2026-11-01）、固定合并（不管"布局"）——三个鼠标键铺满底行、快捷行在中间让出的空位（stickHole：以红点为中线对称、空格尽量长、三个键各 ≥ 44dp，放不下就空格最短、三个键最窄 32dp；holeKeys 铺法，Plan.hole / keys / middleKey；快捷行分到两边后每个键连缝 ≥ 32dp 才也让位、三个键跨两行，不然只占空格那一排，shortcutsSpread / Plan.spread），红点在 KeyRows.stickPoint（placeStick：嵌在四个键的交界、挨着的键被和红点同心的圆切掉一块，stickRadius 按每层每个键被切掉的面积 cutShare（精确算）、键上的字躲不躲得开 labelShift 定多大，Plan.cut 是切口半径；嵌不下放键盘外面上 / 下 / 旁边），中键窄、左右键宽、中键对着红点（middleKey，三键条也用）；触控板的三键条（cutBar，上沿 / 下沿，主界面也用）、⋯ 放哪（Plan.menuArea / menuMargin；没有触控板时回功能行）；离页面边的距离可以各边不一样（Sizes.edgeL / T / R / B、withEdges，menuTop / menuGrid / menuPosition / adjustBarTop 各有带 {左, 上, 右, 下} 的版本，屏幕边缘留白用） |
 | `src/dev/douhua/KeyFingers.java` | 键盘面板自己收触摸时每根手指按的是哪个键（按 pointer id 记，抬起只松自己那个）；按下定键 = 包含的键优先、缝里交给 TouchRouter.nearestKey（几块范围时只在落进的那一块里分），落在洞（嵌在键里的小红点——REGION_STICK 按内切圆认；小红点状态下让给三个鼠标键的空位）里不算任何键，纯 Java（离线测）；remap（2026-11-01）：面板换键时按新下标对上还显示着的键、返回消失了的（调用方当取消松开） |
-| `src/dev/douhua/KeyboardScreen.java` | 键盘界面：可调大小位置的键盘 + 小触控板占满整页（没有工具栏那一行）；两块键盘面板（豆花布局 / 实体键盘，第 1B 批）都在、同一时刻只显示一块（face：选了实体键盘、这个窗口放得下——KeyboardPlan.fixedFits——才显示它，不然暂时显示豆花布局，换了 post Listener.onKeyboardFaceChanged），实体键盘照 KeyboardPlan.planFixed 摆、自己记指点和大小位置（setFixedWanted / setFixedPointer / setFixedRect，调整模式拖的是它那份）；按键放大提示按 view 或按面板里的矩形定位（PreviewHost.showKeyPreviewAt）；⋯（触控板顶上正中、不带框）、调整模式的"完成 / 恢复默认"栏由它摆（视图由 MainActivity 建）；菜单本身在 MenuLayer，贴着这里的 ⋯ 弹出（menuAnchor）；每次量尺寸按 KeyboardPlan 摆；调整模式由 App 自己收触摸，分裂时两半对称着拖（pickSplitHandle，按右半时左右位移镜像）；指点选小红点时摆红点（TrackPointView，嵌在键里时只画红帽，键自己切口）和铺满底行、快捷行空位的三个鼠标键（MouseKeys 的铺满模式；快捷行太挤不让位时只铺底行那段），量键盘之前把空位和红点告诉面板（KeyboardPanel.setHole / setStick）；触控板开着三键条时从上沿 / 下沿切一条（同一组 MouseKeys）；屏幕边缘留白时整屏被往里收，离各边的 20dp 少留收进去的那么多（setEdgeInsets） |
+| `src/dev/douhua/KeyboardScreen.java` | 键盘界面：可调大小位置的键盘 + 小触控板占满整页（没有工具栏那一行）；两块键盘面板（豆花布局 / 实体键盘，第 1B 批）都在、同一时刻只显示一块（face：选了实体键盘就逐级缩挑一级——全尺寸 → TKL → 笔记本、一格 ≥ 32dp 的第一级，状态在 FixedSizing——笔记本也放不下才暂时显示豆花布局，显示 / 换级时 post Listener.onKeyboardFaceChanged），实体键盘照 KeyboardPlan.planFixed 摆、自己记指点和大小位置（setFixedBoards / setFixedWanted / setFixedPointer / setFixedRects（各个尺寸那几份）、fixedLevelNow 给菜单写字、resetFixedRect；调整模式拖的是显示着的那个尺寸那份，onKeyboardRectChanged 带尺寸）；按键放大提示按 view 或按面板里的矩形定位（PreviewHost.showKeyPreviewAt）；⋯（触控板顶上正中、不带框）、调整模式的"完成 / 恢复默认"栏由它摆（视图由 MainActivity 建）；菜单本身在 MenuLayer，贴着这里的 ⋯ 弹出（menuAnchor）；每次量尺寸按 KeyboardPlan 摆；调整模式由 App 自己收触摸，分裂时两半对称着拖（pickSplitHandle，按右半时左右位移镜像）；指点选小红点时摆红点（TrackPointView，嵌在键里时只画红帽，键自己切口）和铺满底行、快捷行空位的三个鼠标键（MouseKeys 的铺满模式；快捷行太挤不让位时只铺底行那段），量键盘之前把空位和红点告诉面板（KeyboardPanel.setHole / setStick）；触控板开着三键条时从上沿 / 下沿切一条（同一组 MouseKeys）；屏幕边缘留白时整屏被往里收，离各边的 20dp 少留收进去的那么多（setEdgeInsets） |
 | `src/dev/douhua/MenuLayer.java` | ⋯ 菜单，主界面和键盘屏共用一份（根视图最上面一层、铺满整页；屏幕边缘留白时和别的页一样往里收，离各边少留，setEdgeInsets）：盖住整页的"点外面" + 菜单底板（项是它的子 view，只排显示着的，KeyboardPlan.menuGrid 排、先排满第一列）；贴着当前那一屏的 ⋯ 弹出（Host.menuAnchor + KeyboardPlan.menuPosition）；⋯ 那一支单独重新布局时由 MainActivity 在根视图的布局监听里再 place 一次 |
 | `src/dev/douhua/Style.java` | 共用样式（边框、按下 / 高亮、触控板角上的小按钮——small 的 onImage：触控板上有背景图时平时垫不透明的触控板底色）；颜色从当前主题取（setTheme，MainActivity 设），设置页预览用带 Theme 参数的那几个；键帽（整屏键盘、数字键盘）走 keyButton / keyLook（边框跟"按键边框"开关；缩到最小字号还放不下的键名末尾省略"…"），其它按钮走 button / look（一直有边框）；sp 换像素（Style.sp，跟着系统字体大小）；键帽分主次：keyLook / look 带 fn（功能键的颜色；高亮时照旧是普通键帽底色 + 强调色的边）；被小红点切掉一块的键帽（keyLook 的 cut → CutCap：圆角矩形减去圆，底色、边框沿着圆弧走，颜色同别的键帽）；右上角带小字的键帽（CornerKey，keyButton(c, sp, corner)：合并键的 "."，字号 min(10sp, 键高 × 0.22)、颜色同字色）；⋯ 用强调色（2026-11-01）：键帽形状的 ⋯ 走 menuKeyLook（强调色底 menuKey / 按下 menuKeyPressed、反差字 menuKeyText、不画边框、不跟"按键边框"开关，被切时也走 CutCap），不带框的 ⋯（触控板顶上、手柄页顶上）走 bare（字 menuDots，按着时垫 pressed） |
 | `src/dev/douhua/Theme.java` | 主界面的十八套配色（设置 → 外观；ALL 先深色后浅色）：每套写几个底子、其余按规则推（灰字取"刚够 4.5:1"的、强调色当字用不够就推亮 / 推暗）；功能键的槽位 fnKey / fnText / fnPressed（底色掺强调色，到和键帽、页面色差 ≥ 8 为止，fnTint）；纯黑每个槽位照以前的常量写死（功能键和普通键一样）；对比度、CIE76 色差计算，纯 Java（离线测 ThemeTest）；小红点的红（stick：ThinkPad 红推到对页面、触控板底色都 ≥ 3:1，stickRed）；⋯ 的四个槽位（2026-11-01）：menuKey（强调色推到对页面、键帽、功能键都 ≥ 3:1，reachAll：一次看几个底、方向看第一个）、menuKeyText（页面色 / 正文色里对它反差大的那个，再推到 ≥ 4.5:1）、menuKeyPressed（底往字掺一成半）、menuDots（强调色推到对触控板底、页面 ≥ 4.5:1、对 pressed ≥ 3:1）；纯黑这四个写死成 focus 的蓝（#8AB4F8 底、黑字、按下 #7599D3、不带框的蓝字） |
-| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 键盘 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），七页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、轻点 = 左键、负惯性、三键条开关和上沿 / 下沿）；"键盘"页（第 1B 批，keyboardSection）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘的语言 / 形状 / 尺寸（写键数）/ Windows · Mac 模式、主机那边要设成同一种布局的说明（桌面模式下一个按钮打开手机的实体键盘设置）、豆花布局的快捷行（从"按钮与按键"挪过来）；"通用"页最下面"开源许可"（licenses：res/raw/licenses.txt 的全文）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它） |
+| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 键盘 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），七页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、轻点 = 左键、负惯性、三键条开关和上沿 / 下沿）；"键盘"页（第 1B 批，keyboardSection）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘的语言 / 形状 / 尺寸（笔记本 / TKL / 全尺寸，写键数，下面一行写逐级缩的规则）/ Windows · Mac 模式、主机那边要设成同一种布局的说明（桌面模式下一个按钮打开手机的实体键盘设置）、豆花布局的快捷行（从"按钮与按键"挪过来）；"通用"页最下面"开源许可"（licenses：res/raw/licenses.txt 的全文）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它） |
 | `src/dev/douhua/ThemeGrid.java` | 设置 → 外观的主题色块网格（一组深色或浅色）：每格一小块样子（普通键 A + 功能键 ⇧ + 一小块触控板）+ 名字，每行几格按宽度定（每格 ≥ 96dp），选中框用设置页自己的蓝 |
 | `src/dev/douhua/ButtonStrip.java` | 自定义按键（主界面左边一列，原来的左侧按钮条；设置里打开，默认关），屏幕矮时自动分列 |
 | `src/dev/douhua/PadArea.java` | 触控板 + 数字键盘的排布 |
@@ -272,7 +273,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   中键收尾（releaseAll）和被取消的抬起（TouchRouter.up 的 canceled：手掌 / 丢数据、TouchReader 收尾补报的、App 带 FLAG_CANCELED 的）都不补中键单击；
   三键条 / 键盘里（底行、快捷行空位）的左键和"左键"按钮、CMD_HOLD_LEFT 共用 TouchRouter.leftHolds 一个计数。
 - **键盘上会显示的每个键都有键帽**（实体键盘同样：每个显示的键有外框、有字，出字的键在字表里有这一行，锁着哪种修饰键都有字——FixedLayoutTest.caps 按
-  布局 × 形状 × 尺寸 × 模式 × ⋯ × 让位 × 窗口扫；FixedPanel 的数组跟着键一起换、下标对得上，换键盘后还没重新量时也不越界）：KeyboardPanel 只按 KeyRows.capKeys 建键帽（showLayer 按 KeyRows.keys 取，取到没键帽的键就闪退），
+  布局 × 形状 × 尺寸 × 模式 × ⋯ × 让位 × 窗口扫，笔记本另扫一遍；FixedPanel 的数组跟着键一起换、下标对得上，换键盘、逐级缩换级后还没重新量时也不越界）：KeyboardPanel 只按 KeyRows.capKeys 建键帽（showLayer 按 KeyRows.keys 取，取到没键帽的键就闪退），
   加新的行、新的布局变体（像小红点状态底行的 before / after）只改 KeyRows，两处规则在一起；KeyRowsTest.capKeysCover 锁住"keys() 给的每个键都在 capKeys 里"
   （2026-11-01 的合并键 COMMA_PERIOD、右空格 STICK_SPACE_R 在 before / after 里，同样锁住）。
 - **修饰键只在"单独按住 0.4–1 秒"时锁**（2026-11-01，KeyHolds）：按下那一刻已有别的键的手指或鼠标键按着、按着期间按了别的键（含界面发来的 key()、Caps、合并键、别的修饰键）
@@ -293,10 +294,21 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **切换键盘不写任何 kb_ 开头的键，豆花布局的面板对象不销毁**（第 1B 批，用户 2026-11-01："豆花布局整个保留"）：⋯ 菜单 / 设置页换键盘只写 kbd_board，
   实体键盘的设置全在 kbd_ / kbx_ 下（Boards，BoardsTest 用随机序列锁住"kb_ 开头的键集合和每个值都不变、只写了 kbd_ / kbx_"）；
   KeyboardPanel 一直在，层（字母 / ?123 / Fn）、键帽缓存、锁住的修饰键照旧（两块面板都收 setKeyState）。实体键盘自己记指点（kbx_pointer）、大小位置
-  （尺寸 × 指点 × 横竖屏），显示实体键盘时 ⋯ 菜单"指点"、调整模式、恢复默认改的是它那份；窗口太窄暂时显示豆花布局时改的是豆花布局的（显示着的那块）。
+  （尺寸 × 指点 × 横竖屏；逐级缩时取、存、恢复默认的都是**显示着的**那个尺寸那份，FixedSizing），显示实体键盘时 ⋯ 菜单"指点"、调整模式、恢复默认改的是它那份；
+  连笔记本都放不下、暂时显示豆花布局时改的是豆花布局的（显示着的那块）。
 - **实体键盘的区域照豆花布局的规矩报**：只报显示着的那块（KeyboardScreen.face）；键段在前、键盘范围在后，范围每区块每行一块（FixedLayout.ranges，
   每段恰好落在一块同行同区块的范围里，范围不重叠，一行里没有键的格子——方向键上面那几格、↑ 两边、Mac 模式 Ins 那格——不在任何范围里）；
-  分流和面板自己收触摸逐点一致（FixedLayoutTest.routing 扫两百多万个点）。跨两行的键按行切成同 id 的几段（ISO 回车、小键盘 + / Enter），画成一个形状。
+  分流和面板自己收触摸逐点一致（FixedLayoutTest.routing 扫两百多万个点，笔记本另扫九十多万个）。跨两行的键按行切成同 id 的几段（ISO 回车、小键盘 + / Enter），画成一个形状。
+  笔记本（2026-11-01）：最下一排是一行，方向键在这一行里竖着分上下两层（Key.y0 / y1，不拆成两行）；**"每区块每行一块"的唯一例外**：这一行的范围是三块——
+  方向键以外一块（0–12.1875u）、方向键上层一块、下层一块（12.1875u 到面板边，在 5.875u 一分为二；FixedLayout.ranges 把竖向子区间一样的键单独成组）。
+  和整行高的键放在一块里的话，nearestKey 先比竖向，右 Ctrl 竖向距离是 0，两层之间那条缝全分给右 Ctrl（审查发现，按住还会把 Ctrl 锁住）；
+  现在缝的上半给上层、下半给下层、右 Ctrl 旁的竖缝按中线分（FixedLayoutTest.laptopArrowSeam 用真 TouchRouter 和 keyAt 扫，一个点都不给右 Ctrl）。
+  以后再有只占一截的键，照这条单独成组，别和整行高的键并进一块。Mac 模式笔记本 F 行的 Ins 那格只有 0.8125u，
+  照"一段之内 ≤ 1.01u 的小缝并进范围"会被并进去、右半格分给 Del，所以声明成空格子（FixedLayout.blanks），不在任何范围里（FixedLayoutTest.laptopRanges / laptopPins 锁住）。
+  逐级缩换级时只报换过去的那一块（KeyboardScreen 换级后 post onKeyboardFaceChanged → pushLayout）。
+- **实体键盘的特殊键（⋯、🌐，REGION_BUTTON）只有一段**（2026-11-01）：TouchRouter.up 只在 `contains || Region.same(hit)` 时报 BUTTON_TAP，同一个键的几段坐标不同，
+  跨段抬起就成了 BUTTON_UP（MainActivity.onButton 对 ⋯ / 🌐 只认 TAP），而面板自己收触摸那条路照样算点击，三条路不一样。以后的新尺寸、新排法不能把按钮切成几段
+  （笔记本最下一排因此是一行；FixedLayoutTest.specialOneSegment 扫三种尺寸 × 形状 × 模式 × ⋯ × 让位 × 窗口、buttonTap 用真 TouchRouter 核对挪到段边抬起照样是点击）。
 - **修饰键掩码是 8 位，右边四个和左边四个一样能锁住**（实体键盘上右 Ctrl / 右 Shift / AltGr·右 Alt·右 ⌥ / 右 Super·右 ⌘ 都是单独的键，0xE4–0xE7，掩码 0x10–0x80；
   豆花布局只有左边四个）：只看低四位的地方就会漏一个一直按着的键。界面替服务解开锁住的修饰键一律发 CMD_UNLATCH（Link.unlatch → TouchRouter.unlatch → KeyHolds.unlatch，清全部 8 位锁定、按着的不动；协议 20 起，不再逐个点一下——新规则下点一下没锁着的修饰键就是给主机一次真单点，Windows 单点 Super 弹开始菜单）；"Ctrl 按着"一律走 Hid.ctrl（左右都算）；
   键帽的第三层只认 Mac 的任一 Option、Windows 有 AltGr 的布局的右 Alt（FixedPanel.layer）。加新的"看修饰键"的地方照这条（HidTest、TouchRouterTest、FixedLayoutTest 锁住）。
@@ -852,6 +864,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     触控板同合并时的四边挑大的、可以切三键条；⋯ 在触控板顶上正中，放不下就是 ⋯ 槽里的键（同一个 MENU_BUTTON_ID）。调大小同合并的拖法，最窄到一格还有 32dp。
   - **窗口太窄（一格 < 32dp，所有手机竖屏、内屏左右分屏的一半）这个窗口里暂时显示豆花布局**（方案推荐、用户照推荐定）：KeyboardPlan.fixedFits 只看整页宽，
     选的还是实体键盘，⋯ 菜单写"键盘：实体（这里太窄，暂用豆花儿）"，菜单里的"布局""指点"是豆花布局的；横过来 / 拖宽了量尺寸时自动换回（KeyboardScreen.onMeasure 换面板、post onKeyboardFaceChanged）。
+    （2026-11-01 改成逐级缩：一格不到 32dp 先一级一级换小——全尺寸 → TKL → 笔记本，笔记本也放不下才暂用豆花布局，见下一条"实体键盘笔记本尺寸 + 逐级缩"。）
   - 键帽（FixedKeyboardView 整块自己画，FixedPanel.glyphs）：照实体键帽（用户照方案推荐定）——字母一个（跟锁住的 Shift 换大小写）、数字标点上 Shift 下普通、第三层右下角小字
     （被小红点切到的键挪到离切口最远的角）、死键用强调色（activeText）；锁着 Shift / 第三层时会出的那个字照常、别的压暗（四成）。修饰键左右八个都高亮；第三层在 Mac 模式是任一 Option、
     Windows 模式只认右 Alt。私用区的字（Mac 美式 Option+Shift+K、德语 Option+Shift++ 的苹果标）不画。放大提示照锁着的修饰键会出的字，功能键、修饰键、方向键、小键盘不放大。
@@ -884,9 +897,53 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     ④ 又宽又矮的窗口（高约 220dp 以下，比如 780 × 170dp 的弹出式小窗）按自然比例摆，一格只有约 25dp（fixedFits 只看整页宽，照样显示实体键盘），调大小时第一下还会跳一截
     （拖边的最窄 = 一格 32dp，比默认还宽）。改成默认位置守调大小的约束（KeyboardPlan.fixedMinWidth，KeyboardScreen.minWidth 也调它，一份规则）：不比"一格 32dp、至少 0.4 宽"窄，
     这种窗口里行比键宽矮（窗口就这么高）；fixedFits 没加高度的门槛——退回豆花布局的话七行更矮。顺带同一类：又窄又高的窗口（平板竖屏 800 × 1280 全尺寸）按自然比例不到 MIN_HEIGHT（0.25）高，
-    拖上边第一下也会跳，默认高度改成至少 MIN_HEIGHT。存过的大小位置不动（用户自己调的，窗口变了照旧可能不满足，同豆花布局）。FixedLayoutTest.defaultsKeepDragLimits 扫约 12 万种窗口锁住。
+    拖上边第一下也会跳，默认高度改成至少 MIN_HEIGHT。存过的大小位置不动（用户自己调的，窗口变了照旧可能不满足，同豆花布局；2026-11-01 起显示时撑到一格 32dp、存的仍不改，
+    见"实体键盘笔记本尺寸 + 逐级缩"）。FixedLayoutTest.defaultsKeepDragLimits 扫约 12 万种窗口锁住。
     ⑤ Windows 模式美式（没有第三层，右 Alt 写 Alt）锁住右 Alt 时，键帽照样当 AltGr 换到第三层，整块键盘的字全压暗（锁左 Alt 什么都不变）。改成第三层只认 Mac 的任一 Option、
     Windows 有 AltGr 的布局的右 Alt（FixedLayout.altGr，FixedPanel.layer）；美式锁右 Alt 和锁左 Alt 一样不换层、放大提示照普通层。FixedLayoutTest 原来把"锁右 Alt 字母压暗"写成了期望值，改了。
+- **实体键盘笔记本尺寸 + 逐级缩**（2026-11-01，用户："我觉得你就不要去帮用户判断他现在什么屏幕状态、用什么键盘了，你就直接让我可以设置就完事儿了……
+  考虑在没有 Insert 那些键的情况下，把方向键也得塞进来，就是有点类似于笔记本键盘那种……你设定一个最小的键帽的大小……只要小于这个，你就缩那个键盘的阵列。
+  缩完了还不放不进去，你就再缩；实在都放不进去，你就换成豆花"；协调者的方案 design-laptop 经过一轮挑毛病定稿，第 10 节三条由协调者定）。只改 App，不改协议、不改服务、
+  不改 TouchRouter / KeyFingers / Hid。
+  - **笔记本尺寸**（FixedLayout.LAPTOP）照 ThinkPad 排，尺寸从联想 TrackPoint Keyboard II 用户指南的整机插图上量（那块外接键盘就是 ThinkPad 笔记本的排法；X1 Carbon / T14 实物没拿到图）：
+    15u 宽（= 主键区）、一个区块；F 行 Esc 1.125 · F1–F12 各 0.8125（四个一组、组间 0.1875）· Home End Ins 各 0.8125 · Del 1.125，照 TKL 1 行高（真机约 0.7 个键高，F 键本来就窄、再矮太难按）；
+    第 1–4 行和 TKL 的主键区一模一样；最下一排 Ctrl ·（⋯ 槽）· Super · Alt · 空格 5u（正好以红点 6.75u 为中线）· AltGr / Alt · PrtSc · Ctrl 0.9375，右下角方向键 3 × 0.9375u 分上下两层
+    （上 PgUp ↑ PgDn、下 ← ↓ →，各 0.625 行），整排加高到 1.25 行（总高 6.5u）。键数 Windows 83 / 84、Mac 82 / 83（真 ThinkPad 美式 84 = 83 + Fn）。
+    所有坐标是 1/16u 的整数倍（浮点精确，摆到像素后相邻键一定共用边界）。
+    - **右 Shift 不缩短、方向键在最下一排右边分两层**（协调者定、照方案）：真 ThinkPad 的右 Shift 是满的 2.75u，Z 那一行（左 Shift 2.25 + 10 个键 = 12.25u）也挤不下三个整键；
+      真机下层往下伸出机身，这里改成整排加高。**最下一排是一行**，只有方向键带竖向子区间（Key.y0 / y1）：拆成两行的话 ⋯ / 🌐 会变成上下两段，跨段抬起不算点击（见不变量"特殊键只有一段"）。
+      **范围和方案不一样**（审查后改的）：方案 §2.6 写最下一排一块范围、"方向键上下层之间的缝 nearestKey 先比竖向，给近的那层"——不成立：整行高的右 Ctrl、空格竖向距离是 0，
+      两层的方向键都大于 0，缝全分给最近的右 Ctrl（审查者扫过：缝里约四分之三的点给 0xE4，其余给上层，下层一个没有；两条触摸路径一致地错，routing 查不出）。
+      现在方向键两层各报一块范围（12.1875u 到面板边、在 5.875u 分开），其余的键一块；只改范围，键段、⋯ / 🌐 只有一段都不变，TouchRouter 没动。
+    - 左下角是 Ctrl、第二格是 ⋯ 槽（真机这格是 Fn，这批没有 Fn 层）：小触控板上摆出了 ⋯ 时左 Ctrl 伸过去占满 2.25u，摆不出（小红点、指点关、触控板放不下）时那 1u 是 ⋯ 键
+      （FixedLayout 存两份键表，keys(true) 是左 Ctrl 1.25u + ⋯ 的那份）。Ctrl 在角上：逐级缩时左手小指的位置和 TKL / 全尺寸一样；角上最容易被拿手机的手碰到，碰到 Ctrl 不会弹菜单。
+      ⋯ 不放 F 行最右（总方案说 75% 尺寸用那格）：那里是 Del，F 行已经 17 个键。
+    - Mac 模式位置不变：⌃ ·（⋯）· ⌥ · ⌘ · 空格 · ⌘ · 🌐 · ⌃（PrtSc 那格照 1B 的"Menu 位 → 🌐"，不用"PrtSc → F13"；ThinkPad 没有右 Super，Mac 也就没有右 ⌥，左 ⌥ 照样锁第三层）；
+      F 行 Ins 那格空着、声明成空格子（不在任何范围里，见不变量）。
+    - 比 TKL 少 ScrLk、Pause、右 Super、Menu（Windows 模式），真机靠 Fn 组合键出，第 3 批做 Fn 层时再说，设置页不另外写。
+  - **逐级缩**（KeyboardPlan.fixedLevel）：设置里选的尺寸是起点（FixedLayout.ladder：选全尺寸 = [全尺寸, TKL, 笔记本]，选 TKL = [TKL, 笔记本]，选笔记本 = [笔记本]，只缩不涨），
+    看整页宽（已扣掉屏幕边缘留白，同 1B），第一个一格（1u，字母键连缝）≥ 32dp 的就是它；笔记本也放不下才暂用豆花布局。全尺寸要 ≥ 720dp、TKL ≥ 584、笔记本 ≥ 480。
+    纯按当前宽度、不做回差（换尺寸不改变页宽，不会来回跳；回差 = 同一个宽度看历史显示不同的东西，违背确定性）。用整页宽、不用调过的键盘宽：用户拖窄是他的事，
+    拖窄另有 fixedMinWidth 拦着，不然拖边时尺寸跟着换、存的位置也跟着换成另一份。⋯ 菜单写实际显示的是哪种（缩了级："键盘：实体（德语 · Mac；全尺寸放不下，暂用 TKL）"，kbd_menu_stepped），
+    设置 → 键盘 → 尺寸三项从小到大（笔记本 / TKL / 全尺寸，键数现算），下面一行写这条规则（kbd_size_note），kbd_board_note 改成"连笔记本尺寸都放不下时……"。
+    - **门槛量 1u**（协调者定、照方案）：笔记本的 F 键（0.8125u）、方向键（0.9375u 宽、0.625 行高）在门槛上比 32dp 小（页宽 480 时 F 键约 26dp 宽、方向键约 30 × 22dp，看得见的再小 4dp）。
+      按"最小的键帽 ≥ 32dp"算的话笔记本要页宽 ≥ 591dp，可 TKL 584 就放得下，逐级缩永远轮不到笔记本。Fold 外屏竖屏（约 459dp）、内屏左右分屏的一半（约 452dp）连笔记本也放不下，照旧豆花布局。
+    - 按 Fold 8 估（420dpi、留白左右各 8dp，没核）：外屏横屏 / 内屏横屏照选的全尺寸；内屏竖屏（约 688dp）选全尺寸时显示 TKL（以前是豆花布局）；480–583dp 的小窗 / 不对半的分屏是笔记本。
+      笔记本更多是主动选：同一个窗口里键更大（内屏横屏一格约 61dp，TKL 50）。
+  - **大小位置按显示着的那个尺寸取、存**（Boards 本来按 尺寸 × 指点 × 横竖屏 存）：缩成笔记本时用 kbx_laptop_…，在缩出来的笔记本上调大小也存进它（存的是 0–1 比例，TKL 调出来的比例套到笔记本上意思不同）。
+    Boards 的存取改成显式给尺寸（不带尺寸的旧版本删了，免得拿"选的尺寸"去存"显示的尺寸"）、savedRects 一次给三份。
+    显示时存的那份宽度不够一格 32dp（KeyboardPlan.fitFixedRect）就按原来的中线撑到刚好够、挪进 [0, 1]，高不动，**存的那份不改**（同分裂的 fitSplit）：缩级正好发生在窄窗口里，
+    比如在宽窗口里把笔记本拖到六成宽，到窄窗口里缩成笔记本时一格只剩二十几 dp。这条对 TKL / 全尺寸同样生效（1B 决策里"存过的大小位置不动"那句被它取代，只在显示时撑）。
+  - 状态全收进纯 Java 的 **FixedSizing**（离线测；1B 和小红点都在界面类里漏过必闪退的空指针）：显示哪一级、用哪份、调大小从显示着的（撑过的）那份开始拖、没拖动就换回、
+    拖了存进显示着的那个尺寸；拖到一半换了级（转屏、拖分隔条）/ 换了存的那几份 / 换了键盘 / 恢复默认，这一下作废、什么都不存（KeyboardScreen 同时清 handle，之后的移动不再改）。
+    换级时面板自己收的手指先松开（FixedKeyboardView.useLevel → dropTouches，KEY_CANCEL 不算点击）；服务接管 / 本地分流那边 TouchRouter 按手指记着按下时的区域，抬起照旧松开原来的键。
+  - **笔记本 + 小红点一定有三个鼠标键**（协调者定，取方案第 10 节第 3 条的另一种：用户单手用小红点时离不开这三个键）：照 TKL 的规则（空格最短 1 份）面板不到约 540dp 宽时让不出三个 32dp 的键。
+    **和方案说的不完全一样**：方案写的是"把笔记本的空格最短放宽到 0.75 份"，照字面会让 540–720dp 宽时也先缩空格（到 0.75 份）保住三个 44dp 的键，和 TKL / 豆花布局的先后
+    （三个键 ≥ 44 > 空格 ≥ 1 份 > 三个键 ≥ 32）不一样；做成在 TKL 的规则后面加一步（FixedPanel.stickHole，LAPTOP_SPACE_MIN）：前面几步都让不出时，三个键各 32dp、空格缩到刚好放得下、最短 0.75 份。
+    结果：面板 ≥ 720dp 三个键各 ≥ 44（同 TKL）；540–720 空格 1 份、键 32–44（同 TKL）；480–540 键各 32、空格 0.75–1 份；键宽、空格随宽度连续变。笔记本的空格以红点为中线，空位两边的空格一样长。
+    FixedLayoutTest 锁住"笔记本 + 小红点 + 一格 ≥ 32dp ⇒ 有三个鼠标键、中键正对红点"（页宽 480–2600 × 高 × 默认 / 随机存过的位置约 2.5 万种）。
+    只保证三个鼠标键：红点在约 480–600dp 宽、≤ 300dp 高的窗口里嵌不进键（键太小）、外面也没地方，就没有红点（TKL 在 584–700 宽的矮窗口里一样，1B 就是这样）。
+  - 没做：Fn 层（ScrLk / Pause / 右 Super / Menu 按不到）；打字测试工具不认几块范围 / 竖向子区间，笔记本同样分析不了。
 - **主题（外观）**（2026-10-30，用户：键盘和触控板都是纯黑底 + 暗灰边框，"难以分辨"，要像 Gboard / 三星键盘那样能上色；固定配色"参考再多一点，
   不只是其他键盘的调色，而是比较 match 比较好看的颜色搭配，量不要太大"）。设置页加一节"外观"：预览（一行键 + 一小块触控板，切了马上变）、
   主题九选一、"按键边框"开关（Gboard 同名；开 = 键帽画边框，关 = 只靠键帽底色区分，纯黑 / 高对比的键帽和页面同色，关了就只剩字；
@@ -1441,6 +1498,17 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   G / H 键帽下沿，空位对称、够宽、占空格那一排、中键正对红点、空格两段各 ≥ 1 份，嵌在键里时切到 G、H、B、N 不切、切掉的不超过四分之一、G 的角上小字挪走）；
   红点、三个鼠标键和键的分流逐点核对（同 KeyboardPlanTest.stickRouting））、BoardsTest（默认值、形状跟着布局、大小位置按尺寸 × 指点 × 横竖屏分开、键名不以 kb_ 开头；
   40 轮随机序列各 60 步后 kb_ 开头的键一个没变、只写了 kbd_ / kbx_）。原有的测试一个没改、输出逐字一样（KeyboardPlan 的 placeStick 拆出 placeStickAt、KeyRows.functionKey 扩规则都不影响豆花布局）。
+- 实体键盘笔记本尺寸 + 逐级缩（2026-11-01，`tools/test.sh`，都在 FixedLayoutTest / BoardsTest 里）：1B 的扫描（placement / routing / caps / 默认位置 / 小红点 / 小红点分流）带上尺寸参数，
+  原来那次照旧 TKL / 全尺寸、统计行和改之前逐字一样（拿改之前的输出 diff 过），笔记本另调一次、单独打一行（标"（笔记本）"）。笔记本自己的：键数（Windows 83 / 84、Mac 82 / 83）、
+  有哪些没有哪些、第 1–4 行和 TKL 逐段相等、F 行位置、最下一排上下两层各从 0 铺到 15、左 Ctrl 2.25 / 1.25、⋯ 槽、空格以红点为中线、坐标都是 1/16u、底行顺序和键名、
+  横竖都看的不重叠、范围（Windows 8 块、Mac 9 块：最下一排方向键以外一块、方向键两层各一块，Ins 那格不在任何范围里）、方向键上下层隔 2 × gap、laptopArrowSeam（真 TouchRouter 和 keyAt 扫方向键两层之间的缝、右 Ctrl 旁的竖缝：上半给上层、下半给下层、按列、一个点都不给右 Ctrl，形状 × 模式 × ⋯ × 让位 × 五种窗口；把范围改回整排一块，这一组和范围的检查都报错）、钉死的点（↑ / ↓ / PgUp / ← 各格正中、左下角是 Ctrl、带 ⋯ 时第二格是 ⋯、
+  空格正中竖着没有缝、Mac Ins 格两条路都是什么都没有）；specialOneSegment（三种尺寸的 ⋯ / 🌐 都只有一段）、buttonTap（真 TouchRouter：按下、挪到段边、抬起是 BUTTON_TAP）；
+  levels（fixedLevel 的边界 720 / 719 / 584 / 583 / 480 / 479、只缩不涨、空 ladder，再扫 300–2600 每个宽度：挑的是第一个放得下的）；笔记本默认位置（自然比例按 6.5 行）；
+  laptopStickHole（面板 480–2600 每个宽度都让得出空位、对称、键 ≥ 32、空格 ≥ 0.75 份，720 / 719 的 44dp 边界、545 起空格 ≥ 1 份；TKL 480 照旧让不出；
+  页宽 480–2600 × 高 × 默认 / 随机存过的位置约 2.5 万种 planFixed 都有三个鼠标键、中键正对红点）；fitFixed（撑到一格 32、存的不改、扫一遍）；
+  sizing（FixedSizing：宽度来回变、只点一下换回、拖了存、拖动中换级 / 换存的 / 换键盘作废、恢复默认，6000 步随机序列查"planInput 不是 null 时要么是存的那份要么正在拖、
+  存进的一定是按下时显示的尺寸"）；把 FixedSizing 的三处改坏（换级不作废、没动也存、不从显示着的那份开始拖）跑过，都报错。
+  BoardsTest：认 laptop、三个尺寸各存各的、恢复默认只清给的那个、savedRects 只含存过的、随机序列的尺寸从三个里挑。
   审查后加的：HidTest.modifierHelpers（Hid.ctrl 左右都算、modifierUsages 256 种掩码点完都切回 0——modifierUsages 那几条 2026-11-01 随协议 20 删了，只剩 ctrl / modifierBit）、TouchRouterTest.spinNotWithRightCtrlLatched（锁右 Ctrl 不起惯性、换参数后照样、
   转着时按右 Ctrl 停、连续滚动开着时照旧整格）；把这几处改回去跑过一遍，新加的检查都报错（右 Ctrl 3 项、Hid 1 项、实体键盘 9 项）。
   界面（FixedKeyboardView 画出来的样子、KeyboardScreen 换面板、设置页）离线编不到，没在真机上看过。
@@ -1460,6 +1528,20 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 
 ## 进行中（交接；做完删掉这一节）
 
+- **实体键盘笔记本尺寸 + 逐级缩（2026-11-01 写完，没提交，待真机验证；不改协议、不改服务，只装 App 就行）**：见决策记录。只跑了离线测试（实体键盘几何 7772 项（审查后方向键两层的范围改了，见决策记录）、
+  键盘切换 168 项，1B 原有的统计行逐字不变）和编译，界面一次都没看过。要看：
+  ① 设置 → 键盘 → 尺寸：三项（笔记本 / TKL / 全尺寸）和键数（美式 Windows 83、德语 ISO 84，Mac 各少一个），九种语言放不放得下，下面那行规则字放不放得下。
+  ② 选笔记本（内屏横屏、外屏横屏）：像不像 ThinkPad；F 行 17 个键（Home End Ins Del 的字很小）看不看得清、按不按得准；**方向键两层（各 0.625 行高）好不好按、PgUp 和 ↑ 会不会按串**（最要紧）；按在 ↑ / ↓ 交界那条缝上出的是 ↑ 或 ↓（不是 Ctrl，审查后修的），按住方向键不会把 Ctrl 锁住；
+  最下一排加高到 1.25 行看着别不别扭。
+  ③ ⋯：有小触控板时 ⋯ 在触控板顶上、左 Ctrl 满 2.25u；换成小红点 / 指点关时 Ctrl 右边多出一个 ⋯ 键：轻点、按着在键里挪一挪再松开都能弹菜单（三条路都试）；拿手机时会不会误碰。
+  ④ 选全尺寸：内屏竖屏自动显示 TKL、⋯ 菜单写"全尺寸放不下，暂用 TKL"；转到横屏回到全尺寸；拖分隔条 / 开小窗到 480–583dp 宽时是笔记本；外屏竖屏是豆花布局（预期）。
+  ⑤ 换级时另一根手指正按着键（按着 Shift 转屏、拖分隔条）：三条路都不粘键（桌面模式服务接管；蓝牙服务接管 / 没开服务；桌面模式服务连着没接管）。
+  ⑥ 大小位置：在笔记本上调的不影响 TKL 的；在宽窗口里把笔记本拖窄，到窄窗口缩成笔记本时被撑到一格 32dp、不会小得按不了；调整模式里拖的第一下不跳；只点一下不拖，存的不变；
+  调大小时转屏 / 拖分隔条换了级，不会把位置存进另一个尺寸；"恢复默认"只恢复显示着的那个尺寸。
+  ⑦ 小红点在笔记本上：红点在 G、H、B 中间、切口同 TKL；三个鼠标键在空格正中、两边空格一样长；480–540dp 宽的面板上三个键各约 32dp、空格不到一个键宽，好不好按；
+  480–600dp 宽、很矮的窗口里没有红点（只有三个键，同 TKL 的矮窗口），能不能接受。
+  ⑧ Mac 模式笔记本接 iPad：🌐 切输入法；锁住左 ⌥ 时角上的字亮；F 行 Ins 那格空着、按了什么都不发生。Windows 模式接 Linux：PrtSc、Ins、Del、PgUp / PgDn、Home / End 都对。
+  ⑨ 换级时 ⋯ 菜单开着：菜单的字跟着换、菜单跟着 ⋯ 挪。
 - **各处的 ⋯ 用强调色（2026-11-01 写完，没提交，待真机验证；只改 App 的画法，但和下一条（协议 20）同一批：一起装，装完要重启服务）**：见决策记录。
   只跑了离线测试（主题 1600 项、键盘分行 1552 项、实体键盘几何 5540 项，含只有 ⋯ 走强调色画法）和编译，界面一次都没看过。要看：
   ① 十八套主题（设置 → 外观逐个换）里四处 ⋯ 找不找得到、好不好看：豆花布局功能行最右的 ⋯ 键（触控板关掉、或指点换成小红点 / 关时才出现）、实体键盘 Esc 和 F1 中间的 ⋯ 槽（同样触控板摆不出时）、

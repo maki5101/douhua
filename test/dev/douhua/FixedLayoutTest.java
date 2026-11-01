@@ -3,14 +3,20 @@ package dev.douhua;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 
 /**
  * 实体键盘（第 1B 批）的离线测试：FixedLayout（u 里的几何）、FixedPanel（摆到像素、区域、面板自己收触摸、键帽上的字）、
  * KeyboardPlan.planFixed（默认位置、触控板、⋯、窄窗口退回豆花布局、小红点在真 ThinkPad 的位置 + 切口 + 空格那一排的三个鼠标键）。
  * 每个 形状 × 尺寸 × 模式 都跑；交给真正的 TouchRouter（按面板报区域的顺序）和 KeyFingers 逐点核对（照 KeyRowsTest / KeyboardPlanTest 的做法）。
+ * 笔记本尺寸和逐级缩（2026-11-01，方案 design-laptop §8）：1B 的扫描带上尺寸参数，原来那次照旧传 TKL / 全尺寸、打印的统计行逐字不变，
+ * 笔记本另调一次、单独打一行；外加笔记本自己的几何、范围（Mac 的 Ins 空格子、方向键两层各一块）、方向键周围的缝真分给谁、特殊键只有一段、按钮跨段抬起照样算点击、
+ * 逐级缩挑哪一级（KeyboardPlan.fixedLevel）、存的位置撑到一格 32dp（fitFixedRect）、逐级缩的状态（FixedSizing，含随机序列）。
  * 尺寸按 1dp = 1px 算。从仓库根目录跑（读 res/raw 的键帽数据）。
  */
 public final class FixedLayoutTest {
@@ -22,6 +28,9 @@ public final class FixedLayoutTest {
     private static final KeyboardPlan.Sizes T = new KeyboardPlan.Sizes(8, 96, 32, 64, 32, 3, 10, 44, 48, 4, 56, GAP, 20);
     private static final String[] SHAPES = {FixedLayout.ANSI, FixedLayout.ISO};
     private static final String[] SIZES = {FixedLayout.TKL, FixedLayout.FULL};
+    /** 笔记本另跑一次（1B 的 SIZES 不动，原来那次的统计行逐字不变）。 */
+    private static final String[] LAPTOP_ONLY = {FixedLayout.LAPTOP};
+    private static final String LAPTOP_LABEL = "（笔记本）";
     private static final String[] MODES = {FixedLayout.WIN, FixedLayout.MAC};
 
     private static FixedLegends.TableFile win, mac;
@@ -37,18 +46,40 @@ public final class FixedLayoutTest {
         isoEnter();
         bottomRows();
         rangesU();
-        placement();
-        routing();
+        placement(SIZES, SIZES_PX);
+        routing(SIZES, new int[][]{{933, 352}, {751, 283}}, "");
         pins();
-        caps();
+        caps(SIZES, new int[][]{{933, 352}, {600, 230}}, "");
         glyphs();
         capsGlyphs();
         functionKeys();
         fits();
         planDefaults();
         defaultsKeepDragLimits();
-        stickPlan();
-        stickRouting();
+        stickPlan(SIZES, new int[][]{{751, 475}, {933, 704}, {933, 340}, {1200, 500}, {1800, 800}, {600, 300}, {1000, 380}}, "");
+        stickRouting(new String[]{FixedLayout.TKL}, new int[][]{{933, 704}, {1200, 500}, {751, 475}, {1800, 800}}, "");
+        // ── 笔记本尺寸、逐级缩（2026-11-01）──
+        laptopCounts();
+        laptopRows();
+        laptopBottom();
+        laptopNoOverlap();
+        laptopRanges();
+        placement(LAPTOP_ONLY, new int[][]{{480, 230}, {520, 250}, {583, 280}, {751, 300}, {933, 352}, {1800, 700}});
+        laptopArrowGap();
+        laptopArrowSeam();
+        routing(LAPTOP_ONLY, new int[][]{{480, 230}, {520, 250}, {751, 300}}, LAPTOP_LABEL);
+        laptopPins();
+        specialOneSegment();
+        buttonTap();
+        caps(LAPTOP_ONLY, new int[][]{{933, 352}, {480, 230}}, LAPTOP_LABEL);
+        laptopGlyphs();
+        levels();
+        laptopDefaults();
+        stickPlan(LAPTOP_ONLY, new int[][]{{480, 230}, {520, 250}, {560, 270}, {751, 475}, {933, 704}, {933, 340}, {1800, 800}}, LAPTOP_LABEL);
+        laptopStickHole();
+        stickRouting(LAPTOP_ONLY, new int[][]{{751, 475}, {933, 704}, {1200, 500}}, LAPTOP_LABEL);
+        fitFixed();
+        sizing();
         System.err.println("实体键盘几何 / 分流：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -214,8 +245,8 @@ public final class FixedLayoutTest {
                     int in = 0;
                     boolean sameRow = true;
                     for (FixedLayout.Range g : rs) {
-                        if (s[0] >= g.left - 1e-4f && s[1] <= g.right + 1e-4f && FixedLayout.rowTop(r) >= g.top - 1e-4f
-                                && FixedLayout.rowBottom(r) <= g.bottom + 1e-4f) {
+                        if (s[0] >= g.left - 1e-4f && s[1] <= g.right + 1e-4f && l.rowTop(r) >= g.top - 1e-4f
+                                && l.rowBottom(r) <= g.bottom + 1e-4f) {
                             in++;
                             sameRow &= g.row == r && g.cluster == k.cluster;
                         }
@@ -244,8 +275,8 @@ public final class FixedLayoutTest {
     private static final int[][] SIZES_PX = {{751, 283}, {933, 352}, {1800, 700}, {600, 230}, {1000, 300}, {933, 704}};
 
     // ── 摆到像素：段不重叠、在面板里，相邻键共用边界，范围不重叠、每段恰好在一块里 ──
-    static void placement() {
-        for (String sh : SHAPES) for (String sz : SIZES) for (String m : MODES) for (int[] wh : SIZES_PX) {
+    static void placement(String[] sizes, int[][] windows) {
+        for (String sh : SHAPES) for (String sz : sizes) for (String m : MODES) for (int[] wh : windows) {
             FixedLayout l = layout(sh, sz, m);
             FixedPanel p = new FixedPanel();
             p.setBoard(l, table("us", m));
@@ -304,10 +335,10 @@ public final class FixedLayoutTest {
     }
 
     // ── 分流（TouchRouter）和面板自己收触摸（KeyFingers）逐点一致；按在键上是那个键、缝里是同一行这一段里最近的、空格子里什么都没有 ──
-    static void routing() {
+    static void routing(String[] sizes, int[][] windows, String label) {
         int points = 0, inKeys = 0, inGaps = 0, nothing = 0, bad = 0;
         String first = null;
-        for (String sh : SHAPES) for (String sz : SIZES) for (String m : MODES) for (int[] wh : new int[][]{{933, 352}, {751, 283}}) {
+        for (String sh : SHAPES) for (String sz : sizes) for (String m : MODES) for (int[] wh : windows) {
             FixedLayout l = layout(sh, sz, m);
             for (boolean menu : new boolean[]{false, true}) {
                 FixedPanel p = new FixedPanel();
@@ -348,18 +379,18 @@ public final class FixedLayoutTest {
                 }
             }
         }
-        check(bad == 0, "实体键盘分流扫了 " + points + " 个点（键上 " + inKeys + "、缝里 " + inGaps + "、空格子 " + nothing + "），"
+        check(bad == 0, "实体键盘分流" + label + "扫了 " + points + " 个点（键上 " + inKeys + "、缝里 " + inGaps + "、空格子 " + nothing + "），"
                 + bad + " 个不对" + (first == null ? "" : "，比如 " + first));
-        check(inKeys > 0 && inGaps > 0 && nothing > 0, "扫到了键上、缝里、空格子里的点");
-        System.err.println("  实体键盘分流扫描：" + points + " 个点（键上 " + inKeys + "、缝里 " + inGaps + "、空格子 " + nothing + "）");
+        check(inKeys > 0 && inGaps > 0 && nothing > 0, "扫到了键上、缝里、空格子里的点" + label);
+        System.err.println("  实体键盘分流扫描" + label + "：" + points + " 个点（键上 " + inKeys + "、缝里 " + inGaps + "、空格子 " + nothing + "）");
     }
 
     static int ux(FixedLayout l, float u, int w) {
         return FixedPanel.px(u, w, l.width);
     }
 
-    static int uy(float u, int h) {
-        return FixedPanel.px(u, h, FixedLayout.HEIGHT);
+    static int uy(FixedLayout l, float u, int h) {
+        return FixedPanel.px(u, h, l.height);
     }
 
     /** 第 i 个键的 id（-1 → -1）。 */
@@ -377,19 +408,19 @@ public final class FixedLayoutTest {
             p.place(w, h, GAP, 10);
             TouchRouter router = new TouchRouter(new KeyRowsTest.Quiet());
             router.setRegions(regions(p));
-            int ay = (uy(3.25f, h) + uy(4.25f, h)) / 2;
+            int ay = (uy(l, 3.25f, h) + uy(l, 4.25f, h)) / 2;
             int above = route(router, ux(l, 16.75f, w), ay);
             check(above == -1, name(l) + " TKL 里 ↑ 正上方一格什么都没有（不是回车 / '）：" + id(p, above));
-            int nearUp = route(router, ux(l, 16.75f, w), uy(4.25f, h) + 1);
+            int nearUp = route(router, ux(l, 16.75f, w), uy(l, 4.25f, h) + 1);
             check(id(p, nearUp) == 0x52, name(l) + " ↑ 上面那条缝（在 ↑ 那一行里）给 ↑");
-            int f45 = id(p, route(router, ux(l, 6.25f, w), uy(0.5f, h)));
+            int f45 = id(p, route(router, ux(l, 6.25f, w), uy(l, 0.5f, h)));
             check(f45 == 0x3D || f45 == 0x3E, name(l) + " F4 和 F5 之间那半格给 F4 或 F5：" + Integer.toHexString(f45));
-            int slot = id(p, route(router, ux(l, 1.5f, w), uy(0.5f, h)));
+            int slot = id(p, route(router, ux(l, 1.5f, w), uy(l, 0.5f, h)));
             check(slot == 0x29 || slot == 0x3A, name(l) + " 空着的 ⋯ 槽给 Esc 或 F1：" + Integer.toHexString(slot));
             p.setMenuKey(true);
             p.place(w, h, GAP, 10);
             router.setRegions(regions(p));
-            check(id(p, route(router, ux(l, 1.5f, w), uy(0.5f, h))) == FixedLayout.MENU_ID, name(l) + " 槽里放了 ⋯ 就是 ⋯");
+            check(id(p, route(router, ux(l, 1.5f, w), uy(l, 0.5f, h))) == FixedLayout.MENU_ID, name(l) + " 槽里放了 ⋯ 就是 ⋯");
             int[] mk = p.menuKeyRect();
             check(mk != null && mk[0] > ux(l, 1, w) && mk[2] < ux(l, 2, w), name(l) + " ⋯ 键的位置");
         }
@@ -400,23 +431,23 @@ public final class FixedLayoutTest {
             p.place(w, h, GAP, 10);
             TouchRouter router = new TouchRouter(new KeyRowsTest.Quiet());
             router.setRegions(regions(p));
-            int b = ux(l, 13.75f, w), y3 = (uy(3.25f, h) + uy(4.25f, h)) / 2;
+            int b = ux(l, 13.75f, w), y3 = (uy(l, 3.25f, h) + uy(l, 4.25f, h)) / 2;
             check(id(p, route(router, b - 1, y3)) == 0x31, name(l) + " 回车下半段左边的缝：靠左给 0x31（#）");
             check(id(p, route(router, b + 1, y3)) == 0x28, name(l) + " 回车下半段左边的缝：靠右给回车");
-            check(id(p, route(router, ux(l, 14.5f, w), uy(3.25f, h))) == 0x28, name(l) + " L 形回车里面两行之间那条缝给回车");
+            check(id(p, route(router, ux(l, 14.5f, w), uy(l, 3.25f, h))) == 0x28, name(l) + " L 形回车里面两行之间那条缝给回车");
             check(id(p, route(router, ux(l, 13.6f, w), y3)) == 0x31, name(l) + " 回车上半段正下方、0x31 上面一点给 0x31");
         }
     }
 
     // ── 会显示的键都有键帽（不变量"键盘上会显示的每个键都有键帽"，实体键盘同样适用） ──
-    static void caps() {
+    static void caps(String[] sizes, int[][] windows, String label) {
         int combos = 0;
         int[] mods = {0, 0x02, 0x20, 0x40, 0x04, 0x42, 0x44, 0x22};
         for (FixedLegends.Layout lang : catalog) {
-            for (String sh : lang.shapes) for (String sz : SIZES) for (String m : MODES) for (boolean menu : new boolean[]{false, true}) {
+            for (String sh : lang.shapes) for (String sz : sizes) for (String m : MODES) for (boolean menu : new boolean[]{false, true}) {
                 FixedLegends.Table t = table(lang.id, m);
                 FixedLayout l = FixedLayout.build(sh, sz, m, t.hasThird(), lang.kpdl);
-                for (int[] wh : new int[][]{{933, 352}, {600, 230}}) {
+                for (int[] wh : windows) {
                     for (boolean holed : new boolean[]{false, true}) {
                         FixedPanel p = new FixedPanel();
                         p.setBoard(l, t);
@@ -452,11 +483,12 @@ public final class FixedLayoutTest {
                             }
                         }
                         check(ok && bad == null, what + " 每个键都有键帽和字" + (bad == null ? "" : "：" + bad));
+                        if (l.laptop()) laptopCapShapes(p, holed, what);
                     }
                 }
             }
         }
-        System.err.println("  键帽齐全：" + combos + " 种（布局 × 形状 × 尺寸 × 模式 × ⋯ × 让位 × 窗口）");
+        System.err.println("  键帽齐全" + label + "：" + combos + " 种（布局 × 形状 × 尺寸 × 模式 × ⋯ × 让位 × 窗口）");
     }
 
     static FixedPanel panel(String lang, String shape, String size, String mode) {
@@ -659,11 +691,16 @@ public final class FixedLayoutTest {
                 "平板竖屏 800×1280 全尺寸：按自然比例不到四分之一高，按 MIN_HEIGHT（满宽、贴底）");
         float[] normal = KeyboardPlan.fixedDefaultRect(tkl, 1600, 400, true, T);
         check(Math.abs(normal[2] - 18.25f / (6.25f * 1.1f) * 400 / 1600) < 1e-5f, "平常的宽窗口照旧按自然比例");
+        defaultsScan(SIZES, "");
+    }
+
+    /** 每种窗口的默认位置守调大小的约束（{@link #defaultsKeepDragLimits} 的扫描，尺寸带参数：笔记本另跑一次）。 */
+    static void defaultsScan(String[] sizes, String label) {
         int windows = 0, raisedW = 0, raisedH = 0, bad = 0;
         String firstBad = null;
-        for (String sh : SHAPES) for (String sz : SIZES) for (String m : MODES) {
+        for (String sh : SHAPES) for (String sz : sizes) for (String m : MODES) {
             FixedLayout l = layout(sh, sz, m);
-            float natural = l.width / (FixedLayout.HEIGHT * KeyboardPlan.FIXED_ROW_ASPECT);
+            float natural = l.width / (l.height * KeyboardPlan.FIXED_ROW_ASPECT);
             for (int w = 300; w <= 2600; w += 20) for (int h = 100; h <= 1600; h += 20) {
                 if (!KeyboardPlan.fixedFits(l, w, T)) continue;
                 for (boolean padOn : new boolean[]{true, false}) {
@@ -680,17 +717,16 @@ public final class FixedLayoutTest {
                 }
             }
         }
-        check(bad == 0, "每种窗口的默认位置都在键盘区里、贴底、不比 fixedMinWidth 窄、不比 MIN_HEIGHT 矮、一格 ≥ minKey"
+        check(bad == 0, "每种窗口的默认位置都在键盘区里、贴底、不比 fixedMinWidth 窄、不比 MIN_HEIGHT 矮、一格 ≥ minKey" + label
                 + (firstBad == null ? "" : "（" + bad + " 种不对，比如 " + firstBad + "）"));
-        check(raisedW > 0 && raisedH > 0, "扫到了按最窄放宽的和按最矮加高的窗口");
-        System.err.println("  默认位置守调大小的约束：" + windows + " 种（布局 × 窗口 × 触控板开关），按最窄放宽 " + raisedW + "、按最矮加高 " + raisedH);
+        check(raisedW > 0 && raisedH > 0, "扫到了按最窄放宽的和按最矮加高的窗口" + label);
+        System.err.println("  默认位置守调大小的约束" + label + "：" + windows + " 种（布局 × 窗口 × 触控板开关），按最窄放宽 " + raisedW + "、按最矮加高 " + raisedH);
     }
 
     // ── 小红点：真 ThinkPad 的位置、切口、空格那一排的三个鼠标键 ──
-    static void stickPlan() {
+    static void stickPlan(String[] sizes, int[][] windows, String label) {
         int embedded = 0, outside = 0, ghb = 0, plans = 0;
-        int[][] windows = {{751, 475}, {933, 704}, {933, 340}, {1200, 500}, {1800, 800}, {600, 300}, {1000, 380}};
-        for (String sh : SHAPES) for (String sz : SIZES) for (String m : MODES) for (int[] wh : windows) {
+        for (String sh : SHAPES) for (String sz : sizes) for (String m : MODES) for (int[] wh : windows) {
             FixedLegends.Table t = table(sh.equals(FixedLayout.ISO) ? "de" : "us", m);
             FixedLayout l = FixedLayout.build(sh, sz, m, t.hasThird(), ".");
             if (!KeyboardPlan.fixedFits(l, wh[0], T)) continue;
@@ -716,22 +752,29 @@ public final class FixedLayoutTest {
             if (p.hole != null) {
                 check(Math.abs(p.hole[0] + p.hole[1] - 2 * pt[0]) <= 1, what + " 空位以红点为中线对称");
                 check(p.hole[1] - p.hole[0] >= T.holeWidth(T.minKey), what + " 空位放得下三个鼠标键");
-                check(p.keys[1] == k[1] + FixedPanel.spaceRowTop(ph) && p.keys[3] == k[3], what + " 三个鼠标键占空格那一排（行高）");
+                check(p.keys[1] == k[1] + FixedPanel.spaceRowTop(l, ph) && p.keys[3] == k[3], what + " 三个鼠标键占空格那一排（行高）");
                 int mid = (p.middleKey[0] + p.middleKey[1]) / 2 - k[0];
                 check(Math.abs(mid - pt[0]) <= 1, what + " 中键正对红点");
                 List<FixedPanel.Seg> sp = new ArrayList<>();
                 for (FixedPanel.Seg s : panel.segs()) if (panel.keys().get(s.key).id == 0x2C) sp.add(s);
                 float unit = pw / l.width;
+                // 笔记本的空格最短 0.75 份（FixedPanel.LAPTOP_SPACE_MIN，只在 1 份时让不出三个 minKey 的键时才往下缩）
+                float minSpace = l.laptop() ? FixedPanel.LAPTOP_SPACE_MIN : KeyRows.STICK_SPACE_MIN;
                 check(sp.size() == 2 && sp.get(0).right == p.hole[0] - GAP && sp.get(1).left == p.hole[1] + GAP
-                                && sp.get(0).right - sp.get(0).left >= unit * KeyRows.STICK_SPACE_MIN - 2 * GAP - 1,
-                        what + " 空格切成左右两段（发同一个键）、各至少 1 份");
+                                && sp.get(0).right - sp.get(0).left >= unit * minSpace - 2 * GAP - 1
+                                && sp.get(1).right - sp.get(1).left >= unit * minSpace - 2 * GAP - 1,
+                        what + " 空格切成左右两段（发同一个键）、各至少 " + (l.laptop() ? "0.75" : "1") + " 份");
                 check(panel.capBoxes(panel.index(0x2C)).size() == 2, what + " 两段空格各一个键帽");
+                if (l.laptop() && sp.size() == 2) {
+                    int a = sp.get(0).right - sp.get(0).left, b = sp.get(1).right - sp.get(1).left;
+                    check(Math.abs(a - b) <= 1, what + " 笔记本的空格以红点为中线：两段一样长（" + a + " / " + b + "）");
+                }
             }
             if (p.stickAt == KeyboardPlan.STICK_KEYS) {
                 embedded++;
                 float cx = (p.stick[0] + p.stick[2]) / 2f - k[0], cy = (p.stick[1] + p.stick[3]) / 2f - k[1];
                 check(Math.abs(cx - pt[0]) <= 0.5f && Math.abs(cy - pt[1]) <= 0.5f, what + " 嵌在键里：圆心就是那一点");
-                check(cy + p.cut <= FixedPanel.spaceRowTop(ph), what + " 切口不进空格那一排");
+                check(cy + p.cut <= FixedPanel.spaceRowTop(l, ph), what + " 切口不进空格那一排");
                 panel.setStick(new int[]{p.stick[0] - k[0], p.stick[1] - k[1], p.stick[2] - k[0], p.stick[3] - k[1]}, p.cut);
                 panel.place(pw, ph, GAP, 10);
                 Set<Integer> cut = new HashSet<>();
@@ -751,19 +794,18 @@ public final class FixedLayoutTest {
                 outside++;
             }
         }
-        check(embedded > 0, "有嵌在键里的情况");
-        check(ghb == embedded, "嵌在键里时都切到 G、H、B");
-        System.err.println("  实体键盘小红点：" + plans + " 种摆法，嵌在键里 " + embedded + "、放外面 " + outside);
+        check(embedded > 0, "有嵌在键里的情况" + label);
+        check(ghb == embedded, "嵌在键里时都切到 G、H、B" + label);
+        System.err.println("  实体键盘小红点" + label + "：" + plans + " 种摆法，嵌在键里 " + embedded + "、放外面 " + outside);
     }
 
     // ── 小红点、三个鼠标键和键的分流逐点核对（同 KeyboardPlanTest.stickRouting）──
-    static void stickRouting() {
+    static void stickRouting(String[] sizes, int[][] windows, String label) {
         int points = 0, inStick = 0, inTiles = 0, corners = 0, bad = 0;
         String first = null;
-        int[][] windows = {{933, 704}, {1200, 500}, {751, 475}, {1800, 800}};
-        for (String sh : SHAPES) for (String m : MODES) for (int[] wh : windows) {
+        for (String sz : sizes) for (String sh : SHAPES) for (String m : MODES) for (int[] wh : windows) {
             FixedLegends.Table t = table(sh.equals(FixedLayout.ISO) ? "de" : "us", m);
-            FixedLayout l = FixedLayout.build(sh, FixedLayout.TKL, m, t.hasThird(), ".");
+            FixedLayout l = FixedLayout.build(sh, sz, m, t.hasThird(), ".");
             KeyboardPlan.Plan p = KeyboardPlan.planFixed(KeyboardPlan.POINTER_STICK, KeyboardPlan.KEYS_OFF, wh[0], wh[1], null, l, T);
             if (p.stickAt != KeyboardPlan.STICK_KEYS || p.keys == null) continue;
             int[] k = p.keyboard;
@@ -845,10 +887,768 @@ public final class FixedLayoutTest {
                 }
             }
         }
-        check(bad == 0, "实体键盘红点、鼠标键和键的分流扫了 " + points + " 个点（红点圆里 " + inStick + "、空位里 " + inTiles
+        check(bad == 0, "实体键盘红点、鼠标键和键的分流" + label + "扫了 " + points + " 个点（红点圆里 " + inStick + "、空位里 " + inTiles
                 + "、方块角上的键 " + corners + "），" + bad + " 个不对" + (first == null ? "" : "，比如 " + first));
-        check(inStick > 0 && inTiles > 0 && corners > 0, "扫到了红点圆里、空位里、方块角上的点");
-        System.err.println("  实体键盘小红点分流扫描：" + points + " 个点（红点圆里 " + inStick + "、空位里 " + inTiles + "、方块角上的键 " + corners + "）");
+        check(inStick > 0 && inTiles > 0 && corners > 0, "扫到了红点圆里、空位里、方块角上的点" + label);
+        System.err.println("  实体键盘小红点分流扫描" + label + "：" + points + " 个点（红点圆里 " + inStick + "、空位里 " + inTiles + "、方块角上的键 " + corners + "）");
+    }
+
+    // ═══════════ 笔记本尺寸（2026-11-01，方案 design-laptop §8）═══════════
+
+    static FixedLayout laptop(String shape, String mode) {
+        return layout(shape, FixedLayout.LAPTOP, mode);
+    }
+
+    /** 1/16u 的整数倍（笔记本所有坐标都取这个，浮点里是精确值）。 */
+    static boolean sixteenth(float u) {
+        return Float.isNaN(u) || Math.abs(u * 16 - Math.round(u * 16)) < 1e-6f;
+    }
+
+    /** 第 5 行里整行高的键（y0 是 NaN）/ 上层（y0 = 5.25）/ 下层（y0 = 5.875）的用法码，按 x 排好。layer：0 整行、1 上层、2 下层。 */
+    static int[] bottomIds(List<FixedLayout.Key> ks, int layer) {
+        List<FixedLayout.Key> out = new ArrayList<>();
+        for (FixedLayout.Key k : ks) {
+            if (k.row != 5) continue;
+            int at = Float.isNaN(k.y0) ? 0 : near(k.y0, FixedLayout.ROW_TOP[5]) ? 1 : 2;
+            if (at == layer) out.add(k);
+        }
+        out.sort((a, b) -> Float.compare(a.x, b.x));
+        int[] ids = new int[out.size()];
+        for (int i = 0; i < ids.length; i++) ids[i] = out.get(i).id;
+        return ids;
+    }
+
+    // ── 键数、用法码各一次、有哪些没有哪些 ──
+    static void laptopCounts() {
+        int[][] want = {{83, 84}, {82, 83}};   // [模式][形状]：Windows 83 / 84（ANSI / ISO）、Mac 82 / 83（没有 Ins）
+        for (int m = 0; m < 2; m++) for (int sh = 0; sh < 2; sh++) {
+            FixedLayout l = laptop(SHAPES[sh], MODES[m]);
+            check(l.keys.size() == want[m][sh], name(l) + " 键数 " + l.keys.size() + "（应为 " + want[m][sh] + "）");
+            check(l.keys(true).size() == l.keys.size() + 1, name(l) + " 槽里放 ⋯ 时多一个键");
+            Set<Integer> ids = new HashSet<>();
+            boolean dup = false;
+            for (FixedLayout.Key k : l.keys(true)) dup |= !ids.add(k.id);
+            check(!dup, name(l) + " 每个用法码 / 按钮编号只出现一次（含 ⋯）");
+            check(l.laptop() && !l.full() && l.clusterCount() == 1 && near(l.width, 15) && near(l.height, 6.5f), name(l) + " 15u 宽、6.5u 高、一个区块");
+            boolean main = true;
+            for (FixedLayout.Key k : l.keys(true)) main &= k.cluster == FixedLayout.MAIN && k.x + k.w <= 15 + 1e-4f;
+            check(main, name(l) + " 每个键都在主键区（0–15u）");
+            check(ids.contains(0x64) == l.iso() && !ids.contains(0x32) && ids.contains(0x31), name(l) + " 0x64 只在 ISO、不发 0x32");
+            check(!ids.contains(0x53) && !ids.contains(0x62), name(l) + " 没有小键盘");
+            for (int u : new int[]{0x4A, 0x4D, 0x4C, 0x4B, 0x4E, 0x52, 0x50, 0x51, 0x4F, 0xE0, 0xE2, 0xE3, 0xE4, 0x2C, 0x29, 0x3A, 0x45}) {
+                check(ids.contains(u), name(l) + " 有 " + Integer.toHexString(u));
+            }
+            if (l.mac()) {
+                for (int u : new int[]{0x46, 0x49, 0x68, 0x69, 0x6A, 0xE6, 0x47, 0x48, 0x65}) check(!ids.contains(u), name(l) + " 没有 " + Integer.toHexString(u));
+                check(ids.contains(FixedLayout.GLOBE_ID) && ids.contains(0xE7), name(l) + " 有 🌐、右 ⌘");
+            } else {
+                check(ids.contains(0x46) && ids.contains(0x49) && ids.contains(0xE6), name(l) + " 有 PrtSc、Ins、右 Alt");
+                for (int u : new int[]{0x47, 0x48, 0x65, 0xE7, FixedLayout.GLOBE_ID}) check(!ids.contains(u), name(l) + " 没有 " + Integer.toHexString(u));
+            }
+        }
+        check(FixedLayout.LAPTOP.equals(FixedLayout.validSize("laptop")) && FixedLayout.TKL.equals(FixedLayout.validSize("bogus"))
+                && FixedLayout.TKL.equals(FixedLayout.validSize(null)), "validSize 认笔记本，认不出的当 TKL");
+    }
+
+    // ── 笔记本的几何：第 1–4 行同 TKL、F 行、最下一排两层、⋯ 槽、空格正对红点、坐标都是 1/16u ──
+    static void laptopRows() {
+        for (String sh : SHAPES) for (String m : MODES) {
+            FixedLayout l = laptop(sh, m), t = layout(sh, FixedLayout.TKL, m);
+            for (int r = 1; r <= 4; r++) {
+                List<float[]> a = spans(l, r, FixedLayout.MAIN, false), b = spans(t, r, FixedLayout.MAIN, false);
+                boolean same = a.size() == b.size();
+                for (int i = 0; same && i < a.size(); i++) same = near(a.get(i)[0], b.get(i)[0]) && near(a.get(i)[1], b.get(i)[1]);
+                check(same, name(l) + " 第 " + r + " 行和 TKL 的主键区一模一样");
+                check(Arrays.equals(rowIdsMain(l, r), rowIdsMain(t, r)), name(l) + " 第 " + r + " 行的用法码和 TKL 一样");
+            }
+            List<FixedLayout.Key> f = new ArrayList<>();
+            for (FixedLayout.Key k : l.keys) if (k.row == 0) f.add(k);
+            f.sort((x, y) -> Float.compare(x.x, y.x));
+            check(f.size() == (l.mac() ? 16 : 17), name(l) + " F 行 " + f.size() + " 个键");
+            FixedLayout.Key esc = l.find(0x29), f1 = l.find(0x3A), f5 = l.find(0x3E), f9 = l.find(0x42), home = l.find(0x4A), end = l.find(0x4D),
+                    del = l.find(0x4C), ins = l.find(0x49);
+            check(near(esc.x, 0) && near(esc.w, 1.125f) && near(f1.x, 1.125f) && near(f5.x, 4.5625f) && near(f9.x, 8) && near(l.find(0x45).x + l.find(0x45).w, 11.25f)
+                    && near(home.x, 11.4375f) && near(end.x, 12.25f) && near(del.x, 13.875f) && near(del.x + del.w, 15)
+                    && (l.mac() ? ins == null : near(ins.x, 13.0625f) && near(ins.w, 0.8125f)), name(l) + " F 行的位置（Esc 1.125、F 键 0.8125、组间 0.1875、Del 到 15）");
+            boolean fRow = true;
+            for (int i = 1; i < f.size(); i++) fRow &= f.get(i).x >= f.get(i - 1).x + f.get(i - 1).w - 1e-4f;
+            check(fRow, name(l) + " F 行不重叠");
+            // 最下一排上下两层，各从 0 铺到 15、首尾相接（整行的键算进两层，方向键只算自己那层）
+            for (boolean menu : new boolean[]{false, true}) {
+                for (int layer = 1; layer <= 2; layer++) {
+                    List<float[]> s = new ArrayList<>();
+                    for (FixedLayout.Key k : l.keys(menu)) {
+                        if (k.row != 5) continue;
+                        boolean in = Float.isNaN(k.y0) || (layer == 1 ? near(k.y0, 5.25f) : near(k.y0, 5.875f));
+                        if (in) s.add(new float[]{k.x, k.x + k.w});
+                    }
+                    s.sort((x, y) -> Float.compare(x[0], y[0]));
+                    boolean ok = !s.isEmpty() && near(s.get(0)[0], 0) && near(s.get(s.size() - 1)[1], 15);
+                    for (int i = 1; i < s.size(); i++) ok &= near(s.get(i)[0], s.get(i - 1)[1]);
+                    check(ok, name(l) + (menu ? "（带 ⋯）" : "") + " 最下一排" + (layer == 1 ? "上" : "下") + "层从 0 铺到 15u、首尾相接");
+                }
+            }
+            FixedLayout.Key ctrlWide = l.keys(false).get(indexOfId(l.keys(false), 0xE0)), ctrlNarrow = l.keys(true).get(indexOfId(l.keys(true), 0xE0));
+            check(near(ctrlWide.x, 0) && near(ctrlWide.w, 2.25f) && near(ctrlNarrow.w, 1.25f) && ctrlWide != ctrlNarrow, name(l) + " 左 Ctrl：⋯ 不在槽里 2.25u、在槽里 1.25u");
+            check(l.menu.row == 5 && near(l.menu.x, 1.25f) && near(l.menu.w, 1) && Float.isNaN(l.menu.y0), name(l) + " ⋯ 槽在左下角 Ctrl 右边（1.25–2.25、整行高）");
+            FixedLayout.Key sp = l.find(0x2C);
+            check(near(sp.x, 4.25f) && near(sp.w, 5) && near(l.stickU(), 6.75f) && near(sp.x + sp.w / 2, l.stickU()), name(l) + " 空格 4.25–9.25、正好以红点（6.75）为中线");
+            check(near(l.rowTop(5), 5.25f) && near(l.rowBottom(5), 6.5f) && near(l.rowBottom(4), 5.25f) && near(l.rowBottom(0), 1)
+                    && near(t.rowBottom(5), 6.25f) && near(t.height, 6.25f), name(l) + " 行表：最下一排 5.25–6.5（TKL 照旧 6.25）");
+            boolean grid = true;
+            for (FixedLayout.Key k : l.keys(true)) grid &= sixteenth(k.x) && sixteenth(k.w) && sixteenth(k.y0) && sixteenth(k.y1) && sixteenth(k.x2) && sixteenth(k.w2);
+            check(grid, name(l) + " 坐标都是 1/16u 的整数倍");
+            FixedLayout.Key up = l.find(0x52), down = l.find(0x51);
+            check(near(up.y0, 5.25f) && near(up.y1, 5.875f) && near(down.y0, 5.875f) && near(down.y1, 6.5f) && near(up.x, down.x) && near(up.w, 0.9375f),
+                    name(l) + " ↑ 在上层、↓ 在下层，各 0.625 行高、0.9375u 宽");
+            check(near(l.segTop(up, 5), 5.25f) && near(l.segBottom(down, 5), 6.5f) && near(l.segTop(sp, 5), 5.25f) && near(l.segBottom(sp, 5), 6.5f),
+                    name(l) + " segTop / segBottom：方向键用自己那截、别的键占整行");
+        }
+        check(FixedLayout.ladder(FixedLayout.FULL).equals(Arrays.asList(FixedLayout.FULL, FixedLayout.TKL, FixedLayout.LAPTOP))
+                && FixedLayout.ladder(FixedLayout.TKL).equals(Arrays.asList(FixedLayout.TKL, FixedLayout.LAPTOP))
+                && FixedLayout.ladder(FixedLayout.LAPTOP).equals(Arrays.asList(FixedLayout.LAPTOP))
+                && FixedLayout.ladder("bogus").equals(Arrays.asList(FixedLayout.TKL, FixedLayout.LAPTOP))
+                && FixedLayout.ladder(null).equals(Arrays.asList(FixedLayout.TKL, FixedLayout.LAPTOP)), "ladder：从选的尺寸往下，只缩不涨，认不出的当 TKL");
+    }
+
+    static int indexOfId(List<FixedLayout.Key> ks, int id) {
+        for (int i = 0; i < ks.size(); i++) if (ks.get(i).id == id) return i;
+        return -1;
+    }
+
+    /** 主键区第 row 行的用法码（按 x 排好）。 */
+    static int[] rowIdsMain(FixedLayout l, int row) {
+        List<FixedLayout.Key> ks = new ArrayList<>();
+        for (FixedLayout.Key k : l.keys) if (k.cluster == FixedLayout.MAIN && k.span(row) != null) ks.add(k);
+        ks.sort((a, b) -> Float.compare(a.span(row)[0], b.span(row)[0]));
+        int[] out = new int[ks.size()];
+        for (int i = 0; i < out.length; i++) out[i] = ks.get(i).id;
+        return out;
+    }
+
+    // ── 最下一排的顺序、键名、⋯ 紧跟左 Ctrl、列表顺序 ──
+    static void laptopBottom() {
+        int[] pc = {0xE0, 0xE3, 0xE2, 0x2C, 0xE6, 0x46, 0xE4};
+        int[] macRow = {0xE0, 0xE2, 0xE3, 0x2C, 0xE7, FixedLayout.GLOBE_ID, 0xE4};
+        int[] up = {0x4B, 0x52, 0x4E}, down = {0x50, 0x51, 0x4F};
+        for (String sh : SHAPES) {
+            FixedLayout w = laptop(sh, FixedLayout.WIN), m = laptop(sh, FixedLayout.MAC);
+            check(Arrays.equals(bottomIds(w.keys, 0), pc), name(w) + " 底行 Ctrl Super Alt 空格 AltGr PrtSc Ctrl：" + Arrays.toString(bottomIds(w.keys, 0)));
+            check(Arrays.equals(bottomIds(m.keys, 0), macRow), name(m) + " 底行 ⌃ ⌥ ⌘ 空格 ⌘ 🌐 ⌃：" + Arrays.toString(bottomIds(m.keys, 0)));
+            for (FixedLayout l : new FixedLayout[]{w, m}) {
+                check(Arrays.equals(bottomIds(l.keys, 1), up) && Arrays.equals(bottomIds(l.keys, 2), down), name(l) + " 方向键：上层 PgUp ↑ PgDn、下层 ← ↓ →");
+                int[] withMenu = bottomIds(l.keys(true), 0);
+                check(withMenu.length == 8 && withMenu[0] == 0xE0 && withMenu[1] == FixedLayout.MENU_ID, name(l) + " 带 ⋯ 时 ⋯ 紧跟在左 Ctrl 后面");
+                int i0 = indexOfId(l.keys(true), 0xE0);
+                check(l.keys(true).get(i0 + 1).id == FixedLayout.MENU_ID, name(l) + " 列表里 ⋯ 也紧跟左 Ctrl");
+                // 列表顺序：底行从左到右，接着 PgUp ↑ PgDn、← ↓ →（报区域、nearestKey 一样近时的先后）
+                List<FixedLayout.Key> ks = l.keys;
+                int[] tail = new int[6];
+                for (int i = 0; i < 6; i++) tail[i] = ks.get(ks.size() - 6 + i).id;
+                check(Arrays.equals(tail, new int[]{0x4B, 0x52, 0x4E, 0x50, 0x51, 0x4F}), name(l) + " 列表最后是方向键两层");
+                check("PgUp".equals(l.find(0x4B).name) && "↑".equals(l.find(0x52).name) && "PgDn".equals(l.find(0x4E).name)
+                        && "←".equals(l.find(0x50).name) && "↓".equals(l.find(0x51).name) && "→".equals(l.find(0x4F).name), name(l) + " 方向键的键名");
+            }
+            check("Ctrl".equals(w.find(0xE0).name) && "Super".equals(w.find(0xE3).name) && "Alt".equals(w.find(0xE2).name)
+                    && "AltGr".equals(w.find(0xE6).name) && "PrtSc".equals(w.find(0x46).name) && "Ctrl".equals(w.find(0xE4).name), name(w) + " PC 的键名");
+            check("⌃".equals(m.find(0xE0).name) && "⌥".equals(m.find(0xE2).name) && "⌘".equals(m.find(0xE3).name) && "⌘".equals(m.find(0xE7).name)
+                    && "🌐".equals(m.find(FixedLayout.GLOBE_ID).name) && "⌃".equals(m.find(0xE4).name), name(m) + " Mac 的键名");
+            check(m.find(FixedLayout.GLOBE_ID).special && near(m.find(FixedLayout.GLOBE_ID).x, 10.25f), name(m) + " 🌐 在 PrtSc 那格");
+        }
+        FixedLayout us = FixedLayout.build(FixedLayout.ANSI, FixedLayout.LAPTOP, FixedLayout.WIN, false, ".");
+        check("Alt".equals(us.find(0xE6).name) && !us.altGr, "笔记本：没有第三层的布局右 Alt 写 Alt");
+        check(!FixedLayout.build(FixedLayout.ISO, FixedLayout.LAPTOP, FixedLayout.MAC, true, ".").altGr, "笔记本 Mac 模式 altGr 一律假");
+    }
+
+    // ── 不重叠（横竖都看：方向键在同一行里竖着分两层）、在外框里 ──
+    static void laptopNoOverlap() {
+        for (String sh : SHAPES) for (String m : MODES) for (boolean menu : new boolean[]{false, true}) {
+            FixedLayout l = laptop(sh, m);
+            List<FixedLayout.Key> ks = l.keys(menu);
+            boolean ok = true, inside = true;
+            String bad = null;
+            for (int i = 0; i < ks.size(); i++) {
+                FixedLayout.Key a = ks.get(i);
+                for (int r = 0; r < FixedLayout.ROWS; r++) {
+                    float[] sa = a.span(r);
+                    if (sa == null) continue;
+                    inside &= sa[0] >= -1e-4f && sa[1] <= l.width + 1e-4f && l.segTop(a, r) >= l.rowTop(r) - 1e-4f && l.segBottom(a, r) <= l.rowBottom(r) + 1e-4f;
+                    for (int j = i + 1; j < ks.size(); j++) {
+                        FixedLayout.Key b = ks.get(j);
+                        float[] sb = b.span(r);
+                        if (sb == null) continue;
+                        boolean x = Math.min(sa[1], sb[1]) - Math.max(sa[0], sb[0]) > 1e-4f;
+                        boolean y = Math.min(l.segBottom(a, r), l.segBottom(b, r)) - Math.max(l.segTop(a, r), l.segTop(b, r)) > 1e-4f;
+                        if (x && y) {
+                            ok = false;
+                            bad = a + " / " + b;
+                        }
+                    }
+                }
+            }
+            check(ok, name(l) + (menu ? "（带 ⋯）" : "") + " 键不重叠（横竖都看）" + (bad == null ? "" : "：" + bad));
+            check(inside, name(l) + (menu ? "（带 ⋯）" : "") + " 每个键在外框、自己那一行里");
+        }
+    }
+
+    // ── 键盘范围：Windows 8 块、Mac 9 块（F 行 Ins 那格挖掉；最下一排三块：方向键以外一块、方向键上下两层各一块），不重叠，每段恰好在一块同行的范围里 ──
+    static void laptopRanges() {
+        for (String sh : SHAPES) for (String m : MODES) for (boolean menu : new boolean[]{false, true}) {
+            FixedLayout l = laptop(sh, m);
+            String what = name(l) + (menu ? "（带 ⋯）" : "");
+            List<FixedLayout.Range> rs = l.ranges(menu);
+            check(rs.size() == (l.mac() ? 9 : 8), what + " 范围 " + rs.size() + " 块（Windows 8、Mac 9）");
+            boolean ok = true;
+            for (int i = 0; i < rs.size(); i++) for (int j = i + 1; j < rs.size(); j++) ok &= !overlap(rs.get(i), rs.get(j));
+            check(ok, what + " 范围之间不重叠");
+            for (FixedLayout.Key k : l.keys(menu)) {
+                for (int r = 0; r < FixedLayout.ROWS; r++) {
+                    float[] s = k.span(r);
+                    if (s == null) continue;
+                    int in = 0;
+                    boolean sameRow = true;
+                    for (FixedLayout.Range g : rs) {
+                        if (s[0] >= g.left - 1e-4f && s[1] <= g.right + 1e-4f && l.segTop(k, r) >= g.top - 1e-4f && l.segBottom(k, r) <= g.bottom + 1e-4f) {
+                            in++;
+                            sameRow &= g.row == r && g.cluster == FixedLayout.MAIN;
+                        }
+                    }
+                    check(in == 1 && sameRow, what + " " + k + " 第 " + r + " 行那段恰好在一块同行的范围里（" + in + "）");
+                }
+            }
+            check(inAny(rs, 13.47f, 0.5f) != l.mac(), what + " F 行 Ins 那格：Windows 是 Ins、在范围里；Mac 空着、不在任何范围里");
+            check(inAny(rs, 0.01f, 6.49f) && inAny(rs, 14.99f, 6.49f) && inAny(rs, 6.75f, 6.49f), what + " 最下一排（到 6.5）在范围里、伸到面板边");
+            // 方向键两层各一块：两层之间那条缝在 5.875 一分为二，上半归上层那块、下半归下层那块（分给谁另由 laptopArrowSeam 用真 TouchRouter 扫）
+            boolean main = false, upper = false, lower = false;
+            int bottomRanges = 0;
+            for (FixedLayout.Range g : rs) if (g.row == 5) {
+                bottomRanges++;
+                main |= near(g.left, 0) && near(g.right, 12.1875f) && near(g.top, 5.25f) && near(g.bottom, 6.5f);
+                upper |= near(g.left, 12.1875f) && near(g.right, 15) && near(g.top, 5.25f) && near(g.bottom, FixedLayout.LAPTOP_ARROW_SPLIT);
+                lower |= near(g.left, 12.1875f) && near(g.right, 15) && near(g.top, FixedLayout.LAPTOP_ARROW_SPLIT) && near(g.bottom, 6.5f);
+            }
+            check(bottomRanges == 3 && main && upper && lower,
+                    what + " 最下一排三块：方向键以外 0–12.1875 × 5.25–6.5、上层 12.1875–15 × 5.25–5.875、下层 12.1875–15 × 5.875–6.5（" + bottomRanges + " 块）");
+            boolean keysOnlyUpper = true, keysOnlyLower = true;
+            for (FixedLayout.Key k : l.keys(menu)) {
+                if (k.span(5) == null) continue;
+                boolean inUpper = k.x >= 12.1875f - 1e-4f && l.segBottom(k, 5) <= FixedLayout.LAPTOP_ARROW_SPLIT + 1e-4f;
+                boolean inLower = k.x >= 12.1875f - 1e-4f && l.segTop(k, 5) >= FixedLayout.LAPTOP_ARROW_SPLIT - 1e-4f;
+                boolean arrowUp = k.id == 0x4B || k.id == 0x52 || k.id == 0x4E, arrowDown = k.id == 0x50 || k.id == 0x51 || k.id == 0x4F;
+                keysOnlyUpper &= inUpper == arrowUp;
+                keysOnlyLower &= inLower == arrowDown;
+            }
+            check(keysOnlyUpper && keysOnlyLower, what + " 上层那块里只有 PgUp ↑ PgDn、下层那块里只有 ← ↓ →（右 Ctrl、空格这些整行高的键不在里面）");
+            if (l.mac()) {
+                boolean left = false, right = false;
+                for (FixedLayout.Range g : rs) if (g.row == 0) {
+                    left |= near(g.left, 0) && near(g.right, 13.0625f);
+                    right |= near(g.left, 13.875f) && near(g.right, 15);
+                }
+                check(left && right, what + " Mac F 行两块：Esc–End、Del");
+                check(l.blanks.size() == 1 && near(l.blanks.get(0)[1], 13.0625f) && near(l.blanks.get(0)[2], 13.875f), what + " 声明了 Ins 那格空格子");
+            } else {
+                check(l.blanks.isEmpty(), what + " Windows 没有空格子");
+            }
+        }
+        check(layout(FixedLayout.ANSI, FixedLayout.TKL, FixedLayout.MAC).blanks.isEmpty() && layout(FixedLayout.ISO, FixedLayout.FULL, FixedLayout.MAC).blanks.isEmpty(),
+                "TKL / 全尺寸不声明空格子（Ins 格本来就在段边上、不在范围里）");
+    }
+
+    // ── 方向键上下两层之间也隔 2 × gap ──
+    static void laptopArrowGap() {
+        for (String m : MODES) for (int[] wh : new int[][]{{480, 230}, {751, 300}, {933, 352}, {1800, 700}}) {
+            FixedPanel p = new FixedPanel();
+            p.setBoard(laptop(FixedLayout.ANSI, m), table("us", m));
+            p.place(wh[0], wh[1], GAP, 10);
+            for (int[] pair : new int[][]{{0x4B, 0x50}, {0x52, 0x51}, {0x4E, 0x4F}}) {
+                int[] a = p.box(p.index(pair[0])), b = p.box(p.index(pair[1]));
+                check(b[1] - a[3] == 2 * GAP && a[0] == b[0] && a[2] == b[2], m + " " + wh[0] + "×" + wh[1] + " " + Integer.toHexString(pair[0]) + " 和 "
+                        + Integer.toHexString(pair[1]) + " 上下隔 2 × gap、左右对齐");
+            }
+            int[] sp = p.box(p.index(0x2C)), pgUp = p.box(p.index(0x4B)), left = p.box(p.index(0x50));
+            check(sp[1] == pgUp[1] && sp[3] == left[3], m + " " + wh[0] + "×" + wh[1] + " 空格整行高：上沿对 PgUp、下沿对 ←");
+        }
+    }
+
+    // ── 方向键周围的缝真分给谁（真 TouchRouter 和面板自己收触摸两条路，2026-11-01 审查后加的）：
+    //    上下两层之间那条缝上半给上层、下半给下层（同一列），一个点都不给右 Ctrl；右 Ctrl 和方向键之间那条竖缝按中线分：左边 Ctrl、右边方向键（按层）。
+    //    以前最下一排整排一块范围，nearestKey 先比竖向，整行高的右 Ctrl 竖向距离是 0，两层之间的缝全分给了它 ──
+    static void laptopArrowSeam() {
+        int seam = 0, side = 0, bad = 0, combos = 0;
+        String first = null;
+        int[] upIds = {0x4B, 0x52, 0x4E}, downIds = {0x50, 0x51, 0x4F};
+        for (String sh : SHAPES) for (String m : MODES) for (boolean menu : new boolean[]{false, true}) for (boolean holed : new boolean[]{false, true})
+            for (int[] wh : new int[][]{{480, 230}, {520, 250}, {751, 300}, {933, 352}, {1800, 700}}) {
+                FixedLayout l = laptop(sh, m);
+                FixedPanel p = new FixedPanel();
+                p.setBoard(l, table("us", m));
+                p.setMenuKey(menu);
+                if (holed) p.setHole(FixedPanel.stickHole(l, wh[0], T));
+                p.place(wh[0], wh[1], GAP, 10);
+                TouchRouter router = new TouchRouter(new KeyRowsTest.Quiet());
+                router.setRegions(regions(p));
+                combos++;
+                String what = name(l) + (menu ? "（带 ⋯）" : "") + (holed ? " 让位" : "") + " " + wh[0] + "×" + wh[1];
+                int split = uy(l, FixedLayout.LAPTOP_ARROW_SPLIT, wh[1]), edge = ux(l, 12.1875f, wh[0]);
+                int[] up0 = p.box(p.index(upIds[0])), down0 = p.box(p.index(downIds[0])), ctrl = p.box(p.index(0xE4));
+                // 上下两层之间的缝：从上层下沿到下层上沿，横着从方向键块的左边（和右 Ctrl 共用的那条线）到面板右边
+                for (int y = up0[3]; y < down0[1]; y++) for (int x = edge; x < wh[0]; x++) {
+                    seam++;
+                    int a = id(p, route(router, x, y)), b = id(p, p.keyAt(x, y));
+                    // 哪一列：过了两列之间那条分界线（左边那列的右边 + gap = 右边那列的左边 − gap）才算右边那列；正压在线上两列一样近，nearestKey 取列表里靠前的（左边那列）
+                    int col = 0;
+                    for (int c = 1; c < 3; c++) if (x > p.box(p.index(upIds[c]))[0] - GAP) col = c;
+                    int want = y < split ? upIds[col] : downIds[col];
+                    if (a != want || b != want) {
+                        bad++;
+                        if (first == null) first = what + " (" + x + ", " + y + ") 应为 " + Integer.toHexString(want) + "：分流 " + Integer.toHexString(a)
+                                + "、面板 " + Integer.toHexString(b);
+                    }
+                }
+                // 右 Ctrl 和方向键之间那条竖缝：整个最下一排高
+                for (int y = ctrl[1]; y < ctrl[3]; y++) for (int x = ctrl[2]; x < up0[0]; x++) {
+                    side++;
+                    int a = id(p, route(router, x, y)), b = id(p, p.keyAt(x, y));
+                    int want = x < edge ? 0xE4 : y < split ? upIds[0] : downIds[0];
+                    if (a != want || b != want) {
+                        bad++;
+                        if (first == null) first = what + " 竖缝 (" + x + ", " + y + ") 应为 " + Integer.toHexString(want) + "：分流 " + Integer.toHexString(a)
+                                + "、面板 " + Integer.toHexString(b);
+                    }
+                }
+            }
+        check(bad == 0 && seam > 0 && side > 0, "笔记本方向键周围的缝：两层之间 " + seam + " 个点、右 Ctrl 旁竖缝 " + side + " 个点，" + bad + " 个分错"
+                + (first == null ? "" : "，比如 " + first));
+        System.err.println("  笔记本方向键周围的缝：" + combos + " 种（形状 × 模式 × ⋯ × 让位 × 窗口），两层之间 " + seam + " 个点、右 Ctrl 旁竖缝 " + side + " 个点");
+    }
+
+    // ── 钉死几个点（真 TouchRouter 和面板自己收触摸两条路）──
+    static void laptopPins() {
+        for (String m : MODES) for (int[] wh : new int[][]{{751, 300}, {480, 230}}) {
+            FixedLayout l = laptop(FixedLayout.ANSI, m);
+            int w = wh[0], h = wh[1];
+            String what = name(l) + " " + w + "×" + h;
+            for (boolean menu : new boolean[]{false, true}) {
+                FixedPanel p = new FixedPanel();
+                p.setBoard(l, table("us", m));
+                p.setMenuKey(menu);
+                p.place(w, h, GAP, 10);
+                TouchRouter router = new TouchRouter(new KeyRowsTest.Quiet());
+                router.setRegions(regions(p));
+                float[][] pts = {{13.59375f, 5.5625f, 0x52}, {13.59375f, 6.1875f, 0x51}, {12.65625f, 5.5625f, 0x4B}, {12.65625f, 6.1875f, 0x50},
+                        {14.53125f, 5.5625f, 0x4E}, {14.53125f, 6.1875f, 0x4F}, {0.1f, 6.4f, 0xE0}, {1.5f, 5.8f, menu ? FixedLayout.MENU_ID : 0xE0}};
+                for (float[] q : pts) {
+                    int x = ux(l, q[0], w), y = uy(l, q[1], h);
+                    int a = id(p, route(router, x, y)), b = id(p, p.keyAt(x, y));
+                    check(a == (int) q[2] && b == (int) q[2], what + (menu ? "（带 ⋯）" : "") + " (" + q[0] + ", " + q[1] + ") 是 " + Integer.toHexString((int) q[2])
+                            + "（分流 " + Integer.toHexString(a) + "、面板 " + Integer.toHexString(b) + "）");
+                }
+                boolean space = true;
+                for (float yu = 5.3f; yu <= 6.451f; yu += 0.05f) {
+                    int x = ux(l, 6.75f, w), y = uy(l, yu, h);
+                    space &= id(p, route(router, x, y)) == 0x2C && id(p, p.keyAt(x, y)) == 0x2C;
+                }
+                check(space, what + (menu ? "（带 ⋯）" : "") + " 空格正中竖着的每一点都是空格（没有横穿空格的缝）");
+                int x = ux(l, 13.46875f, w), y = uy(l, 0.5f, h);
+                if (l.mac()) {
+                    check(router.hit(x, y) == null && p.keyAt(x, y) == -1, what + " Mac F 行 Ins 那格正中：两条路都是什么都没有");
+                } else {
+                    check(id(p, route(router, x, y)) == 0x49 && id(p, p.keyAt(x, y)) == 0x49, what + " Windows F 行 Ins 那格是 Ins");
+                }
+            }
+        }
+    }
+
+    // ── 特殊键（⋯、🌐，REGION_BUTTON）只有一段：跨段抬起不算点击（不变量）。三种尺寸都扫 ──
+    static void specialOneSegment() {
+        int combos = 0;
+        for (String sz : FixedLayout.SIZES_DESC) for (String sh : SHAPES) for (String m : MODES) for (boolean menu : new boolean[]{false, true})
+            for (boolean holed : new boolean[]{false, true}) for (int[] wh : new int[][]{{933, 352}, {600, 230}, {480, 230}, {1800, 700}}) {
+                FixedLayout l = layout(sh, sz, m);
+                FixedPanel p = new FixedPanel();
+                p.setBoard(l, table("us", m));
+                p.setMenuKey(menu);
+                if (holed) p.setHole(FixedPanel.stickHole(l, wh[0], T));
+                p.place(wh[0], wh[1], GAP, 10);
+                combos++;
+                boolean ok = true;
+                int specials = 0;
+                for (int i = 0; i < p.keys().size(); i++) {
+                    if (!p.keys().get(i).special) continue;
+                    specials++;
+                    int n = 0;
+                    for (FixedPanel.Seg s : p.segs()) if (s.key == i) n++;
+                    ok &= n == 1;
+                }
+                check(ok && specials == (menu ? 1 : 0) + (l.mac() ? 1 : 0), name(l) + (menu ? " ⋯" : "") + (holed ? " 让位" : "") + " " + wh[0] + "×" + wh[1]
+                        + " 每个特殊键恰好一段（" + specials + " 个）");
+            }
+        System.err.println("  特殊键只有一段：" + combos + " 种（尺寸 × 形状 × 模式 × ⋯ × 让位 × 窗口）");
+    }
+
+    // ── ⋯ / 🌐：按下、在键里挪到靠下沿 / 靠左边、抬起，真 TouchRouter 报 BUTTON_TAP（MainActivity 只认它）──
+    static void buttonTap() {
+        for (String sz : FixedLayout.SIZES_DESC) for (String m : MODES) for (int[] wh : new int[][]{{751, 300}, {480, 230}, {933, 352}}) {
+            FixedLayout l = layout(FixedLayout.ANSI, sz, m);
+            FixedPanel p = new FixedPanel();
+            p.setBoard(l, table("us", m));
+            p.setMenuKey(true);
+            p.place(wh[0], wh[1], GAP, 10);
+            TouchRouterTest.Rec rec = new TouchRouterTest.Rec();
+            TouchRouter router = new TouchRouter(rec);
+            router.setConfig(new GestureEngine.Config(), 1);
+            router.setRegions(regions(p));
+            for (int i = 0; i < p.keys().size(); i++) {
+                if (!p.keys().get(i).special) continue;
+                FixedPanel.Seg seg = null;
+                for (FixedPanel.Seg s : p.segs()) if (s.key == i) seg = s;
+                if (seg == null) continue;
+                float cx = (seg.left + seg.right) / 2f, cy = (seg.top + seg.bottom) / 2f;
+                for (float[] to : new float[][]{{seg.left + 1, seg.bottom - 1}, {seg.left + 1, cy}, {cx, seg.top}}) {
+                    rec.log.clear();
+                    router.down(0, cx, cy, 0);
+                    router.move(0, to[0], to[1]);
+                    router.up(0, 20);
+                    check(rec.log.contains("b" + i + ":" + Proto.BUTTON_TAP), name(l) + " " + wh[0] + "×" + wh[1] + " " + p.keys().get(i)
+                            + " 挪到 (" + to[0] + ", " + to[1] + ") 抬起是点击：" + rec.log);
+                    check(p.keyAt(cx, cy) == i && p.keyAt(to[0], to[1]) == i, name(l) + " " + p.keys().get(i) + " 面板自己收触摸：按下、抬起的点都是它");
+                }
+            }
+        }
+    }
+
+    /** caps 里笔记本多看两样：最下一排除方向键外外框都是整行高（1.25 行）、让位时空格两个键帽。 */
+    static void laptopCapShapes(FixedPanel p, boolean holed, String what) {
+        FixedLayout l = p.layout();
+        int top = FixedPanel.px(l.rowTop(5), p.height(), l.height) + GAP, bottom = FixedPanel.px(l.height, p.height(), l.height) - GAP;
+        boolean ok = true;
+        for (int i = 0; i < p.keys().size(); i++) {
+            FixedLayout.Key k = p.keys().get(i);
+            if (k.row != 5 || !Float.isNaN(k.y0)) continue;
+            int[] b = p.box(i);
+            ok &= b[1] == top && b[3] == bottom;
+        }
+        check(ok, what + " 最下一排（方向键以外）的键帽整行高");
+        if (holed && p.hole() != null) check(p.capBoxes(p.index(0x2C)).size() == 2, what + " 让位时空格两个键帽");
+    }
+
+    // ── 键帽的字、主次键帽 ──
+    static void laptopGlyphs() {
+        FixedLegends.Table t = table("de", FixedLayout.WIN);
+        FixedPanel p = new FixedPanel();
+        p.setBoard(FixedLayout.build(FixedLayout.ISO, FixedLayout.LAPTOP, FixedLayout.WIN, t.hasThird(), ","), t);
+        p.place(751, 300, GAP, 10);
+        eqs(glyphs(p, 0x46, 0), "中PrtSc", "笔记本 PrtSc 键帽");
+        eqs(glyphs(p, 0x4B, 0), "中PgUp", "笔记本 PgUp 键帽");
+        eqs(glyphs(p, 0xE6, 0), "中AltGr", "笔记本 win:de 右 Alt 写 AltGr");
+        eqs(glyphs(p, 0x14, 0), "中q 角@", "笔记本 win:de q：一个字母 + 角上 @（第 1–4 行同 TKL）");
+        for (int u : new int[]{0x46, 0x4B, 0x4E, 0x52, 0x4A, 0x4D, 0x49, 0x4C, 0x29, 0x3A, 0xE0, 0xE4}) check(p.functionKey(p.index(u)), "笔记本功能键帽：" + Integer.toHexString(u));
+        for (int u : new int[]{0x2C, 0x04, 0x1E, 0x64}) check(!p.functionKey(p.index(u)), "笔记本普通键帽：" + Integer.toHexString(u));
+        check(p.preview(p.index(0x52), 0) == null && p.preview(p.index(0x46), 0) == null, "笔记本方向键、PrtSc 不放大");
+    }
+
+    // ── 逐级缩：挑哪一级（KeyboardPlan.fixedLevel）──
+    static void levels() {
+        FixedLayout full = layout(FixedLayout.ANSI, FixedLayout.FULL, FixedLayout.WIN), tkl = layout(FixedLayout.ANSI, FixedLayout.TKL, FixedLayout.WIN),
+                lap = laptop(FixedLayout.ANSI, FixedLayout.WIN);
+        check(KeyboardPlan.fixedFits(lap, 480, T) && !KeyboardPlan.fixedFits(lap, 479, T), "笔记本一格 32 起（480 / 15 = 32）");
+        List<FixedLayout> fromFull = Arrays.asList(full, tkl, lap), fromTkl = Arrays.asList(tkl, lap), fromLap = Arrays.asList(lap);
+        int[][] wantFull = {{720, 0}, {719, 1}, {584, 1}, {583, 2}, {480, 2}, {479, -1}, {2600, 0}};
+        for (int[] q : wantFull) check(KeyboardPlan.fixedLevel(fromFull, q[0], T) == q[1], "选全尺寸 " + q[0] + " 宽 → 第 " + q[1] + " 级（得到 " + KeyboardPlan.fixedLevel(fromFull, q[0], T) + "）");
+        check(KeyboardPlan.fixedLevel(fromTkl, 2000, T) == 0 && KeyboardPlan.fixedLevel(fromTkl, 583, T) == 1 && KeyboardPlan.fixedLevel(fromTkl, 479, T) == -1,
+                "选 TKL：宽窗口照旧 TKL（只缩不涨）、583 缩成笔记本、479 暂用豆花布局");
+        check(KeyboardPlan.fixedLevel(fromLap, 2000, T) == 0 && KeyboardPlan.fixedLevel(fromLap, 480, T) == 0 && KeyboardPlan.fixedLevel(fromLap, 479, T) == -1,
+                "选笔记本：放不下直接豆花布局");
+        check(KeyboardPlan.fixedLevel(new ArrayList<>(), 2000, T) == -1 && KeyboardPlan.fixedLevel(fromFull, 0, T) == -1 && KeyboardPlan.fixedLevel(null, 2000, T) == -1,
+                "ladder 是空的（数据读不出来）/ 还没量好：-1");
+        int widths = 0;
+        boolean ok = true;
+        for (List<FixedLayout> ladder : Arrays.asList(fromFull, fromTkl, fromLap)) {
+            for (int w = 300; w <= 2600; w++) {
+                widths++;
+                int lv = KeyboardPlan.fixedLevel(ladder, w, T);
+                for (int j = 0; j < ladder.size(); j++) {
+                    boolean fits = KeyboardPlan.fixedFits(ladder.get(j), w, T);
+                    if (j < lv || lv < 0) ok &= !fits;   // 比它大的每一级都放不下（都放不下才 -1）
+                    if (j == lv) ok &= fits;
+                }
+            }
+        }
+        check(ok, "逐级缩扫了 " + widths + " 种宽度：挑的是第一个放得下的");
+    }
+
+    // ── 笔记本没调过大小的默认位置（自然比例按 6.5 行高）──
+    static void laptopDefaults() {
+        FixedLayout lap = laptop(FixedLayout.ANSI, FixedLayout.WIN);
+        float natural = 15 / (6.5f * KeyboardPlan.FIXED_ROW_ASPECT);
+        KeyboardPlan.Plan p = KeyboardPlan.planFixed(KeyboardPlan.POINTER_PAD, KeyboardPlan.KEYS_OFF, 751, 475, null, lap, T);
+        int kh = p.keyboard[3] - p.keyboard[1];
+        check(p.keyboard[0] == 0 && p.keyboard[2] == 751 && p.keyboard[3] == 475 && Math.abs(kh - 751 / natural) <= 1, "笔记本 751×475：满宽、贴底、高按自然比例（6.5 行）：" + kh);
+        check(p.padSide == KeyboardPlan.PAD_TOP && p.menuArea != null, "笔记本 751×475：触控板在上面、⋯ 在触控板上");
+        KeyboardPlan.Plan wide = KeyboardPlan.planFixed(KeyboardPlan.POINTER_PAD, KeyboardPlan.KEYS_OFF, 1600, 400, null, lap, T);
+        check(wide.keyboard[0] == 0 && wide.keyboard[3] == 400 && Math.abs(wide.keyboard[2] - natural * 400) <= 1 && wide.padSide == KeyboardPlan.PAD_RIGHT,
+                "笔记本宽窗口：满高、按自然宽度靠左，右边给触控板");
+        KeyboardPlan.Plan stick = KeyboardPlan.planFixed(KeyboardPlan.POINTER_STICK, KeyboardPlan.KEYS_OFF, 751, 475, null, lap, T);
+        check(stick.menuArea == null && stick.pad == null, "笔记本小红点：没有触控板，⋯ 在左下角的槽里");
+        defaultsScan(LAPTOP_ONLY, LAPTOP_LABEL);
+    }
+
+    // ── 笔记本 + 小红点：一格 ≥ 32dp 就一定有三个鼠标键、中键正对红点（协调者 2026-11-01 定：空格两段最短 0.75 份）──
+    static void laptopStickHole() {
+        for (String sh : SHAPES) for (String m : MODES) {
+            FixedLayout l = laptop(sh, m);
+            String n = name(l);
+            int bad = 0;
+            String first = null;
+            for (int pw = 480; pw <= 2600; pw++) {
+                int[] hole = FixedPanel.stickHole(l, pw, T);
+                float unit = pw / 15f;
+                int cx = FixedPanel.px(l.stickU(), pw, l.width), left = FixedPanel.px(4.25f, pw, l.width), right = FixedPanel.px(9.25f, pw, l.width);
+                String why = null;
+                if (hole == null) why = "让不出空位";
+                else if (Math.abs(hole[0] + hole[1] - 2 * cx) > 1) why = "空位不以红点为中线";
+                else if (hole[1] - hole[0] < T.holeWidth(T.minKey)) why = "空位放不下三个 minKey 的键";
+                else if (hole[0] - left < unit * FixedPanel.LAPTOP_SPACE_MIN - 1 || right - hole[1] < unit * FixedPanel.LAPTOP_SPACE_MIN - 1) why = "空格不到 0.75 份";
+                else if (pw >= 720 && hole[1] - hole[0] < T.holeWidth(T.keyW)) why = "720 宽起三个键该各 ≥ keyW";
+                else if (pw >= 545 && (hole[0] - left < unit - 1 || right - hole[1] < unit - 1)) why = "545 宽起空格该照 TKL 的规则 ≥ 1 份";
+                if (why != null && bad++ == 0) first = pw + "：" + why + " " + Arrays.toString(hole);
+            }
+            check(bad == 0, n + " 面板 480–2600 宽每一种都让得出空位、对称、键 ≥ minKey、空格 ≥ 0.75 份" + (first == null ? "" : "（" + bad + " 种不对，比如 " + first + "）"));
+            int[] h720 = FixedPanel.stickHole(l, 720, T), h719 = FixedPanel.stickHole(l, 719, T), h500 = FixedPanel.stickHole(l, 500, T);
+            check(h720 != null && h720[1] - h720[0] >= T.holeWidth(T.keyW) && h719 != null && h719[1] - h719[0] < T.holeWidth(T.keyW),
+                    n + " 720 宽时三个键各 ≥ 44、719 宽时不是（同 TKL 的规则：先缩空格到 1 份）");
+            int left500 = FixedPanel.px(4.25f, 500, 15);
+            check(h500 != null && h500[1] - h500[0] == T.holeWidth(T.minKey) && h500[0] - left500 < 500 / 15f && h500[0] - left500 >= 500 / 15f * 0.75f,
+                    n + " 500 宽：三个键各 minKey、空格缩到 0.75–1 份之间（笔记本多的那一步）");
+            FixedLayout tkl = layout(sh, FixedLayout.TKL, m);
+            check(FixedPanel.stickHole(tkl, 480, T) == null && FixedPanel.stickHole(l, 480, T) != null,
+                    n + " 面板 480 宽：TKL 照旧让不出、笔记本让得出（多的那一步只给笔记本）");
+        }
+        // 整个摆法：页宽一格 ≥ 32dp ⇒ 有三个鼠标键、中键正对红点（默认位置 + 随机存过的位置，后者经 fitFixedRect 撑到一格 32dp）
+        Random rnd = new Random(20261101);
+        int plans = 0, bad = 0;
+        String first = null;
+        for (String sh : SHAPES) for (String m : MODES) {
+            FixedLayout l = laptop(sh, m);
+            for (int w = 480; w <= 2600; w += 7) for (int h : new int[]{150, 200, 230, 300, 475, 704, 900}) for (int k = 0; k < 3; k++) {
+                float[] saved = k == 0 ? null : new float[]{rnd.nextFloat() * 0.9f, rnd.nextFloat() * 0.5f, 0, 1};
+                if (saved != null) saved[2] = Math.min(1, saved[0] + 0.02f + rnd.nextFloat() * 0.6f);
+                KeyboardPlan.Plan p = KeyboardPlan.planFixed(KeyboardPlan.POINTER_STICK, KeyboardPlan.KEYS_OFF, w, h, saved, l, T);
+                plans++;
+                int pw = p.keyboard[2] - p.keyboard[0], ph = p.keyboard[3] - p.keyboard[1];
+                String why = null;
+                if (p.keys == null || p.hole == null || p.middleKey == null) why = "没有三个鼠标键";
+                else {
+                    int[] pt = FixedPanel.stickPoint(l, pw, ph, GAP);
+                    int mid = (p.middleKey[0] + p.middleKey[1]) / 2 - p.keyboard[0];
+                    int a = p.middleKey[0] - p.keys[0], b = p.middleKey[1] - p.middleKey[0], c = p.keys[2] - p.middleKey[1];
+                    if (Math.abs(mid - pt[0]) > 1) why = "中键没正对红点";
+                    else if (Math.min(a, Math.min(b, c)) < T.minKey + 2 * T.capGap - 1) why = "鼠标键比 minKey 窄：" + a + " / " + b + " / " + c;
+                    else if (pw / 15f < T.minKey - 0.1f) why = "面板一格不到 minKey：" + pw;
+                }
+                if (why != null && bad++ == 0) first = name(l) + " " + w + "×" + h + " " + Arrays.toString(saved) + "：" + why;
+            }
+        }
+        check(bad == 0, "笔记本 + 小红点 + 一格 ≥ 32dp ⇒ 有三个鼠标键、中键正对红点：扫了 " + plans + " 种" + (first == null ? "" : "，" + bad + " 种不对，比如 " + first));
+        System.err.println("  笔记本 + 小红点的三个鼠标键：" + plans + " 种摆法（页宽 480–2600 × 高 × 默认 / 随机存过的位置）都有");
+    }
+
+    // ── 存的位置在窄窗口里撑到一格 32dp（KeyboardPlan.fitFixedRect），存的那份不改 ──
+    static void fitFixed() {
+        FixedLayout tkl = layout(FixedLayout.ANSI, FixedLayout.TKL, FixedLayout.WIN), lap = laptop(FixedLayout.ANSI, FixedLayout.WIN);
+        float[] saved = {0.1f, 0.2f, 0.9f, 1};
+        float[] r = KeyboardPlan.fitFixedRect(saved, tkl, 1000, T);
+        check(Arrays.equals(r, saved) && r != saved, "1000 宽 TKL：够宽的照用（新数组）");
+        float[] c = {0.2f, 0.3f, 0.5f, 1}, c0 = c.clone();
+        r = KeyboardPlan.fitFixedRect(c, lap, 500, T);
+        check(Math.abs(r[0]) < 1e-5f && Math.abs(r[1] - 0.3f) < 1e-6f && Math.abs(r[2] - 0.96f) < 1e-4f && r[3] == 1 && Arrays.equals(c, c0),
+                "500 宽笔记本存 {0.2, 0.3, 0.5, 1}：按中线撑到 0.96、挪进 [0, 1]，高不动，存的没改：" + Arrays.toString(r));
+        r = KeyboardPlan.fitFixedRect(new float[]{0.7f, 0, 0.9f, 1}, lap, 500, T);
+        check(Math.abs(r[0] - 0.04f) < 1e-4f && r[2] == 1, "靠右的撑开后贴右边：" + Arrays.toString(r));
+        KeyboardPlan.Plan p = KeyboardPlan.planFixed(KeyboardPlan.POINTER_PAD, KeyboardPlan.KEYS_OFF, 500, 300, c, lap, T);
+        check(Arrays.equals(p.rect, KeyboardPlan.fitFixedRect(c, lap, 500, T)) && (p.keyboard[2] - p.keyboard[0]) / 15f >= T.minKey - 0.1f && Arrays.equals(c, c0),
+                "planFixed 用撑过的那份（Plan.rect）、面板一格 ≥ minKey、存的没改");
+        Random rnd = new Random(7);
+        int n = 0, stretched = 0, bad = 0;
+        String first = null;
+        for (String sz : FixedLayout.SIZES_DESC) {
+            FixedLayout l = layout(FixedLayout.ISO, sz, FixedLayout.MAC);
+            for (int w = 300; w <= 2600; w += 11) {
+                if (!KeyboardPlan.fixedFits(l, w, T)) continue;
+                for (int k = 0; k < 6; k++) {
+                    float a = rnd.nextFloat(), b = rnd.nextFloat();
+                    float[] s = {Math.min(a, b), rnd.nextFloat() * 0.5f, Math.max(a, b) + 0.001f, 0.6f + rnd.nextFloat() * 0.4f};
+                    s[2] = Math.min(1, s[2]);
+                    float[] f = KeyboardPlan.fitFixedRect(s, l, w, T);
+                    n++;
+                    float min = KeyboardPlan.fixedMinWidth(l, w, T);
+                    boolean ok;
+                    if (s[2] - s[0] >= min) {
+                        ok = Arrays.equals(f, s);
+                    } else {
+                        stretched++;
+                        ok = f[0] >= 0 && f[2] <= 1 && f[1] == s[1] && f[3] == s[3] && (Math.round(f[2] * w) - Math.round(f[0] * w)) / l.width >= T.minKey - 0.1f;
+                    }
+                    if (!ok && bad++ == 0) first = name(l) + " " + w + " " + Arrays.toString(s) + " → " + Arrays.toString(f);
+                }
+            }
+        }
+        check(bad == 0 && stretched > 0, "fitFixedRect 扫了 " + n + " 种（撑过的 " + stretched + "）：撑过的一格都 ≥ minKey、没撑的和存的一样" + (first == null ? "" : "，比如 " + first));
+    }
+
+    // ── 逐级缩的状态（FixedSizing）──
+    static void sizing() {
+        FixedLayout full = layout(FixedLayout.ANSI, FixedLayout.FULL, FixedLayout.WIN), tkl = layout(FixedLayout.ANSI, FixedLayout.TKL, FixedLayout.WIN),
+                lap = laptop(FixedLayout.ANSI, FixedLayout.WIN);
+        List<FixedLayout> ladder = Arrays.asList(full, tkl, lap);
+        float[] A = {0.1f, 0.1f, 0.9f, 1}, C = {0.2f, 0.3f, 0.5f, 1}, D = {0.05f, 0, 0.95f, 1};
+        Map<String, float[]> saved = new HashMap<>();
+        saved.put(FixedLayout.FULL, A.clone());
+        saved.put(FixedLayout.LAPTOP, C.clone());
+        FixedSizing z = new FixedSizing();
+        check(z.level() == -1 && z.layout() == null && z.size() == null && z.planInput() == null && z.beginDrag() == null && z.endDrag() == null && z.reset() == null,
+                "sizing：一开始什么都没显示");
+        z.setLadder(ladder);
+        z.setSaved(saved);
+        saved.get(FixedLayout.FULL)[0] = 0.5f;   // 改传进去的 map 不影响它（存的是拷贝）
+        // 宽度来回变
+        check(z.update(true, 800, T) && z.level() == 0 && FixedLayout.FULL.equals(z.size()) && Arrays.equals(z.planInput(), A), "sizing：800 宽 → 全尺寸，用存的 A");
+        check(!z.update(true, 800, T), "sizing：同一宽度再量：没换");
+        check(z.update(true, 700, T) && z.level() == 1 && z.planInput() == null, "sizing：700 宽 → TKL（没存过，默认位置）");
+        z.planned(D);
+        check(Arrays.equals(z.work(), D) && z.planInput() == null, "sizing：默认位置抄进工作副本、planInput 仍是 null");
+        check(z.update(true, 500, T) && z.level() == 2 && z.layout() == lap && Arrays.equals(z.planInput(), C), "sizing：500 宽 → 笔记本，用存的 C");
+        check(z.update(true, 470, T) && z.level() == -1 && z.layout() == null && z.size() == null && z.planInput() == null, "sizing：470 宽 → 豆花布局");
+        check(!z.update(false, 2000, T) && z.level() == -1, "sizing：没选实体键盘：-1（和上次一样，没换）");
+        check(z.update(true, 800, T) && Arrays.equals(z.planInput(), A), "sizing：回到 800 宽又是全尺寸 A");
+        // 只点一下（从撑开过的那份开始，没拖动就换回存的那份、不存）
+        z.update(true, 500, T);
+        float[] P = KeyboardPlan.fitFixedRect(C, lap, 500, T);
+        z.planned(P);
+        check(!Arrays.equals(P, C), "sizing：500 宽时存的 C 被撑开过");
+        float[] w = z.beginDrag();
+        check(w == z.work() && Arrays.equals(w, P) && z.dragging(), "sizing：从显示着的（撑开过的）那份开始拖");
+        check(z.endDrag() == null && Arrays.equals(z.planInput(), C) && !z.dragging(), "sizing：没拖动：不存、换回 C");
+        // 拖了
+        z.planned(P);
+        w = z.beginDrag();
+        w[0] = 0.01f;
+        FixedSizing.Save sv = z.endDrag();
+        check(sv != null && FixedLayout.LAPTOP.equals(sv.size) && Arrays.equals(sv.rect, w) && Arrays.equals(z.savedFor(FixedLayout.LAPTOP), w)
+                && Arrays.equals(z.planInput(), w), "sizing：拖了：存进笔记本那份，下次 planInput 就是它");
+        // 从默认位置拖了一下又没动：仍是默认位置
+        z.update(true, 700, T);
+        z.planned(D);
+        z.beginDrag();
+        check(z.planInput() != null, "sizing：拖的途中是用户的（量尺寸时不换回默认位置）");
+        check(z.endDrag() == null && z.planInput() == null && z.savedFor(FixedLayout.TKL) == null, "sizing：默认位置点一下没拖：还是默认位置、不存");
+        // 拖动中换级
+        z.planned(D);
+        w = z.beginDrag();
+        w[2] = 0.8f;
+        check(z.update(true, 800, T), "sizing：拖动中页宽变了、换了级");
+        check(z.endDrag() == null && z.savedFor(FixedLayout.TKL) == null && Arrays.equals(z.planInput(), A), "sizing：拖动中换级：这一下作废，TKL 没存、全尺寸还是 A");
+        // 拖动中 setSaved / setLadder：作废
+        z.planned(A);
+        w = z.beginDrag();
+        w[0] = 0.3f;
+        Map<String, float[]> s2 = new HashMap<>();
+        s2.put(FixedLayout.FULL, A.clone());
+        z.setSaved(s2);
+        check(z.endDrag() == null && Arrays.equals(z.savedFor(FixedLayout.FULL), A) && Arrays.equals(z.planInput(), A), "sizing：拖动中换了存的那几份：作废");
+        z.planned(A);
+        w = z.beginDrag();
+        w[0] = 0.3f;
+        z.setLadder(ladder);
+        check(z.endDrag() == null && Arrays.equals(z.savedFor(FixedLayout.FULL), A), "sizing：拖动中换了键盘：作废");
+        check(z.update(true, 800, T) && z.level() == 0, "sizing：换了键盘后同一宽度也报换了（菜单跟着换字）");
+        // 恢复默认
+        z.setSaved(saved);   // full: 改过的 0.5（拷贝时已经是改过的），laptop: C
+        z.update(true, 500, T);
+        check(FixedLayout.LAPTOP.equals(z.reset()) && z.planInput() == null && z.savedFor(FixedLayout.LAPTOP) == null && z.savedFor(FixedLayout.FULL) != null,
+                "sizing：恢复默认只清显示着的笔记本那份");
+        z.update(false, 500, T);
+        check(z.reset() == null && z.beginDrag() == null, "sizing：没显示时恢复默认 / 拖都是空的");
+        // 随机序列（照 KeyboardScreen 的用法：量尺寸 → planFixed → planned；拖的时候只在没作废时改工作副本）
+        Random rnd = new Random(1101);
+        Map<String, float[]> model = new HashMap<>();
+        FixedSizing y = new FixedSizing();
+        y.setLadder(ladder);
+        String begun = null;
+        int steps = 0, saves = 0, bad = 0;
+        String first = null;
+        // 权重：量尺寸 2、按下 2、拖 3、抬起 2、换存的那几份 1、恢复默认 1、换键盘 1（拖动多一点，才有足够多的"拖完存下"）
+        int[] kinds = {0, 0, 2, 2, 3, 3, 3, 4, 4, 5, 6, 7};
+        for (int i = 0; i < 6000; i++) {
+            steps++;
+            String why = null;
+            switch (kinds[rnd.nextInt(kinds.length)]) {
+                case 0: {   // 量尺寸
+                    int pw = 300 + rnd.nextInt(2300);
+                    boolean changed = y.update(rnd.nextInt(6) != 0, pw, T);
+                    if (changed) begun = null;
+                    if (y.level() >= 0) {
+                        KeyboardPlan.Plan p = KeyboardPlan.planFixed(KeyboardPlan.POINTER_PAD, KeyboardPlan.KEYS_OFF, pw, 300 + rnd.nextInt(500), y.planInput(), y.layout(), T);
+                        y.planned(p.rect);
+                    }
+                    break;
+                }
+                case 2: {
+                    float[] wk = y.beginDrag();
+                    begun = wk == null ? null : y.size();
+                    if (wk == null && y.level() >= 0) why = "显示着却拖不了";
+                    break;
+                }
+                case 3:
+                    if (y.dragging()) {   // KeyboardScreen：作废以后 handle 清了、不再改
+                        float[] wk = y.work();
+                        wk[0] = Math.max(0, Math.min(0.5f, wk[0] + (rnd.nextFloat() - 0.5f) * 0.1f));
+                    }
+                    break;
+                case 4: {
+                    String sizeNow = y.size();
+                    FixedSizing.Save s = y.endDrag();
+                    if (s != null) {
+                        saves++;
+                        if (!s.size.equals(begun) || !s.size.equals(sizeNow)) why = "存进了别的尺寸：" + s.size + "（按下时 " + begun + "、现在 " + sizeNow + "）";
+                        model.put(s.size, s.rect.clone());
+                    }
+                    begun = null;
+                    break;
+                }
+                case 5: {
+                    Map<String, float[]> m = new HashMap<>();
+                    for (String sz : FixedLayout.SIZES_DESC) if (rnd.nextBoolean()) m.put(sz, new float[]{rnd.nextFloat() * 0.4f, 0, 0.6f + rnd.nextFloat() * 0.4f, 1});
+                    y.setSaved(m);
+                    model.clear();
+                    for (Map.Entry<String, float[]> e : m.entrySet()) model.put(e.getKey(), e.getValue().clone());
+                    begun = null;
+                    break;
+                }
+                case 6: {
+                    String r = y.reset();
+                    if (r != null) model.remove(r);
+                    begun = null;
+                    break;
+                }
+                default: {
+                    if (rnd.nextInt(4) == 0) {
+                        y.setLadder(rnd.nextBoolean() ? ladder : Arrays.asList(tkl, lap));
+                        begun = null;
+                    }
+                    break;
+                }
+            }
+            float[] in = y.planInput();
+            if (why == null && in != null && !y.dragging() && !Arrays.equals(in, model.get(y.size()))) why = "planInput 既不是存的那份、也没在拖";
+            for (String sz : FixedLayout.SIZES_DESC) {
+                if (why == null && !Arrays.equals(y.savedFor(sz), model.get(sz))) why = sz + " 存的那份和预期不一样";
+            }
+            if (why != null && bad++ == 0) first = "第 " + i + " 步：" + why;
+        }
+        check(bad == 0 && saves > 0, "sizing 随机序列 " + steps + " 步（存了 " + saves + " 次）" + (first == null ? "" : "：" + first));
+        System.err.println("  逐级缩状态随机序列：" + steps + " 步，存了 " + saves + " 次");
     }
 
     // ── 工具 ──

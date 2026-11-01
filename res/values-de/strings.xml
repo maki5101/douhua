@@ -500,6 +500,7 @@
     <string name="kbd_menu_douhua">Tastatur: Douhua</string>
     <string name="kbd_menu_fixed">Tastatur: physisch (%1$s)</string>
     <string name="kbd_menu_narrow">Tastatur: physisch (hier zu schmal, Douhua angezeigt)</string>
+    <string name="kbd_menu_stepped">Tastatur: physisch (%1$s; %2$s passt nicht, %3$s angezeigt)</string>
     <string name="kbd_menu_no_data">Tastatur: physisch (Daten nicht lesbar, Douhua angezeigt)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
     <string name="kbd_lang_us">Englisch (USA)</string>
@@ -510,7 +511,7 @@
     <string name="kbd_board">Tastaturansicht verwendet</string>
     <string name="kbd_board_douhua">Douhua-Layout</string>
     <string name="kbd_board_fixed">Physische Tastatur</string>
-    <string name="kbd_board_note">Auch über „Tastatur“ im ⋯-Menü umschaltbar. Beide behalten ihre Einstellungen: Größe und Position des Douhua-Layouts, Teilung, unterste Reihe und die gezeigte Ebene bleiben, wie sie waren. Ist das Fenster für die physische Tastatur zu schmal (Taste unter 32 dp, z. B. Handy hochkant), wird vorerst das Douhua-Layout gezeigt; quer gedreht kommt die physische Tastatur zurück.</string>
+    <string name="kbd_board_note">Auch über „Tastatur“ im ⋯-Menü umschaltbar. Beide behalten ihre Einstellungen: Größe und Position des Douhua-Layouts, Teilung, unterste Reihe und die gezeigte Ebene bleiben, wie sie waren. Passt nicht einmal die Laptop-Größe (Buchstabentaste unter 32 dp, z. B. Handy hochkant), wird vorerst das Douhua-Layout gezeigt; quer gedreht kommt die physische Tastatur zurück.</string>
     <string name="sec_kbd_fixed">Physische Tastatur</string>
     <string name="kbd_lang">Layout (Beschriftung der Tasten)</string>
     <string name="kbd_host_names">Am Computer oder Tablet dasselbe Layout wählen: auf Mac und iPad heißt es „%1$s“, unter Windows „%2$s“.</string>
@@ -520,6 +521,11 @@
     <string name="kbd_size">Größe</string>
     <string name="kbd_size_tkl">Ohne Ziffernblock (TKL, %1$d Tasten)</string>
     <string name="kbd_size_full">Volle Größe (mit Ziffernblock, %1$d Tasten)</string>
+    <string name="kbd_size_laptop">Laptop (wie ThinkPad, Pfeiltasten unten rechts, %1$d Tasten)</string>
+    <string name="kbd_size_short_full">volle Größe</string>
+    <string name="kbd_size_short_tkl">TKL</string>
+    <string name="kbd_size_short_laptop">Laptop</string>
+    <string name="kbd_size_note">Passt die gewählte Größe nicht ins Fenster (Buchstabentaste unter 32 dp), wird Stufe für Stufe verkleinert: volle Größe → TKL → Laptop; erst wenn auch Laptop nicht passt, wird das Douhua-Layout gezeigt. Wird das Fenster breiter, geht es automatisch zurück. Jede Größe merkt sich ihre eigene Größe und Position.</string>
     <string name="kbd_mode">Modus</string>
     <string name="kbd_mode_hint">Der Mac-Modus ist eine Apple-Tastatur: unterste Reihe ⌃ ⌥ ⌘ (Option sendet Alt, Befehl sendet ⌘), die Tasten zeigen, was ein Mac tippt; auch fürs iPad. Der Windows-Modus ist eine PC-Tastatur: Strg (Ctrl), Super, Alt, AltGr, ☰, die Tasten zeigen, was Windows tippt; auch für Linux und Android.</string>
     <string name="kbd_host_note">Douhua sendet Tastenpositionen; welches Zeichen erscheint, bestimmt das am Computer oder Tablet eingestellte Tastaturlayout. Dort dasselbe Layout einstellen, dann passen die Tasten zu dem, was getippt wird. Im Desktop-Modus ist „dort“ dieses Handy: in den Einstellungen der physischen Tastatur des Handys für Douhua Keyboard dasselbe Layout wählen.</string>

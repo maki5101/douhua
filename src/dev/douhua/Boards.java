@@ -1,6 +1,8 @@
 package dev.douhua;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 键盘页用哪块键盘（豆花布局 / 实体键盘）和实体键盘自己的设置，纯 Java（离线测，BoardsTest）。跑在一个只有读写删的小接口上（{@link Store}）：
@@ -11,11 +13,12 @@ import java.util.List;
  *   kbd_board              当前用哪块：douhua（默认，老用户升级后和以前一样）/ fixed
  *   kbx_lang               布局（kbd_catalog 的 id：us、de），默认 us
  *   kbx_shape              形状 ansi / iso；这个布局不能选的（德语只有 ISO）读的时候换成布局的默认形状，存的值不动（换回能选的布局时还在）
- *   kbx_size               tkl（默认）/ full
+ *   kbx_size               tkl（默认）/ full / laptop（笔记本，2026-11-01）：逐级缩的起点（放不下就往小换，FixedLayout.ladder），存的值不跟着缩
  *   kbx_mode               win（默认，连 Linux、安卓也用它）/ mac（连 iPad 也用它）
  *   kbx_pointer            键盘页的指点（KeyboardPlan.POINTER_*），和豆花布局的 kb_pointer 分开记：在实体键盘上换成小红点不会把豆花布局也换了
  *   kbx_<尺寸>_<指点>_<land|port>_<l|t|r|b>   大小位置（键盘区的 0–1，没有 = 默认）：按尺寸 × 指点 × 横竖屏各一份
- *                          （换语言、形状、模式不挪；全尺寸和 TKL 来回换各回各的；有触控板时避让、没有时不避让，同豆花布局按指点分开记）
+ *                          （换语言、形状、模式不挪；全尺寸、TKL、笔记本来回换各回各的；有触控板时避让、没有时不避让，同豆花布局按指点分开记）。
+ *                          尺寸是**显示着的**那个（逐级缩成笔记本时取、存的都是 kbx_laptop_…），所以存取都显式给尺寸，不按选的尺寸
  * 只有一块实体键盘（用户 2026-11-01 要的是"选哪块实体键盘：语言、形状、尺寸、Windows / Mac"，⋯ 菜单里豆花 / 实体两块切换）；
  * 方案里的"键盘列表、按主机记住、主机系统、互换开关"都不做（用户："主机怎么读那是主机的事，不是键盘设计者应该考虑的问题"）。
  * 切换只改 kbd_board；换语言等只改 kbx_ 的那几个。"恢复默认"（Prefs.resetAll）照旧整个清空，实体键盘的设置一起清掉。
@@ -161,24 +164,37 @@ final class Boards {
         return "kbx_" + FixedLayout.validSize(size) + "_" + ptr + "_" + (landscape ? "land_" : "port_");
     }
 
-    /** 现在这个尺寸、这种指点状态下存的大小位置 {左, 上, 右, 下}（0–1）；没存过返回 null（KeyboardPlan.fixedDefaultRect 按窗口给）。 */
-    float[] savedRect(boolean landscape) {
-        String p = rectKey(size(), pointer(), landscape);
+    /**
+     * size 这个尺寸（显示着的那个，不一定是选的：逐级缩）、现在这种指点状态下存的大小位置 {左, 上, 右, 下}（0–1）；
+     * 没存过返回 null（KeyboardPlan.fixedDefaultRect 按窗口给）。
+     */
+    float[] savedRect(String size, boolean landscape) {
+        String p = rectKey(size, pointer(), landscape);
         if (!store.contains(p + "l")) return null;
         return new float[]{store.getFloat(p + "l", 0), store.getFloat(p + "t", 0), store.getFloat(p + "r", 1), store.getFloat(p + "b", 1)};
     }
 
-    void setRect(boolean landscape, float[] r) {
-        String p = rectKey(size(), pointer(), landscape);
+    void setRect(String size, boolean landscape, float[] r) {
+        String p = rectKey(size, pointer(), landscape);
         store.putFloat(p + "l", r[0]);
         store.putFloat(p + "t", r[1]);
         store.putFloat(p + "r", r[2]);
         store.putFloat(p + "b", r[3]);
     }
 
-    /** 调整栏的"恢复默认"：只清现在这个尺寸、这种指点、这个方向的那份。 */
-    void resetRect(boolean landscape) {
-        String p = rectKey(size(), pointer(), landscape);
+    /** 调整栏的"恢复默认"：只清 size 这个尺寸（显示着的）、这种指点、这个方向的那份。 */
+    void resetRect(String size, boolean landscape) {
+        String p = rectKey(size, pointer(), landscape);
         for (String e : new String[]{"l", "t", "r", "b"}) store.remove(p + e);
+    }
+
+    /** 三个尺寸各自在现在这种指点、这个方向下存的那份（尺寸 → {左, 上, 右, 下}；没存过的不放进去）：逐级缩换到哪一级都有它自己那份（FixedSizing）。 */
+    Map<String, float[]> savedRects(boolean landscape) {
+        Map<String, float[]> out = new LinkedHashMap<>();
+        for (String size : FixedLayout.SIZES_DESC) {
+            float[] r = savedRect(size, landscape);
+            if (r != null) out.put(size, r);
+        }
+        return out;
     }
 }

@@ -20,7 +20,9 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import dev.douhua.ConfigCodec;
+import dev.douhua.GamepadConfig;
 import dev.douhua.GestureEngine;
+import dev.douhua.Hid;
 import dev.douhua.Proto;
 import dev.douhua.TouchRouter;
 
@@ -52,6 +54,11 @@ import dev.douhua.TouchRouter;
  * 豆花窗口里的交给 TouchRouter，窗口外的、从系统手势带按下的注入回系统（{@link Passthrough}）。透传不可用时分屏下不独占
  * （{@link #passBlock}），触摸交还系统、触控板暂停。注入出去的每个 DOWN 在所有退出路径上都配 CANCEL
  * （释放独占：TouchReader 的 onStop；会话结束：{@link Passthrough#close}；服务兜底退出前：{@link Passthrough#cancelBeforeExit}）。
+ *
+ * 手柄（协议 19 起，桌面模式）：第一次用到才建第三个 uhid 设备（{@link UhidGamepad}：布局里第一次出现手柄页的区域、或第一次收到
+ * 不是中立的 CMD_GAMEPAD），留到会话结束（游戏里手柄消失多半弹"手柄已断开"；会话一开就建的话每次串流电脑上都多一个空手柄）。
+ * 两路合并（{@link GamepadMux}）：服务自己分流出的（接管时）+ App 本地分流发来的（没接管时，CMD_GAMEPAD）；开始接管时清掉 App 那路。
+ * 所有收尾路径回中立：releaseAll（释放独占、会话结束）发全零，关设备前也先写一帧全零。
  */
 final class Session implements TouchRouter.Output, TouchReader.Listener {
     /** App 发来的布局，整体替换、不改内部。 */
@@ -108,6 +115,14 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     /** 在 run() 里建；新会话可能替收不了尾的旧会话关掉它们（{@link #closeDevices}）。 */
     private volatile UhidMouse mouse;
     private volatile UhidKeyboard keyboard;
+    /** 虚拟手柄：第一次用到才建（只在命令线程里建），会话结束才关；建失败了这个会话不再试。 */
+    private volatile UhidGamepad gamepad;
+    private boolean gamepadFailed;
+    /** 虚拟设备已经关了（会话收尾 / 被新会话替着关了）：之后不再建手柄。 */
+    private volatile boolean devicesClosed;
+    /** 手柄的两路（lock 里用）。 */
+    private final GamepadMux pads = new GamepadMux();
+    private final LogThrottle gamepadLog = new LogThrottle(60_000);
 
     private final Object lock = new Object();
     private final TouchRouter router = new TouchRouter(this);
@@ -268,7 +283,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         timer.shutdownNow();
         ticker.shutdownNow();   // releaseAll 已经停了节拍，这里兜底
         closeDevices();
-        if (connected) Server.log("App 已断开，虚拟鼠标和键盘已移除");
+        if (connected) Server.log("App 已断开，虚拟鼠标和键盘" + (gamepad != null ? "、手柄" : "") + "已移除");
         if (connected && !kicked) ROTATION.restore();
         ended.countDown();
     }
@@ -320,12 +335,64 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         }
     }
 
-    /** 关掉虚拟鼠标和键盘（设备随之消失，按着的键由内核补发松开）。幂等，别的线程也能调。 */
+    /** 关掉虚拟鼠标、键盘和手柄（设备随之消失，按着的键由内核补发松开；手柄先写一帧全零）。幂等，别的线程也能调。 */
     void closeDevices() {
+        devicesClosed = true;
         UhidKeyboard k = keyboard;
         UhidMouse m = mouse;
+        UhidGamepad g = gamepad;
         if (k != null) k.close();
         if (m != null) m.close();
+        if (g != null) g.close();
+    }
+
+    /**
+     * 第一次用到手柄：建 uhid 手柄（命令线程里，建在锁外，建好再发布）。建好补写一次现在的合并状态（建之前写不进去）。
+     * 建失败记日志、告诉 App 一次（MSG_GAMEPAD 带失败位），这个会话不再试。
+     */
+    private void ensureGamepad() {
+        if (gamepad != null || gamepadFailed || devicesClosed || !alive) return;
+        UhidGamepad g;
+        try {
+            g = new UhidGamepad("Douhua Gamepad");
+        } catch (IOException e) {
+            gamepadFailed = true;
+            Server.log("创建虚拟手柄失败：" + e.getMessage());
+            byte[] packet = new byte[2 + Hid.GAMEPAD_REPORT_SIZE];
+            packet[0] = (byte) Proto.MSG_GAMEPAD;
+            packet[1] = (byte) Proto.GAMEPAD_FLAG_FAILED;
+            send(packet);
+            return;
+        }
+        synchronized (lock) {
+            gamepad = g;
+            writeGamepad(pads.deviceCreated());   // 建之前就按着的补写一次（null = 全零，不用写）
+        }
+        if (devicesClosed) {   // 刚建好就被新会话替着关了设备：自己关掉，别漏一个
+            g.close();
+            return;
+        }
+        Server.log("虚拟手柄已创建（第一次进手柄页）");
+    }
+
+    /** 布局里有手柄页的区域吗。 */
+    private static boolean hasGamepad(TouchRouter.Region[] regions) {
+        for (TouchRouter.Region r : regions) if (r.type == Proto.REGION_GAMEPAD) return true;
+        return false;
+    }
+
+    /** 写 uhid 手柄（调用方持有 lock）；还没建就不写（GamepadMux 记着状态，建好补写）。 */
+    private void writeGamepad(byte[] report) {
+        UhidGamepad g = gamepad;
+        if (g == null || report == null) return;
+        try {
+            g.send(report);
+            String ok = gamepadLog.ok(SystemClock.uptimeMillis());
+            if (ok != null) Server.log("写虚拟手柄" + ok);
+        } catch (IOException e) {
+            String line = gamepadLog.error("写虚拟手柄失败：" + e.getMessage(), SystemClock.uptimeMillis());
+            if (line != null) Server.log(line);
+        }
     }
 
     private void closeQuietly() {
@@ -384,6 +451,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                 case Proto.CMD_LAYOUT: {
                     Layout l = readLayout();
                     Layout old = layout;
+                    if (hasGamepad(l.regions)) ensureGamepad();   // 先建好手柄，再把布局交给分流
                     synchronized (lock) {
                         router.setRegions(l.regions);
                     }
@@ -439,6 +507,23 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                     boolean down = in.readUnsignedByte() == 1;
                     synchronized (lock) {
                         router.holdLeft(down);
+                    }
+                    break;
+                }
+                case Proto.CMD_GAMEPAD: {
+                    // App 本地分流出的手柄状态（服务没接管时）：和服务自己那路合并再写
+                    byte[] report = new byte[Hid.GAMEPAD_REPORT_SIZE];
+                    in.readFully(report);
+                    if (!Hid.Gamepad.neutral(report)) ensureGamepad();
+                    synchronized (lock) {
+                        writeGamepad(pads.fromApp(report));
+                    }
+                    break;
+                }
+                case Proto.CMD_GAMEPAD_CONFIG: {
+                    GamepadConfig c = GamepadConfig.read(in);
+                    synchronized (lock) {
+                        router.setGamepadConfig(c);   // 手柄这一路回中立
                     }
                     break;
                 }
@@ -599,6 +684,10 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                             stopping = false;
                             pass.start(l.displayId);
                             grabbed = true;
+                            // 接管了：App 收不到触摸了，它那路的手柄状态作废（它的全零可能晚到，合并不怕先后）
+                            synchronized (lock) {
+                                writeGamepad(pads.clearApp());
+                            }
                             if (quiet) return;   // "独占前就按着"放开后又接上：App 那边一直以为接管着，不重复记、不重复报
                             Server.log("已接管触摸屏：" + dev + (l.relay ? "（蓝牙模式，报文发回 App）" : ""));
                             sendGrab(true, Proto.GRAB_OK, "");
@@ -1020,6 +1109,20 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         } catch (IOException e) {
             Server.log("写虚拟键盘失败：" + e.getMessage());
         }
+    }
+
+    /**
+     * 服务分流出的手柄状态（调用方持有 lock）：和 App 那路合并写 uhid，原样发给 App 画（MSG_GAMEPAD）。
+     * 蓝牙模式（转发）第一批不出手柄：App 在蓝牙模式下进不了手柄页，这里收到的只可能是收尾的全零，丢掉。
+     */
+    @Override
+    public void gamepad(byte[] report) {
+        if (grabLayout.relay) return;
+        writeGamepad(pads.fromRouter(report));
+        byte[] packet = new byte[2 + Hid.GAMEPAD_REPORT_SIZE];
+        packet[0] = (byte) Proto.MSG_GAMEPAD;
+        System.arraycopy(report, 0, packet, 2, Hid.GAMEPAD_REPORT_SIZE);
+        send(packet);
     }
 
     @Override

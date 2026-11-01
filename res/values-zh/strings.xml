@@ -433,4 +433,67 @@
     <string name="pad_bg_wide">宽的触控板（宽 ≥ 高）</string>
     <string name="pad_bg_tall">高的触控板（高 &gt; 宽）</string>
     <string name="pad_bg_note">图片拷进豆花自己的目录，原图删了也不影响；「恢复默认设置」会把它删掉，换机时跟着设置一起搬。图片越亮越费电；豆花开着时屏幕长时间显示同一画面，亮的图更容易烧屏。回到触控板后生效。</string>
+    <string name="act_gamepad">手柄页（虚拟游戏手柄；只限桌面模式）</string>
+    <string name="act_gamepad_s">手柄</string>
+    <string name="gp_exit">返回触控板</string>
+    <string name="gp_preset">预设：%1$s</string>
+    <string name="gp_hold_menu">按住 ⋯ 打开菜单</string>
+    <string name="gp_desktop_only">手柄目前只在桌面模式下能用</string>
+    <string name="gp_create_failed">建虚拟手柄失败，原因见服务日志</string>
+    <string name="gp_arcade8">街机 8 键</string>
+    <string name="gp_md6">Mega Drive 6 键</string>
+    <string name="tab_gamepad">手柄</string>
+    <string name="sec_gp_preset">预设</string>
+    <string name="gp_custom">自定义</string>
+    <string name="gp_custom_hint">从一个预设开始，再挑要哪些键；自动排，上面的预览跟着变。</string>
+    <string name="gp_custom_from">从某个预设重新开始…</string>
+    <string name="gp_c_dpad">十字键</string>
+    <string name="gp_c_lstick">左摇杆</string>
+    <string name="gp_c_dpad_top">十字键放在摇杆上面（PlayStation 式）</string>
+    <string name="gp_c_face">面键</string>
+    <string name="gp_c_labels">键帽上的字</string>
+    <string name="gp_c_rstick">右摇杆</string>
+    <string name="gp_c_bumpers">肩键（靠里那对，这一套叫 %1$s / %2$s）</string>
+    <string name="gp_c_triggers">扳机（外角那对，这一套叫 %1$s / %2$s；按下就是按满）</string>
+    <string name="gp_c_home">主页键（Home）</string>
+    <string name="gp_c_thumbs">摇杆能按下（L3 / R3）</string>
+    <string name="gp_face_none">不要</string>
+    <string name="gp_face_row2">2 颗一排（NES）</string>
+    <string name="gp_face_diag2">2 颗斜着（Game Boy）</string>
+    <string name="gp_face_three">3 颗一排（Mega Drive）</string>
+    <string name="gp_face_diamond">4 颗菱形</string>
+    <string name="gp_face_arc4">4 颗一道弧（Neo Geo）</string>
+    <string name="gp_face_six">6 颗两排（Mega Drive 6 键）</string>
+    <string name="gp_face_arcade6">6 颗街机键</string>
+    <string name="gp_face_eight">8 颗街机键</string>
+    <string name="gp_face_n64">N64（A、B 和 4 个 C 键）</string>
+    <string name="gp_face_gc">GameCube（大 A、B、X、Y）</string>
+    <string name="gp_labels_xbox">Xbox（A B X Y）</string>
+    <string name="gp_labels_nintendo">任天堂（B A Y X）</string>
+    <string name="gp_labels_ps">PlayStation（× ○ □ △）</string>
+    <string name="gp_labels_sega">世嘉（A B C / X Y Z）</string>
+    <string name="gp_labels_arcade">街机</string>
+    <string name="gp_labels_number">数字（1 2 3 4）</string>
+    <string name="sec_gp_stick">摇杆</string>
+    <string name="gp_stick_radius">推多远算推满（dp）</string>
+    <string name="gp_deadzone" formatted="false">死区（%）</string>
+    <string name="gp_anti_deadzone" formatted="false">抗死区（%）</string>
+    <string name="gp_anti_deadzone_hint" formatted="false">刚推出死区就从这么多起报，Moonlight 自己的死区（默认 7%）和游戏的死区就不会把刚推的那一点吃掉。</string>
+    <string name="gp_stick_float">按下的地方当中心（关 = 摇杆区正中）</string>
+    <string name="gp_stick_follow">推过头时中心跟着手指走（往回推马上生效）</string>
+    <string name="gp_rim_ticks">摇杆推到边咔嗒一下</string>
+    <string name="sec_gp_dpad">十字键</string>
+    <string name="gp_dpad8">8 个方向（关 = 只有上下左右）</string>
+    <string name="gp_diagonal">8 个方向时斜向多宽（度）</string>
+    <string name="gp_dpad_deadzone" formatted="false">中间多大不算方向（%）</string>
+    <string name="gp_dpad_ticks">按着换方向时咔嗒一下</string>
+    <string name="sec_gp_face">面键</string>
+    <string name="gp_slide">面键之间滑动换键</string>
+    <string name="gp_slide_hint">拇指在面键上滑过去就换成底下那颗，压在两颗中间就一起按（像从 B 搓到 A）。关掉 = 一直按着最先按到的那颗。</string>
+    <string name="gp_chord">离两颗都这么近就一起按（dp）</string>
+    <string name="gp_exit_dp">滑出面键这么远就全松（dp）</string>
+    <string name="sec_gp_moonlight">配合 Moonlight</string>
+    <string name="gp_moonlight_note">建议在 Moonlight 里：关掉「用手柄模拟鼠标」（不然按住 Start 会切成鼠标模式）；要游戏震动就打开「用设备震动模拟手柄震动」；关掉它自己的屏幕虚拟手柄。分屏时先点一下 Moonlight 那半边，手柄的键才进得去。同时按 Start + Select + LB + RB 会退出串流。</string>
+    <string name="gp_md3">Mega Drive 3 键</string>
+    <string name="gp_arcade6">街机 6 键</string>
 </resources>

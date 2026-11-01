@@ -71,6 +71,9 @@ public final class ServerPartsTest {
         oneShotTimerStaleWhileWaitingForLock();
         oneShotTimerChain();
         staleSpinFrameIsNotLongPress();
+        gamepadMux();
+        gamepadNotHeartbeat();
+        gamepadConfigCodec();
 
         System.err.println("服务端部件：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
@@ -456,6 +459,142 @@ public final class ServerPartsTest {
         check(dev.douhua.Proto.PING_INTERVAL_MS < SessionPolicy.KICK_SILENT_MS
                 && SessionPolicy.KICK_SILENT_MS < dev.douhua.Proto.IDLE_TIMEOUT_MS, "保活间隔 < 顶掉的沉默 < 读超时");
         eq(SessionPolicy.OLD_SESSION_WAIT_MS, 2000L, "旧会话 2 秒收不完尾（还占着触摸屏就退出服务）");
+    }
+
+    // ═══════════ 手柄的两路合并、参数编解码 ═══════════
+
+    static byte[] pad(int buttons, int hat, int lx, int lt) {
+        dev.douhua.Hid.Gamepad g = new dev.douhua.Hid.Gamepad();
+        g.buttons = buttons;
+        g.hat = hat;
+        g.lx = lx;
+        g.lt = lt;
+        byte[] r = new byte[dev.douhua.Hid.GAMEPAD_REPORT_SIZE];
+        g.report(r);
+        return r;
+    }
+
+    static dev.douhua.Hid.Gamepad parsePad(byte[] r) {
+        dev.douhua.Hid.Gamepad g = new dev.douhua.Hid.Gamepad();
+        g.parse(r);
+        return g;
+    }
+
+    /**
+     * 桌面模式两路（服务分流 + App 本地分流）：写给 uhid 的是合并结果；App 晚到的全零不会松掉服务那路刚按的键；
+     * 开始接管时清掉 App 那路；和上次写的一样不写。
+     */
+    static void gamepadMux() {
+        GamepadMux m = new GamepadMux();
+        byte[] w = m.fromRouter(pad(1, 0, 0, 0));
+        check(w != null && parsePad(w).buttons == 1, "服务那路按 A：写 A");
+        check(m.fromApp(new byte[13]) == null, "App 晚到的全零：合并结果没变（A 照样按着），不写");
+        w = m.fromApp(pad(2, 3, -500, 0));
+        dev.douhua.Hid.Gamepad g = parsePad(w);
+        check(g.buttons == 3 && g.hat == 3 && g.lx == -500, "App 那路按 B、往右：A | B，方向键、摇杆取 App 的");
+        w = m.fromRouter(pad(0, 1, 0, 255));
+        g = parsePad(w);
+        check(g.buttons == 2 && g.hat == 1 && g.lt == 255, "服务那路松 A、推上、按扳机：B 还按着，方向键取服务那路（都不回中）");
+        w = m.clearApp();
+        g = parsePad(w);
+        check(g.buttons == 0 && g.hat == 1 && g.lx == 0 && g.lt == 255, "开始接管：App 那路清零，服务那路照旧");
+        check(m.clearApp() == null, "再清一次：没变不写");
+        w = m.fromRouter(new byte[13]);
+        check(w != null && dev.douhua.Hid.Gamepad.neutral(w), "服务那路全松：写全零");
+        check(m.deviceCreated() == null, "设备刚建好、现在是全零：不用补写");
+        check(m.fromApp(new byte[13]) == null, "建好后照样全零：不写");
+
+        // 设备晚建好：建之前就按着（写不进去，Session 那时 gamepad == null），建好补写，之后松开必须写得出去
+        m = new GamepadMux();
+        m.fromApp(pad(4, 0, 0, 0));   // 返回的这帧 Session 写不进去（设备还没建）
+        w = m.deviceCreated();
+        check(w != null && parsePad(w).buttons == 4, "设备晚建好：返回要补写的按着状态");
+        check(m.fromApp(pad(4, 0, 0, 0)) == null, "补写过了：同样的状态不再写");
+        w = m.fromApp(new byte[13]);
+        check(w != null && dev.douhua.Hid.Gamepad.neutral(w), "补写之后松开：全零写得出去（不会一直按着）");
+
+        // 服务那路建之前就按着也一样
+        m = new GamepadMux();
+        m.fromRouter(pad(0, 5, 0, 0));
+        w = m.deviceCreated();
+        check(w != null && parsePad(w).hat == 5, "设备晚建好（服务那路按着方向键）：补写");
+        w = m.fromRouter(new byte[13]);
+        check(w != null && dev.douhua.Hid.Gamepad.neutral(w), "补写之后方向键回中：写得出去");
+    }
+
+    /** CMD_GAMEPAD、CMD_GAMEPAD_CONFIG 不是心跳（App 主线程卡住时本地分流不动，但连接线程还可能发；同保活不算心跳的理由）。 */
+    static void gamepadNotHeartbeat() {
+        GrabCondition c = new GrabCondition();
+        long t0 = 100_000;
+        c.onMessage(Proto.CMD_HEARTBEAT, t0);
+        for (long t = t0 + 500; t <= t0 + 3000; t += 500) {
+            c.onMessage(Proto.CMD_GAMEPAD, t);
+            c.onMessage(Proto.CMD_GAMEPAD_CONFIG, t);
+        }
+        check(!c.fresh(t0 + 3000), "只收手柄报文 / 手柄参数：3 秒后照样不新鲜");
+        check(Proto.CMD_GAMEPAD != Proto.CMD_HEARTBEAT && Proto.CMD_GAMEPAD_CONFIG != Proto.CMD_LAYOUT
+                && Proto.CMD_GAMEPAD == 14 && Proto.CMD_GAMEPAD_CONFIG == 15 && Proto.MSG_GAMEPAD == 0x8A
+                && Proto.REGION_GAMEPAD == 7 && Proto.VERSION == 19, "协议 19：命令 14 / 15、消息 0x8A、区域 7");
+    }
+
+    /** GamepadConfig 往返；长了（新版本多发的字段）跳过、后面的命令照读；短了（旧版本）缺的用默认。 */
+    static void gamepadConfigCodec() throws IOException {
+        dev.douhua.GamepadConfig c = new dev.douhua.GamepadConfig();
+        c.stickRadiusDp = 70;
+        c.deadzone = 0.1f;
+        c.antiDeadzone = 0.05f;
+        c.floatingCenter = false;
+        c.followBase = false;
+        c.dpad8 = false;
+        c.diagonalDeg = 20;
+        c.dpadDeadzone = 0.3f;
+        c.chordDp = 6;
+        c.clusterSlide = false;
+        c.clusterExitDp = 30;
+        c.dpadTicks = false;
+        c.rimTicks = false;
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        java.io.DataOutputStream out = new java.io.DataOutputStream(bytes);
+        c.write(out);
+        out.writeByte(0x5A);   // 后面跟着下一条命令
+        java.io.DataInputStream in = new java.io.DataInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray()));
+        dev.douhua.GamepadConfig r = dev.douhua.GamepadConfig.read(in);
+        check(r.stickRadiusDp == 70 && r.deadzone == 0.1f && r.antiDeadzone == 0.05f && !r.floatingCenter && !r.followBase && !r.dpad8
+                && r.diagonalDeg == 20 && r.dpadDeadzone == 0.3f && r.chordDp == 6 && !r.clusterSlide && r.clusterExitDp == 30
+                && !r.dpadTicks && !r.rimTicks, "手柄参数往返");
+        eq(in.readUnsignedByte(), 0x5A, "读完正好停在下一条命令");
+        // 长了：新版本在后面多加了 5 个字节
+        byte[] full = bytes.toByteArray();
+        int len = ((full[0] & 0xFF) << 8) | (full[1] & 0xFF);
+        java.io.ByteArrayOutputStream longer = new java.io.ByteArrayOutputStream();
+        java.io.DataOutputStream lo = new java.io.DataOutputStream(longer);
+        lo.writeShort(len + 5);
+        lo.write(full, 2, len);
+        lo.write(new byte[]{1, 2, 3, 4, 5});
+        lo.writeByte(0x5A);
+        in = new java.io.DataInputStream(new java.io.ByteArrayInputStream(longer.toByteArray()));
+        r = dev.douhua.GamepadConfig.read(in);
+        check(r.stickRadiusDp == 70 && !r.rimTicks, "长了：认识的字段照读");
+        eq(in.readUnsignedByte(), 0x5A, "长了：多的跳过，停在下一条命令");
+        // 短了：旧版本只发了前 6 字节（行程 + 半截死区）
+        java.io.ByteArrayOutputStream shorter = new java.io.ByteArrayOutputStream();
+        java.io.DataOutputStream so = new java.io.DataOutputStream(shorter);
+        so.writeShort(6);
+        so.write(full, 2, 6);
+        so.writeByte(0x5A);
+        in = new java.io.DataInputStream(new java.io.ByteArrayInputStream(shorter.toByteArray()));
+        r = dev.douhua.GamepadConfig.read(in);
+        dev.douhua.GamepadConfig d = new dev.douhua.GamepadConfig();
+        check(r.stickRadiusDp == 70 && r.deadzone == d.deadzone && r.followBase == d.followBase && r.rimTicks == d.rimTicks,
+                "短了：读到的照用，缺的（含读了半截的那个）用默认");
+        eq(in.readUnsignedByte(), 0x5A, "短了：停在下一条命令");
+        // 坏值收进范围
+        java.io.ByteArrayOutputStream bad = new java.io.ByteArrayOutputStream();
+        java.io.DataOutputStream bo = new java.io.DataOutputStream(bad);
+        bo.writeShort(4);
+        bo.writeFloat(Float.NaN);
+        in = new java.io.DataInputStream(new java.io.ByteArrayInputStream(bad.toByteArray()));
+        eq(dev.douhua.GamepadConfig.read(in).stickRadiusDp, d.stickRadiusDp, "坏值（NaN）用默认");
     }
 
     // ═══════════ GrabCondition ═══════════
@@ -1349,6 +1488,9 @@ public final class ServerPartsTest {
 
             @Override
             public void stopTicks() {}
+
+            @Override
+            public void gamepad(byte[] report) {}
         });
         TouchRouter t = router[0];
         boolean spun, blocked;

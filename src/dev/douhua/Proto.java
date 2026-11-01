@@ -16,9 +16,14 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 18;
+    public static final int VERSION = 19;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
+    /**
+     * 虚拟手柄（"Douhua Gamepad"，服务第三个 uhid 设备，协议 19 起）的产品号。鼠标 0xD0A0、键盘 0xD0A1。
+     * App 靠厂商号 + 它认出自己的手柄：落到豆花自己窗口上的手柄键、摇杆一律吞掉（不吞的话 B = 返回、Home = 回桌面）。
+     */
+    public static final int HID_GAMEPAD_PRODUCT = 0xD0A2;
 
     // ═══════════ 客户端 → 服务 ═══════════
 
@@ -42,7 +47,7 @@ public final class Proto {
      * width / height 是整块屏（当前方向）的尺寸。full = 豆花窗口占满整块屏；win* = 豆花窗口在屏上的范围（右、下不含）；
      * gest* = 贴着窗口四条边的系统手势带宽度（窗口的 systemGestures 插图）。协议 17 起有 full 到 gestBottom 这一段：
      * 桌面模式下没占满（分屏 / 小窗）时，服务把按在窗口外、手势带里的手指注入回系统（分屏透传，见 server.TouchSplit）。
-     * 键盘面板的整块范围（{@link #REGION_KEYBOARD}）排在它的键后面。
+     * 键盘面板的整块范围（{@link #REGION_KEYBOARD}）排在它的键后面；手柄面键簇的范围（{@link #REGION_GAMEPAD}）排在它的成员前面。
      * active=1 时服务接管这块屏的触摸屏。relay=1（蓝牙模式）时分流出的鼠标、键盘报文不写手机自己的虚拟设备，
      * 发回 App（{@link #MSG_MOUSE} / {@link #MSG_KEYBOARD}），由 App 从蓝牙发出去。
      */
@@ -83,6 +88,18 @@ public final class Proto {
     public static final int CMD_HARD_KEYS = 12;
     /** 按住 / 松开鼠标左键：down:u8。桌面模式下实体键按住配了"左键"时用，和 REGION_HOLD_LEFT 共用服务里的计数。 */
     public static final int CMD_HOLD_LEFT = 13;
+    /**
+     * 手柄报文（协议 19 起）：report[13]（Hid.GAMEPAD_DESC 的输入报文原样）。桌面模式下服务没接管、手柄页的触摸由 App 本地分流时，
+     * App 把分出来的手柄状态发给服务；服务和自己分流出的那一路合并（server.GamepadMux）再写 uhid 手柄。
+     * 第一次收到不是中立的报文、而手柄还没建时先建。不算心跳。
+     */
+    public static final int CMD_GAMEPAD = 14;
+    /**
+     * 手柄参数（协议 19 起）：length:u16, 然后 length 字节（GamepadConfig 的字段，编解码只在 GamepadConfig 一处）。
+     * 读的一方只读认识的字段、多的跳过、少的用默认：以后加参数不用再升协议。换预设、进出手柄页、连上时 App 都发一次，
+     * 服务的分流收到后手柄那一路回到中立。不算心跳。
+     */
+    public static final int CMD_GAMEPAD_CONFIG = 15;
 
     public static final int REGION_PAD = 0;
     /** 普通按钮：服务报告按下 / 松开 / 点击，由 App 决定做什么。 */
@@ -112,6 +129,48 @@ public final class Proto {
      * 左键和 REGION_HOLD_LEFT、CMD_HOLD_LEFT 共用服务里的计数。协议 18 起。
      */
     public static final int REGION_MOUSE_BUTTON = 6;
+    /**
+     * 手柄页的控件（协议 19 起）：id 见 {@link #gamepadId}。种类在 id 里（单键 / 面键簇 / 十字键 / 摇杆），服务不用另收一张控件表。
+     * 面键簇的范围（种类 {@link #GP_KIND_CLUSTER}）排在它的成员（种类单键、整个落在范围里）前面：按在范围里一律先命中簇，
+     * 成员只给几何（圆心、半径），永远不会被直接命中（同键盘范围和键）。旧服务不认识的区域类型什么都不做。
+     */
+    public static final int REGION_GAMEPAD = 7;
+    /** 手柄控件编号段：0x4000 | 种类 << 10 | 副本 << 8 | 参数（最大 0x4FFF）。 */
+    public static final int GAMEPAD_ID_BASE = 0x4000;
+    /** 单键（参数 = 输出码 GP_*）、面键簇（参数 = 第几簇）、十字键（参数 = 方向数 4 / 8）、摇杆（参数 0 左、1 右）。 */
+    public static final int GP_KIND_BUTTON = 0, GP_KIND_CLUSTER = 1, GP_KIND_DPAD = 2, GP_KIND_STICK = 3;
+    /**
+     * 手柄的输出码（按位置，不按键帽上的字）：0–14 = 报文里第 1–15 键（Linux BTN_SOUTH… / 安卓 Generic.kl 的 BUTTON_A…），
+     * 16 / 17 = 左 / 右扳机（Brake / Accelerator 轴，按下 = 255）。第 4 键是西（Xbox X）、第 5 键是北（Xbox Y）：
+     * 安卓 Generic.kl 把 0x133 映成 BUTTON_X、0x134 映成 BUTTON_Y，Moonlight、SDL 都这么认。键 3、6、9、10 空着。
+     */
+    public static final int GP_SOUTH = 0, GP_EAST = 1, GP_WEST = 3, GP_NORTH = 4, GP_L1 = 6, GP_R1 = 7,
+            GP_SELECT = 10, GP_START = 11, GP_HOME = 12, GP_L3 = 13, GP_R3 = 14, GP_LT = 16, GP_RT = 17;
+    /**
+     * N64 的四颗 C 键：右摇杆推满上 / 右 / 下 / 左（Z / Rz 轴，模拟器一般把 C 键当右摇杆）。只在 App 和服务的 GamepadTouch 里换成轴，
+     * 报文、描述符、协议都不变（不升协议：旧服务不认识这几个输出码时什么都不发）。18–23 空着（以后"十字键拆成四颗键"用）。
+     */
+    public static final int GP_C_UP = 24, GP_C_RIGHT = 25, GP_C_DOWN = 26, GP_C_LEFT = 27;
+    /** 输出码的个数（数组大小）。 */
+    public static final int GP_OUTPUTS = 28;
+
+    /** 手柄控件的 id：kind = GP_KIND_*，copy = 同一个输出的第几个键帽（0–3），param 见 GP_KIND_*。 */
+    public static int gamepadId(int kind, int copy, int param) {
+        return GAMEPAD_ID_BASE | (kind & 3) << 10 | (copy & 3) << 8 | (param & 0xFF);
+    }
+
+    public static boolean isGamepadId(int id) {
+        return id >= GAMEPAD_ID_BASE && id < GAMEPAD_ID_BASE + 0x1000;
+    }
+
+    public static int gamepadKind(int id) {
+        return (id >> 10) & 3;
+    }
+
+    public static int gamepadParam(int id) {
+        return id & 0xFF;
+    }
+
     /** 三个鼠标键的按钮编号基数（| 键位）；要小于 KEY_ID_BASE（App 把 ≥ KEY_ID_BASE 的编号都当键盘键）。 */
     public static final int MOUSE_BUTTON_ID_BASE = 0x800;
     /** 小红点的按钮编号（只用来让 App 画按下的样子）。 */
@@ -210,6 +269,12 @@ public final class Proto {
     public static final int HARD_RELEASED = 5;
     /** 截不了的键不止一个、原因又各不相同（每个键的原因都在 detail 里）。 */
     public static final int HARD_MIXED = 6;
+    /**
+     * 手柄报文（协议 19 起）：flags:u8, report[13]。桌面模式下服务分流出的手柄状态（App 拿它画按下的键、十字键、摇杆）；
+     * flags bit0 = relay（第三批蓝牙用，现在恒 0），bit7 = 建虚拟手柄失败（这一条的 report 全零，原因在服务日志里）。
+     */
+    public static final int MSG_GAMEPAD = 0x8A;
+    public static final int GAMEPAD_FLAG_RELAY = 1, GAMEPAD_FLAG_FAILED = 0x80;
 
     public static final int BUTTON_DOWN = 0;
     /** 松开但不算点击（手指滑出了按钮，或被取消）。 */

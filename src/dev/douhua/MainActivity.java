@@ -58,7 +58,8 @@ import java.util.List;
  * - 触控板屏：默认只有触控板 + 四个角上的小按钮（可自定义）+ 顶上正中的 ⋯（键盘 / 设置 / 旋转 / 退出），可以展开数字键盘；
  *   "自定义按键"（原来的左侧按钮条，设置里打开，默认关）开着时左边多一竖条按钮（左手拇指够得着）；
  * - 键盘屏：整屏是外接键盘（大小位置可调），键盘旁边空出来的地方是小触控板，⋯ 同样在它顶上正中。
- * 两屏的 ⋯ 菜单是同一份（{@link MenuLayer}，盖在最上面）。颜色跟设置里的主题（默认纯黑，只有按钮和触控板的暗灰边框）。
+ * 另有两页独立的：空中鼠标页（蓝牙模式）、手柄页（{@link GamepadScreen}，桌面模式：服务的 uhid 手柄；⋯ 按住 0.6 秒开菜单）。
+ * 几屏的 ⋯ 菜单是同一份（{@link MenuLayer}，盖在最上面）。颜色跟设置里的主题（默认纯黑，只有按钮和触控板的暗灰边框）。
  *
  * 两种连接方式，界面、手势、动作都一样，区别只在触摸谁来收、键盘鼠标发到哪：
  * - 桌面模式：豆花在前台时，服务独占这块屏的触摸屏，按这里报上去的区域位置分流（{@link TouchRouter}），
@@ -77,7 +78,7 @@ public final class MainActivity extends Activity
 
     /** 主界面触控板四角的小按钮（下标同 Prefs.corner：左上、右上、右下、左下，都可自定义，一直显示；以前左下是固定的 ☰）。 */
     private static final int CORNER_BASE_ID = 500;
-    /** 空中鼠标页上的按钮（其它按钮编号：0–11 自定义按键、300–303 键盘的特殊键、400–413 ⋯ 和菜单、500–503 角上、600 起键盘最下面一排、0x800 起鼠标键 / 小红点、0x10000 起键）。 */
+    /** 空中鼠标页上的按钮（其它按钮编号：0–11 自定义按键、300–303 键盘的特殊键、400–417 ⋯ 和菜单、500–503 角上、600 起键盘最下面一排、0x800 起鼠标键 / 小红点、0x4000 起手柄控件、0x10000 起键）。 */
     private static final int AIR_EXIT_ID = 700;
     private static final int AIR_CENTER_ID = 701;
     /** 空中鼠标页的圆钮：点一下（不到 HardKeys.HOLD_MS 就松开）回正中，按住移动。 */
@@ -113,15 +114,28 @@ public final class MainActivity extends Activity
     private static final int MENU_SETTINGS_ID = 411;
     private static final int MENU_ROTATE_ID = 412;
     private static final int MENU_EXIT_ID = 413;
+    /** 主界面、键盘屏 ⋯ 菜单里的"手柄"（打开手柄页，只在桌面模式显示）。 */
+    private static final int MENU_GAMEPAD_ID = 414;
+    /** 手柄页 ⋯ 菜单才有的：预设（轮换）、返回触控板。 */
+    private static final int GP_PRESET_ID = 415;
+    private static final int GP_BACK_ID = 416;
+    /** 手柄页顶上正中的 ⋯：按住 GP_MENU_HOLD_MS 才开菜单（游戏里拇指乱碰，单击一开菜单区域就只剩菜单）。 */
+    private static final int GP_MENU_ID = 417;
+    private static final long GP_MENU_HOLD_MS = AIR_EXIT_HOLD_MS;
+    /** 菜单在哪一屏（{@link #onMenuScreen}）。 */
+    private static final int SCREEN_MAIN = 0, SCREEN_KEYBOARD = 1, SCREEN_GAMEPAD = 2;
     /**
-     * ⋯ 菜单里的项，按显示的顺序（常用的在前、退出最后）：主界面 = 键盘、设置、旋转、退出；
-     * 键盘屏 = 收起键盘、调整大小、布局、指点、设置、旋转、退出。不是这一屏的项打开菜单时 GONE（{@link #onMenuScreen}）。
+     * ⋯ 菜单里的项，按显示的顺序（常用的在前、退出最后）：主界面 = 键盘、手柄、设置、旋转、退出；
+     * 键盘屏 = 收起键盘、调整大小、布局、指点、手柄、设置、旋转、退出；手柄页 = 预设、返回触控板、设置、旋转、退出。
+     * 不是这一屏的项打开菜单时 GONE（{@link #onMenuScreen}）；"手柄"只在桌面模式有。
      */
     private static final int[] MENU_IDS = {
-            MENU_KEYBOARD_ID, KB_CLOSE_ID, KB_ADJUST_ID, KB_LAYOUT_ID, KB_POINTER_ID, MENU_SETTINGS_ID, MENU_ROTATE_ID, MENU_EXIT_ID,
+            MENU_KEYBOARD_ID, KB_CLOSE_ID, KB_ADJUST_ID, KB_LAYOUT_ID, KB_POINTER_ID, MENU_GAMEPAD_ID, GP_PRESET_ID, GP_BACK_ID,
+            MENU_SETTINGS_ID, MENU_ROTATE_ID, MENU_EXIT_ID,
     };
     private static final int[] MENU_LABELS = {
             R.string.act_keyboard, R.string.kb_close, R.string.kb_adjust, R.string.kb_layout_auto, R.string.kb_pointer_pad,
+            R.string.act_gamepad_s, R.string.act_gamepad_s, R.string.gp_exit,
             R.string.act_settings, R.string.act_rotate, R.string.act_exit,
     };
     /** 数字键盘：标签和 HID 用法码。 */
@@ -267,6 +281,19 @@ public final class MainActivity extends Activity
     /** 空中鼠标模式开着（只在内存里，进程没了就关）。 */
     private boolean airOn;
     private FrameLayout airOverlay;
+    // ── 手柄页（只在桌面模式） ──
+    /** 手柄页开着（只在内存里，同 airOn）。 */
+    private boolean gamepadOn;
+    private GamepadScreen gamepadScreen;
+    /** 手柄页顶上正中的 ⋯。 */
+    private TextView gpMenuButton;
+    /** 服务建虚拟手柄失败了（MSG_GAMEPAD 带失败位）：状态字提示，断开重连再说。 */
+    private boolean gamepadFailed;
+    private final Runnable gpMenuLater = () -> {
+        haptics.play(GestureEngine.HAPTIC_CLICK);   // 按住到点、菜单打开："嗒"（同空中鼠标页的按住退出）
+        Style.bare(gpMenuButton, false);
+        setMenu(true);
+    };
     private TextView airStatus;
     private TextView airState;
     private TextView airCenter;
@@ -460,6 +487,7 @@ public final class MainActivity extends Activity
         leftHolds = 0;
         releaseAir();   // 空中指针：停跟随、松开按着的键（空中鼠标页本身留着，回来接着用）
         main.removeCallbacks(airExitLater);
+        main.removeCallbacks(gpMenuLater);   // 手柄页本身留着（手柄这一路由上面的 local.releaseAll、服务释放触摸屏时回中立）
         pushLayout();
         super.onPause();
     }
@@ -512,12 +540,15 @@ public final class MainActivity extends Activity
         btMode = prefs.btMode();
         updateHostKind();
         if (!btMode && airOn) setAirMode(false);
+        if (btMode && gamepadOn) setGamepadMode(false);   // 手柄页第一批只在桌面模式
         air.setSensitivity(prefs.airSensitivity());
         air.loadFilter();
         updateAirAbs();   // 屏幕比例可能刚改过
         loadHardKeys();
         sendHardKeys();
         local.setConfig(prefs.engineConfig(), density);
+        local.setGamepadConfig(prefs.gamepadConfig());
+        gamepadScreen.setSpec(prefs.gamepadSpec());   // 设置 → 手柄里换了预设 / 改了自定义（内容没变不算换）
         applyBackSwallow();
         if (!btMode) requestOrientationSelf(-1);   // 蓝牙模式下等连服务的结果再定，见 onLinkStatus
         haptics.setLevel(prefs.haptic());
@@ -557,6 +588,7 @@ public final class MainActivity extends Activity
         padStack.setKeys(prefs.padKeys());
         updateMenuLabels();
         link.config(prefs.engineConfig(), density);
+        link.gamepadConfig(prefs.gamepadConfig());
         updateFocusable();
     }
 
@@ -600,6 +632,7 @@ public final class MainActivity extends Activity
         kbMouseKeys.applyTheme();
         padMouseKeys.applyTheme();
         airRound.invalidate();
+        gamepadScreen.applyTheme();
     }
 
     private View buildUi() {
@@ -689,7 +722,16 @@ public final class MainActivity extends Activity
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.addView(buildAirOverlay(), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        // ── ⋯ 菜单：两屏共用，盖在最上面（不开时 GONE） ──
+        // ── 手柄页：独立一页，盖住主界面（不开时 GONE）；顶上正中的 ⋯ 按住 0.6 秒开菜单 ──
+        gpMenuButton = Style.button(this, 18);
+        gpMenuButton.setText("⋯");
+        Style.bare(gpMenuButton, false);
+        gpMenuButton.setOnTouchListener((v, e) -> localTouch(v, e, GP_MENU_ID));
+        gamepadScreen = new GamepadScreen(this, gpMenuButton);
+        gamepadScreen.setVisibility(View.GONE);
+        root.addView(gamepadScreen, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // ── ⋯ 菜单：几屏共用，盖在最上面（不开时 GONE） ──
         root.addView(buildMenu(), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         updateEdgeMargins();   // 还没布局：按系统给的窗口范围先收好，第一次布局就是对的
@@ -697,7 +739,7 @@ public final class MainActivity extends Activity
     }
 
     /**
-     * 屏幕边缘留白（设置 → 外观，2026-11-01）：四页（主界面、键盘屏、空中鼠标页、⋯ 菜单那一层）整体往里收，贴着屏幕边的那几条边
+     * 屏幕边缘留白（设置 → 外观，2026-11-01）：五页（主界面、键盘屏、空中鼠标页、手柄页、⋯ 菜单那一层）整体往里收，贴着屏幕边的那几条边
      * 各留一条页面底色（根视图的底色），那一条不报区域、View 自己收触摸时也没有东西接（EdgeMargin 算哪几条边留、留多少）。
      * 按窗口在屏上的范围（同报给服务的：decor 的 getLocationOnScreen + 大小）和整块屏（getMaximumWindowMetrics）判断，
      * 当前方向的坐标，所以转屏后"左右"还是当前方向的左右两条边；decor 还没量好时先按系统给的窗口范围（getCurrentWindowMetrics）。
@@ -719,13 +761,14 @@ public final class MainActivity extends Activity
         int[] m = EdgeMargin.margins(window, new int[]{s.left, s.top, s.right, s.bottom}, dp(edgeLrDp), dp(edgeTbDp));
         if (Arrays.equals(m, pageMargins)) return;
         System.arraycopy(m, 0, pageMargins, 0, 4);
-        for (View page : new View[]{mainRow, keyboardScreen, airOverlay, menuLayer}) {
+        for (View page : new View[]{mainRow, keyboardScreen, airOverlay, gamepadScreen, menuLayer}) {
             FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) page.getLayoutParams();
             p.setMargins(m[0], m[1], m[2], m[3]);   // 按物理左右（不是 start / end）：从右往左的语言下也一样
             page.setLayoutParams(p);
         }
         int[] e = EdgeMargin.edges(m, dp(20));
         keyboardScreen.setEdgeInsets(e);
+        gamepadScreen.setEdgeInsets(e);
         menuLayer.setEdgeInsets(e);
     }
 
@@ -831,8 +874,16 @@ public final class MainActivity extends Activity
         return menuLayer;
     }
 
-    /** ⋯ 现在在哪（窗口坐标，MenuLayer 摆菜单时问）：键盘屏开着时是它的 ⋯（触控板顶上或者功能行上），不然是主界面触控板顶上的。 */
+    /** ⋯ 现在在哪（窗口坐标，MenuLayer 摆菜单时问）：手柄页、键盘屏开着时是它们的 ⋯（键盘屏的在触控板顶上或者功能行上），不然是主界面触控板顶上的。 */
     private boolean menuAnchor(int[] out) {
+        if (gamepadOn) {
+            gpMenuButton.getLocationInWindow(anchorLoc);
+            out[0] = anchorLoc[0];
+            out[1] = anchorLoc[1];
+            out[2] = anchorLoc[0] + gpMenuButton.getWidth();
+            out[3] = anchorLoc[1] + gpMenuButton.getHeight();
+            return true;
+        }
         if (keyboardScreen.getVisibility() == View.VISIBLE) {
             boolean center = keyboardScreen.menuAnchor(out);
             keyboardScreen.getLocationInWindow(anchorLoc);
@@ -850,14 +901,17 @@ public final class MainActivity extends Activity
         return true;
     }
 
-    /** 这一项在这一屏（键盘屏 / 主界面）的菜单里有没有。 */
-    private static boolean onMenuScreen(int id, boolean onKeyboard) {
+    /** 这一项在这一屏（SCREEN_*）的菜单里有没有。"手柄"只在桌面模式（desktop）有。 */
+    private static boolean onMenuScreen(int id, int screen, boolean desktop) {
         switch (id) {
-            case MENU_KEYBOARD_ID: return !onKeyboard;
+            case MENU_KEYBOARD_ID: return screen == SCREEN_MAIN;
             case KB_CLOSE_ID:
             case KB_ADJUST_ID:
             case KB_LAYOUT_ID:
-            case KB_POINTER_ID: return onKeyboard;
+            case KB_POINTER_ID: return screen == SCREEN_KEYBOARD;
+            case MENU_GAMEPAD_ID: return screen != SCREEN_GAMEPAD && desktop;
+            case GP_PRESET_ID:
+            case GP_BACK_ID: return screen == SCREEN_GAMEPAD;
             default: return true;   // 设置、旋转、退出
         }
     }
@@ -1034,6 +1088,7 @@ public final class MainActivity extends Activity
             case PHONE_TEXT: return textBar.getVisibility() == View.VISIBLE;
             case AIR_MOVE: return air.following() && !air.dragging();
             case AIR_DRAG: return air.dragging();
+            case GAMEPAD: return gamepadOn;
             default: return false;
         }
     }
@@ -1074,13 +1129,32 @@ public final class MainActivity extends Activity
         }
     }
 
-    /** 没有外接屏时，豆花虚拟键盘的键会送到这里：吞掉，免得 Esc 被系统当返回键把豆花关了。 */
+    /**
+     * 没有外接屏时，豆花虚拟键盘的键会送到这里：吞掉，免得 Esc 被系统当返回键把豆花关了。
+     * 豆花自己的手柄（0x1209 / 0xD0A2）的键一律吞（贴字面板开着也吞）：没人处理的手柄键安卓会换成别的键——B → 返回、Home → 回桌面、
+     * Select → 菜单（Generic.kcm 的后备键），豆花窗口拿着焦点时一按 B 就把自己关了。
+     */
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (onHardKey(e)) return true;   // 音量键设了动作：归豆花（音量不变）
         InputDevice dev = e.getDevice();
+        if (ownGamepad(dev)) return true;
         if (textBar.getVisibility() != View.VISIBLE && dev != null && dev.getVendorId() == Proto.HID_VENDOR) return true;
         return super.dispatchKeyEvent(e);
+    }
+
+    /**
+     * 豆花自己的手柄的摇杆 / 方向键（MotionEvent）同样吞掉：不吞的话没人接的 HAT / X / Y 会被系统合成方向键（ViewRootImpl 的
+     * SyntheticJoystickHandler）。只认手柄的产品号：虚拟鼠标（同一个厂商号）的悬停、滚轮照常。
+     */
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent e) {
+        if (ownGamepad(e.getDevice())) return true;
+        return super.dispatchGenericMotionEvent(e);
+    }
+
+    private static boolean ownGamepad(InputDevice dev) {
+        return dev != null && dev.getVendorId() == Proto.HID_VENDOR && dev.getProductId() == Proto.HID_GAMEPAD_PRODUCT;
     }
 
     private void hideSystemBars() {
@@ -1113,17 +1187,21 @@ public final class MainActivity extends Activity
             if (d != null) link.rotate(d.getDisplayId(), prefs.rotation());
         }
         boolean keyboardShown = keyboardScreen.getVisibility() == View.VISIBLE;
-        // 键盘在最上面（空中鼠标页上调出来的也是），先看它
-        if (keyboardShown ? keyboardScreen.getWidth() == 0 : airOn ? airOverlay.getWidth() == 0 : pad.getWidth() == 0) return;
+        // 手柄页、键盘在最上面（空中鼠标页上调出来的键盘也是），先看它们
+        if (gamepadOn ? gamepadScreen.getWidth() == 0 : keyboardShown ? keyboardScreen.getWidth() == 0
+                : airOn ? airOverlay.getWidth() == 0 : pad.getWidth() == 0) return;
         getWindow().getDecorView().getLocationOnScreen(layoutOrigin);
         List<int[]> regions = collectRegions(keyboardShown);
-        if (btMode) {
+        // 本地分流：蓝牙模式一直备着；桌面模式只在手柄页（服务没接管时手柄页的触摸归它，经 CMD_GAMEPAD 发给服务）
+        if (btMode || gamepadOn) {
             TouchRouter.Region[] rs = new TouchRouter.Region[regions.size()];
             for (int i = 0; i < rs.length; i++) {
                 int[] r = regions.get(i);
                 rs[i] = new TouchRouter.Region(r[0], r[1], r[2], r[3], r[4], r[5]);
             }
             local.setRegions(rs);
+        } else {
+            local.setRegions(new TouchRouter.Region[0]);
         }
         updateGestureExclusion();
         if (link.isConnected()) sendLayout(serverActive(), regions);
@@ -1211,7 +1289,7 @@ public final class MainActivity extends Activity
 
     /**
      * 区域列表，每项 {type, id, left, top, right, bottom}（屏幕像素）；叠在上面的排在前面。
-     * 只报看得见的那一屏：⋯ 菜单开着时只有菜单；不然键盘（空中鼠标页上调出来的也是）、空中鼠标页、主界面三组互斥。
+     * 只报看得见的那一屏：⋯ 菜单开着时只有菜单；不然手柄页、键盘（空中鼠标页上调出来的也是）、空中鼠标页、主界面四组互斥。
      * 键盘开着时连空中鼠标页的也报的话，键盘空隙里看不见的圆钮、格子照样按得到。
      */
     private List<int[]> collectRegions(boolean keyboardShown) {
@@ -1226,6 +1304,11 @@ public final class MainActivity extends Activity
             }
             addRegion(regions, menuLayer.panel(), Proto.REGION_BUTTON, MENU_PANEL_ID);
             addRegion(regions, menuOutside, Proto.REGION_BUTTON, MENU_OUTSIDE_ID);
+            return regions;
+        }
+        if (gamepadOn) {   // 手柄页（独立一页）：⋯ 在最前，然后手柄控件（簇的范围在它的成员前面）
+            addRegion(regions, gpMenuButton, Proto.REGION_BUTTON, GP_MENU_ID);
+            gamepadScreen.collectRegions(regions);
             return regions;
         }
         if (keyboardShown) {
@@ -1379,6 +1462,16 @@ public final class MainActivity extends Activity
             for (int i = 0; i < numpadButtons.size(); i++) {
                 if (numpadUsages.get(i) == key) numpadLook(i, down);
             }
+            return;
+        }
+        if (Proto.isGamepadId(id)) {   // 手柄控件：报文本身分流已经发了，按下的样子看报文画；这里只震能打断的"嗒"（同键盘键）
+            if (down) keyHaptic();
+            return;
+        }
+        if (id == GP_MENU_ID) {   // 手柄页的 ⋯：按住 0.6 秒才开菜单，不到就松开什么都不做
+            Style.bare(gpMenuButton, down && !menuLayer.isOpen());
+            main.removeCallbacks(gpMenuLater);
+            if (down && gamepadOn && !menuLayer.isOpen()) main.postDelayed(gpMenuLater, GP_MENU_HOLD_MS);
             return;
         }
         if (id == KeyboardPanel.SYMBOLS_BUTTON_ID || id == KeyboardPanel.FN_BUTTON_ID || id == KeyboardPanel.GLOBE_BUTTON_ID
@@ -1712,6 +1805,7 @@ public final class MainActivity extends Activity
 
     /** 键盘屏开 / 关。空中鼠标页上调出来时键盘盖在页面上面，空中鼠标暂停（见 {@link #airPaused}），收起回到页面。 */
     private void setKeyboardScreen(boolean on) {
+        if (on && gamepadOn) setGamepadMode(false);   // 手柄页上不能调出键盘：先退出手柄页
         boolean was = keyboardScreen.getVisibility() == View.VISIBLE;
         setMenu(false);   // 菜单是上一屏的（两屏的项不一样）
         if (on) {
@@ -1738,18 +1832,21 @@ public final class MainActivity extends Activity
      */
     private void setMenu(boolean on) {
         boolean keyboardShown = keyboardScreen.getVisibility() == View.VISIBLE;
-        if (on && (keyboardShown ? keyboardScreen.isAdjusting() : airOn)) return;
+        if (on && !gamepadOn && (keyboardShown ? keyboardScreen.isAdjusting() : airOn)) return;
         if (on == menuLayer.isOpen()) return;
         if (on) {
+            int screen = gamepadOn ? SCREEN_GAMEPAD : keyboardShown ? SCREEN_KEYBOARD : SCREEN_MAIN;
             for (int i = 0; i < MENU_IDS.length; i++) {
-                menuItems.get(i).setVisibility(onMenuScreen(MENU_IDS[i], keyboardShown) ? View.VISIBLE : View.GONE);
+                menuItems.get(i).setVisibility(onMenuScreen(MENU_IDS[i], screen, !btMode) ? View.VISIBLE : View.GONE);
             }
         }
+        main.removeCallbacks(gpMenuLater);
         menuLayer.setOpen(on);
         keyboardScreen.setMenuOpen(on);   // 键盘屏开着菜单时不画按键放大提示
         for (TextView b : menuItems) Style.look(b, false, false);
         Style.bare(kbMenuButton, false);
         Style.bare(padMenuButton, false);
+        Style.bare(gpMenuButton, false);
         if (on != menuBack) {
             if (on) {
                 getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, closeMenu);
@@ -1768,7 +1865,27 @@ public final class MainActivity extends Activity
             case MENU_KEYBOARD_ID:
                 setKeyboardScreen(true);   // 里面关菜单
                 break;
+            case MENU_GAMEPAD_ID:
+                setGamepadMode(true);   // 里面关菜单
+                break;
+            case GP_BACK_ID:
+                setGamepadMode(false);
+                break;
+            case GP_PRESET_ID: {
+                // 预设轮换（同"布局"那项：菜单不关，好连着点到想要的；存过自定义的话最后轮到它）；换了以后两路的手柄都回中立
+                prefs.setGamepadPreset(prefs.nextGamepadPreset());
+                resetGamepad();
+                gamepadScreen.setSpec(prefs.gamepadSpec());
+                updateMenuLabels();
+                break;
+            }
             case MENU_SETTINGS_ID:
+                if (gamepadOn) {   // 手柄页上的"设置"：直接停在"手柄"那一页（预设、自定义、手感都在那）
+                    setMenu(false);
+                    startActivity(SettingsActivity.tabIntent(this, SettingsActivity.TAB_GAMEPAD));
+                    break;
+                }
+                // 不在手柄页：往下落，同 Actions 里的 settings（停在上次那一页）
             case MENU_ROTATE_ID:
             case MENU_EXIT_ID:
                 // 同 Actions 里的 settings / rotate / exit（照按钮条上"设置"的做法打开设置页）；"嗒"已经震过，不再 fire
@@ -1839,6 +1956,7 @@ public final class MainActivity extends Activity
         int pointer = prefs.keyboardPointer();
         menuItems.get(menuIndex(KB_POINTER_ID)).setText(pointer == KeyboardPlan.POINTER_STICK ? R.string.kb_pointer_stick
                 : pointer == KeyboardPlan.POINTER_NONE ? R.string.kb_pointer_off : R.string.kb_pointer_pad);
+        menuItems.get(menuIndex(GP_PRESET_ID)).setText(getString(R.string.gp_preset, GamepadScreen.name(this, prefs.gamepadSpec())));
     }
 
     @Override
@@ -1945,6 +2063,7 @@ public final class MainActivity extends Activity
                 setKeyboardScreen(keyboardScreen.getVisibility() != View.VISIBLE);
                 break;
             case NUMPAD:
+                if (gamepadOn) setGamepadMode(false);   // 数字键盘在主界面上：先退出手柄页
                 if (keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);
                 showPanel(numpad.getVisibility() == View.VISIBLE ? null : numpad);
                 break;
@@ -1979,6 +2098,10 @@ public final class MainActivity extends Activity
                 break;
             case AIR_CENTER:
                 if (airReady()) centerPointer();
+                break;
+            case GAMEPAD:
+                if (btMode) toast(R.string.gp_desktop_only);   // 蓝牙那批（第三批）之前进不了
+                else setGamepadMode(!gamepadOn);
                 break;
             default:
                 break;
@@ -2066,6 +2189,7 @@ public final class MainActivity extends Activity
     }
 
     private void openTextBar() {
+        if (gamepadOn) setGamepadMode(false);   // 贴字面板在主界面上：先退出手柄页
         setMenu(false);
         showPanel(null);
         if (keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);
@@ -2137,6 +2261,10 @@ public final class MainActivity extends Activity
             selfStart.onServiceConnected(link.serverApk());   // 服务还跑着 App 更新前的 APK：重启成新代码
             requestOrientationSelf(-1);   // 方向交给服务
             link.config(prefs.engineConfig(), density);
+            link.gamepadConfig(prefs.gamepadConfig());
+            gamepadFailed = false;
+            // 新会话的手柄从中立开始：本地分流里还按着的手柄键也松掉（不然两边对不上，抬起时才补上）
+            if (gamepadOn) local.setGamepadConfig(prefs.gamepadConfig());
             Display d = getDisplay();
             // 锁方向锁的是整块屏：分屏 / 小窗时不锁，免得另一边的应用跟着转（回到全屏时 pushLayout 补上）。
             // 这里直接问 fillsDisplay，windowFull 可能还没被 pushLayout 更新过；顺手记下，pushLayout 就不会再补一次
@@ -2158,6 +2286,7 @@ public final class MainActivity extends Activity
             if (wasConnected) {   // 服务那一路的实体键按住等不到结束了；服务那边的左键随会话结束松开
                 endServerHolds();
                 serverLeftSources.clear();
+                gamepadScreen.setReport(false, new byte[Hid.GAMEPAD_REPORT_SIZE]);   // 服务那一路的手柄随会话结束消失
             }
             // 连着的服务断了才收尾：服务没开时这里每秒来一次（连不上就重试），不能每次都打断本地分流里正按着的东西。
             // 蓝牙模式下服务没接管时，按钮、修饰键、拖动都归本地分流，也不用收
@@ -2208,8 +2337,8 @@ public final class MainActivity extends Activity
             releaseNumpad();
         }
         if (!isGrabbed && air.buttons() == 0) haptics.stopHum();
-        if (isGrabbed && btMode) {
-            // 服务接管后系统收不到触摸，本地分流里正按着的手指等不到抬起：先收尾，按着的键松开
+        if (isGrabbed && (btMode || gamepadOn)) {
+            // 服务接管后系统收不到触摸，本地分流里正按着的手指等不到抬起：先收尾，按着的键松开（桌面模式手柄页：手柄回中立）
             local.releaseAll();
             localGesture = false;
         }
@@ -2298,6 +2427,17 @@ public final class MainActivity extends Activity
         Toast.makeText(this, text, Toast.LENGTH_LONG).show();
     }
 
+    /** 服务分流出的手柄状态（画按下的样子）；带失败位 = 服务建虚拟手柄失败（状态字提示，原因在服务日志里）。 */
+    @Override
+    public void onGamepad(int flags, byte[] report) {
+        if ((flags & Proto.GAMEPAD_FLAG_FAILED) != 0) {
+            gamepadFailed = true;
+            updateStatus();
+            return;
+        }
+        if (gamepadOn && !stopped) gamepadScreen.setReport(false, report);
+    }
+
     /** 服务只发原因代码，文字在这里按系统语言拼。 */
     private String grabText(int reason, String detail) {
         switch (reason) {
@@ -2376,6 +2516,12 @@ public final class MainActivity extends Activity
         boolean tappable = statusTappable();
         pad.setStatusTappable(tappable);
         miniPad.setStatusTappable(tappable);
+        // 手柄页：平时写"按住 ⋯ 打开菜单"；服务没连上 / 建手柄失败时写原因（服务没接管不算问题：手柄页那时走本地分流）
+        if (gamepadScreen == null) return;
+        if (gamepadFailed) gamepadScreen.setStatus(getString(R.string.gp_create_failed), false);
+        else if (!linkOk) gamepadScreen.setStatus(selfStarting ? getString(R.string.status_self_starting) : linkMessage, false);
+        else gamepadScreen.setStatus(getString(R.string.gp_hold_menu), true);
+        gamepadScreen.setStatusTappable(tappable);
     }
 
     /**
@@ -2392,6 +2538,7 @@ public final class MainActivity extends Activity
         // ⋯ 菜单开着时整页归菜单（点外面关菜单）
         if (menuLayer.isOpen()) return false;
         float x = e.getRawX(), y = e.getRawY();
+        if (gamepadOn) return !hits(gpMenuButton, x, y) && gamepadScreen.statusHit(x, y);
         // 只看最上面那一屏：键盘屏盖着主界面（触控板还算"显示着"），空中鼠标页上没有状态字
         if (keyboardScreen.getVisibility() == View.VISIBLE) {
             if (keyboardScreen.isMenuButtonShown() && hits(kbMenuButton, x, y)) return false;
@@ -2532,6 +2679,7 @@ public final class MainActivity extends Activity
      */
     private void setAirMode(boolean on) {
         if (on == airOn) return;
+        if (on && gamepadOn) setGamepadMode(false);   // 两页互斥（模式不同，本来碰不到一起，兜底）
         setMenu(false);   // 空中鼠标页上没有 ⋯（从键盘屏进来的话 setKeyboardScreen 也会关）
         if (on && keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);   // airOn 还是假：普通的收起
         airOn = on;
@@ -2643,6 +2791,56 @@ public final class MainActivity extends Activity
     public void airChanged() {
         updateAirOverlay();
         updateActiveButtons();
+    }
+
+    // ═══════════ 手柄页 ═══════════
+
+    /**
+     * 进出手柄页（独立一页：没有触控板、没有键盘，只报手柄控件的区域）。第一批只在桌面模式：服务的第三个 uhid 设备（"Douhua Gamepad"）
+     * 第一次报手柄页的区域时才建，留到会话结束。进的时候关菜单、收键盘、收贴字面板、退出空中鼠标（互斥）、本地分流收尾、解开服务那边锁住的修饰键
+     * （不然 Ctrl 一直按着），两路的手柄都回中立；手柄页开着时吞返回、左右边设排除区（服务没接管时系统手势还在）。不存盘（同空中鼠标）。
+     */
+    private void setGamepadMode(boolean on) {
+        if (on == gamepadOn) return;
+        if (on && btMode) {
+            toast(R.string.gp_desktop_only);
+            return;
+        }
+        setMenu(false);
+        if (on) {
+            if (airOn) setAirMode(false);
+            if (keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);
+            closeTextBar();
+        }
+        main.removeCallbacks(gpMenuLater);
+        gamepadOn = on;
+        local.releaseAll();
+        localGesture = false;
+        if (on) unlatchDesktopModifiers();
+        resetGamepad();
+        gamepadScreen.setVisibility(on ? View.VISIBLE : View.GONE);
+        applyBackSwallow();
+        updateActiveButtons();
+        updateStatus();
+        pushLayout();
+    }
+
+    /** 手柄两路都回中立：服务的分流（CMD_GAMEPAD_CONFIG）、本地分流，画的也清掉。进出手柄页、换预设时。 */
+    private void resetGamepad() {
+        GamepadConfig c = prefs.gamepadConfig();
+        local.setGamepadConfig(c);
+        link.gamepadConfig(c);
+        gamepadScreen.clearReports();
+    }
+
+    /** 桌面模式下服务那边锁住的修饰键：按一下就解开（服务的 TouchRouter 里修饰键是按下时切换；服务没接管时也在服务里记着）。 */
+    private void unlatchDesktopModifiers() {
+        if (btMode || !link.isConnected()) return;
+        for (int bit = 0; bit < 4; bit++) {
+            if ((latchedMods & (1 << bit)) == 0) continue;
+            link.hidKey(0xE0 + bit, true);
+            link.hidKey(0xE0 + bit, false);
+        }
     }
 
     // ═══════════ 实体按键 ═══════════
@@ -2785,7 +2983,8 @@ public final class MainActivity extends Activity
             }
             return true;
         }
-        if (action == MotionEvent.ACTION_DOWN) localGesture = btMode && localActive() && local.ready();
+        // 桌面模式的手柄页也走本地分流（服务没接管时；接管时真的触摸到不了这里）：手柄控件要跟着手指移动，每个 View 自己收就是把分流再抄一份
+        if (action == MotionEvent.ACTION_DOWN) localGesture = (btMode || gamepadOn) && localActive() && local.ready();
         if (!localGesture) {
             if (press) local.stopSpin(true);
             return super.dispatchTouchEvent(e);
@@ -2846,16 +3045,25 @@ public final class MainActivity extends Activity
         }
     }
 
-    /** 本地分流的结果：鼠标键盘发蓝牙，其余和服务发来的消息走同一套处理。 */
+    /**
+     * 本地分流的结果：鼠标键盘发蓝牙（桌面模式下本地分流只管手柄页，鼠标键盘不发，防御一下），手柄画出来、桌面模式下发给服务（CMD_GAMEPAD），
+     * 其余和服务发来的消息走同一套处理。
+     */
     private final class LocalOutput implements TouchRouter.Output {
         @Override
         public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
-            sendTouchMouse(buttons, dx, dy, wheel, pan);
+            if (btMode) sendTouchMouse(buttons, dx, dy, wheel, pan);
         }
 
         @Override
         public void keyboard(byte[] report) {
-            bt.sendKeyboard(report);
+            if (btMode) bt.sendKeyboard(report);
+        }
+
+        @Override
+        public void gamepad(byte[] report) {
+            gamepadScreen.setReport(true, report);
+            if (!btMode) link.gamepad(report);   // 蓝牙手柄是第三批：蓝牙模式下进不了手柄页，这里只可能是收尾的全零
         }
 
         @Override
@@ -2979,7 +3187,7 @@ public final class MainActivity extends Activity
     private void updateGestureExclusion() {
         View root = getWindow().getDecorView();
         List<Rect> rects = new ArrayList<>();
-        if (btMode) {
+        if (btMode || gamepadOn) {   // 桌面模式的手柄页：服务没接管时系统手势没被挡住，左右边一划摇杆就成了返回
             int w = dp(32);
             rects.add(new Rect(0, 0, w, root.getHeight()));
             rects.add(new Rect(root.getWidth() - w, 0, root.getWidth(), root.getHeight()));
@@ -2987,15 +3195,16 @@ public final class MainActivity extends Activity
         root.setSystemGestureExclusionRects(rects);
     }
 
-    /** 排除区以外的地方还是可能触发返回：蓝牙模式下吞掉返回，豆花不会被意外关掉。 */
+    /** 排除区以外的地方还是可能触发返回：蓝牙模式下、手柄页上吞掉返回，豆花不会被意外关掉（手柄页从 ⋯ 菜单离开）。 */
     private void applyBackSwallow() {
-        if (btMode == backSwallowed) return;
-        if (btMode) {
+        boolean want = btMode || gamepadOn;
+        if (want == backSwallowed) return;
+        if (want) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, swallowBack);
         } else {
             getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(swallowBack);
         }
-        backSwallowed = btMode;
+        backSwallowed = want;
     }
 
     private int dp(float v) {

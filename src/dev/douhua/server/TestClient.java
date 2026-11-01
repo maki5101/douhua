@@ -136,6 +136,15 @@ public final class TestClient {
                         Server.log("自测收到 键盘 " + b.toString().trim());
                         break;
                     }
+                    case Proto.MSG_GAMEPAD: {
+                        int flags = in.readUnsignedByte();
+                        byte[] r = new byte[dev.douhua.Hid.GAMEPAD_REPORT_SIZE];
+                        in.readFully(r);
+                        StringBuilder b = new StringBuilder();
+                        for (byte x : r) b.append(String.format("%02x ", x));
+                        Server.log("自测收到 手柄 flags=" + flags + " " + b.toString().trim());
+                        break;
+                    }
                     default:
                         Server.log("自测收到未知消息 " + type);
                         return;

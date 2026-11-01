@@ -20,6 +20,10 @@ import java.util.Locale;
  * 中键按着时推红点 / 单指划触控板 = 滚动（GestureEngine.setScrollHold），最后一个松开时这次一格都没滚过 = 补一次中键单击，
  * 收尾（releaseAll）不补。
  *
+ * 手柄页（Proto.REGION_GAMEPAD）：按下的手指交给 {@link GamepadTouch}（单键、面键簇、十字键、摇杆），报文经 {@link Output#gamepad} 出；
+ * 归属照旧按下时定，唯一的例外是面键簇内部（归属定到簇，簇里按当前位置挑键，见 GamepadTouch）。releaseAll / 换参数 /
+ * {@link #setGamepadConfig} 时手柄回中立（发全零）。
+ *
  * 桌面模式下跑在服务里（触摸来自独占的触摸屏，输出到 /dev/uhid），蓝牙模式下跑在 App 里
  * （触摸来自 App 自己的窗口，输出到蓝牙），两边只是触摸来源和 {@link Output} 不同。
  * 纯 Java、不加锁：调用方保证同一时刻只有一个线程在调（包括定时器到点的 {@link #onTimer}）。
@@ -54,6 +58,12 @@ public final class TouchRouter implements GestureEngine.Output {
         void startTicks();
 
         void stopTicks();
+
+        /**
+         * 手柄状态变了：13 字节报文（Hid.GAMEPAD_DESC，只在回调期间有效）。全零 = 中立。和上一次一样不发，所以没用过手柄时收尾什么都不发。
+         * 不做成 default：忘了实现就静默丢掉手柄的松开，宁可编译报错（同 startTicks）。
+         */
+        void gamepad(byte[] report);
 
         /** 记一行日志（小红点兜底暂停之类，给开发者看）。 */
         default void note(String s) {}
@@ -120,6 +130,7 @@ public final class TouchRouter implements GestureEngine.Output {
     private static final int KIND_KEY = 4;
     private static final int KIND_STICK = 5;
     private static final int KIND_MOUSE = 6;
+    private static final int KIND_GAMEPAD = 7;
 
     private final Output out;
     private final Hid.Keyboard keyboard = new Hid.Keyboard();
@@ -147,6 +158,8 @@ public final class TouchRouter implements GestureEngine.Output {
     private final TrackPoint stick = new TrackPoint(new StickOutput());
     private int stickSlot = -1;
     private boolean ticking;
+    /** 手柄页的控件（REGION_GAMEPAD）。 */
+    private final GamepadTouch gamepad = new GamepadTouch(new PadOutput());
     /** 点一下锁定的修饰键。 */
     private int latched;
     /** 开合缩放期间按住的 Ctrl。 */
@@ -167,7 +180,18 @@ public final class TouchRouter implements GestureEngine.Output {
         engine.setCtrlHeld((modifierMask() & Hid.MOD_CTRL) != 0);
         stick.setConfig(c);
         this.density = density > 0 ? density : 1;
+        gamepad.setDensity(this.density);
         clearSlots();
+    }
+
+    /** 手柄参数（Proto.CMD_GAMEPAD_CONFIG）：手柄这一路先回中立（按着的全松、发全零），再换。不动手势引擎。 */
+    public void setGamepadConfig(GamepadConfig c) {
+        for (int s = 0; s < SLOTS; s++) {
+            if (slotKind[s] != KIND_GAMEPAD) continue;
+            slotKind[s] = KIND_NONE;
+            slotRegion[s] = null;
+        }
+        gamepad.setConfig(c);
     }
 
     /** 参数到了才能工作。 */
@@ -178,6 +202,7 @@ public final class TouchRouter implements GestureEngine.Output {
     /** 整体替换；按顺序找第一个命中的，叠在上面的区域要排在前面。键盘范围（REGION_KEYBOARD）排在它的键后面。 */
     public void setRegions(Region[] regions) {
         this.regions = regions;
+        gamepad.setRegions(regions);
         if (trace != null) traceLayout(false);
     }
 
@@ -244,7 +269,10 @@ public final class TouchRouter implements GestureEngine.Output {
     public Region down(int slot, float x, float y, long t) {
         if (slot < 0 || slot >= SLOTS) return null;
         Region r = hit(x, y);
-        if (engine != null && (r == null || r.type != Proto.REGION_PAD)) engine.stopSpin(r == null || r.type != Proto.REGION_KEY);
+        // 按在键、手柄控件上的静默停（它们自己会"嗒"）
+        if (engine != null && (r == null || r.type != Proto.REGION_PAD)) {
+            engine.stopSpin(r == null || (r.type != Proto.REGION_KEY && r.type != Proto.REGION_GAMEPAD));
+        }
         lastX[slot] = x;
         lastY[slot] = y;
         slotRegion[slot] = r;
@@ -295,6 +323,10 @@ public final class TouchRouter implements GestureEngine.Output {
                 slotKind[slot] = KIND_BUTTON;
                 out.button(r.id, Proto.BUTTON_DOWN);
                 break;
+            case Proto.REGION_GAMEPAD:
+                slotKind[slot] = KIND_GAMEPAD;
+                gamepad.down(slot, r, x, y);
+                break;
             default:   // 不认识的区域类型（以后的新类型、万一被直接命中的键盘范围）什么都不做，不再当成按钮 id 0
                 slotKind[slot] = KIND_NONE;
                 break;
@@ -308,12 +340,14 @@ public final class TouchRouter implements GestureEngine.Output {
         lastY[slot] = y;
         if (slotKind[slot] == KIND_PAD && engine != null) engine.move(slot, x / density, y / density);
         else if (slotKind[slot] == KIND_STICK) stick.move(x / density, y / density);
+        else if (slotKind[slot] == KIND_GAMEPAD) gamepad.move(slot, x, y);
     }
 
     /** 一帧触摸报完（所有手指的位置都更新了）。 */
     public void frame(long t) {
         if (engine != null) engine.endFrame(t);
         if (stickSlot >= 0 && stick.frame(t)) startTicks();   // 太久没动暂停了的红点又动了：接着发
+        gamepad.frame();   // 摇杆轴一帧只发一次
     }
 
     public void up(int slot, long t) {
@@ -365,6 +399,9 @@ public final class TouchRouter implements GestureEngine.Output {
             case KIND_KEY:
                 keyUp(r.id);
                 out.button(Proto.KEY_ID_BASE + r.id, Proto.BUTTON_UP);
+                break;
+            case KIND_GAMEPAD:
+                gamepad.up(slot);   // 被取消的也一样：全松
                 break;
             default:
                 break;
@@ -488,7 +525,7 @@ public final class TouchRouter implements GestureEngine.Output {
     }
 
     /**
-     * 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开、小红点停（节拍停）、中键不补单击。触摸屏被释放、连接断开时调。
+     * 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开、小红点停（节拍停）、中键不补单击、手柄回中立。触摸屏被释放、连接断开时调。
      */
     public void releaseAll() {
         if (engine != null) engine.cancel();
@@ -523,6 +560,7 @@ public final class TouchRouter implements GestureEngine.Output {
         stick.cancel();
         stickSlot = -1;
         stopTicks();
+        gamepad.releaseAll();   // 按着的手柄键报松开、发全零（没用过就什么都不发）
     }
 
     // ═══════════ 键盘触点记录 ═══════════
@@ -680,6 +718,24 @@ public final class TouchRouter implements GestureEngine.Output {
     @Override
     public void edgeRelease(float speedDpPerMs, float spinPerSecond) {
         out.edgeRelease(speedDpPerMs, spinPerSecond);
+    }
+
+    /** 手柄的输出：报文、按下 / 松开（App 震"嗒"）、"咔嗒"。 */
+    private final class PadOutput implements GamepadTouch.Output {
+        @Override
+        public void report(byte[] report) {
+            out.gamepad(report);
+        }
+
+        @Override
+        public void button(int id, int action) {
+            out.button(id, action);
+        }
+
+        @Override
+        public void haptic(int kind) {
+            out.haptic(kind);
+        }
     }
 
     /** 小红点的输出：位移、滚轮经引擎出（按着的鼠标键照带），轻点 = 引擎点一下左键。 */

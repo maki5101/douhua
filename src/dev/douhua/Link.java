@@ -50,6 +50,9 @@ final class Link {
 
         /** 实体键的独占状态：grabbed / unavailable 是 Proto.HARD_BIT_* 位，reason 是 Proto.HARD_*，detail 是设备名或错误原文。 */
         void onHardGrab(int grabbed, int unavailable, int reason, String detail);
+
+        /** 服务分流出的手柄状态（Proto.MSG_GAMEPAD）：flags 是 Proto.GAMEPAD_FLAG_*，report 13 字节。 */
+        void onGamepad(int flags, byte[] report);
     }
 
     private static final byte[] PING = {(byte) Proto.CMD_PING};
@@ -175,6 +178,24 @@ final class Link {
     /** 经服务的虚拟鼠标按住 / 松开左键（桌面模式下实体键按住配了"左键"时）。 */
     void holdLeft(boolean down) {
         offer(ByteBuffer.allocate(2).put((byte) Proto.CMD_HOLD_LEFT).put((byte) (down ? 1 : 0)));
+    }
+
+    /** 桌面模式下服务没接管时，App 本地分流出的手柄状态（13 字节，Proto.CMD_GAMEPAD）。 */
+    void gamepad(byte[] report) {
+        offer(ByteBuffer.allocate(1 + Hid.GAMEPAD_REPORT_SIZE).put((byte) Proto.CMD_GAMEPAD).put(report, 0, Hid.GAMEPAD_REPORT_SIZE));
+    }
+
+    /** 手柄参数（编解码在 GamepadConfig，服务那边读的是同一份）：服务的分流收到后手柄那一路回中立。 */
+    void gamepadConfig(GamepadConfig c) {
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        java.io.DataOutputStream d = new java.io.DataOutputStream(bytes);
+        try {
+            d.writeByte(Proto.CMD_GAMEPAD_CONFIG);
+            c.write(d);
+        } catch (IOException impossible) {
+            return;   // 写内存不会出错
+        }
+        if (connected) queue.offer(bytes.toByteArray());
     }
 
     /** 调试用：服务记不记键盘触点（只有可调试包会开，见 DebugMoves 的 DEBUG_KEYLOG）。 */
@@ -331,6 +352,13 @@ final class Link {
                             int key = in.readUnsignedByte();
                             int event = in.readUnsignedByte();
                             main.post(() -> listener.onHardKey(key, event));
+                            break;
+                        }
+                        case Proto.MSG_GAMEPAD: {
+                            int flags = in.readUnsignedByte();
+                            byte[] report = new byte[Hid.GAMEPAD_REPORT_SIZE];
+                            in.readFully(report);
+                            main.post(() -> listener.onGamepad(flags, report));
                             break;
                         }
                         case Proto.MSG_HARD_GRAB: {

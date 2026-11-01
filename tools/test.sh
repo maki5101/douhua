@@ -30,7 +30,9 @@ trap 'rm -rf "$OUT"' EXIT
 # 惯性滚动的物理（ScrollInertia）、连续滚动的描述符 / 滚轮倍率换算、CMD_CONFIG 编解码（HidTest）、uhid 的 GET / SET_REPORT（UhidEvents）、
 # 小红点（TrackPoint：速度曲线、负惯性、积分、轻点、颗粒、中键滚动）、
 # 触控板背景图怎么摆（PadFit：五种显示方式、焦点、吸附、平铺相位、按形状挑设置、解码多大）、
-# 主机实测扫描许发哪些键、一段怎么拆成拍（KeyScan）
+# 主机实测扫描许发哪些键、一段怎么拆成拍（KeyScan）、
+# 手柄页（GamepadTouch：单键 / 面键簇 / 十字键 / 摇杆 / N64 的 C 键的触摸模型、收尾回中立；GamepadPlan：15 个预设和自定义的自动排；
+# GamepadSpec：字样、轮换、自定义存成一行再读回来；GamepadConfig 编解码、手柄描述符和两路合并（HidTest、ServerPartsTest 的 GamepadMux））
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \
     src/dev/douhua/Proto.java src/dev/douhua/GestureEngine.java \
     src/dev/douhua/ScrollInertia.java src/dev/douhua/ConfigCodec.java \
@@ -66,7 +68,12 @@ trap 'rm -rf "$OUT"' EXIT
     src/dev/douhua/AutoStartBackoff.java test/dev/douhua/AutoStartBackoffTest.java \
     src/dev/douhua/Theme.java test/dev/douhua/ThemeTest.java \
     src/dev/douhua/PadFit.java test/dev/douhua/PadFitTest.java \
-    src/dev/douhua/KeyScan.java test/dev/douhua/KeyScanTest.java
+    src/dev/douhua/KeyScan.java test/dev/douhua/KeyScanTest.java \
+    src/dev/douhua/GamepadTouch.java src/dev/douhua/GamepadConfig.java \
+    src/dev/douhua/GamepadSpec.java src/dev/douhua/GamepadPlan.java \
+    src/dev/douhua/server/GamepadMux.java \
+    test/dev/douhua/GamepadTouchTest.java test/dev/douhua/GamepadPlanTest.java \
+    test/dev/douhua/GamepadSpecTest.java
 "$JDK/bin/java" -cp "$OUT" dev.douhua.GestureEngineTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.HidTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.server.ServerPartsTest
@@ -86,6 +93,9 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/java" -cp "$OUT" dev.douhua.ThemeTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.PadFitTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyScanTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.GamepadTouchTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.GamepadPlanTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.GamepadSpecTest
 # 打字测试的分析（tools/typelog/analyze.py）：造一份小日志测对齐和分类，再用真正的 TouchRouter 重放它导出的触点
 python3 tools/typelog/analyze.py --selftest "$OUT/typelog"
 "$JDK/bin/java" -cp "$OUT" KeyReplay "$OUT/typelog/replay.txt" check

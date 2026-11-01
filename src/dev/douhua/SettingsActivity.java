@@ -38,8 +38,8 @@ import java.util.function.IntConsumer;
 /**
  * 设置页。改动即时保存，回到触控板时生效。
  *
- * 分五个标签页（顶上一排标签固定，不随页面滚动）：通用、触控板、按钮与按键、空中鼠标、外观。
- * 每次 {@link #build} 五页的内容都照旧全建出来，只显示选中那一页（其它 GONE）：豆花儿服务一节（ServiceSection 的观察者、实时刷新）、
+ * 分六个标签页（顶上一排标签固定，不随页面滚动）：通用、触控板、按钮与按键、空中鼠标、手柄、外观。
+ * 每次 {@link #build} 六页的内容都照旧全建出来，只显示选中那一页（其它 GONE）：豆花儿服务一节（ServiceSection 的观察者、实时刷新）、
  * 蓝牙设备列表、音频提醒都引用建好的 view，只建当前页会漏引用；切页只改显示，不重建，进行到一半的东西（配对引导、填了一半的分辨率）都在。
  */
 public final class SettingsActivity extends Activity implements BtHid.Listener {
@@ -48,9 +48,11 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     static final String TAB_PAD = "pad";
     static final String TAB_BUTTONS = "buttons";
     static final String TAB_AIR = "air";
+    static final String TAB_GAMEPAD = "gamepad";
     static final String TAB_LOOK = "look";
-    private static final String[] TABS = {TAB_GENERAL, TAB_PAD, TAB_BUTTONS, TAB_AIR, TAB_LOOK};
-    private static final int[] TAB_LABELS = {R.string.tab_general, R.string.tab_pad, R.string.tab_buttons, R.string.tab_air, R.string.tab_look};
+    private static final String[] TABS = {TAB_GENERAL, TAB_PAD, TAB_BUTTONS, TAB_AIR, TAB_GAMEPAD, TAB_LOOK};
+    private static final int[] TAB_LABELS = {R.string.tab_general, R.string.tab_pad, R.string.tab_buttons, R.string.tab_air,
+            R.string.tab_gamepad, R.string.tab_look};
     /** 打开设置页时停在哪一页（值是 TAB_*）；不带就停在上次那一页。 */
     static final String EXTRA_TAB = "dev.douhua.settings_tab";
 
@@ -67,7 +69,12 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
      * 通知里"去关掉无线调试"都走这里。以前那一节在整页最上面，打开就看得到；分页后要指定页。
      */
     static Intent serviceIntent(Context c) {
-        return new Intent(c, SettingsActivity.class).putExtra(EXTRA_TAB, TAB_GENERAL);
+        return tabIntent(c, TAB_GENERAL);
+    }
+
+    /** 打开设置页、停在这一页最上面（手柄页 ⋯ 菜单里的"设置"停在"手柄"）。 */
+    static Intent tabIntent(Context c, String tab) {
+        return new Intent(c, SettingsActivity.class).putExtra(EXTRA_TAB, tab);
     }
 
     private Prefs prefs;
@@ -294,7 +301,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         scroll.post(this::build);
     }
 
-    /** 每一页从上到下有哪些节；五页都建，只显示 {@link #tab} 那一页。 */
+    /** 每一页从上到下有哪些节；六页都建，只显示 {@link #tab} 那一页。 */
     private void build() {
         pagesBox.removeAllViews();
         pages = new LinearLayout[TABS.length];
@@ -389,8 +396,12 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         list = pages[3];
         airSection();
 
-        // 外观：主题、按键边框……，屏幕边缘留白，触控板背景图，震动
+        // 手柄：预设（网格 + 自定义）、摇杆、十字键、面键的手感，Moonlight 里怎么设
         list = pages[4];
+        gamepadSection();
+
+        // 外观：主题、按键边框……，屏幕边缘留白，触控板背景图，震动
+        list = pages[5];
         appearance();
         edgeMargin();
         header(R.string.sec_pad_bg);
@@ -626,6 +637,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             drawPreview(preview, Theme.byId(prefs.theme()), prefs.keyBorders());
             for (ThemeGrid g : grids) g.show(Theme.byId(prefs.theme()).id, prefs.keyBorders());
             padBg.themeChanged();   // 背景图那一节的预览也按主题画
+            refreshGamepad();   // "手柄"那一页的预览、网格也按主题画
         };
         int[] titles = {R.string.theme_group_dark, R.string.theme_group_light};
         for (int group = 0; group < 2; group++) {
@@ -978,6 +990,254 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             }
             list.addView(g);
         }
+    }
+
+    // ═══════════ 手柄 ═══════════
+
+    /** 自定义里"面键"能选的排法（显示的顺序）和名字。 */
+    private static final int[] GP_FACES = {GamepadSpec.FACE_NONE, GamepadSpec.FACE_ROW2, GamepadSpec.FACE_DIAG2, GamepadSpec.FACE_THREE,
+            GamepadSpec.FACE_DIAMOND, GamepadSpec.FACE_ARC4, GamepadSpec.FACE_SIX, GamepadSpec.FACE_ARCADE6, GamepadSpec.FACE_EIGHT,
+            GamepadSpec.FACE_N64, GamepadSpec.FACE_GC};
+    private static final int[] GP_FACE_NAMES = {R.string.gp_face_none, R.string.gp_face_row2, R.string.gp_face_diag2, R.string.gp_face_three,
+            R.string.gp_face_diamond, R.string.gp_face_arc4, R.string.gp_face_six, R.string.gp_face_arcade6, R.string.gp_face_eight,
+            R.string.gp_face_n64, R.string.gp_face_gc};
+    /** 自定义里"键帽上的字"能选的字样（显示的顺序；括号里是南 东 西 北四个位置印的字）。 */
+    private static final int[] GP_LABELS = {GamepadSpec.LABELS_XBOX, GamepadSpec.LABELS_NINTENDO, GamepadSpec.LABELS_PLAYSTATION,
+            GamepadSpec.LABELS_SEGA, GamepadSpec.LABELS_ARCADE, GamepadSpec.LABELS_NUMBER};
+
+    /** "手柄"页的预览、预设网格、自定义那一节（选的不是自定义时藏起来）和自定义里跟着别的开关显示 / 藏起来的两行。 */
+    private GamepadPreview gpPreview;
+    private GamepadGrid gpGrid;
+    private String[] gpIds;
+    private LinearLayout gpCustomBox;
+    private View gpDpadTop, gpThumbs;
+    private Switch gpBumpers, gpTriggers;
+
+    /**
+     * 手柄（手柄页的东西都在这：只在桌面模式能进，蓝牙模式下照样能先设好）：一块预览（选的那一套在分屏下半边的样子）、预设网格（最后一格自定义）、
+     * 自定义那一节（选中自定义才显示）、摇杆 / 十字键 / 面键的手感、一段"Moonlight 里建议这样设"。改动即时存，回到主界面 applyPrefs 时
+     * 换手柄页的样子、参数发给服务和本地分流（手柄两路都回中立）。
+     */
+    private void gamepadSection() {
+        if (prefs.btMode()) {
+            TextView note = text(getString(R.string.gp_desktop_only), 14, 0xFFE8B04A);
+            note.setPadding(0, dp(16), 0, 0);
+            list.addView(note);
+        }
+        header(R.string.sec_gp_preset);
+        gpPreview = new GamepadPreview(this, true);
+        list.addView(gpPreview, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        GamepadSpec[] presets = GamepadSpec.PRESETS;
+        gpIds = new String[presets.length + 1];
+        String[] names = new String[gpIds.length];
+        for (int i = 0; i < presets.length; i++) {
+            gpIds[i] = presets[i].id;
+            names[i] = GamepadScreen.name(this, presets[i]);
+        }
+        gpIds[presets.length] = GamepadSpec.CUSTOM_ID;
+        names[presets.length] = getString(R.string.gp_custom);
+        gpGrid = new GamepadGrid(this, gpIds, names, this::pickGamepad);
+        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        gp.topMargin = dp(12);
+        list.addView(gpGrid, gp);
+        gamepadCustom();
+
+        GamepadConfig def = new GamepadConfig();
+        header(R.string.sec_gp_stick);
+        sliderInt(R.string.gp_stick_radius, Prefs.GP_STICK_R, Math.round(def.stickRadiusDp), 24, 120, 4);
+        sliderInt(R.string.gp_deadzone, Prefs.GP_DEADZONE, Math.round(def.deadzone * 100), 0, 30, 1);
+        sliderInt(R.string.gp_anti_deadzone, Prefs.GP_ANTI_DZ, Math.round(def.antiDeadzone * 100), 0, 30, 1);
+        list.addView(text(getString(R.string.gp_anti_deadzone_hint), 14, 0xFF9AA0A6));
+        toggle(R.string.gp_stick_float, Prefs.GP_FLOAT, def.floatingCenter);
+        toggle(R.string.gp_stick_follow, Prefs.GP_FOLLOW, def.followBase);
+        toggle(R.string.gp_rim_ticks, Prefs.GP_RIM_TICKS, def.rimTicks);
+
+        header(R.string.sec_gp_dpad);
+        toggle(R.string.gp_dpad8, Prefs.GP_DPAD8, def.dpad8);
+        sliderInt(R.string.gp_diagonal, Prefs.GP_DIAG, Math.round(def.diagonalDeg), 10, 60, 5);
+        sliderInt(R.string.gp_dpad_deadzone, Prefs.GP_DPAD_DZ, Math.round(def.dpadDeadzone * 100), 10, 50, 5);
+        toggle(R.string.gp_dpad_ticks, Prefs.GP_DPAD_TICKS, def.dpadTicks);
+
+        // 面键：簇里滑动换键（用户 2026-11-01 照推荐定的"搓键"，默认开）；开着才显示"两颗中间一起按"和"滑出多远全松"
+        header(R.string.sec_gp_face);
+        LinearLayout slideBox = new LinearLayout(this);
+        slideBox.setOrientation(LinearLayout.VERTICAL);
+        Switch slide = new Switch(this);
+        slide.setText(R.string.gp_slide);
+        slide.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        slide.setChecked(prefs.getBool(Prefs.GP_SLIDE, def.clusterSlide));
+        slide.setPadding(0, dp(8), 0, dp(8));
+        slide.setOnCheckedChangeListener((b, on) -> {
+            prefs.putBool(Prefs.GP_SLIDE, on);
+            slideBox.setVisibility(on ? View.VISIBLE : View.GONE);
+        });
+        list.addView(slide);
+        list.addView(text(getString(R.string.gp_slide_hint), 14, 0xFF9AA0A6));
+        LinearLayout outer = list;
+        list = slideBox;
+        sliderInt(R.string.gp_chord, Prefs.GP_CHORD, Math.round(def.chordDp), 0, 20, 1);
+        sliderInt(R.string.gp_exit_dp, Prefs.GP_EXIT_DP, Math.round(def.clusterExitDp), 0, 60, 4);
+        list = outer;
+        list.addView(slideBox);
+        slideBox.setVisibility(slide.isChecked() ? View.VISIBLE : View.GONE);
+
+        header(R.string.sec_gp_moonlight);
+        list.addView(text(getString(R.string.gp_moonlight_note), 14, 0xFF9AA0A6));
+        refreshGamepad();
+    }
+
+    /**
+     * 自定义那一节：从一套出发（存着的自定义；没存过是现在选的预设），勾左手放什么、面键怎么排、印什么字、右摇杆、肩键、扳机、中间三颗、摇杆按下；
+     * 自动排（GamepadPlan），上面的预览跟着变。最下面"从某个预设重新开始"整套换成那个预设的样子。
+     */
+    private void gamepadCustom() {
+        gpCustomBox = new LinearLayout(this);
+        gpCustomBox.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout outer = list;
+        list = gpCustomBox;
+        header(R.string.gp_custom);
+        list.addView(text(getString(R.string.gp_custom_hint), 14, 0xFF9AA0A6));
+        GamepadSpec c = customOrTemplate();
+        // 左手：十字键、左摇杆各一个开关，两个都开着时再选哪个在上
+        final boolean[] left = {c.hasDpad(), c.hasLeftStick(), c.left == GamepadSpec.LEFT_DPAD_TOP};
+        Runnable applyLeft = () -> editCustom(b -> b.left = left[0] && left[1]
+                ? (left[2] ? GamepadSpec.LEFT_DPAD_TOP : GamepadSpec.LEFT_STICK_TOP)
+                : left[0] ? GamepadSpec.LEFT_DPAD : left[1] ? GamepadSpec.LEFT_STICK : GamepadSpec.LEFT_NONE);
+        customSwitch(getString(R.string.gp_c_dpad), left[0], on -> {
+            left[0] = on;
+            applyLeft.run();
+        });
+        customSwitch(getString(R.string.gp_c_lstick), left[1], on -> {
+            left[1] = on;
+            applyLeft.run();
+        });
+        gpDpadTop = customSwitch(getString(R.string.gp_c_dpad_top), left[2], on -> {
+            left[2] = on;
+            applyLeft.run();
+        });
+        String[] faces = new String[GP_FACES.length];
+        int faceAt = 0;
+        for (int i = 0; i < faces.length; i++) {
+            faces[i] = getString(GP_FACE_NAMES[i]);
+            if (GP_FACES[i] == c.face) faceAt = i;
+        }
+        choiceRow(getString(R.string.gp_c_face), faces, faceAt, i -> editCustom(b -> b.face = GP_FACES[i]));
+        String[] styles = {getString(R.string.gp_labels_xbox), getString(R.string.gp_labels_nintendo), getString(R.string.gp_labels_ps),
+                getString(R.string.gp_labels_sega), getString(R.string.gp_labels_arcade), getString(R.string.gp_labels_number)};
+        int styleAt = 0;
+        for (int i = 0; i < GP_LABELS.length; i++) if (GP_LABELS[i] == c.labels) styleAt = i;
+        choiceRow(getString(R.string.gp_c_labels), styles, styleAt, i -> editCustom(b -> b.labels = GP_LABELS[i]));
+        customSwitch(getString(R.string.gp_c_rstick), c.rightStick, on -> editCustom(b -> b.rightStick = on));
+        // 字写"靠里那对 / 外角那对"和这一套里实际叫什么（refreshGamepad 跟着字样改）：Wii 经典手柄里靠里那对叫 ZL ZR、外角那对叫 L R，写死字母会正好说反
+        gpBumpers = customSwitch("", c.l1 || c.r1, on -> editCustom(b -> b.l1 = b.r1 = on));
+        gpTriggers = customSwitch("", c.lt || c.rt, on -> editCustom(b -> b.lt = b.rt = on));
+        customSwitch("Select", c.select, on -> editCustom(b -> b.select = on));   // 键名不翻译
+        customSwitch(getString(R.string.gp_c_home), c.home, on -> editCustom(b -> b.home = on));
+        customSwitch("Start", c.start, on -> editCustom(b -> b.start = on));
+        gpThumbs = customSwitch(getString(R.string.gp_c_thumbs), c.thumbs, on -> editCustom(b -> b.thumbs = on));
+        TextView from = text(getString(R.string.gp_custom_from), 16, 0xFF8AB4F8);
+        from.setPadding(0, dp(12), 0, dp(12));
+        from.setOnClickListener(v -> {
+            GamepadSpec[] presets = GamepadSpec.PRESETS;
+            String[] names = new String[presets.length];
+            for (int i = 0; i < presets.length; i++) names[i] = GamepadScreen.name(this, presets[i]);
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.gp_custom_from)
+                    .setItems(names, (d, which) -> {
+                        prefs.setGamepadCustom(presets[which].asCustom());
+                        prefs.setGamepadPreset(GamepadSpec.CUSTOM_ID);
+                        rebuildLater();   // 上面的开关照新的一套重建
+                    })
+                    .setNegativeButton(R.string.cancel, null)
+                    .show();
+        });
+        list.addView(from);
+        list = outer;
+        list.addView(gpCustomBox);
+    }
+
+    /** 存着的自定义；没存过是现在选的那一套复制出来的样子（选"自定义"那一格时就从它开始）。 */
+    private GamepadSpec customOrTemplate() {
+        GamepadSpec c = prefs.gamepadCustom();
+        return c != null ? c : prefs.gamepadSpec().asCustom();
+    }
+
+    /** 改自定义的一项：存下来、选中自定义，预览和网格跟着变。 */
+    private void editCustom(java.util.function.Consumer<GamepadSpec.Builder> change) {
+        GamepadSpec.Builder b = new GamepadSpec.Builder(customOrTemplate());
+        change.accept(b);
+        prefs.setGamepadCustom(b.build());
+        prefs.setGamepadPreset(GamepadSpec.CUSTOM_ID);
+        refreshGamepad();
+    }
+
+    /** 网格里点了一格：选那一套；第一次选"自定义"时从现在选的预设复制一份，自定义那一节照它重建。 */
+    private void pickGamepad(String id) {
+        if (GamepadSpec.CUSTOM_ID.equals(id) && prefs.gamepadCustom() == null) {
+            prefs.setGamepadCustom(prefs.gamepadSpec().asCustom());
+            prefs.setGamepadPreset(id);
+            rebuildLater();
+            return;
+        }
+        prefs.setGamepadPreset(id);
+        refreshGamepad();
+    }
+
+    /** 预览、网格按现在选的、主题、按键边框重画；自定义那一节选中自定义才显示，里面"十字键放上面""摇杆能按下"有那两样才显示。 */
+    private void refreshGamepad() {
+        if (gpGrid == null) return;
+        Theme t = Theme.byId(prefs.theme());
+        boolean borders = prefs.keyBorders();
+        GamepadSpec selected = prefs.gamepadSpec();
+        gpPreview.show(selected, t, borders);
+        GamepadSpec custom = customOrTemplate();
+        GamepadSpec[] specs = new GamepadSpec[gpIds.length];
+        for (int i = 0; i < GamepadSpec.PRESETS.length; i++) specs[i] = GamepadSpec.PRESETS[i];
+        specs[specs.length - 1] = custom;
+        gpGrid.show(specs, prefs.gamepadPreset(), t, borders);
+        gpCustomBox.setVisibility(selected.isCustom() ? View.VISIBLE : View.GONE);
+        gpDpadTop.setVisibility(custom.hasDpad() && custom.hasLeftStick() ? View.VISIBLE : View.GONE);
+        gpThumbs.setVisibility(custom.hasLeftStick() || custom.rightStick ? View.VISIBLE : View.GONE);
+        gpBumpers.setText(getString(R.string.gp_c_bumpers,
+                custom.shoulderLabel(Proto.GP_L1), custom.shoulderLabel(Proto.GP_R1)));
+        gpTriggers.setText(getString(R.string.gp_c_triggers,
+                custom.shoulderLabel(Proto.GP_LT), custom.shoulderLabel(Proto.GP_RT)));
+    }
+
+    /** 自定义里的一个开关（不直接存 Prefs，交给 onChange）。 */
+    private Switch customSwitch(String label, boolean checked, java.util.function.Consumer<Boolean> onChange) {
+        Switch s = new Switch(this);
+        s.setText(label);
+        s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        s.setChecked(checked);
+        s.setPadding(0, dp(8), 0, dp(8));
+        s.setOnCheckedChangeListener((b, on) -> onChange.accept(on));
+        list.addView(s);
+        return s;
+    }
+
+    /** 几选一（名字 + 选中的写在右边，点一下弹单选框），同 {@link #actionRow} 的样子。 */
+    private void choiceRow(String label, String[] options, int checked, IntConsumer onPick) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(12), 0, dp(12));
+        TextView name = text(label, 16, 0xFFE8E8E8);
+        TextView value = text(options[checked], 15, 0xFF8AB4F8);
+        value.setGravity(Gravity.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.addView(value, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
+        int[] current = {checked};
+        row.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle(label)
+                .setSingleChoiceItems(options, current[0], (d, which) -> {
+                    d.dismiss();
+                    current[0] = which;
+                    value.setText(options[which]);
+                    onPick.accept(which);
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show());
+        list.addView(row);
     }
 
     // ═══════════ 空中鼠标 ═══════════

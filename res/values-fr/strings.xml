@@ -433,4 +433,67 @@
     <string name="pad_bg_wide">Pavés larges (largeur ≥ hauteur)</string>
     <string name="pad_bg_tall">Pavés hauts (hauteur &gt; largeur)</string>
     <string name="pad_bg_note">L\'image est copiée dans l\'espace de Douhua : supprimer l\'original ne change rien. « Réinitialiser tous les réglages » la supprime ; elle suit vos autres réglages sur un nouveau téléphone. Les images claires consomment plus de batterie et, l\'écran affichant longtemps la même image quand Douhua est ouvert, marquent plus facilement l\'écran. Prend effet au retour sur le pavé tactile.</string>
+    <string name="act_gamepad">Page manette (manette de jeu virtuelle ; mode bureau uniquement)</string>
+    <string name="act_gamepad_s">Manette</string>
+    <string name="gp_exit">Retour au pavé tactile</string>
+    <string name="gp_preset">Préréglage : %1$s</string>
+    <string name="gp_hold_menu">Maintenez ⋯ pour le menu</string>
+    <string name="gp_desktop_only">La manette ne fonctionne pour l\'instant qu\'en mode bureau</string>
+    <string name="gp_create_failed">Impossible de créer la manette virtuelle ; voir le journal du service</string>
+    <string name="gp_arcade8">Arcade 8 boutons</string>
+    <string name="gp_md6">Mega Drive 6 boutons</string>
+    <string name="tab_gamepad">Manette</string>
+    <string name="sec_gp_preset">Préréglages</string>
+    <string name="gp_custom">Personnalisée</string>
+    <string name="gp_custom_hint">Partez d\'un préréglage, puis choisissez les commandes voulues ; la disposition est automatique et l\'aperçu ci-dessus suit.</string>
+    <string name="gp_custom_from">Repartir d\'un préréglage…</string>
+    <string name="gp_c_dpad">Croix directionnelle</string>
+    <string name="gp_c_lstick">Stick gauche</string>
+    <string name="gp_c_dpad_top">Croix au-dessus du stick (style PlayStation)</string>
+    <string name="gp_c_face">Boutons d\'action</string>
+    <string name="gp_c_labels">Lettres sur les boutons</string>
+    <string name="gp_c_rstick">Stick droit</string>
+    <string name="gp_c_bumpers">Boutons de tranche (paire intérieure, ici %1$s / %2$s)</string>
+    <string name="gp_c_triggers">Gâchettes (coins extérieurs, ici %1$s / %2$s ; un appui = enfoncée à fond)</string>
+    <string name="gp_c_home">Bouton Home</string>
+    <string name="gp_c_thumbs">Sticks cliquables (L3 / R3)</string>
+    <string name="gp_face_none">Aucun</string>
+    <string name="gp_face_row2">2 en ligne (NES)</string>
+    <string name="gp_face_diag2">2 en biais (Game Boy)</string>
+    <string name="gp_face_three">3 en ligne (Mega Drive)</string>
+    <string name="gp_face_diamond">4 en losange</string>
+    <string name="gp_face_arc4">4 en arc (Neo Geo)</string>
+    <string name="gp_face_six">6 sur deux rangées (Mega Drive 6 boutons)</string>
+    <string name="gp_face_arcade6">6 boutons arcade</string>
+    <string name="gp_face_eight">8 boutons arcade</string>
+    <string name="gp_face_n64">N64 (A, B et 4 boutons C)</string>
+    <string name="gp_face_gc">GameCube (grand A, B, X, Y)</string>
+    <string name="gp_labels_xbox">Xbox (A B X Y)</string>
+    <string name="gp_labels_nintendo">Nintendo (B A Y X)</string>
+    <string name="gp_labels_ps">PlayStation (× ○ □ △)</string>
+    <string name="gp_labels_sega">Sega (A B C / X Y Z)</string>
+    <string name="gp_labels_arcade">Arcade</string>
+    <string name="gp_labels_number">Chiffres (1 2 3 4)</string>
+    <string name="sec_gp_stick">Sticks</string>
+    <string name="gp_stick_radius">Distance pour pousser à fond (dp)</string>
+    <string name="gp_deadzone" formatted="false">Zone morte (%)</string>
+    <string name="gp_anti_deadzone" formatted="false">Anti-zone morte (%)</string>
+    <string name="gp_anti_deadzone_hint" formatted="false">Juste en sortant de la zone morte, le stick envoie déjà cette valeur : la zone morte de Moonlight (7 % par défaut) et celle du jeu n\'avalent pas le début de la poussée.</string>
+    <string name="gp_stick_float">L\'endroit touché sert de centre (désactivé : le milieu de la zone du stick)</string>
+    <string name="gp_stick_follow">Pousser au-delà du bord entraîne le centre avec le doigt (revenir agit aussitôt)</string>
+    <string name="gp_rim_ticks">« Clic » quand un stick atteint le bord</string>
+    <string name="sec_gp_dpad">Croix directionnelle</string>
+    <string name="gp_dpad8">8 directions (désactivé : haut, bas, gauche, droite seulement)</string>
+    <string name="gp_diagonal">Largeur des diagonales en 8 directions (degrés)</string>
+    <string name="gp_dpad_deadzone" formatted="false">Zone centrale sans direction (%)</string>
+    <string name="gp_dpad_ticks">« Clic » quand la direction change sans lâcher</string>
+    <string name="sec_gp_face">Boutons d\'action</string>
+    <string name="gp_slide">Glisser d\'un bouton d\'action à l\'autre</string>
+    <string name="gp_slide_hint">En glissant le pouce, on passe au bouton qui est dessous ; posé entre deux, les deux sont appuyés (comme rouler de B à A). Désactivé : le premier bouton touché reste appuyé.</string>
+    <string name="gp_chord">Appuyer les deux à moins de cette distance (dp)</string>
+    <string name="gp_exit_dp">Tout relâcher en sortant de cette distance (dp)</string>
+    <string name="sec_gp_moonlight">Avec Moonlight</string>
+    <string name="gp_moonlight_note">Réglages conseillés dans Moonlight : désactivez l\'émulation de souris par la manette (sinon maintenir Start passe en mode souris) ; activez l\'émulation des vibrations si vous voulez celles du jeu ; désactivez ses commandes à l\'écran. En écran partagé, touchez d\'abord une fois la moitié Moonlight pour que les boutons de la manette y arrivent. Start + Select + LB + RB ensemble quitte le streaming.</string>
+    <string name="gp_md3">Mega Drive 3 boutons</string>
+    <string name="gp_arcade6">Arcade 6 boutons</string>
 </resources>

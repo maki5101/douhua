@@ -433,4 +433,67 @@
     <string name="pad_bg_wide">横長のタッチパッド（幅 ≥ 高さ）</string>
     <string name="pad_bg_tall">縦長のタッチパッド（高さ &gt; 幅）</string>
     <string name="pad_bg_note">画像は豆花の中にコピーされるので、元の画像を消しても影響しません。「設定をすべて初期化」で削除され、機種変更時はほかの設定と一緒に移ります。明るい画像ほど電池を使い、豆花を開いている間は同じ表示が長く続くため焼き付きやすくなります。タッチパッドに戻ると反映されます。</string>
+    <string name="act_gamepad">ゲームパッド画面（仮想ゲームコントローラー。デスクトップモードのみ）</string>
+    <string name="act_gamepad_s">ゲームパッド</string>
+    <string name="gp_exit">タッチパッドに戻る</string>
+    <string name="gp_preset">プリセット：%1$s</string>
+    <string name="gp_hold_menu">⋯ を長押しでメニュー</string>
+    <string name="gp_desktop_only">ゲームパッドは今のところデスクトップモードでのみ使えます</string>
+    <string name="gp_create_failed">仮想ゲームパッドを作成できませんでした。原因はサービスのログを参照</string>
+    <string name="gp_arcade8">アーケード 8 ボタン</string>
+    <string name="gp_md6">Mega Drive 6 ボタン</string>
+    <string name="tab_gamepad">ゲームパッド</string>
+    <string name="sec_gp_preset">プリセット</string>
+    <string name="gp_custom">カスタム</string>
+    <string name="gp_custom_hint">プリセットから始めて、使うボタンを選びます。配置は自動で、上のプレビューも変わります。</string>
+    <string name="gp_custom_from">プリセットからやり直す…</string>
+    <string name="gp_c_dpad">十字キー</string>
+    <string name="gp_c_lstick">左スティック</string>
+    <string name="gp_c_dpad_top">十字キーをスティックの上に（PlayStation 式）</string>
+    <string name="gp_c_face">フェイスボタン</string>
+    <string name="gp_c_labels">ボタンの文字</string>
+    <string name="gp_c_rstick">右スティック</string>
+    <string name="gp_c_bumpers">肩ボタン（内側の 2 つ。この配置では %1$s / %2$s）</string>
+    <string name="gp_c_triggers">トリガー（外側の角の 2 つ。この配置では %1$s / %2$s。押すと全押し）</string>
+    <string name="gp_c_home">ホームボタン（Home）</string>
+    <string name="gp_c_thumbs">スティック押し込み（L3 / R3）</string>
+    <string name="gp_face_none">なし</string>
+    <string name="gp_face_row2">横に 2 個（NES）</string>
+    <string name="gp_face_diag2">斜めに 2 個（Game Boy）</string>
+    <string name="gp_face_three">横に 3 個（Mega Drive）</string>
+    <string name="gp_face_diamond">ひし形に 4 個</string>
+    <string name="gp_face_arc4">弧状に 4 個（Neo Geo）</string>
+    <string name="gp_face_six">2 段に 6 個（Mega Drive 6 ボタン）</string>
+    <string name="gp_face_arcade6">アーケード 6 ボタン</string>
+    <string name="gp_face_eight">アーケード 8 ボタン</string>
+    <string name="gp_face_n64">N64（A、B と C ボタン 4 個）</string>
+    <string name="gp_face_gc">GameCube（大きい A、B、X、Y）</string>
+    <string name="gp_labels_xbox">Xbox（A B X Y）</string>
+    <string name="gp_labels_nintendo">任天堂（B A Y X）</string>
+    <string name="gp_labels_ps">PlayStation（× ○ □ △）</string>
+    <string name="gp_labels_sega">セガ（A B C / X Y Z）</string>
+    <string name="gp_labels_arcade">アーケード</string>
+    <string name="gp_labels_number">数字（1 2 3 4）</string>
+    <string name="sec_gp_stick">スティック</string>
+    <string name="gp_stick_radius">どこまで倒すと最大か（dp）</string>
+    <string name="gp_deadzone" formatted="false">デッドゾーン（%）</string>
+    <string name="gp_anti_deadzone" formatted="false">アンチデッドゾーン（%）</string>
+    <string name="gp_anti_deadzone_hint" formatted="false">デッドゾーンを出たところからこの量で始まるので、Moonlight 自身のデッドゾーン（初期値 7%）やゲームのデッドゾーンに倒し始めを食われません。</string>
+    <string name="gp_stick_float">触れた場所を中心にする（オフ：スティック領域の真ん中）</string>
+    <string name="gp_stick_follow">倒しすぎると中心が指についてくる（戻すとすぐ効く）</string>
+    <string name="gp_rim_ticks">スティックが端に届くとカチッ</string>
+    <string name="sec_gp_dpad">十字キー</string>
+    <string name="gp_dpad8">8 方向（オフ：上下左右だけ）</string>
+    <string name="gp_diagonal">8 方向のときの斜めの幅（度）</string>
+    <string name="gp_dpad_deadzone" formatted="false">方向にならない中央の広さ（%）</string>
+    <string name="gp_dpad_ticks">押したまま方向が変わるとカチッ</string>
+    <string name="sec_gp_face">フェイスボタン</string>
+    <string name="gp_slide">フェイスボタンの間をなぞって切り替え</string>
+    <string name="gp_slide_hint">親指をなぞると下にあるボタンに切り替わり、2 個の間に置くと両方押します（B から A へこするように）。オフ：最初に触れたボタンを押したまま。</string>
+    <string name="gp_chord">2 個ともこの距離以内なら両方押す（dp）</string>
+    <string name="gp_exit_dp">フェイスボタンからこれだけ外れたら全部離す（dp）</string>
+    <string name="sec_gp_moonlight">Moonlight と使うとき</string>
+    <string name="gp_moonlight_note">Moonlight のおすすめ設定：ゲームパッドでのマウス操作をオフに（オンだと Start 長押しでマウスモードになります）。ゲームの振動がほしければ振動のエミュレーションをオン。Moonlight 自身の画面上コントローラーはオフ。画面分割では先に Moonlight 側を一度タップすると、ゲームパッドのボタンが届きます。Start + Select + LB + RB の同時押しでストリームを終了します。</string>
+    <string name="gp_md3">Mega Drive 3 ボタン</string>
+    <string name="gp_arcade6">アーケード 6 ボタン</string>
 </resources>

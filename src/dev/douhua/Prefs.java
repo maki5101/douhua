@@ -339,6 +339,67 @@ final class Prefs {
         sp.edit().putInt("kb_pointer", pointer).remove("kb_pad").apply();
     }
 
+    static final String GP_PRESET = "gp_preset", GP_CUSTOM = "gp_custom";
+
+    /**
+     * 手柄页选的是哪一套（GamepadSpec.id，或者 {@link GamepadSpec#CUSTOM_ID}；手柄页 ⋯ 菜单里"预设：…"轮换、设置 → 手柄的网格里选）；默认 Xbox。
+     * 选的是自定义却没存过（坏数据）按默认。
+     */
+    String gamepadPreset() {
+        String id = sp.getString(GP_PRESET, GamepadSpec.DEFAULT_ID);
+        if (GamepadSpec.CUSTOM_ID.equals(id)) return gamepadCustom() != null ? id : GamepadSpec.DEFAULT_ID;
+        return GamepadSpec.byId(id).id;
+    }
+
+    void setGamepadPreset(String id) {
+        sp.edit().putString(GP_PRESET, id).apply();
+    }
+
+    /** 选的那一套（预设，或者存着的自定义）。 */
+    GamepadSpec gamepadSpec() {
+        String id = gamepadPreset();
+        return GamepadSpec.CUSTOM_ID.equals(id) ? gamepadCustom() : GamepadSpec.byId(id);
+    }
+
+    /** 存着的自定义（GamepadSpec.encode 的一行；没存过 null）。不管现在选没选它。 */
+    GamepadSpec gamepadCustom() {
+        return GamepadSpec.decode(sp.getString(GP_CUSTOM, null));
+    }
+
+    void setGamepadCustom(GamepadSpec s) {
+        sp.edit().putString(GP_CUSTOM, s.encode()).apply();
+    }
+
+    /** ⋯ 菜单里"预设：…"点一下换成的那一套（存过自定义的话轮到最后是它）。 */
+    String nextGamepadPreset() {
+        return GamepadSpec.next(gamepadPreset(), gamepadCustom() != null);
+    }
+
+    // 手柄的手感（设置 → 手柄；GamepadConfig 的字段，存成整数：dp、百分比、度）
+    static final String GP_STICK_R = "gp_stick_r", GP_DEADZONE = "gp_deadzone", GP_ANTI_DZ = "gp_anti_dz",
+            GP_FLOAT = "gp_float", GP_FOLLOW = "gp_follow", GP_RIM_TICKS = "gp_rim_ticks",
+            GP_DPAD8 = "gp_dpad8", GP_DIAG = "gp_diag", GP_DPAD_DZ = "gp_dpad_dz", GP_DPAD_TICKS = "gp_dpad_ticks",
+            GP_SLIDE = "gp_slide", GP_CHORD = "gp_chord", GP_EXIT_DP = "gp_exit_dp";
+
+    /** 手柄的手感参数（设置 → 手柄存的，没存过的用 GamepadConfig 的默认值），发给服务的分流和本地分流。 */
+    GamepadConfig gamepadConfig() {
+        GamepadConfig c = new GamepadConfig();
+        c.stickRadiusDp = sp.getInt(GP_STICK_R, Math.round(c.stickRadiusDp));
+        c.deadzone = sp.getInt(GP_DEADZONE, Math.round(c.deadzone * 100)) / 100f;
+        c.antiDeadzone = sp.getInt(GP_ANTI_DZ, Math.round(c.antiDeadzone * 100)) / 100f;
+        c.floatingCenter = sp.getBoolean(GP_FLOAT, c.floatingCenter);
+        c.followBase = sp.getBoolean(GP_FOLLOW, c.followBase);
+        c.rimTicks = sp.getBoolean(GP_RIM_TICKS, c.rimTicks);
+        c.dpad8 = sp.getBoolean(GP_DPAD8, c.dpad8);
+        c.diagonalDeg = sp.getInt(GP_DIAG, Math.round(c.diagonalDeg));
+        c.dpadDeadzone = sp.getInt(GP_DPAD_DZ, Math.round(c.dpadDeadzone * 100)) / 100f;
+        c.dpadTicks = sp.getBoolean(GP_DPAD_TICKS, c.dpadTicks);
+        c.clusterSlide = sp.getBoolean(GP_SLIDE, c.clusterSlide);
+        c.chordDp = sp.getInt(GP_CHORD, Math.round(c.chordDp));
+        c.clusterExitDp = sp.getInt(GP_EXIT_DP, Math.round(c.clusterExitDp));
+        return c.sane();
+    }
+
     /** 主界面的配色（Theme.id，设置 → 外观）；默认纯黑（以前的样子）。 */
     String theme() {
         return sp.getString("theme", Theme.DEFAULT.id);

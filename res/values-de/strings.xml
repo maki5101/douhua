@@ -433,4 +433,67 @@
     <string name="pad_bg_wide">Breite Touchpads (Breite ≥ Höhe)</string>
     <string name="pad_bg_tall">Hohe Touchpads (Höhe &gt; Breite)</string>
     <string name="pad_bg_note">Das Bild wird in Douhuas eigenen Speicher kopiert; das Original zu löschen ändert nichts. „Alle Einstellungen zurücksetzen“ löscht es; auf ein neues Telefon zieht es mit den übrigen Einstellungen um. Helle Bilder brauchen mehr Akku und brennen leichter ein, weil der Bildschirm bei offenem Douhua lange dasselbe zeigt. Wirkt, sobald du zum Touchpad zurückkehrst.</string>
+    <string name="act_gamepad">Gamepad-Seite (virtueller Gamecontroller; nur im Desktop-Modus)</string>
+    <string name="act_gamepad_s">Gamepad</string>
+    <string name="gp_exit">Zurück zum Touchpad</string>
+    <string name="gp_preset">Vorlage: %1$s</string>
+    <string name="gp_hold_menu">⋯ gedrückt halten für das Menü</string>
+    <string name="gp_desktop_only">Das Gamepad funktioniert vorerst nur im Desktop-Modus</string>
+    <string name="gp_create_failed">Virtuelles Gamepad konnte nicht erstellt werden; siehe Dienstprotokoll</string>
+    <string name="gp_arcade8">Arcade 8 Tasten</string>
+    <string name="gp_md6">Mega Drive 6 Tasten</string>
+    <string name="tab_gamepad">Gamepad</string>
+    <string name="sec_gp_preset">Vorlagen</string>
+    <string name="gp_custom">Eigene</string>
+    <string name="gp_custom_hint">Von einer Vorlage ausgehen und dann wählen, welche Bedienelemente es geben soll; die Anordnung ist automatisch, die Vorschau oben folgt.</string>
+    <string name="gp_custom_from">Neu von einer Vorlage beginnen …</string>
+    <string name="gp_c_dpad">Steuerkreuz</string>
+    <string name="gp_c_lstick">Linker Stick</string>
+    <string name="gp_c_dpad_top">Steuerkreuz über dem Stick (PlayStation-Art)</string>
+    <string name="gp_c_face">Aktionstasten</string>
+    <string name="gp_c_labels">Beschriftung der Tasten</string>
+    <string name="gp_c_rstick">Rechter Stick</string>
+    <string name="gp_c_bumpers">Schultertasten (inneres Paar, hier %1$s / %2$s)</string>
+    <string name="gp_c_triggers">Trigger (äußere Ecken, hier %1$s / %2$s; Drücken = voll durchgezogen)</string>
+    <string name="gp_c_home">Home-Taste</string>
+    <string name="gp_c_thumbs">Sticks drückbar (L3 / R3)</string>
+    <string name="gp_face_none">Keine</string>
+    <string name="gp_face_row2">2 in einer Reihe (NES)</string>
+    <string name="gp_face_diag2">2 schräg (Game Boy)</string>
+    <string name="gp_face_three">3 in einer Reihe (Mega Drive)</string>
+    <string name="gp_face_diamond">4 als Raute</string>
+    <string name="gp_face_arc4">4 im Bogen (Neo Geo)</string>
+    <string name="gp_face_six">6 in zwei Reihen (Mega Drive 6 Tasten)</string>
+    <string name="gp_face_arcade6">6 Arcade-Tasten</string>
+    <string name="gp_face_eight">8 Arcade-Tasten</string>
+    <string name="gp_face_n64">N64 (A, B und 4 C-Tasten)</string>
+    <string name="gp_face_gc">GameCube (großes A, B, X, Y)</string>
+    <string name="gp_labels_xbox">Xbox (A B X Y)</string>
+    <string name="gp_labels_nintendo">Nintendo (B A Y X)</string>
+    <string name="gp_labels_ps">PlayStation (× ○ □ △)</string>
+    <string name="gp_labels_sega">Sega (A B C / X Y Z)</string>
+    <string name="gp_labels_arcade">Arcade</string>
+    <string name="gp_labels_number">Zahlen (1 2 3 4)</string>
+    <string name="sec_gp_stick">Sticks</string>
+    <string name="gp_stick_radius">So weit schieben für Vollausschlag (dp)</string>
+    <string name="gp_deadzone" formatted="false">Totzone (%)</string>
+    <string name="gp_anti_deadzone" formatted="false">Anti-Totzone (%)</string>
+    <string name="gp_anti_deadzone_hint" formatted="false">Gleich außerhalb der Totzone meldet der Stick schon so viel – so schlucken die Totzone von Moonlight (standardmäßig 7 %) und die des Spiels den Anfang der Bewegung nicht.</string>
+    <string name="gp_stick_float">Wo du aufsetzt, ist die Mitte (aus: Mitte des Stick-Bereichs)</string>
+    <string name="gp_stick_follow">Über den Rand hinaus schieben zieht die Mitte mit (Zurückschieben wirkt sofort)</string>
+    <string name="gp_rim_ticks">„Klick“, wenn ein Stick am Rand ist</string>
+    <string name="sec_gp_dpad">Steuerkreuz</string>
+    <string name="gp_dpad8">8 Richtungen (aus: nur hoch, runter, links, rechts)</string>
+    <string name="gp_diagonal">Breite der Diagonalen bei 8 Richtungen (Grad)</string>
+    <string name="gp_dpad_deadzone" formatted="false">Mittelbereich ohne Richtung (%)</string>
+    <string name="gp_dpad_ticks">„Klick“, wenn sich die Richtung beim Halten ändert</string>
+    <string name="sec_gp_face">Aktionstasten</string>
+    <string name="gp_slide">Zwischen den Aktionstasten gleiten</string>
+    <string name="gp_slide_hint">Gleitet der Daumen über die Aktionstasten, wird die darunterliegende gedrückt; zwischen zwei Tasten werden beide gedrückt (wie ein Rollen von B nach A). Aus: Die zuerst berührte Taste bleibt gedrückt.</string>
+    <string name="gp_chord">Beide drücken, wenn beide so nah sind (dp)</string>
+    <string name="gp_exit_dp">Alles loslassen, wenn so weit herausgeglitten (dp)</string>
+    <string name="sec_gp_moonlight">Mit Moonlight</string>
+    <string name="gp_moonlight_note">Empfohlene Moonlight-Einstellungen: Mausemulation per Gamepad ausschalten (sonst wechselt langes Drücken von Start in den Mausmodus); für Vibration im Spiel die Vibrationsemulation einschalten; die eigenen Bildschirm-Steuerelemente von Moonlight ausschalten. Bei geteiltem Bildschirm zuerst einmal auf die Moonlight-Hälfte tippen, damit die Gamepad-Tasten dort ankommen. Start + Select + LB + RB zusammen beendet das Streaming.</string>
+    <string name="gp_md3">Mega Drive 3 Tasten</string>
+    <string name="gp_arcade6">Arcade 6 Tasten</string>
 </resources>

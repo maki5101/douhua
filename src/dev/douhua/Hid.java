@@ -1,7 +1,7 @@
 package dev.douhua;
 
 /**
- * 虚拟鼠标和键盘的 HID 报文：描述符、报文格式、键盘按键状态。
+ * 虚拟鼠标、键盘和手柄的 HID 报文：描述符、报文格式、键盘按键状态、手柄状态和两路合并。
  * 桌面模式下服务经 /dev/uhid 造 USB 设备，蓝牙模式下 App 经 BluetoothHidDevice 当蓝牙设备，两边发出去的字节完全一样，
  * 蓝牙只是把几个设备合进一个描述符、每帧前面多一个报文编号。纯 Java（离线测试）。
  */
@@ -14,6 +14,8 @@ public final class Hid {
     public static final int MOUSE_REPORT_SIZE = 7;
     public static final int KEYBOARD_REPORT_SIZE = 8;
     public static final int CONSUMER_REPORT_SIZE = 2;
+    /** 手柄报文（{@link #GAMEPAD_DESC}）：键 2 字节 + 方向键 1 字节 + 四个摇杆轴各 2 字节 + 两个扳机各 1 字节。 */
+    public static final int GAMEPAD_REPORT_SIZE = 13;
 
     /** 蓝牙描述符里的报文编号。 */
     public static final int REPORT_KEYBOARD = 1;
@@ -311,6 +313,68 @@ public final class Hid {
             (byte) 0xC0,                   // End Collection
     };
 
+    /**
+     * 手柄（桌面模式服务的第三个 uhid 设备 "Douhua Gamepad"，以后蓝牙那批前面插报告编号 5）：顶层 Game Pad（不是 Joystick：
+     * Linux 按顶层集合定按键页落到哪：Game Pad 的第 n 个键 → BTN_GAMEPAD + n − 1，安卓 Generic.kl 再映成 BUTTON_A…；
+     * Joystick 的落到 BUTTON_1…，Moonlight 用不了）。15 个键 + 方向键（Hat）+ 左摇杆 X/Y、右摇杆 Z/Rz（安卓的约定）
+     * + 扳机 Simulation 页的 Brake（左）/ Accelerator（右，Linux ABS_BRAKE / ABS_GAS → 安卓 LTRIGGER / RTRIGGER）。
+     * 这套是安卓 Generic.kl 和 Moonlight 第一个分支直接认的。
+     * 方向键逻辑 1..8（1 = 上，顺时针），0 越界 = 回中（Linux hid-input 的 hat 换算：越界 → 回中），所以**全零报文 = 中立**：
+     * 键全松、摇杆回中（轴有符号，0 = 中）、扳机归零，任何收尾发全零都不会变成"上一直按着"。
+     * 扳机只发模拟轴，不另发数字的 L2 / R2 键（第 9、10 键留着、恒 0）。不用 4 字节数据的项（同别的描述符）。
+     */
+    public static final byte[] GAMEPAD_DESC = {
+            0x05, 0x01,                    // Usage Page (Generic Desktop)
+            0x09, 0x05,                    // Usage (Game Pad)
+            (byte) 0xA1, 0x01,             // Collection (Application)
+            0x05, 0x09,                    //   Usage Page (Button)
+            0x19, 0x01,                    //   Usage Minimum (1)
+            0x29, 0x0F,                    //   Usage Maximum (15)
+            0x15, 0x00,                    //   Logical Minimum (0)
+            0x25, 0x01,                    //   Logical Maximum (1)
+            0x75, 0x01,                    //   Report Size (1)
+            (byte) 0x95, 0x0F,             //   Report Count (15)
+            (byte) 0x81, 0x02,             //   Input (Data,Var,Abs)
+            (byte) 0x95, 0x01,             //   Report Count (1)
+            (byte) 0x81, 0x01,             //   Input (Const) 1 位补齐
+            0x05, 0x01,                    //   Usage Page (Generic Desktop)
+            0x09, 0x39,                    //   Usage (Hat Switch)
+            0x15, 0x01,                    //   Logical Minimum (1)：1 = 上，顺时针；0 越界 = 回中
+            0x25, 0x08,                    //   Logical Maximum (8)
+            0x35, 0x00,                    //   Physical Minimum (0)
+            0x46, 0x3B, 0x01,              //   Physical Maximum (315)
+            0x65, 0x14,                    //   Unit (度)
+            0x75, 0x04,                    //   Report Size (4)
+            (byte) 0x95, 0x01,             //   Report Count (1)
+            (byte) 0x81, 0x42,             //   Input (Data,Var,Abs,Null State)
+            0x65, 0x00,                    //   Unit (无) 复位，别让后面的轴继承"度"
+            0x45, 0x00,                    //   Physical Maximum (0) 复位
+            0x75, 0x04,                    //   Report Size (4)
+            (byte) 0x95, 0x01,             //   Report Count (1)
+            (byte) 0x81, 0x01,             //   Input (Const) 4 位补齐
+            0x09, 0x01,                    //   Usage (Pointer)
+            (byte) 0xA1, 0x00,             //   Collection (Physical)
+            0x09, 0x30,                    //     Usage (X)   左摇杆
+            0x09, 0x31,                    //     Usage (Y)
+            0x09, 0x32,                    //     Usage (Z)   右摇杆
+            0x09, 0x35,                    //     Usage (Rz)
+            0x16, 0x01, (byte) 0x80,       //     Logical Minimum (-32767)
+            0x26, (byte) 0xFF, 0x7F,       //     Logical Maximum (32767)
+            0x75, 0x10,                    //     Report Size (16)
+            (byte) 0x95, 0x04,             //     Report Count (4)
+            (byte) 0x81, 0x02,             //     Input (Data,Var,Abs)
+            (byte) 0xC0,                   //   End Collection
+            0x05, 0x02,                    //   Usage Page (Simulation Controls)
+            0x09, (byte) 0xC5,             //   Usage (Brake)        左扳机
+            0x09, (byte) 0xC4,             //   Usage (Accelerator)  右扳机
+            0x15, 0x00,                    //   Logical Minimum (0)
+            0x26, (byte) 0xFF, 0x00,       //   Logical Maximum (255)
+            0x75, 0x08,                    //   Report Size (8)
+            (byte) 0x95, 0x02,             //   Report Count (2)
+            (byte) 0x81, 0x02,             //   Input (Data,Var,Abs)
+            (byte) 0xC0,                   // End Collection
+    };
+
     private Hid() {}
 
     public static boolean isModifier(int usage) {
@@ -515,6 +579,120 @@ public final class Hid {
                 p -= fp;
                 dx = dy = 0;
             } while (w != 0 || p != 0);
+        }
+    }
+
+    /**
+     * 手柄现在的状态和它的报文（{@link #GAMEPAD_DESC}，13 字节，多字节字段小端）。纯数据，按位置记：
+     * buttons 位 n = 第 n + 1 键（= 输出码 n，Proto.GP_*）；hat 0 = 回中、1–8 = 上起顺时针；
+     * 摇杆 −32767..32767（Y 往下为正）；扳机 0..255。全零 = 中立（见 GAMEPAD_DESC）。
+     */
+    public static final class Gamepad {
+        public static final int HAT_UP = 1, HAT_UP_RIGHT = 2, HAT_RIGHT = 3, HAT_DOWN_RIGHT = 4,
+                HAT_DOWN = 5, HAT_DOWN_LEFT = 6, HAT_LEFT = 7, HAT_UP_LEFT = 8;
+        public static final int AXIS_MAX = 32767;
+
+        public int buttons, hat, lx, ly, rx, ry, lt, rt;
+
+        public void clear() {
+            buttons = hat = lx = ly = rx = ry = lt = rt = 0;
+        }
+
+        public void report(byte[] out) {
+            int b = buttons & 0x7FFF;
+            out[0] = (byte) b;
+            out[1] = (byte) (b >> 8);
+            out[2] = (byte) (hat >= 0 && hat <= 8 ? hat : 0);
+            put16(out, 3, lx);
+            put16(out, 5, ly);
+            put16(out, 7, rx);
+            put16(out, 9, ry);
+            out[11] = (byte) Math.max(0, Math.min(255, lt));
+            out[12] = (byte) Math.max(0, Math.min(255, rt));
+        }
+
+        /** 从报文读回来（App 画手柄页、测试用）。 */
+        public void parse(byte[] r) {
+            buttons = (r[0] & 0xFF) | (r[1] & 0x7F) << 8;
+            hat = r[2] & 0x0F;
+            if (hat > 8) hat = 0;
+            lx = get16(r, 3);
+            ly = get16(r, 5);
+            rx = get16(r, 7);
+            ry = get16(r, 9);
+            lt = r[11] & 0xFF;
+            rt = r[12] & 0xFF;
+        }
+
+        /** 这个输出码（Proto.GP_*）按着没有：键看位，扳机看轴，N64 的 C 键看右摇杆往那边推过一半没有。 */
+        public boolean pressed(int output) {
+            int half = AXIS_MAX / 2;
+            switch (output) {
+                case Proto.GP_LT: return lt > 0;
+                case Proto.GP_RT: return rt > 0;
+                case Proto.GP_C_UP: return ry < -half;
+                case Proto.GP_C_DOWN: return ry > half;
+                case Proto.GP_C_LEFT: return rx < -half;
+                case Proto.GP_C_RIGHT: return rx > half;
+                default: return output >= 0 && output < 15 && (buttons & (1 << output)) != 0;
+            }
+        }
+
+        /** 方向键的两个分量（−1 / 0 / 1，y 往下为正）。 */
+        public static int hatX(int hat) {
+            switch (hat) {
+                case HAT_UP_RIGHT: case HAT_RIGHT: case HAT_DOWN_RIGHT: return 1;
+                case HAT_DOWN_LEFT: case HAT_LEFT: case HAT_UP_LEFT: return -1;
+                default: return 0;
+            }
+        }
+
+        public static int hatY(int hat) {
+            switch (hat) {
+                case HAT_UP_LEFT: case HAT_UP: case HAT_UP_RIGHT: return -1;
+                case HAT_DOWN_RIGHT: case HAT_DOWN: case HAT_DOWN_LEFT: return 1;
+                default: return 0;
+            }
+        }
+
+        /** 全零 = 中立。 */
+        public static boolean neutral(byte[] report) {
+            for (int i = 0; i < GAMEPAD_REPORT_SIZE; i++) if (report[i] != 0) return false;
+            return true;
+        }
+
+        /**
+         * 两路合并（桌面模式：a = 服务自己分流出的、b = App 本地分流发来的，server.GamepadMux）：键按位或；方向键取不回中的那路
+         * （都不回中取 a）；每个摇杆取离中心远的那路（两个分量一起取，不拼）；扳机取大的。out 可以就是 a 或 b。
+         */
+        public static void merge(byte[] a, byte[] b, byte[] out) {
+            int ha = a[2] & 0x0F, hb = b[2] & 0x0F;
+            byte b0 = (byte) (a[0] | b[0]), b1 = (byte) ((a[1] | b[1]) & 0x7F);
+            byte hat = (byte) (ha != 0 && ha <= 8 ? ha : hb <= 8 ? hb : 0);
+            int alx = get16(a, 3), aly = get16(a, 5), blx = get16(b, 3), bly = get16(b, 5);
+            int arx = get16(a, 7), ary = get16(a, 9), brx = get16(b, 7), bry = get16(b, 9);
+            boolean leftA = (long) alx * alx + (long) aly * aly >= (long) blx * blx + (long) bly * bly;
+            boolean rightA = (long) arx * arx + (long) ary * ary >= (long) brx * brx + (long) bry * bry;
+            int lt = Math.max(a[11] & 0xFF, b[11] & 0xFF), rt = Math.max(a[12] & 0xFF, b[12] & 0xFF);
+            out[0] = b0;
+            out[1] = b1;
+            out[2] = hat;
+            put16(out, 3, leftA ? alx : blx);
+            put16(out, 5, leftA ? aly : bly);
+            put16(out, 7, rightA ? arx : brx);
+            put16(out, 9, rightA ? ary : bry);
+            out[11] = (byte) lt;
+            out[12] = (byte) rt;
+        }
+
+        private static void put16(byte[] out, int at, int v) {
+            v = Math.max(-AXIS_MAX, Math.min(AXIS_MAX, v));
+            out[at] = (byte) v;
+            out[at + 1] = (byte) (v >> 8);
+        }
+
+        private static int get16(byte[] r, int at) {
+            return (short) ((r[at] & 0xFF) | (r[at + 1] & 0xFF) << 8);
         }
     }
 

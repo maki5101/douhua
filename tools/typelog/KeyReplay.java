@@ -184,5 +184,6 @@ public class KeyReplay {
         @Override public void cancelSchedule() { }
         @Override public void startTicks() { }
         @Override public void stopTicks() { }
+        @Override public void gamepad(byte[] report) { }
     }
 }

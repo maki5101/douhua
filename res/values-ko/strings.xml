@@ -433,4 +433,67 @@
     <string name="pad_bg_wide">가로로 긴 터치패드(너비 ≥ 높이)</string>
     <string name="pad_bg_tall">세로로 긴 터치패드(높이 &gt; 너비)</string>
     <string name="pad_bg_note">이미지는 더우화 안에 복사되므로 원본을 지워도 영향이 없습니다. \'모든 설정 초기화\'를 하면 삭제되고, 기기를 바꿀 때는 다른 설정과 함께 옮겨집니다. 밝은 이미지일수록 배터리를 더 쓰고, 더우화를 켜 두면 같은 화면이 오래 떠 있어서 번인이 생기기 쉽습니다. 터치패드로 돌아가면 적용됩니다.</string>
+    <string name="act_gamepad">게임패드 화면 (가상 게임 컨트롤러; 데스크톱 모드 전용)</string>
+    <string name="act_gamepad_s">게임패드</string>
+    <string name="gp_exit">터치패드로 돌아가기</string>
+    <string name="gp_preset">프리셋: %1$s</string>
+    <string name="gp_hold_menu">⋯ 길게 눌러 메뉴 열기</string>
+    <string name="gp_desktop_only">게임패드는 아직 데스크톱 모드에서만 쓸 수 있습니다</string>
+    <string name="gp_create_failed">가상 게임패드를 만들지 못했습니다. 원인은 서비스 로그를 확인하세요</string>
+    <string name="gp_arcade8">아케이드 8버튼</string>
+    <string name="gp_md6">Mega Drive 6버튼</string>
+    <string name="tab_gamepad">게임패드</string>
+    <string name="sec_gp_preset">프리셋</string>
+    <string name="gp_custom">사용자 지정</string>
+    <string name="gp_custom_hint">프리셋에서 시작해 쓸 버튼을 고르세요. 배치는 자동이고 위의 미리보기도 따라 바뀝니다.</string>
+    <string name="gp_custom_from">프리셋에서 다시 시작…</string>
+    <string name="gp_c_dpad">방향 패드</string>
+    <string name="gp_c_lstick">왼쪽 스틱</string>
+    <string name="gp_c_dpad_top">방향 패드를 스틱 위에 (PlayStation 식)</string>
+    <string name="gp_c_face">페이스 버튼</string>
+    <string name="gp_c_labels">버튼에 적힌 글자</string>
+    <string name="gp_c_rstick">오른쪽 스틱</string>
+    <string name="gp_c_bumpers">숄더 버튼 (안쪽 두 개, 여기서는 %1$s / %2$s)</string>
+    <string name="gp_c_triggers">트리거 (바깥쪽 모서리 두 개, 여기서는 %1$s / %2$s; 누르면 끝까지 당긴 것)</string>
+    <string name="gp_c_home">홈 버튼 (Home)</string>
+    <string name="gp_c_thumbs">스틱 누르기 (L3 / R3)</string>
+    <string name="gp_face_none">없음</string>
+    <string name="gp_face_row2">가로로 2개 (NES)</string>
+    <string name="gp_face_diag2">비스듬히 2개 (Game Boy)</string>
+    <string name="gp_face_three">가로로 3개 (Mega Drive)</string>
+    <string name="gp_face_diamond">마름모로 4개</string>
+    <string name="gp_face_arc4">호 모양으로 4개 (Neo Geo)</string>
+    <string name="gp_face_six">두 줄로 6개 (Mega Drive 6버튼)</string>
+    <string name="gp_face_arcade6">아케이드 6버튼</string>
+    <string name="gp_face_eight">아케이드 8버튼</string>
+    <string name="gp_face_n64">N64 (A, B와 C 버튼 4개)</string>
+    <string name="gp_face_gc">GameCube (큰 A, B, X, Y)</string>
+    <string name="gp_labels_xbox">Xbox (A B X Y)</string>
+    <string name="gp_labels_nintendo">닌텐도 (B A Y X)</string>
+    <string name="gp_labels_ps">PlayStation (× ○ □ △)</string>
+    <string name="gp_labels_sega">세가 (A B C / X Y Z)</string>
+    <string name="gp_labels_arcade">아케이드</string>
+    <string name="gp_labels_number">숫자 (1 2 3 4)</string>
+    <string name="sec_gp_stick">스틱</string>
+    <string name="gp_stick_radius">얼마나 밀어야 끝까지인지 (dp)</string>
+    <string name="gp_deadzone" formatted="false">데드존 (%)</string>
+    <string name="gp_anti_deadzone" formatted="false">안티 데드존 (%)</string>
+    <string name="gp_anti_deadzone_hint" formatted="false">데드존을 벗어나자마자 이만큼부터 보내므로, Moonlight 자체 데드존(기본 7%)과 게임의 데드존이 밀기 시작한 부분을 먹어 버리지 않습니다.</string>
+    <string name="gp_stick_float">처음 닿은 곳을 중심으로 (끄면 스틱 영역 한가운데)</string>
+    <string name="gp_stick_follow">끝을 넘어 밀면 중심이 손가락을 따라옴 (되돌리면 바로 반영)</string>
+    <string name="gp_rim_ticks">스틱이 끝에 닿으면 딸깍</string>
+    <string name="sec_gp_dpad">방향 패드</string>
+    <string name="gp_dpad8">8방향 (끄면 상하좌우만)</string>
+    <string name="gp_diagonal">8방향일 때 대각선 폭 (도)</string>
+    <string name="gp_dpad_deadzone" formatted="false">방향으로 치지 않는 가운데 범위 (%)</string>
+    <string name="gp_dpad_ticks">누른 채 방향이 바뀌면 딸깍</string>
+    <string name="sec_gp_face">페이스 버튼</string>
+    <string name="gp_slide">페이스 버튼 사이를 밀어서 바꾸기</string>
+    <string name="gp_slide_hint">엄지를 밀면 아래 있는 버튼으로 바뀌고, 두 버튼 사이에 두면 둘 다 누릅니다 (B에서 A로 문지르듯이). 끄면 처음 닿은 버튼을 계속 누릅니다.</string>
+    <string name="gp_chord">두 버튼 모두 이만큼 가까우면 함께 누르기 (dp)</string>
+    <string name="gp_exit_dp">페이스 버튼에서 이만큼 벗어나면 모두 떼기 (dp)</string>
+    <string name="sec_gp_moonlight">Moonlight와 함께 쓸 때</string>
+    <string name="gp_moonlight_note">Moonlight 권장 설정: 게임패드로 마우스 흉내 내기를 끄세요 (켜 두면 Start를 길게 누를 때 마우스 모드로 바뀝니다). 게임 진동을 원하면 진동 흉내 내기를 켜고, Moonlight 자체 화면 컨트롤러는 끄세요. 화면 분할에서는 먼저 Moonlight 쪽을 한 번 눌러야 게임패드 버튼이 들어갑니다. Start + Select + LB + RB를 함께 누르면 스트리밍이 끝납니다.</string>
+    <string name="gp_md3">Mega Drive 3버튼</string>
+    <string name="gp_arcade6">아케이드 6버튼</string>
 </resources>

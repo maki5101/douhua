@@ -40,6 +40,10 @@ public final class HidTest {
         inertiaLevels();
         inertiaClosedForm();
         inertiaTable();
+        gamepadDescriptor();
+        gamepadReport();
+        gamepadHatIsLinuxHat();
+        gamepadMerge();
         System.err.println("滚轮倍率 / 惯性物理：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -250,6 +254,132 @@ public final class HidTest {
         eq(mult.collIndex, wheel.collIndex, "uhid：倍率和竖滚轮在同一个 Logical 集合里");
         check(pan.collType == 2 && pan.collIndex != wheel.collIndex, "uhid：AC Pan 在自己的 Logical 集合里（那里没有倍率，一直 ×1）");
         check(wheel.phyMin == 0 && wheel.phyMax == 0 && pan.phyMin == 0 && pan.phyMax == 0, "uhid：倍率后面的输入项物理范围复位成 0");
+    }
+
+    // ═══════════ 手柄 ═══════════
+
+    static final int BUTTON_PAGE = 0x09 << 16, HAT = GD | 0x39, GX = GD | 0x30, GY = GD | 0x31, GZ = GD | 0x32, GRZ = GD | 0x35,
+            BRAKE = (0x02 << 16) | 0xC5, ACCEL = (0x02 << 16) | 0xC4;
+
+    /** GAMEPAD_DESC 逐字段：15 键 + 1 位补齐 + 方向键 4 位 + 4 位补齐 + X Y Z Rz 各 16 位 + Brake Accelerator 各 8 位 = 104 位 = 13 字节。 */
+    static void gamepadDescriptor() {
+        Parsed p = parse(Hid.GAMEPAD_DESC);
+        eq(p.openCollections, 0, "手柄：集合都闭合了");
+        check(!p.sizeCode3, "手柄：没有 4 字节数据的项");
+        eq(p.bits.get("I0"), Hid.GAMEPAD_REPORT_SIZE * 8, "手柄：输入报文 13 字节");
+        eq(fieldsOf(p, 'O').size() + fieldsOf(p, 'F').size(), 0, "手柄：没有输出、Feature 报告（不用读线程回应内核）");
+        check(Hid.GAMEPAD_DESC[0] == 0x05 && Hid.GAMEPAD_DESC[1] == 0x01 && Hid.GAMEPAD_DESC[2] == 0x09 && Hid.GAMEPAD_DESC[3] == 0x05
+                && (Hid.GAMEPAD_DESC[4] & 0xFF) == 0xA1 && Hid.GAMEPAD_DESC[5] == 0x01, "手柄：顶层是 Game Pad 的 Application 集合（不是 Joystick）");
+        Hid.withReportId(Hid.GAMEPAD_DESC, 5);   // 蓝牙那批能直接插报告编号（不抛异常）
+        List<Field> in = fieldsOf(p, 'I');
+        StringBuilder want = new StringBuilder(), got = new StringBuilder();
+        for (int n = 1; n <= 15; n++) want.append("u").append(Integer.toHexString(BUTTON_PAGE | n)).append("@").append(n - 1).append("+1[0,1] ");
+        want.append("u-1@15+1 ");
+        want.append("u").append(Integer.toHexString(HAT)).append("@16+4[1,8]p[0,315] ");
+        want.append("u-1@20+4 ");
+        int[] axes = {GX, GY, GZ, GRZ};
+        for (int i = 0; i < 4; i++) want.append("u").append(Integer.toHexString(axes[i])).append("@").append(24 + 16 * i).append("+16[-32767,32767]p[0,0] ");
+        want.append("u").append(Integer.toHexString(BRAKE)).append("@88+8[0,255] ");
+        want.append("u").append(Integer.toHexString(ACCEL)).append("@96+8[0,255] ");
+        for (Field f : in) {
+            got.append("u").append(f.usage == -1 ? "-1" : Integer.toHexString(f.usage)).append("@").append(f.offset).append("+").append(f.bits);
+            if (f.usage != -1) {
+                got.append("[").append(f.logMin).append(",").append(f.logMax).append("]");
+                if (f.usage == HAT || f.usage == GX || f.usage == GY || f.usage == GZ || f.usage == GRZ) got.append("p[").append(f.phyMin).append(",").append(f.phyMax).append("]");
+            }
+            got.append(" ");
+        }
+        eq(got.toString(), want.toString(), "手柄：每个输入字段的用法、位置、位数、逻辑范围（方向键的物理范围 0..315，后面的轴复位成 0）");
+        check(!parse(Hid.combinedDescriptor(true, true)).sizeCode3, "手柄没进蓝牙合并描述符（第三批），合并描述符照旧");
+    }
+
+    /** Hid.Gamepad 拼的报文和描述符的字段位置对得上；全零 = 中立；parse 读得回来。 */
+    static void gamepadReport() {
+        byte[] r = new byte[Hid.GAMEPAD_REPORT_SIZE];
+        Hid.Gamepad g = new Hid.Gamepad();
+        g.report(r);
+        check(Hid.Gamepad.neutral(r), "手柄：什么都没按 = 全零");
+        g.buttons = 1 << Proto.GP_NORTH | 1 << Proto.GP_R3;
+        g.hat = Hid.Gamepad.HAT_RIGHT;
+        g.lx = -32767;
+        g.ly = 1;
+        g.rx = 32767;
+        g.ry = -2;
+        g.lt = 255;
+        g.rt = 7;
+        g.report(r);
+        eq(hex(r), "10400301800100ff7ffeffff07", "手柄报文逐字节（键小端位、方向键低 4 位、轴小端 int16、扳机各 1 字节）");
+        Hid.Gamepad back = new Hid.Gamepad();
+        back.parse(r);
+        check(back.buttons == g.buttons && back.hat == 3 && back.lx == -32767 && back.ly == 1 && back.rx == 32767 && back.ry == -2
+                && back.lt == 255 && back.rt == 7, "parse 读回来一样");
+        check(back.pressed(Proto.GP_NORTH) && back.pressed(Proto.GP_LT) && back.pressed(Proto.GP_RT) && !back.pressed(Proto.GP_SOUTH),
+                "pressed：键看位、扳机看轴");
+        g.clear();
+        g.buttons = 0xFFFF;
+        g.lx = 99999;
+        g.report(r);
+        eq(r[1] & 0xFF, 0x7F, "第 16 位（补齐）不发");
+        eq(hex(r).substring(6, 10), "ff7f", "轴超范围截到 32767");
+        check(!Hid.Gamepad.neutral(r), "按着就不是中立");
+    }
+
+    /**
+     * 方向键：Linux hid-input 的换算 hat_dir = (value − min) × 8 / (max − min + 1) + 1（C 的整除，逻辑 1..8），越界 → 回中。
+     * 全零报文里的 0 换算出来是 0 = 回中（不是"上"）；1–8 和 hid_hat_to_axis 那张表、Hid.Gamepad.hatX / hatY 一致。
+     */
+    static void gamepadHatIsLinuxHat() {
+        int[][] linux = {{0, 0}, {0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}};
+        for (int v = 0; v <= 8; v++) {
+            int dir = (v - 1) * 8 / (8 - 1 + 1) + 1;
+            if (dir < 0 || dir > 8) dir = 0;
+            eq(dir, v, "Linux 换算：报文值 " + v + " → 方向 " + v);
+            eq(Hid.Gamepad.hatX(v) + "," + Hid.Gamepad.hatY(v), linux[dir][0] + "," + linux[dir][1], "方向 " + v + " 的分量和内核的表一致");
+        }
+    }
+
+    /** 两路合并：键按位或、方向键取不回中的那路（都不回中取 a）、摇杆取离中心远的那路（两个分量一起）、扳机取大的。 */
+    static void gamepadMerge() {
+        Hid.Gamepad a = new Hid.Gamepad(), b = new Hid.Gamepad();
+        byte[] ra = new byte[13], rb = new byte[13], out = new byte[13];
+        a.buttons = 1;
+        a.hat = 0;
+        a.lx = 1000;
+        a.ly = 0;
+        a.rx = 0;
+        a.ry = 0;
+        a.lt = 10;
+        b.buttons = 2;
+        b.hat = 5;
+        b.lx = -100;
+        b.ly = -100;
+        b.rx = 300;
+        b.ry = 400;
+        b.rt = 200;
+        b.lt = 3;
+        a.report(ra);
+        b.report(rb);
+        Hid.Gamepad.merge(ra, rb, out);
+        Hid.Gamepad m = new Hid.Gamepad();
+        m.parse(out);
+        eq(m.buttons, 3, "合并：键按位或");
+        eq(m.hat, 5, "合并：a 回中时方向键取 b");
+        check(m.lx == 1000 && m.ly == 0, "合并：左摇杆取远的那路（两个分量一起取）");
+        check(m.rx == 300 && m.ry == 400, "合并：右摇杆 a 回中时取 b");
+        check(m.lt == 10 && m.rt == 200, "合并：扳机取大的");
+        a.hat = 1;
+        a.report(ra);
+        Hid.Gamepad.merge(ra, rb, ra);   // out 就是 a
+        m.parse(ra);
+        eq(m.hat, 1, "合并：都不回中取 a（服务那路）；out 可以就是 a");
+        Hid.Gamepad.merge(new byte[13], new byte[13], out);
+        check(Hid.Gamepad.neutral(out), "合并：两路都中立 = 中立");
+    }
+
+    static String hex(byte[] r) {
+        StringBuilder s = new StringBuilder();
+        for (byte b : r) s.append(String.format("%02x", b & 0xFF));
+        return s.toString();
     }
 
     /** 蓝牙栈注册时 check_descriptor 把尺寸码 3（4 字节数据）当 3 字节走：描述符里一个都不能有。 */

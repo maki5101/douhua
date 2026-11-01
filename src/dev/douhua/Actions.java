@@ -53,6 +53,8 @@ final class Actions {
         AIR_DRAG,
         /** 光标回到屏幕正中（每台设备校准一次）。 */
         AIR_CENTER,
+        /** 进出手柄页（虚拟游戏手柄，独立一页；第一批只在桌面模式）。 */
+        GAMEPAD,
     }
 
     static final class Action {
@@ -119,6 +121,7 @@ final class Actions {
         add("air_move", R.string.act_air_move, null, R.string.act_air_move_s, null, Kind.AIR_MOVE, 0, 0);
         add("air_drag", R.string.act_air_drag, null, R.string.act_air_drag_s, null, Kind.AIR_DRAG, 0, 0);
         add("air_center", R.string.act_air_center, null, R.string.act_air_center_s, null, Kind.AIR_CENTER, 0, 0);
+        add("gamepad", R.string.act_gamepad, null, R.string.act_gamepad_s, null, Kind.GAMEPAD, 0, 0);
 
         // ── 鼠标 ──
         add("hold_left", R.string.act_hold_left, null, R.string.act_hold_left_s, null, Kind.HOLD_LEFT, Proto.BUTTON_LEFT, 0);

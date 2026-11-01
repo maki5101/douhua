@@ -18,23 +18,25 @@
          │  "左键" → 直接按住鼠标左键；小红点 → TrackPoint（按住时 douhua-tick 线程按节拍推）；三个鼠标键 → 按住左 / 右键、中键滚动
          ├ UhidMouse / UhidKeyboard：/dev/uhid 造的 USB 鼠标和键盘 → 系统输入 → 外接屏 / 当前屏幕
          │  （双指开合 = UhidKeyboard 按住 Ctrl + UhidMouse 滚轮；鼠标带竖滚轮的分辨率倍率，读线程回应内核的 SET / GET_REPORT）
+         ├ 手柄页（REGION_GAMEPAD）→ GamepadTouch → UhidGamepad（第三个 uhid 设备，第一次用到才建、会话结束才关）；
+         │  服务没接管时 App 本地分流出的经 CMD_GAMEPAD 发来，两路合并（GamepadMux）再写 → Moonlight → 电脑上的 Xbox 手柄
          ├ KeyReader + HardKeyGate：独占音量键设备（带电源键的只旁观），判断点一下 / 按住报给 App，没配的键注入补发
          └ Injector：带 displayId 往外接屏注入按键、往这块屏注入触摸（分屏透传）（隐藏 API，反射）
-                ↑ 布局 / 参数 / 心跳 / 按键 / 实体键配置   ↓ 震动 / 三指四指手势 / 按钮事件 / 修饰键 / 接管状态 / 实体键
+                ↑ 布局 / 参数 / 心跳 / 按键 / 实体键配置 / 手柄报文和参数   ↓ 震动 / 三指四指手势 / 按钮事件 / 修饰键 / 接管状态 / 实体键 / 手柄报文
        MainActivity（App，普通权限）：画界面、震动、执行动作；127.0.0.1:37601
 ```
 
 | 文件 | 职责 |
 |---|---|
-| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 18） |
+| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 19）；手柄控件编号（gamepadId：0x4000 \| 种类 << 10 \| 副本 << 8 \| 参数）和输出码（GP_*，按位置；GP_C_* = N64 的 C 键，GamepadTouch 换成右摇杆推满） |
 | `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测）；惯性滚动（边缘一拨接着转、碰触控板抓住，用唯一的定时器槽 TIMER_SPIN）、连续滚动（按 1/120 格出、每滚过一格咔嗒、双指锁主方向）也在这里；滚轮量的单位是 1/120 格；中键按着时单指划 = 滚动（setScrollHold，方向"推哪边视野往哪边走"、不起长按 / 惯性），小红点的位移、滚轮经 externalMove / externalScroll 出 |
 | `src/dev/douhua/ScrollInertia.java` | 惯性滚动的物理（黏滞 + 恒定摩擦的闭式解、阻尼档位 → τ、停止时间 / 距离），纯 Java（离线测，HidTest），引擎和设置页共用 |
 | `src/dev/douhua/ConfigCodec.java` | CMD_CONFIG 的编解码（App 的 Link 写、服务的 Session 读、TestClient 写，三处共用一份），纯 Java（离线测往返） |
-| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数，中键按着 = 滚动、没滚过松开补中键单击） |
-| `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号；带滚轮分辨率倍率的鼠标描述符（MOUSE_DESC_HIRES 蓝牙用，竖、横两个倍率；MOUSE_DESC_HIRES_V 桌面模式 uhid 用，只有竖向一个；输入报文都和旧的一字不差）、倍率字节编解码、WheelOut（1/120 格 → 计数、余数、拆帧；uhid 那份设 / 问倍率的 setUhidFeature / uhidFeatureReport，UhidMouse 只调它们；离线测 HidTest） |
+| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数，中键按着 = 滚动、没滚过松开补中键单击）；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立） |
+| `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号；带滚轮分辨率倍率的鼠标描述符（MOUSE_DESC_HIRES 蓝牙用，竖、横两个倍率；MOUSE_DESC_HIRES_V 桌面模式 uhid 用，只有竖向一个；输入报文都和旧的一字不差）、倍率字节编解码、WheelOut（1/120 格 → 计数、余数、拆帧；uhid 那份设 / 问倍率的 setUhidFeature / uhidFeatureReport，UhidMouse 只调它们；离线测 HidTest）；手柄描述符 GAMEPAD_DESC（Game Pad、15 键 + Hat + X/Y/Z/Rz + Brake/Accelerator，13 字节，全零 = 中立）和 Gamepad（状态、报文、两路合并 merge） |
 | `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停；描述符跟着"连续滚动"开关（变了就注销、重新注册，descriptorChanged），回应主机设 / 问滚轮倍率 |
 | `src/dev/douhua/Haptics.java` | 震动：点击、咔嗒、颗粒、拖动时的持续轻震、按键的"嗒"、惯性的"放开 / 刹住"（调试版设置里能挑候选波形，正式包用默认） |
-| `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；两屏共用的 ⋯ 菜单的项（主界面 键盘 / 设置 / 旋转 / 退出，键盘屏 收起键盘 / 调整大小 / 布局 / 指点 / 设置 / 旋转 / 退出）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：四页往里收） |
+| `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；几屏共用的 ⋯ 菜单的项（主界面 键盘 / 手柄 / 设置 / 旋转 / 退出，键盘屏 收起键盘 / 调整大小 / 布局 / 指点 / 手柄 / 设置 / 旋转 / 退出，手柄页 预设 / 返回触控板 / 设置 / 旋转 / 退出；"手柄"只在桌面模式）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：五页往里收）；手柄页的进出（setGamepadMode：桌面模式下手柄页走本地分流，CMD_GAMEPAD 发给服务）、吞自己手柄的键和摇杆（dispatchKeyEvent / dispatchGenericMotionEvent） |
 | `src/dev/douhua/KeyboardPanel.java` | 外接键盘的键帽、触摸、高亮（键位本身在 KeyRows），键 id = 用法码 \| 自带修饰键 << 8；自己摆放键帽（ViewGroup，所有键帽是直接子 view，按 KeyRows.place 摆）；报区域时键后面报键盘范围（REGION_KEYBOARD：整块一块，分裂时左右两半各一块）；功能行带不带最右边的 ⋯ 键（setMenuKey，小触控板上没摆出 ⋯ 时带，menuKeyRect 给菜单定位）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键；嵌在键里的小红点那块不算任何键，setStickHole）；三层的全部行交给 KeyboardPlan 算红点多大（layers）；三层、两种布局的键帽各建一次，换层 / 分裂只切显示；键帽文字 / 高亮没变的键不重设 |
 | `src/dev/douhua/KeyRows.java` | 键位和排布，纯 Java（离线测，KeyRowsTest）：键（Key）、每行整块 / 分裂时左右两半各是哪些键（Row）、键盘区宽 ≥ 2 × 高（shouldSplit）、每个键摆在哪（place）；分裂时两半中间放触控板（各三分之一宽）或只隔一条缝（leftEnd 的 middle），只隔一条缝时两块键盘范围伸到缝的中线（areaEnd / areaStart）；同一个键两种布局用同一个 Key 对象；功能行两份（topRows：不带 / 带最右边的 ⋯，⋯ 是特殊键 MENU_BUTTON_ID = 303）；哪些键算功能键（functionKey；数字键盘另有 numpadFunctionKey，"-" 在那里算运算符），主题按它分主次上色；一层的全部行（rows / layers，KeyboardPanel 和 KeyboardPlan 共用）；小红点嵌在哪（stickPoint：字母层 g|h、v|b 的缝和 a–l / z–m 两行交界那一点，分裂时两半中间那截的正中） |
 | `src/dev/douhua/KeyboardPlan.java` | 键盘界面怎么摆，纯 Java（离线测，KeyboardPlanTest）：布局（自动 / 分裂 / 合并）轮换、分不分裂（键太窄不分）、分裂 / 合并时键盘占哪块、触控板放在空得最多的一侧（太小不放）、宽窗口没调过大小时的默认位置（触控板显示且放得下才三分之二宽）；⋯ 菜单的几何（menuTop：⋯ 放触控板顶上正中、padMenuTop：主界面的 ⋯ 放不下也照样放、menuPosition：菜单弹在哪不出屏、menuGrid：项多窗口矮时先压矮再分列、adjustBarTop：调整栏放上还是下、barButtonWidth：调整栏按钮宽度）；分裂时对称调大小的几何（左半"格子"、默认格子、fitSplit 按窗口守约束、dragSplit 拖法和约束）；指点三选一（POINTER_PAD / STICK / NONE，nextPointer）：小红点照真的 ThinkPad 键盘摆（2026-11-01）——三个鼠标键是键盘最下面一排（从键盘的框 Plan.block 下沿切出、Plan.keys，面板太矮不切），红点在 KeyRows.stickPoint（placeStick：分裂没调过时中间只留一列 stickColumn = 红点 + 两条缝、不压键；合并 / 两半挨着时嵌在四个键的交界、stickSize 按每层的键定多大；嵌不下放键盘外面上 / 下），中键窄、左右键宽、中键对着红点（middleKey，三键条也用）；触控板的三键条（cutBar，上沿 / 下沿，主界面也用）、⋯ 放哪（Plan.menuArea / menuMargin；没有触控板时回功能行）；离页面边的距离可以各边不一样（Sizes.edgeL / T / R / B、withEdges，menuTop / menuGrid / menuPosition / adjustBarTop 各有带 {左, 上, 右, 下} 的版本，屏幕边缘留白用） |
@@ -43,13 +45,21 @@
 | `src/dev/douhua/MenuLayer.java` | ⋯ 菜单，主界面和键盘屏共用一份（根视图最上面一层、铺满整页；屏幕边缘留白时和别的页一样往里收，离各边少留，setEdgeInsets）：盖住整页的"点外面" + 菜单底板（项是它的子 view，只排显示着的，KeyboardPlan.menuGrid 排、先排满第一列）；贴着当前那一屏的 ⋯ 弹出（Host.menuAnchor + KeyboardPlan.menuPosition）；⋯ 那一支单独重新布局时由 MainActivity 在根视图的布局监听里再 place 一次 |
 | `src/dev/douhua/Style.java` | 共用样式（边框、按下 / 高亮、触控板角上的小按钮——small 的 onImage：触控板上有背景图时平时垫不透明的触控板底色）；颜色从当前主题取（setTheme，MainActivity 设），设置页预览用带 Theme 参数的那几个；键帽（整屏键盘、数字键盘）走 keyButton / keyLook（边框跟"按键边框"开关），其它按钮走 button / look（一直有边框）；键帽分主次：keyLook / look 带 fn（功能键的颜色；高亮时照旧是普通键帽底色 + 强调色的边） |
 | `src/dev/douhua/Theme.java` | 主界面的十八套配色（设置 → 外观；ALL 先深色后浅色）：每套写几个底子、其余按规则推（灰字取"刚够 4.5:1"的、强调色当字用不够就推亮 / 推暗）；功能键的槽位 fnKey / fnText / fnPressed（底色掺强调色，到和键帽、页面色差 ≥ 8 为止，fnTint）；纯黑每个槽位照以前的常量写死（功能键和普通键一样）；对比度、CIE76 色差计算，纯 Java（离线测 ThemeTest）；小红点的红（stick：ThinkPad 红推到对页面、触控板底色都 ≥ 3:1，stickRed） |
-| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 按钮与按键 / 空中鼠标 / 外观，放不下横着滑），五页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent（带 EXTRA_TAB）打开时停在"通用"页；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、轻点 = 左键、负惯性、三键条开关和上沿 / 下沿）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它） |
+| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），六页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、轻点 = 左键、负惯性、三键条开关和上沿 / 下沿）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它） |
 | `src/dev/douhua/ThemeGrid.java` | 设置 → 外观的主题色块网格（一组深色或浅色）：每格一小块样子（普通键 A + 功能键 ⇧ + 一小块触控板）+ 名字，每行几格按宽度定（每格 ≥ 96dp），选中框用设置页自己的蓝 |
 | `src/dev/douhua/ButtonStrip.java` | 自定义按键（主界面左边一列，原来的左侧按钮条；设置里打开，默认关），屏幕矮时自动分列 |
 | `src/dev/douhua/PadArea.java` | 触控板 + 数字键盘的排布 |
 | `src/dev/douhua/PadStack.java` | 主界面的触控板（连四角的小按钮）+ 顶上正中的 ⋯（KeyboardPlan.padMenuTop，三键条在上沿时在它正下方）+ 可选的三键条（KeyboardPlan.cutBar，onLayout 里按离窗口边多远切；48dp 高，中键窄、左右键宽（约 2.2 : 1 : 2.2、中键在正中），KeyboardPlan.middleKey）；离边 20dp 按窗口算，屏幕边缘留白不用另外管 |
 | `src/dev/douhua/TrackPoint.java` | 小红点（模拟 ThinkPad TrackPoint），纯 Java（离线测，TrackPointTest）：手指离按下点的位移 → 速度（S 形曲线：死区、爬行、平台、陡升、封顶）× 灵敏度，负惯性，按节拍积分、余数留着；轻点 = 左键；中键按着时出滚轮（推哪边视野往哪边走、主方向）；颗粒 / 咔嗒；20 秒没事件暂停 |
 | `src/dev/douhua/TrackPointView.java` | 小红点的样子：红帽 + 九个凹点（RoundPad.dots）；不压键时外面一圈淡圆（帽占 0.7），嵌在键里时（setEmbedded）先用页面底色画一个方块当键上挖的洞（角上只圆 2dp，和按得到的正方形一样大；帽占 0.8）；按着时圈 / 洞边换 focus 色 |
+| `src/dev/douhua/GamepadSpec.java` | 手柄页摆哪些控件：一组参数（左手 / 面键排法 / 字样 / 右摇杆 / L1 R1 LT RT 各自有没有 / 中间 / 摇杆按下 / 偏好方向），15 个固定预设（PRESETS，⋯ 菜单里轮换、设置页网格同序，默认 Xbox）+ 自定义（Builder 从一个预设复制再改，encode / decode 存成一行，取值写名字、认不出的跳过、缺的照 base 那个预设）；每种排法 × 字样印什么（faceOutputs / faceLabels / outputLabel；N64、GameCube 的键帽固定），预设自己的肩键名（N64 的 Z；GameCube 左边本来没有的肩键也写了 ZL，不和左扳机 L 重名）只在字样没换时用，shoulderLabel 给设置页"肩键 / 扳机"开关写这一对在这一套里叫什么；按位置发（任天堂的 A 发东），纯 Java（离线测，GamepadSpecTest） |
+| `src/dev/douhua/GamepadPlan.java` | 手柄页自动排（预设和自定义一样排），纯 Java（离线测，GamepadPlanTest）：宽 ≥ 1.3 × 高横排（两块对称的手区贴下沿、中间 Select / Home / Start + LS / RS、肩键贴上沿两角），不然竖排（手区在下半截）；一只手两个控件斜着错开（上靠外、下靠里）；放不下先缩缝、再按比例缩到最小值、再不放 LS / RS，还不行缩到最小值以下（fitted 假）；面键十种排法（faceCenters 给每颗圆心和直径，N64 的 C 键小一点、GameCube 的 A 大 B 小——按真机比例，不受 44dp 下限约束，各自的最小值 faceMin：C 键 / B 33dp、X Y 约 37dp）；一只手可以空着、两边肩键颗数可以不一样；输出控件的判定 / 画的范围（dp）、⋯、状态字 |
+| `src/dev/douhua/GamepadTouch.java` | 手柄页的触摸模型，纯 Java（离线测，GamepadTouchTest）：单键（引用计数、滑出照样按着）、面键簇（最近的键、两颗中间一起按、回差、簇里滑动换键、滑出 24dp 全松）、十字键（8 方向斜向窄、5° 回差、只看角度）、摇杆（浮动中心、底座跟着走、死区 + 抗死区、推到边咔嗒）、N64 的 C 键（右摇杆推满，相邻两颗斜着、相反两颗回中，和右摇杆那根手指取远的）；键 / 十字键 / 扳机变了当场发、摇杆轴攒到一帧发；收尾一定全零 |
+| `src/dev/douhua/GamepadConfig.java` | 手柄的手感参数（设置 → 手柄，Prefs.gamepadConfig 按 gp_* 读，存成整数：dp / 百分比 / 度）和 CMD_GAMEPAD_CONFIG 的编解码（length:u16 + 字段，多的跳过、少的用默认），纯 Java |
+| `src/dev/douhua/GamepadScreen.java` | 手柄页（独立一页）：按 GamepadPlan 摆、GamepadPainter 画（看手柄报文画按下：本地分流的 + 服务 MSG_GAMEPAD 的合起来），顶上正中的 ⋯（MainActivity 建，按住 0.6 秒开菜单）、状态字；collectRegions 报 REGION_GAMEPAD（簇的范围在成员前面）；setSpec 按 key 比（内容一样的自定义不算换）；name：预设 / 自定义显示的名字（手柄页菜单、设置页共用）；强制从左往右 |
+| `src/dev/douhua/GamepadPainter.java` | 手柄控件的画法（手柄页和设置页的预览共用）：面键圆、△○×□ 和 N64 的 C 键画形状、十字键、街机摇杆底座、摇杆、肩键 / 扳机 / 中间小长条；k = 一个 dp 画成几像素，minText = 0 时不写字（网格小图） |
+| `src/dev/douhua/GamepadPreview.java` | 设置 → 手柄的预览：按 930 × 350dp（分屏下半边）摆、缩小了画（GamepadPainter，没按着的键），大预览写字、网格小图不写；颜色用设置里的主题 |
+| `src/dev/douhua/GamepadGrid.java` | 设置 → 手柄的预设网格：每格一张 GamepadPreview 小图 + 名字，最后一格自定义；每行几格按宽度定、选中框用设置页的蓝（同 ThemeGrid） |
 | `src/dev/douhua/MouseKeys.java` | 一排左 / 中 / 右三个鼠标键（选小红点时键盘最下面那排、触控板的三键条）：中键窄、左右键宽（setMiddle，没设时平分）；不写字，照真 ThinkPad：左右键下沿（靠用户那条长边）横着一道红线、几乎占满键宽，中键没有红线、上沿附近一排 7 个小点；按掩码画按下 |
 | `src/dev/douhua/TrackpadView.java` | 只画底色、背景图（PadImage，可选）、边缘滚动带的细线、状态字和边框（颜色画的时候从当前主题现取）；状态字两边让出多宽（setStatusSide：主界面下面两个角有按钮时让过它们）；有图时状态字、⋯（setMenuChip，KeyboardScreen / PadStack 告诉它 ⋯ 在哪）下面垫不透明的触控板底色、细线下面垫 3dp 底条，边框最后画 |
 | `src/dev/douhua/PadFit.java` | 触控板背景图怎么摆，纯 Java（离线测，PadFitTest）：五种显示方式（填满 / 完整显示 / 拉伸 / 平铺 / 原大小）、焦点规则（offset：要裁时焦点尽量在正中、有空余时照百分比）、吸附（snap）、平铺相位、按形状挑哪套（Settings.pick：分开设时高 > 宽用高的那套）、解码多大（decodeSize：短边到窗口最大长边、总像素 2²³、单边 4096）|
@@ -81,7 +91,7 @@
 | `src/dev/douhua/DexDisplay.java` | 找外接屏（按键注入目标；类名是改叫"桌面模式"之前起的） |
 | `src/dev/douhua/DisplayReceiver.java` | 服务叫醒它：接上外接屏弹通知（点开在手机屏上打开豆花），拔掉收回 |
 | `src/dev/douhua/server/Server.java` | 服务入口：主线程只 accept，按 SessionPolicy 接 / 顶掉旧会话 / 回"忙"，每条连接一个 douhua-session 线程；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒；`keys` 只读：用 getevent -i 列出输入设备、音量键能不能截、会截哪块 / 旁观哪块 |
-| `src/dev/douhua/server/Session.java` | 一次 App 连接：建虚拟设备、发 hello、独占时机、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App；10 秒没消息自己断开，可被新连接顶掉（kick）；小红点的节拍在单独的 douhua-tick 线程上（桌面模式 8ms、蓝牙转发 12ms，startTicks / stopTicks）；TouchRouter 的定时器交给 OneShotTimer |
+| `src/dev/douhua/server/Session.java` | 一次 App 连接：建虚拟设备、发 hello、独占时机、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App；10 秒没消息自己断开，可被新连接顶掉（kick）；小红点的节拍在单独的 douhua-tick 线程上（桌面模式 8ms、蓝牙转发 12ms，startTicks / stopTicks）；TouchRouter 的定时器交给 OneShotTimer；虚拟手柄（第一次用到才建 UhidGamepad、会话结束才关；CMD_GAMEPAD / CMD_GAMEPAD_CONFIG、MSG_GAMEPAD；两路合并 GamepadMux，接管时清 App 那路） |
 | `src/dev/douhua/server/OneShotTimer.java` | TouchRouter 的一次性定时器（Output.schedule / cancelSchedule 的服务端实现）：再排取代上一次；撤掉 / 被取代之后，已经到点、卡在锁上的那次回调拿到锁先比令牌、过期了就不调（ScheduledFuture.cancel 撤不掉已经开始跑的任务），纯 JDK（离线测，ServerPartsTest 真起一个定时器线程） |
 | `src/dev/douhua/server/SessionPolicy.java` | 新连接来时旧会话怎么办：没有 / 已收尾 → 接，沉默 ≥ 5 秒 → 顶掉，否则回"忙"，纯 Java（离线测） |
 | `src/dev/douhua/server/GrabCondition.java` | 独占条件里的心跳（只有心跳和布局算，保活不算）和释放原因码，Session 调它，纯 Java（离线测） |
@@ -102,6 +112,8 @@
 | `src/dev/douhua/server/Evdev.java` | 打开 / 独占输入设备（EVIOCGRAB，经 libcore 的 ioctlInt） |
 | `src/dev/douhua/server/Uhid.java` | /dev/uhid 造 USB HID 设备的公共部分；带 Requests 的（鼠标）另开读线程 douhua-uhid 回应内核的 GET / SET_REPORT，关闭时先等读线程退出再关 fd |
 | `src/dev/douhua/server/UhidEvents.java` | uhid 的 GET / SET_REPORT 请求怎么解、回复怎么拼（照 uhid.h 的 packed 布局），纯 Java（离线测，ServerPartsTest） |
+| `src/dev/douhua/server/UhidGamepad.java` | 虚拟 USB 手柄 "Douhua Gamepad"（0x1209 / 0xD0A2，描述符 Hid.GAMEPAD_DESC），单独一个设备（并进鼠标的话安卓把鼠标也当手柄），没有读线程；关之前先写一帧全零 |
+| `src/dev/douhua/server/GamepadMux.java` | 桌面模式 uhid 手柄的两路（服务分流 + App 本地分流）合并、接管时清 App 那路、没变不写，纯 Java（离线测，ServerPartsTest） |
 | `src/dev/douhua/server/UhidMouse.java` / `UhidKeyboard.java` | 虚拟 USB 鼠标 / 键盘，只管发报文（描述符在 Hid，按键状态在 TouchRouter）；鼠标记着内核设的竖滚轮倍率（WheelOut；描述符 MOUSE_DESC_HIRES_V，横向一直 ×1） |
 | `src/dev/douhua/server/PeerUid.java` | 查 /proc/net/tcp 确认连进来的是谁 |
 | `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放；`keys=<4 位>` 一起截音量键，打印实体键事件 / 状态 |
@@ -248,6 +260,20 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **每根手指归谁在按下那一刻定，抬起前不变**（TouchRouter 按按下点 hit；App 本地分流在按下时定整次手势；分屏透传 TouchSplit 同样按下时定）：
   从触控板出发的手指划出触控板（划到键盘上、屏幕边、别的区域）照样是触控板在动光标。用户 2026-10-31 点名要保留（"只要我是从触控板区域出发的，
   就可以连续的在超过的区域继续滑动，这个很好，不要改掉"）。加新区域、新手势时不能改成按当前位置重新判断。
+  唯一的例外是手柄的面键簇内部（用户 2026-11-01 照推荐定的"搓键"）：归属照旧按下时定到"这一簇"（不会被改判给十字键、⋯ 或别的簇），
+  只在簇自己的几颗键之间按当前位置挑键（GamepadTouch；N64 的 C 键也在簇里）；单键、十字键、摇杆滑出自己的范围照样有效。
+  设置 → 手柄里关掉"面键之间滑动换键"（GamepadConfig.clusterSlide，默认开）就退回按下时挑一颗、滑动不换（两颗中间一起按也跟着关）。
+- **手柄在所有收尾路径上回到中立**（发一帧全零：键全松、摇杆回中、方向键回中、扳机归零）：手指抬起 / 被取消、releaseAll（释放独占、断开、退后台、
+  服务接管时本地分流收尾）、clearSlots（换引擎参数）、CMD_GAMEPAD_CONFIG（进出手柄页、换预设、连上时、设置 → 手柄改完回到主界面时 App 都发，setGamepadConfig）、关设备前（UhidGamepad.close 先写全零）。
+  漏一条 = 电脑上一直按着 / 一直往一边走。每个按下（button DOWN）都配松开（GamepadTouchTest 的乱序随机序列、TouchRouterTest 锁住）。没用过手柄时收尾什么都不发（不会因此建手柄）。
+- **手柄的全零报文 = 中立**：方向键逻辑 1..8、0 越界 = 回中（Linux hid-input 的 hat 换算），轴有符号、0 = 中（HidTest 锁住）。
+- **只有手柄页报 REGION_GAMEPAD**（区域只报看得见的那一屏）；uhid 手柄第一次用到才建（布局里第一次出现手柄页的区域、或第一次收到不是中立的 CMD_GAMEPAD），
+  会话结束才关（开始串流前没进过手柄页时电脑上不多一个手柄；游戏里手柄不会因为换页消失）。
+- **豆花窗口吞掉自己手柄的键和摇杆事件**（MainActivity.dispatchKeyEvent / dispatchGenericMotionEvent，按厂商号 + 产品号 Proto.HID_GAMEPAD_PRODUCT；贴字面板开着也吞）：
+  不吞的话没人处理的手柄键安卓换成后备键，B = 返回把豆花关掉、Home 回桌面，摇杆还会被合成方向键。
+- 桌面模式两路写同一个 uhid 手柄（服务分流、App 本地分流经 CMD_GAMEPAD）：写的是合并结果（GamepadMux：键按位或、方向键取不回中的那路、摇杆取远的、扳机取大的），
+  服务开始接管时清掉 App 那路，谁先谁后都不会把对方刚按的松掉（ServerPartsTest 锁住）；设备晚建好时补写的那帧也记成"上次写的"
+  （GamepadMux.deviceCreated，不然之后的松开被当成没变、电脑上一直按着）。CMD_GAMEPAD、CMD_GAMEPAD_CONFIG 不算心跳。
 - **触控板背景图只是画面**：只在 TrackpadView 里画（PadImage），区域上报、TouchRouter、服务、协议都不知道有它（上面那条"从触控板出发划出去照样动光标"不受影响）。
   拷贝、解码（大图一次几百毫秒）一律在后台线程，主线程只比文件名和设置（心跳在主线程，卡 3 秒服务释放触摸屏）。
 - 按键一律带显式 displayId 注入到外接屏（没找到外接屏时是 INVALID_DISPLAY，由系统发给当前焦点）。
@@ -979,6 +1005,47 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   换算收在 Hid.WheelOut.setUhidFeature / uhidFeatureReport，UhidMouse 只调它们（UhidMouse 依赖 android.*、不进离线编译，HidTest 锁住的就是这两个方法，不在测试里另抄一份）。
   蓝牙那份（MOUSE_DESC_HIRES，跟着"连续滚动"开关）不动：蓝牙主机没报过这个问题，改了还得让每台主机重新配对。Uhid 读线程的诊断日志留着，下次连上看结果（见"进行中"）。
   代价：桌面模式下横向连续滚动也只能一格一格（Android 横向滚动本来用得少）。
+- **手柄页第一批：桌面模式端到端**（2026-11-01，用户："要一个手柄界面，独立于所有界面，不需要触控板也不需要键盘；可以选各种固定布局……也可以自定义加按键……
+  震动也要；当一个额外功能加进来"；协调者的方案 design-gamepad.md 合成三份调研，要拍板的 D1–D9 照推荐做；协议 19）。
+  - 输出：服务再造一个 uhid 手柄（"Douhua Gamepad"，Hid.GAMEPAD_DESC：Game Pad、15 键、Hat 1..8 / 0 回中、左摇杆 X/Y、右摇杆 Z/Rz、扳机 Brake/Accelerator），
+    这台手机的 Android 当普通手柄（Generic.kl）→ Moonlight 认 → Sunshine 在电脑上造 Xbox 手柄，只认 XInput 的游戏也能玩。第 4 键 = 西（Xbox X）、第 5 键 = 北（Xbox Y）
+    （Generic.kl 把 0x133 映成 BUTTON_X，Moonlight、SDL、scrcpy 都这么排）。扳机第一批只发轴（Moonlight 有轴时压掉数字 L2 / R2）。
+  - 触摸：TouchRouter 加 REGION_GAMEPAD → GamepadTouch；三条路——服务接管（报区域）；桌面模式服务连着没接管 / 没开服务时**也走 App 本地分流**
+    （localGesture、local.setRegions 的条件改成 btMode || gamepadOn），出的报文经 CMD_GAMEPAD 给服务、和服务那路合并；不让各控件 View 自己收（摇杆、十字键、搓键要跟手指，
+    每个 View 写一遍多指就是把分流再抄一份）。测试机（服务找不到触摸屏）上也能出手柄。蓝牙模式第一批进不了手柄页（菜单里没有"手柄"，动作给提示）。
+  - 页面：GamepadScreen 独立一页（盖住主界面、不透明），9 个预设（Xbox 默认、PlayStation、Switch Pro、SNES / DS、FC / NES、Game Boy（偏好竖屏）、GBA、Mega Drive 6 键、街机 8 键），
+    GamepadPlan 按窗口自动排；⋯ 在顶上正中，按住 0.6 秒才开菜单（游戏里拇指乱碰）；菜单：预设：X（点一下轮换、菜单不关）/ 返回触控板 / 设置 / 旋转 / 退出。
+    入口：主界面、键盘屏 ⋯ 菜单里"手柄"（桌面模式才有），动作清单 gamepad。手柄页开着时吞返回、左右边设排除区（没接管时系统手势还在）。屏幕边缘留白照样生效。
+  - 反馈不加新种类：键按下（含簇里新按下的、十字键从中间推出一个方向）= 按键那个能打断的"嗒"（button DOWN → playKey）；十字键按着换方向、摇杆推到边 = 咔嗒（HAPTIC_TICK）；
+    摇杆推动不震不发颗粒；按住 ⋯ 到点"嗒"。游戏震动不接（靠 Moonlight 的"用设备震动模拟"）。
+  - 和方案不同 / 方案没写的：① 加了 gp_md6（"Mega Drive 6 键"，"键"要翻译），方案只列了 gp_arcade8；② 手柄页菜单的"退出手柄"叫"返回触控板"（gp_exit），另留着全局的"退出"；
+    ③ 键盘屏 ⋯ 菜单也有"手柄"（方案只写主界面）；④ LS / RS 放在中间那块（横排：Select / Home / Start 下面一排两头；竖排：最下面那排两头），方案没定位置；
+    ⑤ 面键簇的主键也加了 2dp 回差（停在几颗正中间时不来回换），十字键回中加了回差（推出去要到死区、回中要到死区的 0.8 倍）；⑥ 摇杆不报按下 / 松开（不"嗒"）；
+    ⑦ CMD_GAMEPAD 只有不是中立时才触发建手柄；⑧ 惯性转着时碰手柄控件静默停（同键）；⑨ 桌面模式不在手柄页时本地分流的区域清空；⑩ TestClient 认得 MSG_GAMEPAD。
+  - 已知：街机 8 键在手机竖屏放不进半边（两排各 4 颗），缩到最小值以下（约 29dp）；Mega Drive 6 键竖屏要 352dp 宽才不缩。第二批（设置页"手柄"标签、自定义勾组件、参数滑块）见下一条（原厂配色没做）、
+    第三批（蓝牙手柄，开关默认关）没做。
+
+- **手柄页第二批：设置页"手柄"标签 + 自定义 + 6 个预设**（2026-11-01，同一份方案 design-gamepad.md 的第 2 节"第二批"、第 4 节；用户："调研完了你就先做，做完我再检查"）。
+  不改 Session、不升协议（GamepadConfig 的字段第一批就全发了；N64 的 C 键在 GamepadTouch 里换成轴，报文、描述符不变）。GamepadTouch、Proto 是两边共用的：
+  服务接管时 C 键要新服务才认（旧服务不认识输出码 24–27，什么都不发），装完照样重启服务（协议号没变，App 按 hello 里的 APK 路径会自己重启它）。
+  - 设置页第六个标签"手柄"（排在"空中鼠标"后面）：一块预览（选的那一套在 930 × 350dp 分屏下半边的样子，GamepadPainter 和手柄页同一份画法）、
+    预设网格（15 个预设 + 自定义，每格一张小图）、自定义那一节（选中自定义才显示）、摇杆（推满距离、死区、抗死区、浮动中心、底座跟着走、推到边咔嗒）、
+    十字键（8 方向、斜向宽度、中间多大不算方向、换方向咔嗒）、面键（D3 的滑动换键开关，开着才显示"两颗中间一起按的范围""滑出多远全松"）、一段"Moonlight 里建议这样设"。
+    蓝牙模式下顶上一句"手柄目前只在桌面模式下能用"，下面照样能先设好。手柄页 ⋯ 菜单的"设置"直接停在这一页。改完回到主界面 applyPrefs 换样子、发参数（两路回中立）。
+  - 自定义：从任一预设出发（第一次点"自定义"复制现在选的那个；"从某个预设重新开始…"整套换掉），勾十字键 / 左摇杆（两个都开时再选哪个在上）/ 面键排法（十种或不要）/
+    字样（Xbox / 任天堂 / PlayStation / 世嘉 / 街机 / 数字）/ 右摇杆 / 肩键 / 扳机 / Select / Home / Start / 摇杆按下，自动排（GamepadPlan），存成一行（Prefs gp_custom，
+    GamepadSpec.encode：取值写名字，认不出的跳过、缺的照 base 那个预设，坏数据不闪退）。⋯ 菜单"预设：…"轮换时存过自定义才轮到它（排在最后）。拖放自由摆位置是第四批。
+  - 补的预设（顺序：Xbox、PlayStation、Switch Pro、Wii Classic、GameCube、N64、SNES / DS、FC / NES、Game Boy、GBA、MD 3 键、MD 6 键、Neo Geo、街机 6 键、街机 8 键）。
+    约定（没有公认答案，照模拟器常见的默认，凭记忆，方案第 12 节第 7 条要定的）：N64 A 南、B 西（在 A 左上）、四颗 C 键 = 右摇杆推满（在面键簇里，能搓、能两颗斜着）、Z = 左扳机（左边外角）、
+    只有 START；GameCube 按位置 A 南、B 西（左下）、X 东、Y 北，L / R = 扳机、Z = R1（R 的里边），有 C 摇杆、摇杆不能按；Wii 经典（初代）L / R 是扳机在外角、ZL / ZR 是肩键在里边，− ⌂ +；
+    MD 3 键 A B C = 西 南 东；Neo Geo 照 Neo Geo CD 手柄 A 南 B 东 C 西 D 北（排成一道弧）；街机 6 键 = 8 键的前三列（上排 X Y RB、下排 A B RT）。
+  - 和方案不同 / 方案没写的：① 肩键从"无 / 一对 / 两对"改成 L1 R1 LT RT 各自有没有（N64、GameCube 两边不一样），自定义里仍是"肩键""扳机"两个开关各管一对（开关上写"靠里那对 / 外角那对"和这一套里实际叫什么：Wii 经典里靠里那对叫 ZL ZR、外角那对叫 L R，写死字母正好说反，审查发现）；
+    ② 字样加了"数字"（任务里点名的），并掉了第一批的"Switch"字样：任天堂字样有 Home 时中间是 − ⌂ +、没有是 SELECT START；N64、GameCube 的键帽不跟字样；
+    ③ 自定义里左手、面键都能"不要"（方案没列），手区照样左右对称留着；④ 原厂配色（方案写"可选"）没做；⑤ 设置页滑块存整数（%、度、dp），Prefs.gamepadConfig 换算；
+    ⑥ 预览只按 930 × 350 一种比例画（不画竖屏的样子）。
+  - 已知：竖屏手机上 Neo Geo、街机 6 键和街机 8 键一样放不进半边，按比例缩到最小值以下（要横屏用）；随便勾出来的自定义（左手两个 + 8 颗街机 + 右摇杆……）在小窗里也会缩到最小值以下。
+    N64 的 C 键、GameCube 的 B / X Y 比 44dp 小（全尺寸 43.5 / 49dp，手机竖屏约 35 / 37dp；fitted 照样为真，它们的最小值按比例）：也定 44 的下限的话 C 键的菱形压到 A、
+    N64 在手机竖屏放不下、整页（连 A）缩到最小值以下，所以留着真机比例（审查发现 fitted 的说明对这几颗不成立，改了说明和测试）。
 
 ## 测试
 
@@ -1009,6 +1076,20 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   屏幕边缘留白：EdgeMarginTest（哪几条边留——全屏、分屏上 / 下 / 左 / 右、小窗、差两个像素、超出屏幕；留多少——0、负数、窗口没量好、窗口小时按比例缩；edges；随机窗口；
   再把收进去的页面交给真正的 KeyboardPlan 扫一遍窗口 × 留白：菜单、⋯、调整栏、三键条、键盘外面的红点都在页面里、地方够时离窗口边至少 max(20, 留白)，打出每种真查到了几次）、
   KeyboardPlanTest 的 perSideEdges（各边不一样时 ⋯ / 菜单 / 菜单排法 / 调整栏 / 三键条的具体值，四边 20 的 withEdges 和原来一样）。
+- 手柄页：GamepadTouchTest（单键引用计数 / 滑出照样按着 / 扳机是轴；面键簇最近的键、范围里没有死区、最多两颗、两颗中间一起按、回差、滑动换键先松后按、滑出 24dp 全松再回来、
+  关掉滑动换键；十字键 8 个方向、斜向窄、边界回差、死区和回差、滑出只看角度、4 方向、第二根不理；摇杆浮动中心、Y 往下为正、封顶、底座跟着走 / 顶住、死区 + 抗死区、推到边咔嗒和上弦、
+  一帧一份、第二根不理；抬起冲掉攒着的轴；releaseAll / 换参数后全零、迟到的事件不发；没用过不发；换布局按着的照用旧的；同一个 slot 又按下；
+  N64 的 C 键：一颗推满、相邻两颗斜着、相反两颗回中、和右摇杆那根手指取远的、全松回中立；乱序随机序列 400 组 × 120 步）、
+  GamepadPlanTest（930 × 350 的 Xbox 全尺寸、斜着错开、贴下沿；PlayStation 十字键在上；Game Boy 竖屏；报区域顺序、编号；十种面键排法（大小不一的照各自直径算缝）；
+  N64 / GameCube / Wii 经典 / MD 3 键 / Neo Geo / 街机 6 键摆得对；自定义什么都不要；扫 15 预设 × 尺寸 × 3 种边距：
+  不重叠、不出界、⋯ 离边、手区对称、贴下沿、够大时不缩到最小值以下（竖屏时面键簇最小也比半边宽的除外）、放得下时逐颗面键不小于各自的最小值（faceMin）；
+  930 × 350 每个预设全尺寸、每颗面键按自己的倍数；再扫 240 套随机自定义 × 尺寸：不重叠、不出界、编号不重复）、
+  GamepadSpecTest（15 个预设编号不重复、第一批 9 个的字和输出照旧；⋯ 轮换（存过自定义才轮到）；每种排法 × 每种字样的字和输出对得上；N64 / GameCube / Neo Geo / 世嘉 / 数字的约定；
+  预设自己的肩键名只在字样没换时用；每个预设 × 每种字样四颗肩键全开名字互不相同、设置页开关上写的和键帽一样（Wii 靠里那对 ZL ZR）；自定义存成一行再读回来一样（每个预设 + 随机 2000 套）、坏数据 / 认不出的项和取值 / base 认不出都不闪退）、TouchRouterTest（REGION_GAMEPAD 走手柄、成员不被直接命中、按下时定归属、onTarget、
+  releaseAll / setConfig / setGamepadConfig 全零、一帧一份、没用过不发、碰手柄控件静默停惯性）、HidTest（GAMEPAD_DESC 逐字段、报文逐字节、方向键对内核的 hat 换算、merge）、
+  ServerPartsTest（GamepadMux，含设备晚建好补写之后松开写得出去；CMD_GAMEPAD / CMD_GAMEPAD_CONFIG 不算心跳、GamepadConfig 往返 / 长了跳过 / 短了用默认）。
+  真机只读核对（手柄页进过一次以后）：`adb shell getevent -lp` 里 Douhua Gamepad 有 BTN_SOUTH…BTN_THUMBR、ABS_X / Y / Z / RZ / BRAKE / GAS / HAT0X / HAT0Y；
+  `adb shell dumpsys input` 里它的 Classes 有 GAMEPAD | JOYSTICK、KeyLayoutFile 是 Generic.kl。
 - 服务安全链路（真机）：`adb shell CLASSPATH=<apk 路径> app_process / dev.douhua.server.TestClient 0 2`
   ——接管屏幕 0 两秒、停发心跳，服务应在 3 秒内报"App 没有响应，已把触摸屏还给系统"。**测试期间外屏摸不动约 5 秒。**
   第三个参数写 `relay` 按蓝牙模式接管，服务转发回来的鼠标 / 键盘报文会打印出来；不用真人摸，可以在接管后往触摸屏节点
@@ -1052,6 +1133,28 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   也没在真手机上跑过。真机上要看的见"进行中"。
 
 ## 进行中（交接；做完删掉这一节）
+
+- **手柄页第二批（2026-11-01 写完，没提交，待真机验证；不升协议，但 GamepadTouch / Proto 两边共用，装完照样重启服务）**：见决策记录。只跑了离线测试
+  （手柄组件清单 341 项、手柄页摆法 209033 项、手柄触摸 130 项、服务端部件 274 项）和编译，设置页、手柄页一次都没看过。要看：
+  ① 设置 → 手柄：六个标签手机竖屏放不放得下（横着滑）、九种语言（德 / 法语长、阿拉伯文）；预览和网格小图（15 个预设 + 自定义，竖屏一行 3 格）认不认得出、名字放不放得下，
+  外观里换了主题回来跟着变；② 网格里点一个预设，回到手柄页就是它；⋯ 菜单"预设：…"轮到最后是"自定义"（存过才有）；手柄页 ⋯ 菜单的"设置"直接停在"手柄"页；
+  ③ 第一次点"自定义"从刚才选的预设复制；勾掉十字键 / 左摇杆、换面键排法 / 字样、肩键 / 扳机 / Select / Home / Start / L3 R3，预览马上变，回到手柄页一样；十字键和左摇杆都勾掉时左边空着；
+  "从某个预设重新开始…"整套换掉；④ 新预设：N64（C 键在 A 右上；按 C↑ 电脑上右摇杆往上推满、压在 C↑ C→ 中间是斜着，N64 模拟器里 C 键能用；Z 是左扳机）、GameCube（A 大 B 小、Z 在 R 里边、
+  模拟器里 A B X Y 对不对）、Wii 经典、MD 3 键、Neo Geo、街机 6 键；竖屏手机上 Neo Geo、街机 6 / 8 键缩得很小（要横屏用）；
+  ⑤ 手感参数：推满距离、死区、抗死区（电脑上手柄测试页看刚推出死区时的值）、浮动中心关、底座跟着走关、8 方向关、斜向宽度、十字键中间多大、关掉滑动换键（两颗中间一起按也没了）、
+  一起按的范围、滑出多远全松、两个咔嗒开关；改完回到手柄页马上生效、电脑上没有卡住的键；⑥ 蓝牙模式下"手柄"页顶上有那句提示、照样能设；"恢复默认设置"后回到 Xbox、自定义清掉；
+  ⑦ "Moonlight 里建议这样设"那段：Moonlight 里那几个设置的实际名字我没核对，说法对不上就改。
+  ⑧ 审查后改的（只跑了离线测试和编译）：自定义里"肩键 / 扳机"两个开关的字跟着这一套变（以 Wii 为底：肩键开关写 ZL / ZR、扳机开关写 L / R；换成 Xbox 字样变 LB RB / LT RT），
+  九种语言放不放得下；以 GameCube 为底打开肩键，左边新出来那颗是 ZL；N64 的 C 键、GameCube 的 B 在全尺寸 43.5dp、手机竖屏约 35dp，拇指按不按得准（不准就整组放大、重新排 C 键的菱形）。
+- **手柄页第一批（2026-11-01 写完，没提交，待真机验证；协议 19，装完要重启服务）**：见决策记录。只跑了离线测试（手柄触摸 121 项、手柄页摆法 86235 项、触摸分流 222 项、
+  滚轮倍率 / 手柄描述符 184 项、服务端部件 270 项）和编译，界面一次都没看过。要看：
+  ① 三星认不认 uhid 手柄（最要紧，先看）：进一次手柄页后跑只读的 `adb shell getevent -lp`、`adb shell dumpsys input`（看什么见"测试"一节），服务日志有"虚拟手柄已创建"；
+  ② Moonlight 分屏串流：先点一下 Moonlight 那半边（手柄键只发给有焦点的窗口），再在手柄页按键；电脑上开手柄测试页（W3C Gamepad API 那种）看键、十字键、两个摇杆、扳机对不对，
+  X / Y 有没有对调；Moonlight 设置里关掉"通过手柄模拟鼠标"（不然长按 Start 0.75 秒切鼠标模式）；③ 9 个预设在 930 × 350 那种分屏下半边、手机竖屏、横屏全屏各看一遍摆法、字、颜色（18 套主题），
+  Game Boy 竖屏；④ 手感：拇指压在两颗中间一起按、从 B 滚到 A、十字键斜向好不好按、摇杆滑出区域还在推、反向推马上生效、推到边咔嗒、连打"嗒"跟不跟手；
+  ⑤ 收尾：按着键时豆花退后台、拉通知栏、转屏、拖分隔条、返回触控板、换预设——电脑上没有卡住的键 / 摇杆；⑥ 开始串流前没进过手柄页时电脑上不多一个手柄，进过以后切回触控板页再进，
+  游戏里不弹"手柄断开"；⑦ 焦点在豆花自己窗口上时按 B / Home，豆花不被关、不回桌面；⑧ 测试机（服务找不到触摸屏、走本地分流）同样 getevent 看得到手柄、按键有报文；
+  ⑨ 按住 ⋯ 0.6 秒开菜单、短按不开；蓝牙模式下菜单里没有"手柄"、动作给提示；⑩ 开了 Moonlight 的"用设备震动模拟"后，游戏震动时按键"嗒"会不会把它打断。
 
 - **桌面模式的虚拟鼠标只留竖向滚轮倍率（2026-11-01 写完，没提交，待主力机验证；不改协议，改了服务，装完要重启服务）**：见决策记录。只跑了离线测试（HidTest 131 项）和编译。
   要看：桌面模式连上后服务日志（`/data/local/tmp/douhua-server.log`）里 Douhua Touchpad 那几行——

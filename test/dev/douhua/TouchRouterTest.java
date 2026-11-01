@@ -77,6 +77,17 @@ public final class TouchRouterTest {
             tickStops++;
         }
 
+        /** 手柄报文（十六进制），最后一份另记着。 */
+        final List<byte[]> pads = new ArrayList<>();
+
+        @Override
+        public void gamepad(byte[] report) {
+            pads.add(report.clone());
+            StringBuilder s = new StringBuilder("pad");
+            for (byte b : report) s.append(String.format("%02x", b & 0xFF));
+            log.add(s.toString());
+        }
+
         List<String> only(String prefix) {
             List<String> l = new ArrayList<>();
             for (String s : log) if (s.startsWith(prefix)) l.add(s);
@@ -142,6 +153,13 @@ public final class TouchRouterTest {
         stickNewConfigStopsTicks();
         stickTargetsAndNotKeys();
         stickStopsSpin();
+        gamepadRoutes();
+        gamepadOwnedAtDown();
+        gamepadTargets();
+        gamepadReleaseAllNeutral();
+        gamepadOneReportPerFrame();
+        gamepadUnusedSendsNothing();
+        gamepadStopsSpinSilently();
         System.err.println("触摸分流：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -1157,6 +1175,152 @@ public final class TouchRouterTest {
         long up2 = flick(t2, 1000);
         t2.down(1, 2015, 130, up2 + 30);
         check(!r2.pending, "碰三键条：惯性马上停");
+    }
+
+    // ═══════════ 手柄页 ═══════════
+
+    static final int GP_CLUSTER = Proto.gamepadId(Proto.GP_KIND_CLUSTER, 0, 0);
+    static final int GP_A = Proto.gamepadId(Proto.GP_KIND_BUTTON, 0, Proto.GP_SOUTH), GP_B = Proto.gamepadId(Proto.GP_KIND_BUTTON, 0, Proto.GP_EAST);
+    static final int GP_DPAD = Proto.gamepadId(Proto.GP_KIND_DPAD, 0, 8), GP_STICK = Proto.gamepadId(Proto.GP_KIND_STICK, 0, 0);
+    static final int GP_START = Proto.gamepadId(Proto.GP_KIND_BUTTON, 0, Proto.GP_START);
+
+    /**
+     * 触控板 (0,0)–(1000,1000) 加一页手柄（只为测分流，真的手柄页上没有触控板）：面键簇范围 (2000,0)–(2140,80) 排在两颗成员前面
+     * （A (2008,8)–(2066,66)、B (2074,8)–(2132,66)），十字键 (2200,0)–(2336,136)，摇杆 (2400,0)–(2550,150)，Start (2600,0)–(2664,44)。
+     */
+    static TouchRouter gamepadRouter(Rec r) {
+        TouchRouter t = new TouchRouter(r);
+        t.setConfig(new GestureEngine.Config(), 1);
+        t.setRegions(new TouchRouter.Region[]{
+                new TouchRouter.Region(Proto.REGION_GAMEPAD, GP_CLUSTER, 2000, 0, 2140, 80),
+                new TouchRouter.Region(Proto.REGION_GAMEPAD, GP_A, 2008, 8, 2066, 66),
+                new TouchRouter.Region(Proto.REGION_GAMEPAD, GP_B, 2074, 8, 2132, 66),
+                new TouchRouter.Region(Proto.REGION_GAMEPAD, GP_DPAD, 2200, 0, 2336, 136),
+                new TouchRouter.Region(Proto.REGION_GAMEPAD, GP_STICK, 2400, 0, 2550, 150),
+                new TouchRouter.Region(Proto.REGION_GAMEPAD, GP_START, 2600, 0, 2664, 44),
+                new TouchRouter.Region(Proto.REGION_PAD, PAD, 0, 0, 1000, 1000),
+        });
+        return t;
+    }
+
+    static Hid.Gamepad lastPad(Rec r) {
+        Hid.Gamepad g = new Hid.Gamepad();
+        g.parse(r.pads.isEmpty() ? new byte[Hid.GAMEPAD_REPORT_SIZE] : r.pads.get(r.pads.size() - 1));
+        return g;
+    }
+
+    /** REGION_GAMEPAD 走手柄：簇的范围排在成员前面，按在 A 上命中的是簇（成员永远不被直接命中），簇里挑 A。 */
+    static void gamepadRoutes() {
+        Rec r = new Rec();
+        TouchRouter t = gamepadRouter(r);
+        TouchRouter.Region hit = t.down(0, 2037, 37, 100);
+        check(hit != null && hit.id == GP_CLUSTER, "按在 A 上：命中的是簇（成员不被直接命中）");
+        check(lastPad(r).pressed(Proto.GP_SOUTH) && !lastPad(r).pressed(Proto.GP_EAST), "簇里挑最近的 A");
+        check(r.log.contains("b" + GP_A + ":" + Proto.BUTTON_DOWN), "报 A 按下（App 震\"嗒\"）");
+        t.move(0, 2103, 37);
+        t.frame(110);
+        check(lastPad(r).pressed(Proto.GP_EAST) && !lastPad(r).pressed(Proto.GP_SOUTH), "簇里滑到 B：换成 B");
+        t.up(0, 120);
+        check(Hid.Gamepad.neutral(r.pads.get(r.pads.size() - 1)), "抬起：全零");
+        t.down(1, 2630, 20, 200);
+        check(lastPad(r).pressed(Proto.GP_START), "单键：Start");
+        t.up(1, 210, true);
+        check(!lastPad(r).pressed(Proto.GP_START), "被取消的抬起：手柄照样松开");
+        check(r.only("m").isEmpty(), "手柄页的触摸不动鼠标");
+    }
+
+    /** 每根手指归谁在按下那一刻定：从十字键出发滑到 A 上不按 A（十字键照样认角度）；从 Start 滑到 B 上也不按 B。 */
+    static void gamepadOwnedAtDown() {
+        Rec r = new Rec();
+        TouchRouter t = gamepadRouter(r);
+        t.down(0, 2268, 68, 100);
+        t.move(0, 2037, 37);
+        t.frame(110);
+        Hid.Gamepad g = lastPad(r);
+        check(!g.pressed(Proto.GP_SOUTH) && g.hat == Hid.Gamepad.HAT_LEFT, "从十字键滑到 A 上：不按 A，十字键照样是左");
+        t.down(1, 2630, 20, 120);
+        t.move(1, 2103, 37);
+        t.frame(130);
+        check(lastPad(r).pressed(Proto.GP_START) && !lastPad(r).pressed(Proto.GP_EAST), "从 Start 滑到 B 上：Start 照样按着、不按 B");
+    }
+
+    static void gamepadTargets() {
+        Rec r = new Rec();
+        TouchRouter t = gamepadRouter(r);
+        check(t.onTarget(2037, 37) && t.onTarget(2268, 68) && t.onTarget(2475, 75) && t.onTarget(2630, 20),
+                "分屏透传：手柄控件都算豆花的");
+        eq(r.log.size(), 0, "只问不按：没有输出");
+    }
+
+    /** releaseAll、换参数（setConfig）、换手柄参数（setGamepadConfig）：手柄回中立，按下都配了松开。 */
+    static void gamepadReleaseAllNeutral() {
+        for (int k = 0; k < 3; k++) {
+            Rec r = new Rec();
+            TouchRouter t = gamepadRouter(r);
+            t.down(0, 2037, 37, 100);
+            t.down(1, 2300, 68, 100);
+            t.down(2, 2475, 75, 100);
+            t.move(2, 2475 + 40, 75);
+            t.down(3, 2630, 20, 100);
+            t.frame(110);
+            Hid.Gamepad g = lastPad(r);
+            check(g.pressed(Proto.GP_SOUTH) && g.hat != 0 && g.lx != 0 && g.pressed(Proto.GP_START), "按上了");
+            String what = k == 0 ? "releaseAll" : k == 1 ? "setConfig" : "setGamepadConfig";
+            if (k == 0) t.releaseAll();
+            else if (k == 1) t.setConfig(new GestureEngine.Config(), 1);
+            else t.setGamepadConfig(new GamepadConfig());
+            check(Hid.Gamepad.neutral(r.pads.get(r.pads.size() - 1)), what + "：手柄全零");
+            int downs = 0, ups = 0;
+            for (String s : r.log) {
+                if (!s.startsWith("b")) continue;
+                int id = Integer.parseInt(s.substring(1, s.indexOf(':')));
+                if (!Proto.isGamepadId(id)) continue;
+                if (s.endsWith(":" + Proto.BUTTON_DOWN)) downs++;
+                else ups++;
+            }
+            eq(ups, downs, what + "：每个手柄键的按下都配了松开");
+            int n = r.pads.size();
+            t.move(2, 2475 - 40, 75);
+            t.frame(130);
+            t.up(0, 140);
+            t.up(2, 140);
+            eq(r.pads.size(), n, what + "之后迟到的移动、抬起：手柄什么都不发");
+        }
+    }
+
+    static void gamepadOneReportPerFrame() {
+        Rec r = new Rec();
+        TouchRouter t = gamepadRouter(r);
+        t.down(2, 2475, 75, 100);
+        int n = r.pads.size();
+        t.move(2, 2480, 75);
+        t.move(2, 2490, 75);
+        t.move(2, 2500, 80);
+        eq(r.pads.size(), n, "摇杆轴变了：攒到这一帧报完");
+        t.frame(110);
+        eq(r.pads.size(), n + 1, "一帧只出一份手柄报文");
+    }
+
+    static void gamepadUnusedSendsNothing() {
+        Rec r = new Rec();
+        TouchRouter t = gamepadRouter(r);
+        t.releaseAll();
+        t.setConfig(new GestureEngine.Config(), 1);
+        t.setGamepadConfig(new GamepadConfig());
+        eq(r.pads.size(), 0, "没用过手柄：收尾不发手柄报文（服务那边不会因此建手柄）");
+    }
+
+    /** 惯性转着时碰手柄控件：马上停，不震"刹住"（控件自己会"嗒"），这一下照常生效。 */
+    static void gamepadStopsSpinSilently() {
+        Rec r = new Rec();
+        TouchRouter t = gamepadRouter(r);
+        long up = flick(t, 1000);
+        check(r.pending, "惯性转着");
+        int at = r.log.size();
+        t.down(1, 2630, 20, up + 30);
+        check(!r.pending, "碰手柄控件：惯性马上停");
+        check(!r.log.subList(at, r.log.size()).contains(SPIN_CATCH), "碰手柄控件停：不震\"刹住\"");
+        check(lastPad(r).pressed(Proto.GP_START), "碰的那一下照常生效（Start 按下）");
     }
 
     // ═══════════ 工具 ═══════════

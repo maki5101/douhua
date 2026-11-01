@@ -69,7 +69,7 @@ public final class TrackPointTest {
         scrollSmooth();
         stops();
         idlePause();
-        leverSameAsStickScroll();
+        leverSlowerThanStick();
         leverGate();
         leverNoTapNoTexture();
         leverModes();
@@ -457,12 +457,13 @@ public final class TrackPointTest {
         return r;
     }
 
-    static void leverSameAsStickScroll() {
+    /** 滚动杆比"按着中键推红点"慢：自己一条曲线（LEVER_*），位移从挪出轻点容差那一圈起算（用户 2026-11-01 嫌滚动杆太快）。 */
+    static void leverSlowerThanStick() {
         for (boolean inertia : new boolean[]{false, true}) {
             for (boolean smooth : new boolean[]{false, true}) {
                 GestureEngine.Config c = cfg(inertia);
                 Rec lv = leverRun(c, 0, 15, smooth);
-                // 红点按着中键往下推同样远：同一条曲线、同一套积分
+                // 红点按着中键往下推同样远
                 Rec st = new Rec();
                 TrackPoint t = stick(st, c);
                 t.down(0, 0, 0);
@@ -470,17 +471,24 @@ public final class TrackPointTest {
                 t.frame(0);
                 for (long now = 8; now <= 1000; now += 8) t.tick(now, true, false, smooth);
                 String what = "（负惯性" + (inertia ? "开" : "关") + "、" + (smooth ? "连续" : "按格") + "）";
-                check(lv.wheel == st.wheel && lv.pan == st.pan && lv.wheel < 0, "滚动杆往下推 15dp 和按着中键推红点出的一样：" + lv.wheel + " vs " + st.wheel + what);
+                check(lv.wheel < 0 && lv.wheel > st.wheel && lv.pan == 0, "滚动杆往下推 15dp 比按着中键推红点慢：" + lv.wheel + " vs " + st.wheel + what);
                 check(lv.moves == 0, "滚动杆不出位移" + what);
             }
         }
-        float notches = TrackPoint.curve(TrackPoint.level(15), TrackPoint.SCROLL_CRAWL, TrackPoint.SCROLL_PLATEAU, TrackPoint.SCROLL_MAX);
-        Rec down = leverRun(cfg(false), 0, 15, false);
+        GestureEngine.Config c = cfg(false);
+        float notches = TrackPoint.leverRate(15, c.tapSlopDp);
+        Rec down = leverRun(c, 0, 15, false);
         check(Math.abs(-down.wheel / (float) Hid.WHEEL_UNIT - notches) <= 1, "滚动杆 1 秒滚了 " + (-down.wheel / Hid.WHEEL_UNIT) + " 格（应约 " + notches + "）");
-        Rec up = leverRun(cfg(false), 0, -15, false);
+        check(TrackPoint.leverRate(c.tapSlopDp + TrackPoint.DEAD_DP, c.tapSlopDp) == 0, "刚挪出轻点容差：还在死区里，从 0 起");
+        Rec start = leverRun(c, 0, c.tapSlopDp + 2, false);
+        check(start.wheel == 0, "挪出容差 2dp：1 秒一格都不滚（以前一下就在曲线中段）");
+        check(TrackPoint.leverRate(20, c.tapSlopDp) < TrackPoint.curve(TrackPoint.level(20), TrackPoint.SCROLL_CRAWL, TrackPoint.SCROLL_PLATEAU, TrackPoint.SCROLL_MAX) / 2,
+                "挪 20dp：不到按着中键推红点的一半（" + TrackPoint.leverRate(20, c.tapSlopDp) + " 格 / 秒）");
+        Rec up = leverRun(c, 0, -15, false);
         check(up.wheel > 0 && up.pan == 0, "滚动杆往上推 = 往上翻");
-        Rec far = leverRun(cfg(false), 0, 60, false);
-        check(-far.wheel / Hid.WHEEL_UNIT >= TrackPoint.SCROLL_MAX - 1, "推到底封顶：" + (-far.wheel / Hid.WHEEL_UNIT) + " 格 / 秒");
+        Rec far = leverRun(c, 0, 60, false);
+        int farN = -far.wheel / Hid.WHEEL_UNIT;
+        check(farN >= TrackPoint.LEVER_MAX - 1 && farN <= TrackPoint.LEVER_MAX + 1, "推到底封顶在滚动杆的最快：" + farN + " 格 / 秒");
         Rec mostly = leverRun(cfg(false), 5, 14, false);
         check(mostly.pan == 0 && mostly.wheel < 0, "滚动杆竖着为主：只滚竖向");
         Rec right = leverRun(cfg(false), 15, 0, false);
@@ -492,7 +500,7 @@ public final class TrackPointTest {
         check(Math.abs(twice.wheel - 2 * once.wheel) <= 2, "滚动杆跟灵敏度：" + once.wheel + " → " + twice.wheel);
     }
 
-    /** 先挪出轻点容差才开始；开始以后照曲线：挪回死区停、再推出死区接着（不用再挪出容差）。 */
+    /** 先挪出轻点容差才开始；位移从容差那一圈起算：离按下点容差 + 死区以内不滚，推出去照曲线滚，挪回来就停。 */
     static void leverGate() {
         GestureEngine.Config c = cfg(false);
         Rec r = new Rec();
@@ -514,7 +522,15 @@ public final class TrackPointTest {
             now += 8;
             t.tick(now, true, false, true);
         }
-        check(r.wheel < 0, "开始以后往下滚：" + r.wheel);
+        check(r.scrolls == 0, "刚挪出容差（位移从容差那一圈起算，还在死区里）：开始了但还不滚");
+        float out = c.tapSlopDp + TrackPoint.DEAD_DP + 3;
+        t.move(0, out);
+        t.frame(now);
+        for (long end = now + 500; now < end; ) {
+            now += 8;
+            t.tick(now, true, false, true);
+        }
+        check(r.wheel < 0, "推出容差 + 死区：往下滚：" + r.wheel);
         t.move(0, TrackPoint.DEAD_DP - 0.5f);   // 挪回死区
         t.frame(now);
         int w = r.wheel;
@@ -523,13 +539,20 @@ public final class TrackPointTest {
             t.tick(now, true, false, true);
         }
         check(r.wheel == w, "挪回死区：停");
-        t.move(0, inside);   // 再推出死区（没出轻点容差）：开始过了，接着滚
+        t.move(0, inside);   // 推到容差里：滚动杆的位移从容差那一圈起算，这里还是 0
         t.frame(now);
         for (long end = now + 500; now < end; ) {
             now += 8;
             t.tick(now, true, false, true);
         }
-        check(r.wheel < w, "开始过了，再推出死区接着滚（不用再挪出容差）");
+        check(r.wheel == w, "推回容差以内：不滚（滚动杆离按下点容差 + 死区以内都不滚）");
+        t.move(0, out);
+        t.frame(now);
+        for (long end = now + 500; now < end; ) {
+            now += 8;
+            t.tick(now, true, false, true);
+        }
+        check(r.wheel < w && t.started(), "再推出容差 + 死区：接着滚");
         t.up(now, false);
         check(!t.started(), "抬起后不算开始了");
         // 红点没有这道门槛：死区外就走

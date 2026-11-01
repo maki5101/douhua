@@ -156,7 +156,7 @@ public final class TouchRouterTest {
         stickHitIsCircle();
         stickStopsSpin();
         leverScrollsBothWays();
-        leverSameCurveAsStick();
+        leverSlowerThanStick();
         leverDeadZoneClicks();
         leverStartedNoClick();
         leverCanceledAndReleaseAll();
@@ -1360,8 +1360,8 @@ public final class TouchRouterTest {
         check(!u.only("m").contains("m4"), "往上滚过了：也不补单击");
     }
 
-    /** 同样推 15dp、同样的节拍：中键自己推和"按住中键推红点"出的滚轮一样多（同一条曲线、同一套积分）。 */
-    static void leverSameCurveAsStick() {
+    /** 同样推 15dp、同样的节拍：中键自己推比"按住中键推红点"慢（滚动杆自己一条曲线，位移从挪出轻点容差起算），量照 TrackPoint.leverRate。 */
+    static void leverSlowerThanStick() {
         for (boolean smooth : new boolean[]{false, true}) {
             GestureEngine.Config c = smooth ? smoothCfg() : new GestureEngine.Config();
             Rec a = new Rec();
@@ -1372,7 +1372,9 @@ public final class TouchRouterTest {
             TouchRouter tb = stickRouter(b, c);
             lever(tb, 1, 0, 15, 1000, 1000);   // 中键自己推
             int wa = wheelSum(a, 0), wb = wheelSum(b, 0);
-            check(wa == wb && wb < 0, (smooth ? "连续" : "按格") + "：中键自己推和按住中键推红点一样多（" + wb + " vs " + wa + "）");
+            check(wb < 0 && wb > wa, (smooth ? "连续" : "按格") + "：中键自己推比按住中键推红点慢（" + wb + " vs " + wa + "）");
+            float want = TrackPoint.leverRate(15, c.tapSlopDp);
+            check(Math.abs(-wb / (float) Hid.WHEEL_UNIT - want) <= 1, (smooth ? "连续" : "按格") + "：1 秒 15dp 滚了 " + (-wb / (float) Hid.WHEEL_UNIT) + " 格（应约 " + want + "）");
         }
     }
 
@@ -1452,7 +1454,7 @@ public final class TouchRouterTest {
         TouchRouter t = stickRouter(r);
         long now = lever(t, 1, 0, 270, 1000, 1000);   // 挪到 (2050, 400)：什么区域都不是
         int notches = -wheelSum(r, 0) / Hid.WHEEL_UNIT;
-        check(notches >= TrackPoint.SCROLL_MAX - 1, "挪出中键很远：照样滚、推到底封顶（" + notches + " 格 / 秒）");
+        check(notches >= TrackPoint.LEVER_MAX - 1 && notches <= TrackPoint.LEVER_MAX + 1, "挪出中键很远：照样滚、封顶在滚动杆的最快（" + notches + " 格 / 秒）");
         t.move(1, 2050, 50);   // 挪到红点上（往上 80dp）
         t.frame(now);
         int at = r.log.size();
@@ -1488,8 +1490,8 @@ public final class TouchRouterTest {
         }
         check(w > 0 && wheelSum(r, 0) > w, "三键条的中键往上挪：往上翻，挪进触控板也还是滚动杆");
         check(!r.log.contains("m0 d"), "挪进触控板不动光标");
-        // 1 秒、15dp：和红点那条曲线一样多（密度 2 下也按 dp）
-        float notches = TrackPoint.curve(TrackPoint.level(15), TrackPoint.SCROLL_CRAWL, TrackPoint.SCROLL_PLATEAU, TrackPoint.SCROLL_MAX);
+        // 1 秒、15dp：照滚动杆那条曲线（密度 2 下也按 dp）
+        float notches = TrackPoint.leverRate(15, new GestureEngine.Config().tapSlopDp);
         check(Math.abs(w / (float) Hid.WHEEL_UNIT - notches) <= 1, "密度 2：1 秒 15dp 滚了 " + w / Hid.WHEEL_UNIT + " 格（应约 " + notches + "）");
         t.up(3, now + 4);
         check(!r.only("m").contains("m4") && !r.ticking, "松开：不补单击、节拍停");
@@ -1677,8 +1679,12 @@ public final class TouchRouterTest {
         t2.move(2, 2050, 65);   // 红点也往下 15dp
         t2.frame(1000);
         for (long now = 1008; now <= 2000; now += 8) t2.onTick(now);
-        int w1 = wheelSum(one, 0), w2 = wheelSum(both, 0);
-        check(Math.abs(w2 - 2 * w1) <= 2, "中键和红点一起往下推：滚轮叠加成两倍（" + w1 + " → " + w2 + "）");
+        Rec st = new Rec();   // 只有红点那一路：按住中键不动、推红点
+        TouchRouter ts = stickRouter(st, c);
+        ts.down(1, 2050, 130, 1000);
+        push(ts, 2, 0, 15, 1000, 1000);
+        int w1 = wheelSum(one, 0), w2 = wheelSum(both, 0), ws = wheelSum(st, 0);
+        check(Math.abs(w2 - (w1 + ws)) <= 2, "中键和红点一起往下推：滚轮叠加（滚动杆 " + w1 + " + 红点 " + ws + " → " + w2 + "）");
         Rec pad = new Rec();
         TouchRouter tp = stickRouter(pad, c);
         tp.down(1, 2050, 130, 1000);
@@ -1746,7 +1752,7 @@ public final class TouchRouterTest {
         t.move(1, 2050, 146);
         t.frame(now + 10);
         check(r.ticking && r.tickStarts == 2, "再动：重新开节拍");
-        t.onTick(now + 18);
+        for (long x = now + 18; x <= now + 1018; x += 8) t.onTick(x);   // 滚动杆慢：多给一秒攒满一格
         check(wheelSum(r, 0) < w, "接着滚");
         t.up(1, now + 30);
         check(!r.ticking && r.tickStarts == r.tickStops && !r.only("m").contains("m4"), "松开：节拍停、滚过了不补单击");
@@ -1915,8 +1921,10 @@ public final class TouchRouterTest {
             now += 8;
             tb.onTick(now);
         }
-        Rec ref = new Rec();   // 红点那一路从头推 696ms 该出多少：同一条曲线，等于一根滚动杆从头推 696ms
-        lever(stickRouter(ref, c), 1, 0, 15, 1000, 696);
+        Rec ref = new Rec();   // 红点那一路从头推 696ms 该出多少：按住中键不动、红点从头推 696ms
+        TouchRouter tr = stickRouter(ref, c);
+        tr.down(1, 2050, 130, 1000);
+        push(tr, 2, 0, 15, 1000, 696);
         int wl = wheelSum(lone, 0), wb = wheelSum(both, 0), wr = wheelSum(ref, 0);
         check(w300 < 0 && wb < wl && Math.abs(wb - (wl + wr)) <= 3,
                 "滚动杆先滚、后加红点：不让位，叠加（只有滚动杆 " + wl + " + 红点 " + wr + "，一起 " + wb + "）");
@@ -1927,11 +1935,11 @@ public final class TouchRouterTest {
         check(wheelSum(both, at) < 0, "红点松了：滚动杆接着滚");
         tb.up(1, now + 200);
         check(!both.ticking && both.tickStarts == both.tickStops, "都松了：节拍停、配对");
-        // 按格：挪了 7dp（挪出了轻点容差）、40ms 还没攒满一格，这时加红点：滚动杆已经开始了，不让位
+        // 按格：挪了 12dp（挪出了轻点容差、也出了滚动杆的死区）、40ms 还没攒满一格，这时加红点：滚动杆已经开始了，不让位
         Rec n = new Rec();
         TouchRouter tn = stickRouter(n);
-        long n0 = lever(tn, 1, 0, 7, 1000, 40);
-        eq(wheelSum(n, 0), 0, "按格：滚动杆挪 7dp、40ms 还没出滚轮");
+        long n0 = lever(tn, 1, 0, 12, 1000, 40);
+        eq(wheelSum(n, 0), 0, "按格：滚动杆挪 12dp、40ms 还没出滚轮");
         tn.down(2, 2050, 50, n0);
         tn.move(2, 2050, 65);
         tn.frame(n0);
@@ -1940,7 +1948,7 @@ public final class TouchRouterTest {
         check(n.ticking, "滚动杆开始了以后红点先出了滚轮：滚动杆不让位，节拍照开");
         int at3 = n.log.size();
         for (long x = n0 + 1008; x <= n0 + 2000; x += 8) tn.onTick(x);
-        check(wheelSum(n, at3) < 0, "红点松了：滚动杆接着滚（7dp，爬行）");
+        check(wheelSum(n, at3) < 0, "红点松了：滚动杆接着滚（12dp，爬行）");
         tn.up(1, n0 + 2000);
     }
 

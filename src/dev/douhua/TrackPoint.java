@@ -28,9 +28,10 @@ package dev.douhua;
  * 兜底：按着但 {@link #IDLE_PAUSE_MS} 没收到这根手指的任何事件就暂停（不出报文、节拍可以停），这根手指再动就接着。
  *
  * 中键滚动杆（{@link #TrackPoint(Output, boolean)} 的 lever，2026-11-01）：TouchRouter 给按在中键（三个鼠标键的中键）上的第一根手指另开一个，
- * 让这根手指自己也能当"按住中键推红点"用——手指离按下点的位移当推力，同一条滚动曲线、同一套节拍积分。和红点的不同只有三处：
+ * 让这根手指自己也能当"按住中键推红点"用——手指离按下点的位移当推力，同一套节拍积分。和红点的不同有四处：
  * 一直是滚动模式（tick 的 scroll 不看）；抬起不算轻点（中键单击由 TouchRouter 按"滚过没有"补）；这次按下离按下点先挪出轻点容差
- * （{@link GestureEngine.Config#tapSlopDp}）才开始出（{@link #started}），之后照曲线、挪回死区照样停，不用再挪出一次——
+ * （{@link GestureEngine.Config#tapSlopDp}）才算开始（{@link #started}）；速度慢一档（LEVER_*，位移从轻点容差那一圈起算，
+ * 离按下点容差 + 死区以内都不滚、挪回来就停，用户 2026-11-01 嫌照红点的曲线太快）——
  * 中键那根手指还要能点中键单击，按下 / 抬起时指肚在触摸屏上滚一下常有两三 dp（估的，没量过），只看 2.5dp 的死区的话，连续滚动开着时点一下中键会先滚出一点、
  * 单击也就没了（同触控板上的中键滚动：挪出轻点容差才开始）。
  *
@@ -62,6 +63,11 @@ final class TrackPoint {
     static final float MOVE_CRAWL = 40, MOVE_PLATEAU = 450, MOVE_MAX = 1200;
     /** 中键滚动的速度（格 / 秒）：原来 2 / 10 / 40，用户 2026-11-01 嫌慢，整体翻倍。 */
     static final float SCROLL_CRAWL = 4, SCROLL_PLATEAU = 20, SCROLL_MAX = 80;
+    /**
+     * 中键滚动杆的滚动速度（格 / 秒）：红点翻倍之前那一组。用户 2026-11-01 试了滚动杆说"这个滚动速度太快了"——手指在键上一划就是二三十 dp，
+     * 照红点那条曲线（还是从按下点量、挪出轻点容差那一下已经在曲线中段）一下就到平台 / 最快。滚动杆的位移从挪出轻点容差那一圈起算（{@link #leverLevel}）。
+     */
+    static final float LEVER_CRAWL = 2, LEVER_PLATEAU = 10, LEVER_MAX = 40;
     /** 负惯性：增益、滞后的时间常数（毫秒）。 */
     static final float INERTIA_GAIN = 3, INERTIA_TAU_MS = 10;
     /** 一拍最多按这么久积分（主线程 / 定时器卡了一下时不窜）。 */
@@ -200,7 +206,8 @@ final class TrackPoint {
         lastTick = t;
         dt = Math.min(dt, MAX_DT_MS);
         float dx = x - ox, dy = y - oy;
-        float m = (float) Math.hypot(dx, dy);
+        float dist = (float) Math.hypot(dx, dy);
+        float m = lever ? leverLevel(dist, cfg.tapSlopDp) : dist;   // 滚动杆：从挪出轻点容差那一圈起算，开始那一下是 0
         lag += dt / (INERTIA_TAU_MS + dt) * (m - lag);
         if (scroll != lastScroll) {   // 中键刚按下 / 松开：另一种模式攒的零头不带过来
             lastScroll = scroll;
@@ -211,9 +218,10 @@ final class TrackPoint {
         if (m <= DEAD_DP) return true;   // 死区：不动（负惯性也不把抖动放大出去）
         float z = cfg.stickInertia ? Math.max(0, m + INERTIA_GAIN * (m - lag)) : m;
         float u = level(z);
-        float ux = dx / m, uy = dy / m;
+        float ux = dx / dist, uy = dy / dist;   // 方向照按下点量（dist ≥ m > 死区，不会除零）
         if (scroll) {
-            float notches = curve(u, SCROLL_CRAWL, SCROLL_PLATEAU, SCROLL_MAX) * cfg.stickSpeed * dt / 1000f;
+            float rate = lever ? curve(u, LEVER_CRAWL, LEVER_PLATEAU, LEVER_MAX) : curve(u, SCROLL_CRAWL, SCROLL_PLATEAU, SCROLL_MAX);
+            float notches = rate * cfg.stickSpeed * dt / 1000f;
             float ax = Math.abs(ux), ay = Math.abs(uy);
             boolean onlyV = ay >= AXIS_DOMINANCE * ax, onlyH = ax >= AXIS_DOMINANCE * ay;
             float vy = onlyH ? 0 : uy, vx = onlyV ? 0 : ux;
@@ -275,6 +283,16 @@ final class TrackPoint {
             }
         }
         if (tick) out.haptic(GestureEngine.HAPTIC_TICK);
+    }
+
+    /** 中键滚动杆当"推力"的位移（dp）：离按下点的距离减去轻点容差（挪出容差才开始滚，那一下从 0 起，不一下跳到曲线中段），不小于 0。 */
+    static float leverLevel(float dist, float slop) {
+        return Math.max(0, dist - slop);
+    }
+
+    /** 中键滚动杆离按下点 dist（dp）时每秒滚几格（灵敏度 1、没负惯性），测试和文档用。 */
+    static float leverRate(float dist, float slop) {
+        return curve(level(leverLevel(dist, slop)), LEVER_CRAWL, LEVER_PLATEAU, LEVER_MAX);
     }
 
     /** 位移（dp）→ 曲线的横轴 u：死区里 ≤ 0，推到底 = 1。 */

@@ -26,6 +26,14 @@ package dev.douhua;
  * （有持续轻震）；滚动 = 咔嗒；轻点 = 点一下。
  *
  * 兜底：按着但 {@link #IDLE_PAUSE_MS} 没收到这根手指的任何事件就暂停（不出报文、节拍可以停），这根手指再动就接着。
+ *
+ * 中键滚动杆（{@link #TrackPoint(Output, boolean)} 的 lever，2026-11-01）：TouchRouter 给按在中键（三个鼠标键的中键）上的第一根手指另开一个，
+ * 让这根手指自己也能当"按住中键推红点"用——手指离按下点的位移当推力，同一条滚动曲线、同一套节拍积分。和红点的不同只有三处：
+ * 一直是滚动模式（tick 的 scroll 不看）；抬起不算轻点（中键单击由 TouchRouter 按"滚过没有"补）；这次按下离按下点先挪出轻点容差
+ * （{@link GestureEngine.Config#tapSlopDp}）才开始出（{@link #started}），之后照曲线、挪回死区照样停，不用再挪出一次——
+ * 中键那根手指还要能点中键单击，按下 / 抬起时指肚在触摸屏上滚一下常有两三 dp（估的，没量过），只看 2.5dp 的死区的话，连续滚动开着时点一下中键会先滚出一点、
+ * 单击也就没了（同触控板上的中键滚动：挪出轻点容差才开始）。
+ *
  * 不加锁：宿主保证同一时刻只有一个线程在调（同 TouchRouter）。
  */
 final class TrackPoint {
@@ -66,9 +74,13 @@ final class TrackPoint {
     static final float AXIS_DOMINANCE = 2;
 
     private final Output out;
+    /** 中键滚动杆（见类注释）：只滚动、抬起不点左键、先挪出轻点容差才开始。红点是 false。 */
+    private final boolean lever;
     private GestureEngine.Config cfg = new GestureEngine.Config();
 
     private boolean active;
+    /** 这次按下已经开始出东西了（红点一按下就是；滚动杆挪出过轻点容差才是）。 */
+    private boolean started;
     /** 暂停了（太久没事件）：不出报文，再动就接着。 */
     private boolean paused;
     /** 按下点、当前位置（dp）。 */
@@ -91,7 +103,13 @@ final class TrackPoint {
     private long lastTexture = Long.MIN_VALUE / 2;
 
     TrackPoint(Output out) {
+        this(out, false);
+    }
+
+    /** lever = 中键滚动杆（见类注释）。 */
+    TrackPoint(Output out, boolean lever) {
         this.out = out;
+        this.lever = lever;
     }
 
     /** 新参数（灵敏度、轻点、负惯性、颗粒、咔嗒、轻点的时长和容差）。正按着的照旧，从下一拍起按新的算。 */
@@ -103,10 +121,16 @@ final class TrackPoint {
         return active;
     }
 
+    /** 这次按下开始出东西了没有：红点按着就是；中键滚动杆要先挪出轻点容差（TouchRouter 据此认"滚过了"、松开不补中键单击）。 */
+    boolean started() {
+        return active && started;
+    }
+
     /** 手指按在红点上（dp、毫秒）。 */
     void down(float px, float py, long t) {
         active = true;
         paused = false;
+        started = !lever;
         ox = x = px;
         oy = y = py;
         downT = lastTick = lastEvent = t;
@@ -124,6 +148,7 @@ final class TrackPoint {
         x = px;
         y = py;
         maxTravel = Math.max(maxTravel, (float) Math.hypot(x - ox, y - oy));
+        if (maxTravel > cfg.tapSlopDp) started = true;   // 滚动杆：挪出轻点容差，开始滚（红点本来就是 true）
         touched = true;
     }
 
@@ -140,12 +165,12 @@ final class TrackPoint {
         return true;
     }
 
-    /** 手指抬起。没被取消、开着"轻点 = 左键"、够快、没挪远：点一下左键（"嗒"一下）。 */
+    /** 手指抬起。没被取消、开着"轻点 = 左键"、够快、没挪远：点一下左键（"嗒"一下）。中键滚动杆不算轻点。 */
     void up(long t, boolean canceled) {
         if (!active) return;
         active = false;
         paused = false;
-        if (canceled || !cfg.stickTap) return;
+        if (canceled || lever || !cfg.stickTap) return;
         if (t - downT <= cfg.tapMaxMs && maxTravel <= cfg.tapSlopDp) {
             out.haptic(GestureEngine.HAPTIC_CLICK);
             out.click();
@@ -159,12 +184,13 @@ final class TrackPoint {
     }
 
     /**
-     * 一拍：按到 t 为止实际过去的时间积分，出位移（或者滚轮）。scroll = 中键按着（滚动模式）；buttons = 按着鼠标键（拖动，不发颗粒）；
+     * 一拍：按到 t 为止实际过去的时间积分，出位移（或者滚轮）。scroll = 中键按着（滚动模式；中键滚动杆一直是）；buttons = 按着鼠标键（拖动，不发颗粒）；
      * smooth = 滚动按连续模式出（GestureEngine.smoothNow：开着连续滚动、没锁着 Ctrl）。
      * 返回 false = 没按着或者暂停了，宿主可以停节拍。
      */
     boolean tick(long t, boolean scroll, boolean buttons, boolean smooth) {
         if (!active || paused) return false;
+        if (lever) scroll = true;
         if (t - lastEvent > IDLE_PAUSE_MS) {
             paused = true;
             return false;
@@ -181,6 +207,7 @@ final class TrackPoint {
             remX = remY = wheelRem = panRem = 0;
             tickAccWheel = tickAccPan = 0;
         }
+        if (!started) return true;   // 滚动杆还没挪出轻点容差：不滚（滞后照样跟着，开始那一下不突变）
         if (m <= DEAD_DP) return true;   // 死区：不动（负惯性也不把抖动放大出去）
         float z = cfg.stickInertia ? Math.max(0, m + INERTIA_GAIN * (m - lag)) : m;
         float u = level(z);

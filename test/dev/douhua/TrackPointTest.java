@@ -7,7 +7,9 @@ import java.util.List;
  * TrackPoint（小红点）的离线测试：速度曲线（死区、单调、平台、封顶、方案里算的几个点、灵敏度）、按节拍积分（8ms / 12ms / 抖动的节拍
  * 总量对、余数不丢、一拍最多算 50ms）、负惯性（起步更快、按住不动时一样快、往回收手指时不反向）、轻点 = 左键（快、近才算，关掉 / 取消不算，
  * 轻点过程中不出位移）、颗粒（每 30 计数一颗、最短间隔、按着键 / 滚动 / 关掉时不发）、中键滚动（只出滚轮、方向、主方向、按格 / 连续、咔嗒）、
- * 停（抬起 / 取消后迟到的节拍什么都不出）、兜底暂停（20 秒没事件停、再动接着）。数字只证明代码照设计跑，证明不了手感。
+ * 停（抬起 / 取消后迟到的节拍什么都不出）、兜底暂停（20 秒没事件停、再动接着）；
+ * 中键滚动杆模式（一直是滚动、和红点的中键滚动出的量一样、先挪出轻点容差才开始、开始以后挪回死区停 / 再推接着、不算轻点、不发颗粒、按格 / 连续、停、暂停）。
+ * 数字只证明代码照设计跑，证明不了手感。
  */
 public final class TrackPointTest {
     private static int failures;
@@ -67,6 +69,11 @@ public final class TrackPointTest {
         scrollSmooth();
         stops();
         idlePause();
+        leverSameAsStickScroll();
+        leverGate();
+        leverNoTapNoTexture();
+        leverModes();
+        leverStopsAndPauses();
         System.err.println("小红点：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -429,6 +436,176 @@ public final class TrackPointTest {
         check(t.frame(now + 20), "再动：接着（宿主重新开节拍）");
         check(t.tick(now + 28, false, false, false) && r.dx > dx, "接着走，暂停的那一段不补（" + (r.dx - dx) + "）");
         check(r.dx - dx <= 5, "暂停那一段不补：只走了 8ms 的量");
+    }
+
+    // ── 中键滚动杆 ──
+
+    static TrackPoint lever(Rec r, GestureEngine.Config c) {
+        TrackPoint t = new TrackPoint(r, true);
+        t.setConfig(c);
+        return t;
+    }
+
+    /** 滚动杆按在 (0, 0)、挪到 (dx, dy)，8ms 一拍跑 1 秒；scroll 参数故意给 false（滚动杆不看它）。 */
+    static Rec leverRun(GestureEngine.Config c, float dx, float dy, boolean smooth) {
+        Rec r = new Rec();
+        TrackPoint t = lever(r, c);
+        t.down(0, 0, 0);
+        t.move(dx, dy);
+        t.frame(0);
+        for (long now = 8; now <= 1000; now += 8) t.tick(now, false, false, smooth);
+        return r;
+    }
+
+    static void leverSameAsStickScroll() {
+        for (boolean inertia : new boolean[]{false, true}) {
+            for (boolean smooth : new boolean[]{false, true}) {
+                GestureEngine.Config c = cfg(inertia);
+                Rec lv = leverRun(c, 0, 15, smooth);
+                // 红点按着中键往下推同样远：同一条曲线、同一套积分
+                Rec st = new Rec();
+                TrackPoint t = stick(st, c);
+                t.down(0, 0, 0);
+                t.move(0, 15);
+                t.frame(0);
+                for (long now = 8; now <= 1000; now += 8) t.tick(now, true, false, smooth);
+                String what = "（负惯性" + (inertia ? "开" : "关") + "、" + (smooth ? "连续" : "按格") + "）";
+                check(lv.wheel == st.wheel && lv.pan == st.pan && lv.wheel < 0, "滚动杆往下推 15dp 和按着中键推红点出的一样：" + lv.wheel + " vs " + st.wheel + what);
+                check(lv.moves == 0, "滚动杆不出位移" + what);
+            }
+        }
+        float notches = TrackPoint.curve(TrackPoint.level(15), TrackPoint.SCROLL_CRAWL, TrackPoint.SCROLL_PLATEAU, TrackPoint.SCROLL_MAX);
+        Rec down = leverRun(cfg(false), 0, 15, false);
+        check(Math.abs(-down.wheel / (float) Hid.WHEEL_UNIT - notches) <= 1, "滚动杆 1 秒滚了 " + (-down.wheel / Hid.WHEEL_UNIT) + " 格（应约 " + notches + "）");
+        Rec up = leverRun(cfg(false), 0, -15, false);
+        check(up.wheel > 0 && up.pan == 0, "滚动杆往上推 = 往上翻");
+        Rec far = leverRun(cfg(false), 0, 60, false);
+        check(-far.wheel / Hid.WHEEL_UNIT >= TrackPoint.SCROLL_MAX - 1, "推到底封顶：" + (-far.wheel / Hid.WHEEL_UNIT) + " 格 / 秒");
+        Rec mostly = leverRun(cfg(false), 5, 14, false);
+        check(mostly.pan == 0 && mostly.wheel < 0, "滚动杆竖着为主：只滚竖向");
+        Rec right = leverRun(cfg(false), 15, 0, false);
+        check(right.pan > 0 && right.wheel == 0, "滚动杆往右推 = 往右翻");
+        GestureEngine.Config fast = cfg(false);
+        fast.stickSpeed = 2;
+        Rec twice = leverRun(fast, 0, 15, true);
+        Rec once = leverRun(cfg(false), 0, 15, true);
+        check(Math.abs(twice.wheel - 2 * once.wheel) <= 2, "滚动杆跟灵敏度：" + once.wheel + " → " + twice.wheel);
+    }
+
+    /** 先挪出轻点容差才开始；开始以后照曲线：挪回死区停、再推出死区接着（不用再挪出容差）。 */
+    static void leverGate() {
+        GestureEngine.Config c = cfg(false);
+        Rec r = new Rec();
+        TrackPoint t = lever(r, c);
+        t.down(0, 0, 0);
+        float inside = (TrackPoint.DEAD_DP + c.tapSlopDp) / 2;   // 出了死区、没出轻点容差
+        t.move(0, inside);
+        t.frame(0);
+        long now = 0;
+        for (; now < 1000; ) {
+            now += 8;
+            t.tick(now, true, false, true);
+        }
+        check(r.scrolls == 0 && !t.started(), "挪 " + inside + "dp（死区外、轻点容差里）按 1 秒：不滚、没开始");
+        t.move(0, c.tapSlopDp + 1);
+        t.frame(now);
+        check(t.started(), "挪出轻点容差：开始");
+        for (long end = now + 500; now < end; ) {
+            now += 8;
+            t.tick(now, true, false, true);
+        }
+        check(r.wheel < 0, "开始以后往下滚：" + r.wheel);
+        t.move(0, TrackPoint.DEAD_DP - 0.5f);   // 挪回死区
+        t.frame(now);
+        int w = r.wheel;
+        for (long end = now + 500; now < end; ) {
+            now += 8;
+            t.tick(now, true, false, true);
+        }
+        check(r.wheel == w, "挪回死区：停");
+        t.move(0, inside);   // 再推出死区（没出轻点容差）：开始过了，接着滚
+        t.frame(now);
+        for (long end = now + 500; now < end; ) {
+            now += 8;
+            t.tick(now, true, false, true);
+        }
+        check(r.wheel < w, "开始过了，再推出死区接着滚（不用再挪出容差）");
+        t.up(now, false);
+        check(!t.started(), "抬起后不算开始了");
+        // 红点没有这道门槛：死区外就走
+        Rec s = new Rec();
+        TrackPoint st = stick(s, c);
+        st.down(0, 0, 0);
+        st.move(inside, 0);
+        st.frame(0);
+        for (long x = 8; x <= 500; x += 8) st.tick(x, false, false, false);
+        check(s.dx > 0 && st.started(), "红点没有起步门槛");
+    }
+
+    static void leverNoTapNoTexture() {
+        GestureEngine.Config c = tapOn();
+        c.texture = true;
+        Rec r = new Rec();
+        TrackPoint t = lever(r, c);
+        t.down(0, 0, 0);
+        t.move(1, 1);
+        t.frame(50);
+        t.tick(58, true, false, false);
+        t.up(100, false);
+        check(r.clicks == 0 && r.haptics.isEmpty() && r.moves == 0, "滚动杆轻点（开着轻点 = 左键）：不点左键、不震");
+        Rec p = leverRun(c, 15, 0, false);
+        check(p.count(GestureEngine.HAPTIC_TEXTURE) == 0 && p.moves == 0 && p.pan > 0, "滚动杆推着：不发颗粒、只滚");
+    }
+
+    static void leverModes() {
+        Rec notch = leverRun(cfg(false), 0, 15, false);
+        boolean whole = true;
+        for (int[] x : notch.scrollLog) whole &= x[0] % Hid.WHEEL_UNIT == 0 && x[1] % Hid.WHEEL_UNIT == 0;
+        check(whole && notch.scrolls > 0, "滚动杆按格模式：每次整格");
+        check(notch.count(GestureEngine.HAPTIC_TICK) == notch.scrolls, "滚动杆按格：每格咔嗒一下");
+        Rec smooth = leverRun(cfg(false), 0, 15, true);
+        boolean partial = false;
+        for (int[] x : smooth.scrollLog) partial |= x[0] % Hid.WHEEL_UNIT != 0;
+        check(partial, "滚动杆连续模式：出小数格");
+        check(Math.abs(smooth.count(GestureEngine.HAPTIC_TICK) - (-smooth.wheel) / Hid.WHEEL_UNIT) <= 1,
+                "滚动杆连续模式：每滚过一格的距离咔嗒一下（" + smooth.count(GestureEngine.HAPTIC_TICK) + " 下，" + (-smooth.wheel) + " 单位）");
+        GestureEngine.Config quiet = cfg(false);
+        quiet.scrollTicks = GestureEngine.TICKS_OFF;
+        check(leverRun(quiet, 0, 15, false).haptics.isEmpty(), "咔嗒关着：滚动杆不震");
+    }
+
+    static void leverStopsAndPauses() {
+        Rec r = new Rec();
+        TrackPoint t = lever(r, cfg(false));
+        t.down(0, 0, 0);
+        t.move(0, 20);
+        t.frame(0);
+        t.tick(8, true, false, false);
+        t.up(300, false);
+        int w = r.wheel;
+        check(!t.tick(316, true, false, false) && r.wheel == w, "滚动杆抬起后迟到的节拍：不出东西，返回 false");
+        t.down(0, 0, 400);
+        t.move(0, 20);
+        t.frame(400);
+        t.cancel();
+        check(!t.tick(500, true, false, false) && r.wheel == w && !t.active() && !t.started(), "滚动杆取消后：不出东西");
+        Rec p = new Rec();
+        TrackPoint q = lever(p, cfg(false));
+        q.down(0, 0, 0);
+        q.move(0, 15);
+        q.frame(0);
+        long now = 0;
+        boolean going = true;
+        while (going && now < 30000) {
+            now += 8;
+            going = q.tick(now, true, false, true);
+        }
+        check(!going && now > TrackPoint.IDLE_PAUSE_MS && now < TrackPoint.IDLE_PAUSE_MS + 20, "滚动杆 20 秒没事件：暂停（" + now + "ms）");
+        int pw = p.wheel;
+        check(!q.tick(now + 8, true, false, true) && p.wheel == pw, "滚动杆暂停中不出东西");
+        q.move(0, 16);
+        check(q.frame(now + 20), "滚动杆再动：接着");
+        check(q.tick(now + 28, true, false, true) && p.wheel < pw, "滚动杆接着滚");
     }
 
     // ── 工具 ──

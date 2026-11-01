@@ -118,7 +118,7 @@ public final class EdgeMarginTest {
                 {0, 0, 1080, 2400}, {0, 0, 1812, 2176}, {0, 0, 1080, 2400}, {0, 0, 260, 520}};
         int[][] windows = {{0, 0, 1080, 2400}, {0, 0, 2400, 1080}, {0, 1210, 1080, 2400}, {0, 0, 1080, 1190}, {0, 0, 1190, 1080},
                 {300, 600, 1080, 1500}, {0, 1098, 1812, 2176}, {0, 600, 270, 1500}, {0, 0, 260, 520}};
-        KeyboardPlan.Sizes base = new KeyboardPlan.Sizes(8, 96, 32, 64, 32, 44, 48, 4, 56, 2, EDGE);
+        KeyboardPlan.Sizes base = new KeyboardPlan.Sizes(8, 96, 32, 64, 32, 3, 10, 44, 48, 4, 56, 2, EDGE);
         int[] values = {0, 2, 8, 14, 20, 26, 48};
         for (int wi = 0; wi < windows.length; wi++) {
             int[] win = windows[wi];
@@ -204,7 +204,7 @@ public final class EdgeMarginTest {
                 for (int keys : new int[]{KeyboardPlan.KEYS_BOTTOM, KeyboardPlan.KEYS_TOP}) {
                     KeyboardPlan.Plan p = KeyboardPlan.plan(mode, pointer, keys, cw, ch, null, null, land, s);
                     String w = what + " 布局 " + mode + " 指点 " + pointer + " 三键条 " + keys;
-                    check(inside(p.block, cw, ch) && inside(p.pad, cw, ch) && inside(p.keys, cw, ch) && inside(p.stick, cw, ch),
+                    check(inside(p.keyboard, cw, ch) && inside(p.pad, cw, ch) && inside(p.keys, cw, ch) && inside(p.stick, cw, ch),
                             w + "：都在页面里");
                     if (pointer == KeyboardPlan.POINTER_PAD && p.keys != null) {
                         farKeys++;
@@ -222,8 +222,8 @@ public final class EdgeMarginTest {
         float[] saved = {0.1f, 0.4f, 0.9f, 1f};
         KeyboardPlan.Plan p = KeyboardPlan.plan(KeyboardPlan.MODE_MERGE, KeyboardPlan.POINTER_PAD, KeyboardPlan.KEYS_OFF, cw, ch,
                 saved, null, land, s);
-        check(Arrays.equals(p.rect, saved) && Math.abs(p.block[0] - 0.1f * cw) <= 1 && Math.abs(p.block[3] - ch) <= 1,
-                what + "：存的位置照比例摆在页面里 " + Arrays.toString(p.block));
+        check(Arrays.equals(p.rect, saved) && Math.abs(p.keyboard[0] - 0.1f * cw) <= 1 && Math.abs(p.keyboard[3] - ch) <= 1,
+                what + "：存的位置照比例摆在页面里 " + Arrays.toString(p.keyboard));
     }
 
     private static boolean inside(int[] r, int w, int h) {

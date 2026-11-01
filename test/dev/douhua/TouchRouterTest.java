@@ -152,6 +152,7 @@ public final class TouchRouterTest {
         releaseAllStopsStick();
         stickNewConfigStopsTicks();
         stickTargetsAndNotKeys();
+        stickHitIsCircle();
         stickStopsSpin();
         gamepadRoutes();
         gamepadOwnedAtDown();
@@ -890,6 +891,14 @@ public final class TouchRouterTest {
         t.down(3, 100, 650, 1500);
         t.up(3, 1510);
         eq(lines, list(), "按在嵌着的红点上：不记 p / u，布局也没变（红点不是键）");
+        // 小红点状态下三个鼠标键铺满底行、快捷行的空位（也在键盘范围里面、排在键前面）：按在上面同样不记
+        TouchRouter.Region[] withMouse = new TouchRouter.Region[base.length + 1];
+        withMouse[0] = new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, M_LEFT, 90, 640, 110, 660);
+        System.arraycopy(base, 0, withMouse, 1, base.length);
+        t.setRegions(withMouse);
+        t.down(3, 100, 650, 1520);
+        t.up(3, 1530);
+        eq(lines, list(), "按在键盘里的鼠标键上：不记 p / u，布局也没变（鼠标键不是键）");
         t.setRegions(keyboardRegions());
         t.setTrace(null);
         t.down(0, 99, 650, 1400);
@@ -1169,6 +1178,44 @@ public final class TouchRouterTest {
                 key, area,
         };
         check(TouchRouter.nearestKey(rs, area, 250, 110) == key, "nearestKey 不选红点、鼠标键");
+    }
+
+    /**
+     * 小红点按得到的是报上来那个正方形的内切圆（2026-11-01）：嵌在键里时正方形的四个角压着挨着的键（键帽沿圆弧切口），
+     * 按在角上归键、按在圆里归红点；别的区域照旧按矩形。服务、App 本地分流、KeyFingers 都走 Region.contains，三处一致。
+     */
+    static void stickHitIsCircle() {
+        TouchRouter.Region stick = new TouchRouter.Region(Proto.REGION_STICK, STICK, 200, 0, 300, 100);
+        TouchRouter.Region key = new TouchRouter.Region(Proto.REGION_KEY, KEY_C, 150, 0, 250, 100);   // 被红点压着左半截的键
+        TouchRouter.Region area = new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, 0, 0, 400, 200);
+        Rec r = new Rec();
+        TouchRouter t = new TouchRouter(r);
+        t.setConfig(new GestureEngine.Config(), 1);
+        t.setRegions(new TouchRouter.Region[]{stick, key, area});
+        int bad = 0, in = 0;
+        for (int y = 0; y < 100; y++) {
+            for (int x = 200; x < 300; x++) {
+                float dx = x - 250, dy = y - 50;
+                boolean circle = dx * dx + dy * dy < 2500;
+                if (circle) in++;
+                TouchRouter.Region got = t.hit(x, y);
+                TouchRouter.Region want = circle ? stick : x < 250 ? key : TouchRouter.nearestKey(new TouchRouter.Region[]{key}, area, x, y);
+                if (got != want) bad++;
+            }
+        }
+        check(bad == 0 && in > 7800 && in < 7900, "正方形里逐点：圆里（" + in + " 个点）归红点，四个角归键 / 缝里分给最近的键（错 " + bad + "）");
+        check(t.hit(205, 5) == key && t.hit(250, 50) == stick && t.hit(250, 1) == stick && t.hit(299, 50) == stick,
+                "左上角归键；圆心、上边正中、右边正中归红点");
+        check(t.onTarget(205, 5), "角上（键）分屏透传时也算豆花的");
+        TouchRouter.Region down = t.down(0, 205, 5, 100);
+        check(down == key && r.log.contains("b" + (Proto.KEY_ID_BASE + KEY_C) + ":" + Proto.BUTTON_DOWN), "在角上按下：按的是键，不是红点");
+        t.up(0, 110);
+        check(!r.log.contains("b" + STICK + ":" + Proto.BUTTON_DOWN), "红点没被按");
+        // 不是正方形时按短边的一半当半径；别的区域类型照旧是整个矩形
+        TouchRouter.Region wide = new TouchRouter.Region(Proto.REGION_STICK, STICK, 0, 0, 200, 100);
+        check(wide.contains(100, 1) && !wide.contains(10, 50) && !wide.contains(160, 50), "长方形：短边一半的圆");
+        TouchRouter.Region b = new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, M_LEFT, 0, 0, 100, 100);
+        check(b.contains(0, 0) && b.contains(99, 99) && key.contains(150, 0), "别的区域四个角照样算");
     }
 
     static void stickStopsSpin() {

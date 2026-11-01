@@ -56,27 +56,41 @@ public final class KeyFingersTest {
         check(KeyFingers.pick(lr, halves, 150, 50) == null, "分裂：中间（触控板那一截）不算任何键");
         check(KeyFingers.pick(lr, halves, 105, 50) == null, "分裂：离左键更近但不在任何范围里，也不算");
 
-        // ── 嵌在键里的小红点（洞）：洞里的点不算任何键（连底下的键角、缝里离得近的键也不分），洞外和没洞时一模一样 ──
-        // 洞 [90,130)×[40,70)：压着 A 的右下角、B 的左下角、S 的上沿那一截，还有 A、B 之间的缝
+        // ── 嵌在键里的小红点（洞）：按得到的是报上来那个正方形的内切圆（2026-11-01 起）。圆里的点不算任何键（连底下的键角、
+        //    缝里离得近的键也不分），圆外——包括正方形的四个角——和没洞时一模一样 ──
+        // 洞 [90,130)×[35,75)：圆心 (110, 55)、半径 20，压着 A 的右下角、B 的左下角、S 的上沿那一截，还有 A、B 之间的缝
         TouchRouter.Region[] whole = {AREA};
-        TouchRouter.Region[] holes = {new TouchRouter.Region(Proto.REGION_STICK, Proto.STICK_ID, 90, 40, 130, 70)};
-        int inHole = 0;
-        boolean holeOk = true;
-        for (float x = 0; x < 230; x += 1) {
-            for (float y = 0; y < 100; y += 1) {
+        TouchRouter.Region[] holes = {new TouchRouter.Region(Proto.REGION_STICK, Proto.STICK_ID, 90, 35, 130, 75)};
+        int inHole = 0, corners = 0;
+        boolean holeOk = true, circleOk = true;
+        for (int x = 85; x < 135; x++) {
+            for (int y = 30; y < 80; y++) {
                 TouchRouter.Region got = KeyFingers.pick(KEYS, whole, holes, x, y);
-                if (holes[0].contains(x, y)) {
+                float dx = x - 110, dy = y - 55;
+                boolean inCircle = dx * dx + dy * dy < 400;
+                circleOk &= holes[0].contains(x, y) == inCircle;
+                if (inCircle) {
                     inHole++;
                     holeOk &= got == null;
                 } else {
+                    if (x >= 90 && x < 130 && y >= 35 && y < 75) corners++;
                     holeOk &= got == KeyFingers.pick(KEYS, whole, x, y);
                 }
             }
         }
-        check(holeOk && inHole == 40 * 30, "洞里 " + inHole + " 个点都不算键，洞外和没洞时一样");
-        check(KeyFingers.pick(KEYS, whole, holes, 95, 45) == null, "按在 A 被洞盖住的角上：不算 A");
+        check(circleOk, "洞（REGION_STICK）按正方形的内切圆认");
+        check(holeOk && inHole > 1200 && inHole < 1290, "圆里 " + inHole + " 个点都不算键（π × 20² ≈ 1257），圆外和没洞时一样");
+        check(corners > 300, "正方形的四个角（圆外）照常是键或缝：" + corners + " 个点");
+        check(KeyFingers.pick(KEYS, whole, holes, 98, 45) == null, "按在 A 被圆盖住的那一块上：不算 A");
+        check(KeyFingers.pick(KEYS, whole, holes, 92, 37).id == A, "正方形左上角（圆外）还在 A 上：是 A（以前方形的洞会吞掉）");
         check(KeyFingers.pick(KEYS, whole, holes, 85, 45).id == A, "洞外一点的 A 照样是 A");
-        check(KeyFingers.pick(KEYS, whole, new TouchRouter.Region[0], 95, 45).id == A, "没有洞时那一角是 A");
+        check(KeyFingers.pick(KEYS, whole, new TouchRouter.Region[0], 98, 45).id == A, "没有洞时那一块是 A");
+        // 让给三个鼠标键的空位（矩形的洞，KeyboardPanel 报成 REGION_MOUSE_BUTTON）：整块不算任何键，旁边的照旧
+        TouchRouter.Region[] gapHole = {new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, 0, 100, 55, 200, 100)};
+        check(KeyFingers.pick(KEYS, whole, gapHole, 150, 70) == null && KeyFingers.pick(KEYS, whole, gapHole, 101, 99) == null,
+                "空位里（连底下 S 那一截）不算任何键");
+        check(KeyFingers.pick(KEYS, whole, gapHole, 50, 70).id == S && KeyFingers.pick(KEYS, whole, gapHole, 150, 53).id == B,
+                "空位外照旧：S 的左半截、空位上面缝里靠上的 B");
 
         // ── 第一根按在缝里，第二根按在键上：各自按下、各自松开（以前第二根被吞、缝里的键等全部抬起才松） ──
         KeyFingers f = new KeyFingers();

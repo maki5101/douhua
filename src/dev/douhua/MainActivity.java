@@ -713,8 +713,11 @@ public final class MainActivity extends Activity
         kbDone = addBarButton(adjustBar, R.string.kb_done, KB_DONE_ID);
         kbReset = addBarButton(adjustBar, R.string.kb_reset, KB_RESET_ID);
         kbStick = new TrackPointView(this);
-        // 服务连着没接管时（View 自己收触摸）小红点不动，和触控板一样：吃掉触摸就行
-        kbStick.setOnTouchListener((v, e) -> true);
+        // 服务连着没接管时（View 自己收触摸）小红点不动，和触控板一样。嵌在键里时一根手指都不收，全落到底下的键盘面板上：
+        // 面板按手指编号分（KeyFingers.pick），红点圆里的不算任何键、方块四个角归被切了一块的键（同分流的 REGION_STICK 按内切圆）。
+        // 不能只在按下时看圆：红点收下第一根手指后，ViewGroup 把落在它方块里的后来的手指直接交给它、不再问（2026-11-01 审查发现），
+        // 第二根手指按在 g 被切掉的那个角上就被吞了。放在键盘外面时底下什么都没有，照旧整块吃掉（不然第一根落空，后来按在键上的手指也收不到）
+        kbStick.setOnTouchListener((v, e) -> !kbStick.isEmbedded());
         kbMouseKeys = buildMouseKeys();
         keyboardScreen = new KeyboardScreen(this, miniPad, keyboard, kbStick, kbMouseKeys, kbMenuButton, adjustBar, this);
         keyboardScreen.setVisibility(View.GONE);
@@ -901,13 +904,16 @@ public final class MainActivity extends Activity
         return true;
     }
 
-    /** 这一项在这一屏（SCREEN_*）的菜单里有没有。"手柄"只在桌面模式（desktop）有。 */
-    private static boolean onMenuScreen(int id, int screen, boolean desktop) {
+    /**
+     * 这一项在这一屏（SCREEN_*）的菜单里有没有。"手柄"只在桌面模式（desktop）有；"布局"在小红点状态（stick）下没有
+     * （小红点固定合并，2026-11-01；选过的布局留着，换回触控板 / 关时照它）。
+     */
+    private static boolean onMenuScreen(int id, int screen, boolean desktop, boolean stick) {
         switch (id) {
             case MENU_KEYBOARD_ID: return screen == SCREEN_MAIN;
+            case KB_LAYOUT_ID: return screen == SCREEN_KEYBOARD && !stick;
             case KB_CLOSE_ID:
             case KB_ADJUST_ID:
-            case KB_LAYOUT_ID:
             case KB_POINTER_ID: return screen == SCREEN_KEYBOARD;
             case MENU_GAMEPAD_ID: return screen != SCREEN_GAMEPAD && desktop;
             case GP_PRESET_ID:
@@ -1316,8 +1322,9 @@ public final class MainActivity extends Activity
                 addRegion(regions, kbDone, Proto.REGION_BUTTON, KB_DONE_ID);
                 addRegion(regions, kbReset, Proto.REGION_BUTTON, KB_RESET_ID);
             }
-            // ⋯ 叠在触控板顶上，排在触控板前面。小红点嵌在键里（压着 g、h、v、b 的角）时必须排在键和键盘范围前面：
-            // 按在红点范围里的归红点，不归底下的键，缝里的点也分不到红点范围里去（TouchRouter.hit 按顺序找第一个）
+            // ⋯ 叠在触控板顶上，排在触控板前面。小红点嵌在键里（g、h、v、b 被切掉一块）时必须排在键和键盘范围前面：
+            // 按在红点圆里的归红点，不归底下的键，缝里的点也分不到红点圆里去（TouchRouter.hit 按顺序找第一个；圆外、方块四角归键）。
+            // 三个鼠标键在键盘里时铺满底行、快捷行让出的空位，同样排在键盘范围前面：空位里每一点都归某个鼠标键，不被分给旁边的键
             if (keyboardScreen.isMenuButtonShown()) addRegion(regions, kbMenuButton, Proto.REGION_BUTTON, KB_MENU_ID);
             if (keyboardScreen.isStickShown()) addRegion(regions, kbStick, Proto.REGION_STICK, Proto.STICK_ID);
             if (keyboardScreen.areMouseKeysShown()) addMouseKeys(regions, kbMouseKeys);
@@ -1836,8 +1843,9 @@ public final class MainActivity extends Activity
         if (on == menuLayer.isOpen()) return;
         if (on) {
             int screen = gamepadOn ? SCREEN_GAMEPAD : keyboardShown ? SCREEN_KEYBOARD : SCREEN_MAIN;
+            boolean stick = prefs.keyboardPointer() == KeyboardPlan.POINTER_STICK;
             for (int i = 0; i < MENU_IDS.length; i++) {
-                menuItems.get(i).setVisibility(onMenuScreen(MENU_IDS[i], screen, !btMode) ? View.VISIBLE : View.GONE);
+                menuItems.get(i).setVisibility(onMenuScreen(MENU_IDS[i], screen, !btMode, stick) ? View.VISIBLE : View.GONE);
             }
         }
         main.removeCallbacks(gpMenuLater);

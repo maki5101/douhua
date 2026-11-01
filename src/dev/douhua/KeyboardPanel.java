@@ -39,6 +39,10 @@ import dev.douhua.KeyRows.Key;
  * 分流时由键盘范围 REGION_KEYBOARD 触发，面板自己收触摸时由 {@link KeyFingers#pick} 调它）。
  * 所有键帽 view 都是面板的直接子 view，建一次缓存着（三层、两种布局都是），换层、分裂 / 合拢只切显示、重新摆放。
  * 键帽分主次（主题的功能键颜色）：字母、数字、空格、标点是普通键，其余（修饰键、⌫ ↵、F 键、?123、快捷行……）是功能键，见 KeyRows.functionKey。
+ *
+ * 小红点状态（KeyboardScreen 量尺寸时设，2026-11-01）：底行、快捷行在中间让出空位给三个鼠标键（{@link #setHole}，键位见 KeyRows.place），
+ * 红点嵌在 g、h、v、b 交界时挨着的键帽被和红点同心的圆切掉一块（{@link #setStick}）：底色、按下、高亮、边框都沿着圆弧画（Style.keyLook 的 cut），
+ * 字碰到切口的键帽把字竖着挪开（上下内边距，KeyboardPlan.labelShift）。
  */
 final class KeyboardPanel extends ViewGroup {
     interface Listener {
@@ -85,11 +89,13 @@ final class KeyboardPanel extends ViewGroup {
         final TextView view;
         /** 功能键（KeyRows.functionKey）：用主题的功能键颜色。 */
         final boolean fn;
-        /** 上次 Style.keyLook 画的 (高亮 << 1) | 按下；-1 = 还没画过。 */
+        /** 上次 Style.keyLook 画的 (高亮 << 1) | 按下；-1 = 还没画过（或者切口变了，要重画）。 */
         int look = -1;
         boolean pressed;
         /** onMeasure 算好的位置（面板坐标），onLayout 照着摆。 */
         int left, top, right, bottom;
+        /** 被小红点切掉的那块：{圆心 x, 圆心 y, 半径}（键帽自己的坐标）；没被切到是 null。 */
+        float[] cut;
 
         Cap(Key key, TextView view, boolean fn) {
             this.key = key;
@@ -124,8 +130,12 @@ final class KeyboardPanel extends ViewGroup {
     private final List<Cap> caps = new ArrayList<>();
     /** 键自己收触摸时每根手指按的键（caps 的下标）。 */
     private final KeyFingers fingers = new KeyFingers();
-    /** 小红点嵌在键里时按得到的范围（面板坐标），见 {@link #setStickHole}。 */
-    private int[] stickHole;
+    /** 小红点按得到的范围（面板坐标的正方形，按它的内切圆算）、键上切口的半径（0 = 没嵌在键里），见 {@link #setStick}。 */
+    private int[] stickHit;
+    private float stickCut;
+    /** 小红点状态下底行、快捷行让出的空位 {左, 右}（面板 x）、快捷行也让不让（spread），见 {@link #setHole}。 */
+    private int[] hole;
+    private boolean spread;
 
     KeyboardPanel(Context context, Listener listener) {
         super(context);
@@ -202,6 +212,20 @@ final class KeyboardPanel extends ViewGroup {
         if (on == menuKey) return;
         dropTouches();
         menuKey = on;
+        showLayer();
+    }
+
+    /**
+     * 小红点状态下底行、快捷行在中间让出的空位 {左, 右}（面板 x，KeyboardPlan.Plan.hole；null = 不让）：底行的空格缩短、
+     * spread（KeyboardPlan.Plan.spread）时快捷行的键也分到两边，不然快捷行照旧铺满（KeyRows.place），空位里放三个鼠标键（KeyboardScreen 摆，叠在面板上面）。
+     * 键的位置变了：同 {@link #setSplit}，先松开按着的键，在量这个面板之前调。
+     */
+    void setHole(int[] hole, boolean spread) {
+        boolean sp = hole != null && spread;
+        if (java.util.Arrays.equals(hole, this.hole) && sp == this.spread) return;
+        dropTouches();
+        this.hole = hole == null ? null : hole.clone();
+        this.spread = sp;
         showLayer();
     }
 
@@ -317,23 +341,22 @@ final class KeyboardPanel extends ViewGroup {
         showLayer();
     }
 
-    /** 给 rows 里（两种布局）还没有键帽的键建键帽（先藏着），记进 list（可以是 null）。 */
+    /**
+     * 给 rows 里（整块、分裂、小红点让位三种布局，KeyRows.capKeys）还没有键帽的键建键帽（先藏着），记进 list（可以是 null）。
+     * 小红点状态的底行（before / after，含缩短的空格）以前漏了，showLayer 拿到 null 就闪退。
+     */
     private void addCaps(KeyRows.Row[] rows, List<Cap> list) {
-        for (KeyRows.Row row : rows) {
-            for (Key[] part : new Key[][]{row.whole, row.left, row.right}) {
-                for (Key key : part) {
-                    if (key.spacer() || capOf.containsKey(key)) continue;
-                    // 一个字（含 🌐 这种占两个 char 的）用大字，多个字的键名用小字
-                    boolean oneChar = key.label.codePointCount(0, key.label.length()) <= 1;
-                    TextView v = Style.keyButton(getContext(), oneChar ? 18 : 13);
-                    if (key.id == GLOBE_BUTTON_ID) v.getPaint().setColorFilter(grayEmoji());   // 🌐 是彩色 emoji，去色调暗，和别的键一个色调
-                    v.setVisibility(GONE);
-                    addView(v);
-                    Cap c = new Cap(key, v, KeyRows.functionKey(key, isShortcut(key)));
-                    capOf.put(key, c);
-                    if (list != null) list.add(c);
-                }
-            }
+        for (Key key : KeyRows.capKeys(rows)) {
+            if (capOf.containsKey(key)) continue;
+            // 一个字（含 🌐 这种占两个 char 的）用大字，多个字的键名用小字
+            boolean oneChar = key.label.codePointCount(0, key.label.length()) <= 1;
+            TextView v = Style.keyButton(getContext(), oneChar ? 18 : 13);
+            if (key.id == GLOBE_BUTTON_ID) v.getPaint().setColorFilter(grayEmoji());   // 🌐 是彩色 emoji，去色调暗，和别的键一个色调
+            v.setVisibility(GONE);
+            addView(v);
+            Cap c = new Cap(key, v, KeyRows.functionKey(key, isShortcut(key)));
+            capOf.put(key, c);
+            if (list != null) list.add(c);
         }
     }
 
@@ -357,12 +380,19 @@ final class KeyboardPanel extends ViewGroup {
     }
 
     /**
-     * 小红点嵌在键里时按得到的范围（面板坐标 {左, 上, 右, 下}；没嵌在键里是 null，KeyboardScreen 量尺寸时设）：
-     * 面板自己收触摸时，按在这块里的手指不算任何键（{@link KeyFingers#pick} 的 holes）。平时红点的 view 叠在面板上面、先收到这些手指，
-     * 这里是兜底，规则和分流一样（分流时红点的区域排在键前面）。
+     * 小红点嵌在键里（KeyboardScreen 量尺寸时设，在量这个面板之前）：hit = 按得到的范围（面板坐标的正方形 {左, 上, 右, 下}，按它的内切圆算），
+     * cut = 键上切口的半径（KeyboardPlan.Plan.cut，圆心同 hit 的中心）；没嵌在键里时 hit 是 null。
+     * 碰到切口的键帽沿着圆弧画、字挪开（{@link #onMeasure}）；面板自己收触摸时，按在红点圆里的手指不算任何键（{@link KeyFingers#pick} 的 holes）——
+     * 红点的 view 虽然叠在面板上面，嵌在键里时一根手指都不收（MainActivity），哪根手指归红点圆、哪根归被切了角的键全在这里定，
+     * 规则和分流一样（分流时红点的区域排在键前面、按内切圆算）。
      */
-    void setStickHole(int[] hole) {
-        stickHole = hole == null ? null : hole.clone();
+    void setStick(int[] hit, float cut) {
+        int[] h = hit == null ? null : hit.clone();
+        float c = h == null ? 0 : cut;
+        if (java.util.Arrays.equals(h, stickHit) && c == stickCut) return;
+        stickHit = h;
+        stickCut = c;
+        requestLayout();
     }
 
     /**
@@ -371,7 +401,7 @@ final class KeyboardPanel extends ViewGroup {
      */
     private void showLayer() {
         caps.clear();
-        for (Key key : KeyRows.keys(rows(), split)) caps.add(capOf.get(key));
+        for (Key key : KeyRows.keys(rows(), split, holeOn())) caps.add(capOf.get(key));
         IdentityHashMap<Cap, Boolean> shown = new IdentityHashMap<>();
         for (Cap c : caps) shown.put(c, Boolean.TRUE);
         for (Cap c : capOf.values()) c.view.setVisibility(shown.containsKey(c) ? VISIBLE : GONE);
@@ -393,20 +423,49 @@ final class KeyboardPanel extends ViewGroup {
 
     // ═══════════ 摆放 ═══════════
 
+    /** 底行、快捷行让出了空位（整块才有）。 */
+    private boolean holeOn() {
+        return hole != null && !split;
+    }
+
+    /**
+     * 每个键照 KeyRows.place 摆；红点嵌在键里时，碰到切口的键帽记下切口（键帽坐标，Style.keyLook 沿着圆弧画），
+     * 字照 KeyboardPlan.labelShift 竖着挪开：往上挪 d 就在下面加 2d 的内边距（往下挪反过来），居中的字跟着挪 d。
+     * 切口变了的键帽量完重画一次（setBackground、setPadding 量的时候改：同样的最小尺寸、只是这个子 view 要重新量，不会再往上请求布局）。
+     */
     @Override
     protected void onMeasure(int widthSpec, int heightSpec) {
         int w = MeasureSpec.getSize(widthSpec);
         int h = MeasureSpec.getSize(heightSpec);
         setMeasuredDimension(w, h);
-        for (KeyRows.Placed p : KeyRows.place(rows(), w, h, split, middle, gap)) {
+        int[] s = stickHit;
+        boolean cutOn = s != null && stickCut > 0 && !split;
+        float cx = cutOn ? (s[0] + s[2]) / 2f : 0, cy = cutOn ? (s[1] + s[3]) / 2f : 0;
+        float room = Style.sp(getContext(), KeyboardScreen.LABEL_ROOM_SP);
+        for (KeyRows.Placed p : KeyRows.place(rows(), w, h, split, middle, gap, holeOn() ? hole : null, spread)) {
             Cap c = capOf.get(p.key);
             c.left = p.left;
             c.top = p.top;
             c.right = Math.max(p.left, p.right);
             c.bottom = Math.max(p.top, p.bottom);
-            c.view.measure(MeasureSpec.makeMeasureSpec(c.right - c.left, MeasureSpec.EXACTLY),
+            float[] cut = null;
+            int shift = 0;
+            if (cutOn && KeyboardPlan.cuts(p, cx, cy, stickCut)) {
+                cut = new float[]{cx - c.left, cy - c.top, stickCut};
+                float d = KeyboardPlan.labelShift(p, cx, cy, stickCut, room);
+                if (!Float.isNaN(d)) shift = d < 0 ? -(int) Math.ceil(-d) : (int) Math.ceil(d);   // 往远处取整：宁可多挪一点
+            }
+            if (!java.util.Arrays.equals(cut, c.cut)) {
+                c.cut = cut;
+                c.look = -1;
+            }
+            int pt = shift > 0 ? 2 * shift : 0, pb = shift < 0 ? -2 * shift : 0;
+            TextView v = c.view;
+            if (v.getPaddingTop() != pt || v.getPaddingBottom() != pb) v.setPadding(v.getPaddingLeft(), pt, v.getPaddingRight(), pb);
+            v.measure(MeasureSpec.makeMeasureSpec(c.right - c.left, MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(c.bottom - c.top, MeasureSpec.EXACTLY));
         }
+        for (Cap c : caps) if (c.look == -1) look(c, c.pressed);
     }
 
     @Override
@@ -462,7 +521,7 @@ final class KeyboardPanel extends ViewGroup {
         int state = (active ? 2 : 0) | (pressed ? 1 : 0);
         if (state == c.look) return;
         c.look = state;
-        Style.keyLook(c.view, c.fn, active, pressed);
+        Style.keyLook(c.view, c.fn, active, pressed, c.cut);
     }
 
     // ═══════════ 键自己收触摸（服务没接管、没走本地分流时） ═══════════
@@ -475,7 +534,8 @@ final class KeyboardPanel extends ViewGroup {
 
     /**
      * 每根手指按下时定键（包含的键优先，缝、空位、边距分给这一半里最近的键，规则同分流 TouchRouter.nearestKey），
-     * 抬起时松开它自己那个键；ACTION_CANCEL 全部松开。分裂时按在中间（触控板那一截）的手指、按在嵌着的小红点上的手指不算任何键。
+     * 抬起时松开它自己那个键；ACTION_CANCEL 全部松开。分裂时按在中间（触控板那一截）的手指、按在嵌着的小红点上的手指、
+     * 按在让给三个鼠标键的空位上的手指不算任何键。
      * 以前各键自己收触摸：第一根手指按在缝里时，同一次手势里后来的手指全被吞掉、缝里那个键要等所有手指抬起才松开；
      * 第一根按在键 A、第二根按在缝里时，A 收到的是"多指中的一根抬起"，被忽略，A 一直按着。
      */
@@ -527,10 +587,16 @@ final class KeyboardPanel extends ViewGroup {
         for (int i = 0; i < as.length; i++) {
             areas[i] = new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, as[i][0], as[i][1], as[i][2], as[i][3]);
         }
-        int[] h = stickHole;
-        TouchRouter.Region[] holes = h == null ? new TouchRouter.Region[0]
-                : new TouchRouter.Region[]{new TouchRouter.Region(Proto.REGION_STICK, Proto.STICK_ID, h[0], h[1], h[2], h[3])};
-        TouchRouter.Region r = KeyFingers.pick(rs, areas, holes, x, y);
+        // 洞：嵌着的红点（REGION_STICK 按内切圆算；红点的 view 不收手指，就靠这里）、让给三个鼠标键的空位（平时鼠标键的 view 铺满空位、先收到这些手指，这里是兜底）
+        List<TouchRouter.Region> holes = new ArrayList<>();
+        int[] h = stickHit;
+        if (h != null && stickCut > 0) holes.add(new TouchRouter.Region(Proto.REGION_STICK, Proto.STICK_ID, h[0], h[1], h[2], h[3]));
+        if (holeOn()) {
+            KeyRows.Row[] rows = rows();
+            int top = KeyRows.holeTop(rows, getHeight()), bottom = KeyRows.holeBottom(rows, getHeight(), spread);
+            if (top >= 0) holes.add(new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, 0, hole[0], top, hole[1], bottom));
+        }
+        TouchRouter.Region r = KeyFingers.pick(rs, areas, holes.toArray(new TouchRouter.Region[0]), x, y);
         return r == null ? -1 : r.id;
     }
 

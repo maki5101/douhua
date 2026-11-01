@@ -28,6 +28,9 @@ public final class KeyRowsTest {
         oneShortcut();
         functionKeys();
         stickPoint();
+        holeRows();
+        holePlacement();
+        capKeysCover();
         layerRows();
         System.err.println("键盘分行 / 分裂：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
@@ -409,7 +412,8 @@ public final class KeyRowsTest {
         all.add(KeyRows.bottomRows(true, new KeyRows.Key[0]));
         for (KeyRows.Row[] rows : all) {
             for (KeyRows.Row r : rows) {
-                for (KeyRows.Key[] part : new KeyRows.Key[][]{r.whole, r.left, r.right}) {
+                for (KeyRows.Key[] part : new KeyRows.Key[][]{r.whole, r.left, r.right, r.before, r.after}) {
+                    if (part == null) continue;
                     for (KeyRows.Key k : part) {
                         if (k.spacer() || !seen.add(k.label + "/" + k.id)) continue;
                         boolean want = !plainSet.contains(k.label);
@@ -452,7 +456,7 @@ public final class KeyRowsTest {
         return l.toArray(new KeyRows.Row[0]);
     }
 
-    // ── 小红点嵌在哪：g|h、v|b 那条缝和 a–l / z–m 两行的交界（2026-11-01） ──
+    // ── 小红点嵌在哪：g|h、v|b 那条缝和 a–l / z–m 两行的交界（2026-11-01；只有整块，小红点状态不分裂） ──
     static void stickPoint() {
         check(near(KeyRows.STICK_UNITS, 5.5f) && near(KeyRows.LETTER_UNITS, 10), "g|h 在一行的 5.5 / 10 份处");
         KeyRows.Row[] letters = KeyRows.LAYERS[KeyRows.LAYER_LETTERS];
@@ -460,9 +464,9 @@ public final class KeyRowsTest {
         KeyRows.Row[] rows = KeyRows.rows(true, KeyRows.LAYER_LETTERS, KeyRows.bottomRows(false, new KeyRows.Key[]{KeyRows.k(0x04, "x")}));
         for (int[] wh : new int[][]{{400, 508}, {411, 588}, {360, 494}, {1001, 333}}) {
             int w = wh[0], h = wh[1];
-            // 整块：中心 = g 的右边 + 缩进 = h 的左边 − 缩进，= v / b 同样；竖着 = a 的下沿 + 缩进 = z 的上沿 − 缩进
+            // 中心 = g 的右边 + 缩进 = h 的左边 − 缩进，= v / b 同样；竖着 = a 的下沿 + 缩进 = z 的上沿 − 缩进
             List<KeyRows.Placed> ps = KeyRows.place(rows, w, h, false, GAP / 2);
-            int[] p = KeyRows.stickPoint(w, h, rows.length, false, KeyRows.MIDDLE_PAD);
+            int[] p = KeyRows.stickPoint(w, h, rows.length);
             int g = 0;
             boolean ok = true;
             for (KeyRows.Placed q : ps) {
@@ -473,20 +477,187 @@ public final class KeyRowsTest {
                 if (l.equals("z")) ok &= q.top - GAP / 2 == p[1];
                 if (l.equals("g")) g++;
             }
-            check(ok && g == 1, w + "×" + h + " 整块：小红点那一点正好在 g、h、v、b 交界 " + Arrays.toString(p));
-            // 分裂只隔一条缝：两半之间那条缝的中线（左半的 g、v 和右半的 g、v 交界）
-            int m = 8;
-            ps = KeyRows.place(rows, w, h, true, m, GAP / 2);
-            p = KeyRows.stickPoint(w, h, rows.length, true, m);
-            check(p[0] == (KeyRows.leftEnd(w, m) + KeyRows.rightStart(w, m)) / 2, w + "×" + h + " 分裂：在两半中间");
-            int gs = 0;
-            for (KeyRows.Placed q : ps) {
-                if (!q.key.label.equals("g") && !q.key.label.equals("v")) continue;
-                gs++;
-                check(q.right <= p[0] || q.left >= p[0], "分裂：g、v 在那条线两边");
-            }
-            check(gs == 4, "分裂：两边各一个 g、一个 v");
+            check(ok && g == 1, w + "×" + h + "：小红点那一点正好在 g、h、v、b 交界 " + Arrays.toString(p));
         }
+    }
+
+    // ── 小红点状态：底行、快捷行让出空位（2026-11-01 用户："想用它占用空格行，还有包括空格下边那一行"） ──
+    static void holeRows() {
+        KeyRows.Key[] sc = {KeyRows.k(0x06 | (1 << 8), "复制"), KeyRows.k(0x19 | (1 << 8), "粘贴"), KeyRows.k(0x1B | (1 << 8), "剪切")};
+        KeyRows.Row[] b = KeyRows.bottomRows(false, sc);
+        eq(labels(b[0].before) + " | " + labels(b[0].after), "?123 , Space | . ↵", "底行：空位左边 ?123 , 空格，右边 . ↵");
+        check(b[0].before[0] == b[0].whole[0] && b[0].before[1] == b[0].whole[1] && b[0].after[0] == b[0].whole[3]
+                && b[0].after[1] == b[0].whole[4], "?123 , . ↵ 是整行时那几个键帽");
+        KeyRows.Key sp = b[0].before[2];
+        check(sp.id == 0x2C && sp != b[0].whole[2] && sp.weight == KeyRows.STICK_SPACE, "缩短的空格：又一个键帽、平时 1.5 份");
+        check(b[1].spread && b[1].before == null && b[1].holed() && b[0].holed(), "快捷行按个数分到两边；底行、快捷行都让位");
+        KeyRows.Row[] a = KeyRows.bottomRows(true, new KeyRows.Key[0]);
+        eq(labels(a[0].before) + " | " + labels(a[0].after), "?123 🌐 , Space | . ↵", "苹果：🌐 照旧跟在 ?123 后面");
+        check(a[0].before[3] == sp, "苹果和不连苹果用同一个缩短的空格键帽");
+        for (KeyRows.Row[] layer : KeyRows.LAYERS) for (KeyRows.Row r : layer) check(!r.holed(), "中间四行不让位");
+        check(!KeyRows.TOP_ROWS[0].holed() && !KeyRows.TOP_ROWS_MENU[0].holed(), "功能行不让位");
+        // 份数：左边 4（苹果 5）、右边 2.5、整行 10
+        float[] u = KeyRows.holeUnits(KeyRows.rows(true, 0, b));
+        check(u != null && near(u[0], 4) && near(u[1], 2.5f) && near(u[2], 10), "份数：左 4、右 2.5、整行 10：" + Arrays.toString(u));
+        float[] ua = KeyRows.holeUnits(KeyRows.rows(true, 0, a));
+        check(ua != null && near(ua[0], 5) && near(ua[1], 2.5f), "苹果：左 5");
+        check(KeyRows.holeUnits(KeyRows.LAYERS[0]) == null, "没有底行：null");
+        // 让位的行从第几行开始：7 行时第 6 行（下标 5）的上沿；6 行时同样是下标 5
+        KeyRows.Row[] seven = KeyRows.rows(true, 0, b), six = KeyRows.rows(true, 0, a);
+        check(KeyRows.holeTop(seven, 700) == 500 && KeyRows.holeTop(six, 600) == 500, "让位的行的上沿：底行的上沿");
+        check(KeyRows.holeTop(KeyRows.LAYERS[0], 400) == -1, "没有让位的行：-1");
+        // 空位的下沿：快捷行也让（spread）时到最下面，不让时到底行的下沿；没有快捷行时两样一样
+        check(KeyRows.holeBottom(seven, 700, true) == 700 && KeyRows.holeBottom(seven, 700, false) == 600, "下沿：快捷行让 → 700，不让 → 底行下沿 600");
+        check(KeyRows.holeBottom(six, 600, true) == 600 && KeyRows.holeBottom(six, 600, false) == 600, "没有快捷行：都是底行下沿");
+        check(KeyRows.holeBottom(KeyRows.LAYERS[0], 400, true) == -1, "没有让位的行：-1");
+        // 快捷行分到两边：按宽度比例，两边都有地方时每边至少一个
+        check(KeyRows.spreadLeft(9, 400, 300) == 5 && KeyRows.spreadLeft(9, 300, 300) == 5 && KeyRows.spreadLeft(9, 100, 800) == 1,
+                "9 个：4 : 3 → 5 个在左；一样宽 → 5（四舍五入）；左边很窄也至少 1 个");
+        check(KeyRows.spreadLeft(2, 900, 10) == 1 && KeyRows.spreadLeft(1, 400, 250) == 1 && KeyRows.spreadLeft(1, 200, 250) == 0,
+                "2 个：一边一个；1 个：放宽的那边");
+        check(KeyRows.spreadLeft(3, 0, 300) == 0 && KeyRows.spreadLeft(3, 300, 0) == 3 && KeyRows.spreadLeft(0, 300, 300) == 0,
+                "一边没地方：全放另一边；没有键：0");
+        // keys()：让位时底行换成 before + after，顺序同 place；不让位、分裂时照旧
+        List<KeyRows.Key> holed = KeyRows.keys(seven, false, true), plain = KeyRows.keys(seven, false);
+        check(holed.size() == plain.size() && holed.contains(sp) && !holed.contains(b[0].whole[2]) && !plain.contains(sp),
+                "让位：底行的空格换成缩短的那个，别的键不变");
+        check(KeyRows.keys(seven, true, true).equals(KeyRows.keys(seven, true)), "分裂时 hole 不起作用");
+    }
+
+    /** 让位时的摆法：空位里一个键都没有；?123 , . ↵ 照整行时的宽度，只有空格缩短；快捷行分到两边、顺序不变；别的行和不让位时一模一样。 */
+    static void holePlacement() {
+        KeyRows.Key[] nine = new KeyRows.Key[9];
+        for (int i = 0; i < 9; i++) nine[i] = KeyRows.k((0x04 + i) | (1 << 8), "快" + i);
+        for (boolean apple : new boolean[]{false, true}) {
+            for (int n : new int[]{9, 3, 1, 0}) {
+                KeyRows.Row[] bottom = KeyRows.bottomRows(apple, Arrays.copyOf(nine, n));
+                for (int layer = 0; layer < 3; layer++) {
+                    KeyRows.Row[] rows = KeyRows.rows(true, layer, bottom);
+                    for (int[] wh : new int[][]{{400, 560}, {884, 360}, {1001, 333}}) {
+                        int w = wh[0], h = wh[1];
+                        float u = w / 10f;
+                        int[] hole = {Math.round(u * (apple ? 4.6f : 3.8f)), Math.round(u * 7.2f)};
+                        String what = (apple ? "苹果 " : "") + n + " 个快捷键 第 " + layer + " 层 " + w + "×" + h;
+                        List<KeyRows.Placed> ps = KeyRows.place(rows, w, h, false, KeyRows.MIDDLE_PAD, GAP, hole, true);
+                        List<KeyRows.Placed> base = KeyRows.place(rows, w, h, false, GAP);
+                        List<KeyRows.Key> order = KeyRows.keys(rows, false, true);
+                        check(ps.size() == order.size(), what + "：每个键都摆了");
+                        boolean sameOrder = true;
+                        for (int i = 0; i < ps.size() && i < order.size(); i++) sameOrder &= ps.get(i).key == order.get(i);
+                        check(sameOrder, what + "：摆放顺序同 keys()");
+                        int top = KeyRows.holeTop(rows, h);
+                        boolean clear = true, othersSame = true;
+                        int bi = 0;
+                        for (KeyRows.Placed p : ps) {
+                            if (p.top >= top) {
+                                clear &= p.right + GAP <= hole[0] || p.left - GAP >= hole[1];
+                            } else {
+                                KeyRows.Placed q = base.get(bi);
+                                othersSame &= q.key == p.key && q.left == p.left && q.top == p.top && q.right == p.right && q.bottom == p.bottom;
+                            }
+                            bi++;
+                        }
+                        check(clear, what + "：空位 " + Arrays.toString(hole) + " 里一个键都没有");
+                        check(othersSame, what + "：底行上面的行和不让位时一模一样");
+                        // 底行：?123 , . ↵ 照整行时的宽度；空格从 , 的右边到空位左边；↵ 到最右边；. 从空位右边开始
+                        KeyRows.Placed sym = find(ps, "?123"), comma = find(ps, ","), space = find(ps, "Space"), dot = find(ps, "."), enter = find(ps, "↵");
+                        KeyRows.Placed sym0 = find(base, "?123"), comma0 = find(base, ",");
+                        check(sym.left == sym0.left && sym.right == sym0.right && comma.left == comma0.left && comma.right == comma0.right,
+                                what + "：?123 , 和整行时一样宽、一样位置");
+                        check(space.left == comma.right + 2 * GAP && space.right == hole[0] - GAP, what + "：空格伸到空位左边");
+                        check(dot.left == hole[1] + GAP && enter.right == w - GAP && Math.abs(1.5f * (dot.right - dot.left + 2 * GAP)
+                                - (enter.right - enter.left + 2 * GAP)) <= 2, what + "：. ↵ 铺满空位右边、按 1 : 1.5 分");
+                        if (n > 0) {
+                            List<KeyRows.Placed> sc = new ArrayList<>();
+                            for (KeyRows.Placed p : ps) if (p.key.label.startsWith("快")) sc.add(p);
+                            int k = KeyRows.spreadLeft(n, hole[0], w - hole[1]);
+                            boolean split = sc.size() == n;
+                            for (int i = 0; split && i < n; i++) {
+                                KeyRows.Placed p = sc.get(i);
+                                split &= p.key == nine[i] && (i < k ? p.right <= hole[0] - GAP : p.left >= hole[1] + GAP);
+                            }
+                            check(split, what + "：快捷行顺序不变、前 " + k + " 个在空位左边、其余在右边");
+                            if (k > 0) check(sc.get(0).left == GAP && sc.get(k - 1).right == hole[0] - GAP, what + "：左边的快捷键铺满空位左边");
+                            if (k < n) check(sc.get(k).left == hole[1] + GAP && sc.get(n - 1).right == w - GAP, what + "：右边的铺满空位右边");
+                        }
+                        // 快捷行不让位（spread 为假）：底行照样让，快捷行和不让位时一模一样（铺满整行）
+                        List<KeyRows.Placed> ns = KeyRows.place(rows, w, h, false, KeyRows.MIDDLE_PAD, GAP, hole, false);
+                        boolean bottomSame = ns.size() == ps.size(), shortcutsFull = true;
+                        for (int i = 0; bottomSame && i < ns.size(); i++) {
+                            KeyRows.Placed x = ns.get(i), y = ps.get(i), z = base.get(i);
+                            if (x.key.label.startsWith("快")) {
+                                shortcutsFull &= x.key == z.key && x.left == z.left && x.top == z.top && x.right == z.right && x.bottom == z.bottom;
+                            } else {
+                                bottomSame &= x.key == y.key && x.left == y.left && x.top == y.top && x.right == y.right && x.bottom == y.bottom;
+                            }
+                        }
+                        check(bottomSame, what + "：快捷行不让位时别的行（含底行的空位）照旧");
+                        check(shortcutsFull, what + "：快捷行不让位时铺满整行、和不让位时一模一样");
+                        // 不给 hole：和以前一模一样（不分裂时没有让位）
+                        check(sameList(KeyRows.place(rows, w, h, false, KeyRows.MIDDLE_PAD, GAP, null, true), base), what + "：hole = null 照旧");
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 每个会显示出来的键都有键帽：照 KeyboardPanel 建键帽的范围（构造时 TOP_ROWS_MENU + 三层的中间四行，rebuildBottom 时底行 + 快捷行，
+     * 都经 KeyRows.capKeys）收一遍，再拿功能行带不带 ⋯ × 三层 × 整块 / 分裂 / 小红点让位时 keys() 给的键去比
+     * （2026-11-01：小红点状态的缩短空格只在 before 里，以前没有键帽，一进小红点状态就闪退）。
+     */
+    static void capKeysCover() {
+        KeyRows.Key[] nine = new KeyRows.Key[9];
+        for (int i = 0; i < 9; i++) nine[i] = KeyRows.k((0x04 + i) | (1 << 8), "快" + i);
+        int missing = 0, combos = 0;
+        String first = null;
+        for (boolean apple : new boolean[]{false, true}) {
+            for (int n : new int[]{9, 3, 1, 0}) {
+                KeyRows.Row[] bottom = KeyRows.bottomRows(apple, Arrays.copyOf(nine, n));
+                java.util.IdentityHashMap<KeyRows.Key, Boolean> caps = new java.util.IdentityHashMap<>();
+                List<KeyRows.Row[]> built = new ArrayList<>();
+                built.add(KeyRows.TOP_ROWS_MENU);
+                built.addAll(Arrays.asList(KeyRows.LAYERS));
+                built.add(bottom);
+                boolean dup = false;
+                for (KeyRows.Row[] rows : built) {
+                    List<KeyRows.Key> ks = KeyRows.capKeys(rows);
+                    java.util.IdentityHashMap<KeyRows.Key, Boolean> once = new java.util.IdentityHashMap<>();
+                    for (KeyRows.Key k : ks) {
+                        dup |= once.put(k, Boolean.TRUE) != null || k.spacer();
+                        caps.put(k, Boolean.TRUE);
+                    }
+                }
+                check(!dup, (apple ? "苹果 " : "") + n + " 个快捷键：capKeys 不重复、不含空位");
+                for (boolean menu : new boolean[]{false, true}) {
+                    for (int layer = 0; layer < 3; layer++) {
+                        KeyRows.Row[] rows = KeyRows.rows(menu, layer, bottom);
+                        for (boolean[] mode : new boolean[][]{{false, false}, {true, false}, {false, true}}) {
+                            combos++;
+                            for (KeyRows.Key k : KeyRows.keys(rows, mode[0], mode[1])) {
+                                if (caps.containsKey(k)) continue;
+                                missing++;
+                                if (first == null) first = (apple ? "苹果 " : "") + n + " 个快捷键 第 " + layer + " 层"
+                                        + (mode[0] ? " 分裂" : mode[1] ? " 小红点让位" : " 整块") + "：" + k.label + "（" + k.weight + " 份）";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        check(missing == 0, "每个会显示的键都有键帽（" + combos + " 种）" + (first == null ? "" : "，缺的比如 " + first));
+        // 缩短的空格就在里面（就是它以前漏了）
+        KeyRows.Row[] b = KeyRows.bottomRows(false, new KeyRows.Key[0]);
+        check(KeyRows.capKeys(b).contains(b[0].before[b[0].before.length - 1]), "缩短的空格有键帽");
+    }
+
+    private static boolean sameList(List<KeyRows.Placed> a, List<KeyRows.Placed> b) {
+        if (a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            KeyRows.Placed x = a.get(i), y = b.get(i);
+            if (x.key != y.key || x.left != y.left || x.top != y.top || x.right != y.right || x.bottom != y.bottom) return false;
+        }
+        return true;
     }
 
     // ── 一层的全部行（KeyboardPanel 和 KeyboardPlan 共用）：功能行、中间四行、底行 + 快捷行 ──

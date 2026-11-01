@@ -121,10 +121,11 @@ public final class Proto {
     /**
      * 小红点（模拟 ThinkPad TrackPoint，键盘页 ⋯ 菜单里"指点"选小红点时才有）：id = {@link #STICK_ID}。
      * 按住往哪边推光标就往哪边走、推得越远越快（TouchRouter → TrackPoint，按节拍发）。协议 18 起。
+     * 报的是正方形，按得到的是它的内切圆（TouchRouter.Region.contains，2026-11-01 起；协议没变，旧服务照正方形认，要重启服务）。
      */
     public static final int REGION_STICK = 5;
     /**
-     * 三个鼠标键（选小红点时键盘最下面那排、或者触控板上沿 / 下沿的三键条）：id = {@link #MOUSE_BUTTON_ID_BASE} | 鼠标键位
+     * 三个鼠标键（选小红点时底行、快捷行让出的空位里，或者触控板上沿 / 下沿的三键条）：id = {@link #MOUSE_BUTTON_ID_BASE} | 鼠标键位
      * （BUTTON_LEFT / RIGHT / MIDDLE）。左 / 右键按住就按住；中键按着时推红点 / 单指划触控板 = 滚动，一格都没滚过就松开 = 中键单击。
      * 左键和 REGION_HOLD_LEFT、CMD_HOLD_LEFT 共用服务里的计数。协议 18 起。
      */

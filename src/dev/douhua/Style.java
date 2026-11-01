@@ -1,7 +1,17 @@
 package dev.douhua;
 
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -44,6 +54,11 @@ final class Style {
         return Math.round(v * density(c));
     }
 
+    /** sp 换成像素（跟着系统字体大小变，同 setTextSize(COMPLEX_UNIT_SP)）。 */
+    static int sp(Context c, float v) {
+        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, c.getResources().getDisplayMetrics()));
+    }
+
     /** 圆角框，边框粗细跟当前主题（高对比粗一点）。 */
     static GradientDrawable border(Context c, int strokeColor, int fillColor) {
         return border(c, theme.borderDp, strokeColor, fillColor);
@@ -63,9 +78,14 @@ final class Style {
         return button(c, textSp, theme, true);
     }
 
-    /** 键帽（整屏键盘、数字键盘）：边框跟"按键边框"开关。 */
+    /**
+     * 键帽（整屏键盘、数字键盘）：边框跟"按键边框"开关。缩到最小字号还放不下的键名末尾省略（…），不在词中间断开、只露半截
+     * （小红点状态下缩短的空格、分到空位两边的快捷键，德 / 法 / 西 / 意 / 日 / 韩语的短名可能放不下，2026-11-01 审查发现）。
+     */
     static TextView keyButton(Context c, int textSp) {
-        return button(c, textSp, theme, keyBorders);
+        TextView b = button(c, textSp, theme, keyBorders);
+        b.setEllipsize(TextUtils.TruncateAt.END);
+        return b;
     }
 
     static TextView button(Context c, int textSp, Theme t, boolean borders) {
@@ -92,6 +112,21 @@ final class Style {
     /** 键帽的样子，fn = 功能键（KeyRows.functionKey / numpadFunctionKey）：底色掺一点强调色、字是强调色。 */
     static void keyLook(View v, boolean fn, boolean active, boolean pressed) {
         look(v, theme, keyBorders, fn, active, pressed);
+    }
+
+    /**
+     * 同上，cut = 被小红点切掉的那块 {圆心 x, 圆心 y, 半径}（键帽自己的坐标，KeyboardPanel 给；null = 没切）：
+     * 底色、按下、高亮、边框都照圆角矩形减去这个圆画（{@link CutCap}），颜色和别的键帽一模一样。
+     */
+    static void keyLook(View v, boolean fn, boolean active, boolean pressed, float[] cut) {
+        look(v, theme, keyBorders, fn, active, pressed);
+        if (cut == null) return;
+        boolean f = fn && !active;
+        float stroke = active || keyBorders ? theme.borderDp : 0;
+        int fill = pressed ? (f ? theme.fnPressed : theme.pressed) : (f ? theme.fnKey : theme.key);
+        float density = density(v.getContext());
+        v.setBackground(new CutCap(dp(v.getContext(), 10), stroke > 0 ? Math.max(1, Math.round(stroke * density)) : 0,
+                active ? theme.accent : theme.border, fill, cut[0], cut[1], cut[2]));
     }
 
     static void look(View v, Theme t, boolean borders, boolean active, boolean pressed) {
@@ -124,5 +159,86 @@ final class Style {
     static void bare(TextView v, boolean pressed) {
         v.setTextColor(theme.dim);
         v.setBackground(pressed ? border(v.getContext(), 0, 0, theme.pressed) : null);
+    }
+
+    /**
+     * 被小红点切掉一块的键帽（照真 ThinkPad：G、H、B 被和红点同心的圆弧切掉）：圆角矩形减去一个圆（Path 的 DIFFERENCE），
+     * 底色、边框都沿着圆弧走。同 GradientDrawable：边框画在往里缩半条边框的矩形上（底色也是），圆也往外扩半条，
+     * 所以边框外沿正好在键帽的边、切口的边（cr）上，和没切的键帽的边框对得齐。
+     */
+    static final class CutCap extends Drawable {
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+        private final Path hole = new Path();
+        private final RectF box = new RectF();
+        private final float corner, strokeW, cx, cy, cr;
+        private final int fillColor, strokeColor;
+        private int alpha = 255;
+
+        CutCap(float corner, float strokeW, int strokeColor, int fillColor, float cx, float cy, float cr) {
+            this.corner = corner;
+            this.strokeW = strokeW;
+            this.cx = cx;
+            this.cy = cy;
+            this.cr = cr;
+            this.fillColor = fillColor;
+            this.strokeColor = strokeColor;
+            stroke.setStyle(Paint.Style.STROKE);
+            stroke.setStrokeWidth(strokeW);
+            applyAlpha();
+        }
+
+        /** 颜色本身的透明度再乘上 setAlpha 给的（同 GradientDrawable）。 */
+        private void applyAlpha() {
+            fill.setColor(withAlpha(fillColor));
+            stroke.setColor(withAlpha(strokeColor));
+        }
+
+        private int withAlpha(int c) {
+            return (c & 0xFFFFFF) | ((Color.alpha(c) * alpha / 255) << 24);
+        }
+
+        @Override
+        protected void onBoundsChange(Rect b) {
+            float inset = strokeW / 2;
+            box.set(b.left + inset, b.top + inset, b.right - inset, b.bottom - inset);
+            float r = Math.max(0, Math.min(corner, Math.min(box.width(), box.height()) / 2));
+            path.reset();
+            path.addRoundRect(box, r, r, Path.Direction.CW);
+            hole.reset();
+            hole.addCircle(b.left + cx, b.top + cy, cr + inset, Path.Direction.CW);
+            path.op(hole, Path.Op.DIFFERENCE);
+        }
+
+        @Override
+        public void draw(Canvas c) {
+            if (Color.alpha(fill.getColor()) != 0) c.drawPath(path, fill);
+            if (strokeW > 0) c.drawPath(path, stroke);
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            this.alpha = Math.max(0, Math.min(255, alpha));
+            applyAlpha();
+            invalidateSelf();
+        }
+
+        @Override
+        public int getAlpha() {
+            return alpha;
+        }
+
+        @Override
+        public void setColorFilter(ColorFilter cf) {
+            fill.setColorFilter(cf);
+            stroke.setColorFilter(cf);
+            invalidateSelf();
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
     }
 }

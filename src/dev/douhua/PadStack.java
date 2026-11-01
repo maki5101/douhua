@@ -42,6 +42,7 @@ final class PadStack extends ViewGroup {
         // 同键盘页（KeyboardScreen）：缝 8、触控板短边 96、三个键各至少 44 × 48（2026-11-01 从 36 加高）、隔 4、中键至少 56、离边 20（dp）
         edge = Style.dp(c, 20);
         sizes = new KeyboardPlan.Sizes(Style.dp(c, 8), Style.dp(c, 96), Style.dp(c, 32), Style.dp(c, 64), Style.dp(c, 32),
+                Style.dp(c, KeyboardScreen.STICK_GAP_DP), Style.sp(c, KeyboardScreen.LABEL_ROOM_SP),
                 Style.dp(c, 44), Style.dp(c, 48), Style.dp(c, 4), Style.dp(c, 56), Style.dp(c, 2), edge);
         addView(padFrame);
         addView(keys);

@@ -17,7 +17,10 @@ import java.util.List;
  *   功能行、符号层、Fn 层、快捷行按个数对半分（奇数时多的放左边）；底行 ?123 , 空格 | 空格 . ↵，两边各一个空格。
  * 同一个 Key 对象 = 同一个键帽：两种布局里同一个键用的是同一个对象（KeyboardPanel 按对象认键帽），
  * 只有分裂时的两个空格是另外的对象（份数和整块时不一样）。
- * 选小红点时它嵌在 g、h、v、b 交界那一点（{@link #stickPoint}；多大、压着键多少由 KeyboardPlan 定）。
+ * 选小红点时（只有整块，2026-11-01 起小红点状态不分裂）它嵌在 g、h、v、b 交界那一点（{@link #stickPoint}；多大、压着键多少由 KeyboardPlan 定），
+ * 左 / 中 / 右三个鼠标键竖着跨底行（空格那一排）和快捷行：这两行在中间让出同一段空位（{@link #place} 的 hole），
+ * 底行变成 ?123 , 空格（缩短，{@link #STICK_SPACE} 份，只有它跟着空位变）│ 空位 │ . ↵，快捷行的键按个数分到空位两边（{@link #spreadLeft}）；
+ * 快捷行分开后键太窄（KeyboardPlan.shortcutsSpread）就不让位、照旧铺满，三个鼠标键只占空格那一排（{@link #place} 的 spread）。
  */
 final class KeyRows {
     private KeyRows() {
@@ -69,14 +72,34 @@ final class KeyRows {
         }
     }
 
-    /** 一行在两种布局下的样子：whole 是整块时的整行，left / right 是分裂时的左右两半。 */
+    /**
+     * 一行在两种布局下的样子：whole 是整块时的整行，left / right 是分裂时的左右两半。
+     * 小红点状态（整块、{@link #place} 给了 hole）下让出空位的行：before / after 是空位左边、右边的键（底行；
+     * before 的最后一个键——缩短的空格——伸缩到空位的左边，其余照整行时的份数宽），spread = 键按个数分到空位两边（快捷行，顺序不变；
+     * 只在 {@link #place} 的 spread 为真时真的分，不然照 whole 铺满）；两样都没有的行不让位，照 whole 摆。
+     * 每个键都要有键帽：KeyboardPanel 照 {@link #capKeys} 建（含 before / after）。
+     */
     static final class Row {
         final Key[] whole, left, right;
+        final Key[] before, after;
+        final boolean spread;
 
         Row(Key[] whole, Key[] left, Key[] right) {
+            this(whole, left, right, null, null, false);
+        }
+
+        Row(Key[] whole, Key[] left, Key[] right, Key[] before, Key[] after, boolean spread) {
             this.whole = whole;
             this.left = left;
             this.right = right;
+            this.before = before;
+            this.after = after;
+            this.spread = spread;
+        }
+
+        /** 小红点状态下这一行让不让出空位（底行、快捷行）。 */
+        boolean holed() {
+            return before != null || spread;
         }
     }
 
@@ -220,13 +243,28 @@ final class KeyRows {
      */
     private static final Key[] BOTTOM_APPLE = {SYMBOLS_KEY, GLOBE_KEY, COMMA, wide(0x2C, "Space", 4), PERIOD, ENTER};
 
-    /** 分裂时底行：?123 , 空格 | 空格 . ↵，两半都凑够 HALF_UNITS 份；🌐 放左半（左边的空格让出一份）。 */
+    /**
+     * 小红点状态下底行缩短的空格平时多少份（空位右边是 . ↵，左边 ?123 , 和它）：2026-11-01 用户要三个鼠标键占空格那一排，
+     * 空格缩短但要留得住——1.5 份（同 ?123、↵）；手机竖屏这样排不下三个 44dp 的鼠标键时才再缩，最短 {@link #STICK_SPACE_MIN} 份
+     * （一个字母键宽），见 KeyboardPlan.stickHole。
+     */
+    static final float STICK_SPACE = 1.5f;
+    static final float STICK_SPACE_MIN = 1f;
+    /** 小红点状态下的空格（又一个键帽，同分裂的两个空格；连不连苹果设备共用）。 */
+    private static final Key STICK_SPACE_KEY = wide(0x2C, "Space", STICK_SPACE);
+
+    /**
+     * 分裂时底行：?123 , 空格 | 空格 . ↵，两半都凑够 HALF_UNITS 份；🌐 放左半（左边的空格让出一份）。
+     * 小红点状态（整块）：?123 , 空格（缩短）│ 空位 │ . ↵，🌐 照旧跟在 ?123 后面。
+     */
     private static final Row BOTTOM_ROW = new Row(BOTTOM,
             new Key[]{SYMBOLS_KEY, COMMA, wide(0x2C, "Space", 3)},
-            new Key[]{wide(0x2C, "Space", 3), PERIOD, ENTER});
+            new Key[]{wide(0x2C, "Space", 3), PERIOD, ENTER},
+            new Key[]{SYMBOLS_KEY, COMMA, STICK_SPACE_KEY}, new Key[]{PERIOD, ENTER}, false);
     private static final Row BOTTOM_ROW_APPLE = new Row(BOTTOM_APPLE,
             new Key[]{SYMBOLS_KEY, GLOBE_KEY, COMMA, wide(0x2C, "Space", 2)},
-            new Key[]{wide(0x2C, "Space", 3), PERIOD, ENTER});
+            new Key[]{wide(0x2C, "Space", 3), PERIOD, ENTER},
+            new Key[]{SYMBOLS_KEY, GLOBE_KEY, COMMA, STICK_SPACE_KEY}, new Key[]{PERIOD, ENTER}, false);
 
     // ═══════════ 行 ═══════════
 
@@ -281,10 +319,12 @@ final class KeyRows {
     /** 中间四行，下标 = LAYER_*。 */
     static final Row[][] LAYERS = {letterRows(), halvesRows(SYMBOLS), halvesRows(FN)};
 
-    /** 底行 + 快捷行（快捷行空着就没有这一行）。 */
+    /** 底行 + 快捷行（快捷行空着就没有这一行）。快捷行在小红点状态下按个数分到空位两边（spread）。 */
     static Row[] bottomRows(boolean apple, Key[] shortcuts) {
         Row bottom = apple ? BOTTOM_ROW_APPLE : BOTTOM_ROW;
-        return shortcuts.length == 0 ? new Row[]{bottom} : new Row[]{bottom, halves(shortcuts)};
+        if (shortcuts.length == 0) return new Row[]{bottom};
+        Row h = halves(shortcuts);
+        return new Row[]{bottom, new Row(h.whole, h.left, h.right, null, null, true)};
     }
 
     /** 一层显示的全部行，从上到下：功能行（menu = 带 ⋯）、这一层的中间四行、bottom（底行 + 快捷行，见 {@link #bottomRows}）。 */
@@ -298,7 +338,7 @@ final class KeyRows {
         return all;
     }
 
-    /** 三层各自的全部行（下标 = LAYER_*，同 {@link #rows}）：小红点嵌在键里时按每一层的键算它占掉多少（KeyboardPlan.stickSize）。 */
+    /** 三层各自的全部行（下标 = LAYER_*，同 {@link #rows}）：小红点嵌在键里时按每一层的键算它切掉多少（KeyboardPlan.stickRadius）。 */
     static Row[][] layers(boolean menu, Row[] bottom) {
         Row[][] out = new Row[LAYERS.length][];
         for (int i = 0; i < out.length; i++) out[i] = rows(menu, i, bottom);
@@ -325,16 +365,61 @@ final class KeyRows {
     /**
      * 小红点嵌在键盘里的那一点（面板坐标 {x, y}；2026-11-01 用户："像真的 ThinkPad 键盘一样，指点杆直接放键盘中间"）：
      * 字母层第二行 g|h 的缝、第三行 v|b 的缝和两行之间的缝交在一起的地方（ThinkPad 的 G、H、B 中间）。
-     * 整块时 g|h、v|b 都在一行的 {@link #STICK_UNITS} / {@link #LETTER_UNITS} 处（取整同 {@link #place}，正好是那条缝的中线）；
-     * 分裂时是两半之间那截的正中（只隔一条缝时 = 左半的 g、v 和右半的 g、v 交界；中间留出一列时 = 这一列的正中），同一高度。
+     * g|h、v|b 都在一行的 {@link #STICK_UNITS} / {@link #LETTER_UNITS} 处（取整同 {@link #place}，正好是那条缝的中线）。
      * 高度 = 中间四行的第三行（a–l）和第四行（z–m）之间那条线；rowCount = 这一层一共几行（三层一样多）。
      * 符号层、Fn 层那里是别的键（不一定正好四个键交在这一点），红点照样在这儿，不跟着换层挪。
+     * 只有整块：小红点状态不分裂（2026-11-01 用户），以前分裂时放在两半中间。
      */
-    static int[] stickPoint(int width, int height, int rowCount, boolean split, int middle) {
+    static int[] stickPoint(int width, int height, int rowCount) {
         int y = rowCount > 0 ? Math.round((float) height * (TOP_ROWS.length + 3) / rowCount) : height / 2;
-        int x = split ? (leftEnd(width, middle) + rightStart(width, middle)) / 2
-                : Math.round(width * STICK_UNITS / LETTER_UNITS);
-        return new int[]{x, y};
+        return new int[]{Math.round(width * STICK_UNITS / LETTER_UNITS), y};
+    }
+
+    // ═══════════ 小红点状态：底行、快捷行让出的空位 ═══════════
+
+    /**
+     * 让空位的底行在份数上是什么样，返回 {空位左边的键共多少份（空格按 STICK_SPACE 份）, 右边的键共多少份, 整行多少份}；
+     * rows 里没有让位的底行返回 null。空位左边最多能到 [0] 份处、最少到 [0] − (STICK_SPACE − STICK_SPACE_MIN) 份处；
+     * 右边最远到 [2] − [1] 份处（. 原来的左边），KeyboardPlan.stickHole 在这中间挑。
+     */
+    static float[] holeUnits(Row[] rows) {
+        for (Row row : rows) {
+            if (row.before == null) continue;
+            return new float[]{unitsBefore(row.before, null), unitsBefore(row.after, null), unitsBefore(row.whole, null)};
+        }
+        return null;
+    }
+
+    /** 第一行让位的行（底行）的上沿（面板像素，取整同 {@link #place}）；没有让位的行返回 -1。 */
+    static int holeTop(Row[] rows, int height) {
+        int n = rows.length;
+        for (int i = 0; i < n; i++) if (rows[i].holed()) return Math.round((float) height * i / n);
+        return -1;
+    }
+
+    /**
+     * 空位的下沿（面板像素，取整同 {@link #place}）：最后一行真让了位的行的下沿——底行一直让；快捷行只在 spread（快捷行也让位，
+     * KeyboardPlan.Plan.spread）时算。没有让位的行返回 -1。快捷行不让位时三个鼠标键只占空格那一排，下沿是底行的下沿。
+     */
+    static int holeBottom(Row[] rows, int height, boolean spread) {
+        int n = rows.length;
+        for (int i = n - 1; i >= 0; i--) {
+            if (rows[i].before != null || (spread && rows[i].spread)) return Math.round((float) height * (i + 1) / n);
+        }
+        return -1;
+    }
+
+    /**
+     * 快捷行 n 个键分到空位两边：左边宽 left、右边宽 right（像素），返回左边放几个（其余放右边，顺序不变）。
+     * 按两边的宽度比例分、四舍五入，让两边的键差不多宽；两边都有地方、键又不止一个时每边至少一个（不留一整边空着）。
+     */
+    static int spreadLeft(int n, int left, int right) {
+        if (n <= 0) return 0;
+        if (left <= 0) return 0;
+        if (right <= 0) return n;
+        int k = Math.round((float) n * left / (left + right));
+        if (n >= 2) k = Math.max(1, Math.min(n - 1, k));
+        return Math.max(0, Math.min(n, k));
     }
 
     // ═══════════ 分裂 / 排布 ═══════════
@@ -394,11 +479,39 @@ final class KeyRows {
 
     /** 这些行在这种布局下显示哪些键（不含空位），顺序同 {@link #place}：一行行往下，每行先左半后右半。 */
     static List<Key> keys(Row[] rows, boolean split) {
+        return keys(rows, split, false);
+    }
+
+    /**
+     * 这些行在所有布局下（整块、分裂、小红点让位）可能显示的键（不含空位、同一个对象只算一次），KeyboardPanel 照它给每个键建键帽。
+     * 和 {@link #keys} 的规则放在一处：{@link Row#before} / {@link Row#after}（小红点状态的底行，比如缩短的空格）以前漏了，
+     * 一进小红点状态就拿不到键帽、闪退（2026-11-01 审查发现）；KeyRowsTest 锁住"keys 给的每个键都在这里"。
+     */
+    static List<Key> capKeys(Row[] rows) {
+        List<Key> out = new ArrayList<>();
+        java.util.IdentityHashMap<Key, Boolean> seen = new java.util.IdentityHashMap<>();
+        for (Row row : rows) {
+            for (Key[] part : new Key[][]{row.whole, row.left, row.right, row.before, row.after}) {
+                if (part == null) continue;
+                for (Key key : part) {
+                    if (key.spacer() || seen.put(key, Boolean.TRUE) != null) continue;
+                    out.add(key);
+                }
+            }
+        }
+        return out;
+    }
+
+    /** 同上，hole = 小红点状态、底行和快捷行让出空位（只在整块时有用）：底行换成 before + after，快捷行照旧（左边的在前）。 */
+    static List<Key> keys(Row[] rows, boolean split, boolean hole) {
         List<Key> out = new ArrayList<>();
         for (Row row : rows) {
             if (split) {
                 addKeys(out, row.left);
                 addKeys(out, row.right);
+            } else if (hole && row.before != null) {
+                addKeys(out, row.before);
+                addKeys(out, row.after);
             } else {
                 addKeys(out, row.whole);
             }
@@ -420,6 +533,18 @@ final class KeyRows {
 
     /** 同上，middle 见 {@link #leftEnd(int, int)}（只在分裂时有用）。 */
     static List<Placed> place(Row[] rows, int width, int height, boolean split, int middle, int gap) {
+        return place(rows, width, height, split, middle, gap, null, false);
+    }
+
+    /**
+     * 同上，hole = 小红点状态下底行、快捷行让出的空位 {左, 右}（面板像素，KeyboardPlan.stickHole 定；null = 不让，分裂时不看）：
+     * 让位的行（{@link Row#holed}）在 [0, 左]、[右, width] 两段里摆，空位里什么都不摆（三个鼠标键在那儿）。
+     * 底行：before 里除了最后一个（缩短的空格）照整行时的份数宽（取整同整行），空格从前一个键的右边伸到空位的左边；
+     * after 在 [右, width] 里按份数分（空位右边比 . 原来的左边靠左时 . ↵ 一起变宽）。
+     * 快捷行：spread（快捷行也让位，KeyboardPlan.Plan.spread）时按 {@link #spreadLeft} 分到两段、各自铺满；不然照旧铺满整行
+     * （让位后快捷键太窄时，三个鼠标键只占空格那一排）。
+     */
+    static List<Placed> place(Row[] rows, int width, int height, boolean split, int middle, int gap, int[] hole, boolean spread) {
         List<Placed> out = new ArrayList<>();
         int n = rows.length;
         for (int i = 0; i < n; i++) {
@@ -429,11 +554,31 @@ final class KeyRows {
             if (split) {
                 placeRow(out, row.left, 0, leftEnd(width, middle), top, bottom, gap);
                 placeRow(out, row.right, rightStart(width, middle), width, top, bottom, gap);
+            } else if (hole != null && row.before != null) {
+                placeFlex(out, row.before, width / unitsBefore(row.whole, null), hole[0], top, bottom, gap);
+                placeRow(out, row.after, hole[1], width, top, bottom, gap);
+            } else if (hole != null && spread && row.spread) {
+                int k = spreadLeft(row.whole.length, hole[0], width - hole[1]);
+                placeRow(out, slice(row.whole, 0, k), 0, hole[0], top, bottom, gap);
+                placeRow(out, slice(row.whole, k, row.whole.length), hole[1], width, top, bottom, gap);
             } else {
                 placeRow(out, row.whole, 0, width, top, bottom, gap);
             }
         }
         return out;
+    }
+
+    /** keys 从 0 开始照 unit（每份多少像素）排、边界取整，最后一个键伸缩到 end 为止（缩短的空格）。 */
+    private static void placeFlex(List<Placed> out, Key[] keys, float unit, int end, int top, int bottom, int gap) {
+        float used = 0;
+        int left = 0;
+        for (int i = 0; i < keys.length; i++) {
+            Key key = keys[i];
+            used += key.weight;
+            int right = i == keys.length - 1 ? end : Math.round(unit * used);
+            if (!key.spacer()) out.add(new Placed(key, left + gap, top + gap, right - gap, bottom - gap));
+            left = right;
+        }
     }
 
     /**

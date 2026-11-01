@@ -32,18 +32,18 @@
 | `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测）；惯性滚动（边缘一拨接着转、碰触控板抓住，用唯一的定时器槽 TIMER_SPIN）、连续滚动（按 1/120 格出、每滚过一格咔嗒、双指锁主方向）也在这里；滚轮量的单位是 1/120 格；中键按着时单指划 = 滚动（setScrollHold，方向"推哪边视野往哪边走"、不起长按 / 惯性），小红点的位移、滚轮经 externalMove / externalScroll 出 |
 | `src/dev/douhua/ScrollInertia.java` | 惯性滚动的物理（黏滞 + 恒定摩擦的闭式解、阻尼档位 → τ、停止时间 / 距离），纯 Java（离线测，HidTest），引擎和设置页共用 |
 | `src/dev/douhua/ConfigCodec.java` | CMD_CONFIG 的编解码（App 的 Link 写、服务的 Session 读、TestClient 写，三处共用一份），纯 Java（离线测往返） |
-| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数，中键按着 = 滚动、没滚过松开补中键单击）；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立） |
+| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键锁定 + 开合的 Ctrl，纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，按得到的是报上来那个正方形的内切圆——Region.contains，服务、App 本地分流、KeyFingers 共用；第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数，中键按着 = 滚动、没滚过松开补中键单击）；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立） |
 | `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号；带滚轮分辨率倍率的鼠标描述符（MOUSE_DESC_HIRES 蓝牙用，竖、横两个倍率；MOUSE_DESC_HIRES_V 桌面模式 uhid 用，只有竖向一个；输入报文都和旧的一字不差）、倍率字节编解码、WheelOut（1/120 格 → 计数、余数、拆帧；uhid 那份设 / 问倍率的 setUhidFeature / uhidFeatureReport，UhidMouse 只调它们；离线测 HidTest）；手柄描述符 GAMEPAD_DESC（Game Pad、15 键 + Hat + X/Y/Z/Rz + Brake/Accelerator，13 字节，全零 = 中立）和 Gamepad（状态、报文、两路合并 merge） |
 | `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停；描述符跟着"连续滚动"开关（变了就注销、重新注册，descriptorChanged），回应主机设 / 问滚轮倍率 |
 | `src/dev/douhua/Haptics.java` | 震动：点击、咔嗒、颗粒、拖动时的持续轻震、按键的"嗒"、惯性的"放开 / 刹住"（调试版设置里能挑候选波形，正式包用默认） |
 | `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；几屏共用的 ⋯ 菜单的项（主界面 键盘 / 手柄 / 设置 / 旋转 / 退出，键盘屏 收起键盘 / 调整大小 / 布局 / 指点 / 手柄 / 设置 / 旋转 / 退出，手柄页 预设 / 返回触控板 / 设置 / 旋转 / 退出；"手柄"只在桌面模式）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：五页往里收）；手柄页的进出（setGamepadMode：桌面模式下手柄页走本地分流，CMD_GAMEPAD 发给服务）、吞自己手柄的键和摇杆（dispatchKeyEvent / dispatchGenericMotionEvent） |
-| `src/dev/douhua/KeyboardPanel.java` | 外接键盘的键帽、触摸、高亮（键位本身在 KeyRows），键 id = 用法码 \| 自带修饰键 << 8；自己摆放键帽（ViewGroup，所有键帽是直接子 view，按 KeyRows.place 摆）；报区域时键后面报键盘范围（REGION_KEYBOARD：整块一块，分裂时左右两半各一块）；功能行带不带最右边的 ⋯ 键（setMenuKey，小触控板上没摆出 ⋯ 时带，menuKeyRect 给菜单定位）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键；嵌在键里的小红点那块不算任何键，setStickHole）；三层的全部行交给 KeyboardPlan 算红点多大（layers）；三层、两种布局的键帽各建一次，换层 / 分裂只切显示；键帽文字 / 高亮没变的键不重设 |
-| `src/dev/douhua/KeyRows.java` | 键位和排布，纯 Java（离线测，KeyRowsTest）：键（Key）、每行整块 / 分裂时左右两半各是哪些键（Row）、键盘区宽 ≥ 2 × 高（shouldSplit）、每个键摆在哪（place）；分裂时两半中间放触控板（各三分之一宽）或只隔一条缝（leftEnd 的 middle），只隔一条缝时两块键盘范围伸到缝的中线（areaEnd / areaStart）；同一个键两种布局用同一个 Key 对象；功能行两份（topRows：不带 / 带最右边的 ⋯，⋯ 是特殊键 MENU_BUTTON_ID = 303）；哪些键算功能键（functionKey；数字键盘另有 numpadFunctionKey，"-" 在那里算运算符），主题按它分主次上色；一层的全部行（rows / layers，KeyboardPanel 和 KeyboardPlan 共用）；小红点嵌在哪（stickPoint：字母层 g|h、v|b 的缝和 a–l / z–m 两行交界那一点，分裂时两半中间那截的正中） |
-| `src/dev/douhua/KeyboardPlan.java` | 键盘界面怎么摆，纯 Java（离线测，KeyboardPlanTest）：布局（自动 / 分裂 / 合并）轮换、分不分裂（键太窄不分）、分裂 / 合并时键盘占哪块、触控板放在空得最多的一侧（太小不放）、宽窗口没调过大小时的默认位置（触控板显示且放得下才三分之二宽）；⋯ 菜单的几何（menuTop：⋯ 放触控板顶上正中、padMenuTop：主界面的 ⋯ 放不下也照样放、menuPosition：菜单弹在哪不出屏、menuGrid：项多窗口矮时先压矮再分列、adjustBarTop：调整栏放上还是下、barButtonWidth：调整栏按钮宽度）；分裂时对称调大小的几何（左半"格子"、默认格子、fitSplit 按窗口守约束、dragSplit 拖法和约束）；指点三选一（POINTER_PAD / STICK / NONE，nextPointer）：小红点照真的 ThinkPad 键盘摆（2026-11-01）——三个鼠标键是键盘最下面一排（从键盘的框 Plan.block 下沿切出、Plan.keys，面板太矮不切），红点在 KeyRows.stickPoint（placeStick：分裂没调过时中间只留一列 stickColumn = 红点 + 两条缝、不压键；合并 / 两半挨着时嵌在四个键的交界、stickSize 按每层的键定多大；嵌不下放键盘外面上 / 下），中键窄、左右键宽、中键对着红点（middleKey，三键条也用）；触控板的三键条（cutBar，上沿 / 下沿，主界面也用）、⋯ 放哪（Plan.menuArea / menuMargin；没有触控板时回功能行）；离页面边的距离可以各边不一样（Sizes.edgeL / T / R / B、withEdges，menuTop / menuGrid / menuPosition / adjustBarTop 各有带 {左, 上, 右, 下} 的版本，屏幕边缘留白用） |
-| `src/dev/douhua/KeyFingers.java` | 键盘面板自己收触摸时每根手指按的是哪个键（按 pointer id 记，抬起只松自己那个）；按下定键 = 包含的键优先、缝里交给 TouchRouter.nearestKey（几块范围时只在落进的那一块里分），落在洞（嵌在键里的小红点）里不算任何键，纯 Java（离线测） |
-| `src/dev/douhua/KeyboardScreen.java` | 键盘界面：可调大小位置的键盘 + 小触控板占满整页（没有工具栏那一行）；⋯（触控板顶上正中、不带框）、调整模式的"完成 / 恢复默认"栏由它摆（视图由 MainActivity 建）；菜单本身在 MenuLayer，贴着这里的 ⋯ 弹出（menuAnchor）；每次量尺寸按 KeyboardPlan 摆；调整模式由 App 自己收触摸，分裂时两半对称着拖（pickSplitHandle，按右半时左右位移镜像）；指点选小红点时摆红点（TrackPointView，嵌在键里时画成洞）和键盘最下面那排三个鼠标键（MouseKeys），调整模式的框、把手按连着那排的整块（Plan.block）；触控板开着三键条时从上沿 / 下沿切一条（同一组 MouseKeys）；屏幕边缘留白时整屏被往里收，离各边的 20dp 少留收进去的那么多（setEdgeInsets） |
+| `src/dev/douhua/KeyboardPanel.java` | 外接键盘的键帽、触摸、高亮（键位本身在 KeyRows），键 id = 用法码 \| 自带修饰键 << 8；自己摆放键帽（ViewGroup，所有键帽是直接子 view，按 KeyRows.place 摆）；报区域时键后面报键盘范围（REGION_KEYBOARD：整块一块，分裂时左右两半各一块）；功能行带不带最右边的 ⋯ 键（setMenuKey，小触控板上没摆出 ⋯ 时带，menuKeyRect 给菜单定位）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键；嵌在键里的小红点圆里、让给三个鼠标键的空位里不算任何键）；三层的全部行交给 KeyboardPlan 算红点多大、空位多宽（layers）；键帽照 KeyRows.capKeys 建（含小红点状态底行的 before / after）；小红点状态（2026-11-01）：底行在中间让出空位、快捷行分得开时也让（setHole(hole, spread)，KeyRows.place 的 hole / spread），红点嵌在键里时碰到切口的键帽沿圆弧画（setStick → Style.keyLook 的 cut）、字竖着挪开（上下内边距，KeyboardPlan.labelShift）；三层、两种布局的键帽各建一次，换层 / 分裂只切显示；键帽文字 / 高亮没变的键不重设 |
+| `src/dev/douhua/KeyRows.java` | 键位和排布，纯 Java（离线测，KeyRowsTest）：键（Key）、每行整块 / 分裂时左右两半各是哪些键（Row）、键盘区宽 ≥ 2 × 高（shouldSplit）、每个键摆在哪（place）；分裂时两半中间放触控板（各三分之一宽）或只隔一条缝（leftEnd 的 middle），只隔一条缝时两块键盘范围伸到缝的中线（areaEnd / areaStart）；同一个键两种布局用同一个 Key 对象；功能行两份（topRows：不带 / 带最右边的 ⋯，⋯ 是特殊键 MENU_BUTTON_ID = 303）；哪些键算功能键（functionKey；数字键盘另有 numpadFunctionKey，"-" 在那里算运算符），主题按它分主次上色；一层的全部行（rows / layers，KeyboardPanel 和 KeyboardPlan 共用）；小红点嵌在哪（stickPoint：字母层 g|h、v|b 的缝和 a–l / z–m 两行交界那一点，只有整块）；小红点状态下底行、快捷行让出空位（Row 的 before / after：底行 ?123 , 空格（缩短，STICK_SPACE 1.5 份、最短 STICK_SPACE_MIN 1 份，只有它跟着空位伸缩）│ 空位 │ . ↵；spread：快捷行按个数分到两边 spreadLeft，place 的 spread 为假时照旧铺满；holeUnits / holeTop / holeBottom 给 KeyboardPlan 算空位）；所有布局下会显示的键（capKeys，KeyboardPanel 照它建键帽） |
+| `src/dev/douhua/KeyboardPlan.java` | 键盘界面怎么摆，纯 Java（离线测，KeyboardPlanTest）：布局（自动 / 分裂 / 合并）轮换、分不分裂（键太窄不分）、分裂 / 合并时键盘占哪块、触控板放在空得最多的一侧（太小不放）、宽窗口没调过大小时的默认位置（触控板显示且放得下才三分之二宽）；⋯ 菜单的几何（menuTop：⋯ 放触控板顶上正中、padMenuTop：主界面的 ⋯ 放不下也照样放、menuPosition：菜单弹在哪不出屏、menuGrid：项多窗口矮时先压矮再分列、adjustBarTop：调整栏放上还是下、barButtonWidth：调整栏按钮宽度）；分裂时对称调大小的几何（左半"格子"、默认格子、fitSplit 按窗口守约束、dragSplit 拖法和约束）；指点三选一（POINTER_PAD / STICK / NONE，nextPointer）：小红点照真的 ThinkPad 键盘摆（2026-11-01）、固定合并（不管"布局"）——三个鼠标键铺满底行、快捷行在中间让出的空位（stickHole：以红点为中线对称、空格尽量长、三个键各 ≥ 44dp，放不下就空格最短、三个键最窄 32dp；holeKeys 铺法，Plan.hole / keys / middleKey；快捷行分到两边后每个键连缝 ≥ 32dp 才也让位、三个键跨两行，不然只占空格那一排，shortcutsSpread / Plan.spread），红点在 KeyRows.stickPoint（placeStick：嵌在四个键的交界、挨着的键被和红点同心的圆切掉一块，stickRadius 按每层每个键被切掉的面积 cutShare（精确算）、键上的字躲不躲得开 labelShift 定多大，Plan.cut 是切口半径；嵌不下放键盘外面上 / 下 / 旁边），中键窄、左右键宽、中键对着红点（middleKey，三键条也用）；触控板的三键条（cutBar，上沿 / 下沿，主界面也用）、⋯ 放哪（Plan.menuArea / menuMargin；没有触控板时回功能行）；离页面边的距离可以各边不一样（Sizes.edgeL / T / R / B、withEdges，menuTop / menuGrid / menuPosition / adjustBarTop 各有带 {左, 上, 右, 下} 的版本，屏幕边缘留白用） |
+| `src/dev/douhua/KeyFingers.java` | 键盘面板自己收触摸时每根手指按的是哪个键（按 pointer id 记，抬起只松自己那个）；按下定键 = 包含的键优先、缝里交给 TouchRouter.nearestKey（几块范围时只在落进的那一块里分），落在洞（嵌在键里的小红点——REGION_STICK 按内切圆认；小红点状态下让给三个鼠标键的空位）里不算任何键，纯 Java（离线测） |
+| `src/dev/douhua/KeyboardScreen.java` | 键盘界面：可调大小位置的键盘 + 小触控板占满整页（没有工具栏那一行）；⋯（触控板顶上正中、不带框）、调整模式的"完成 / 恢复默认"栏由它摆（视图由 MainActivity 建）；菜单本身在 MenuLayer，贴着这里的 ⋯ 弹出（menuAnchor）；每次量尺寸按 KeyboardPlan 摆；调整模式由 App 自己收触摸，分裂时两半对称着拖（pickSplitHandle，按右半时左右位移镜像）；指点选小红点时摆红点（TrackPointView，嵌在键里时只画红帽，键自己切口）和铺满底行、快捷行空位的三个鼠标键（MouseKeys 的铺满模式；快捷行太挤不让位时只铺底行那段），量键盘之前把空位和红点告诉面板（KeyboardPanel.setHole / setStick）；触控板开着三键条时从上沿 / 下沿切一条（同一组 MouseKeys）；屏幕边缘留白时整屏被往里收，离各边的 20dp 少留收进去的那么多（setEdgeInsets） |
 | `src/dev/douhua/MenuLayer.java` | ⋯ 菜单，主界面和键盘屏共用一份（根视图最上面一层、铺满整页；屏幕边缘留白时和别的页一样往里收，离各边少留，setEdgeInsets）：盖住整页的"点外面" + 菜单底板（项是它的子 view，只排显示着的，KeyboardPlan.menuGrid 排、先排满第一列）；贴着当前那一屏的 ⋯ 弹出（Host.menuAnchor + KeyboardPlan.menuPosition）；⋯ 那一支单独重新布局时由 MainActivity 在根视图的布局监听里再 place 一次 |
-| `src/dev/douhua/Style.java` | 共用样式（边框、按下 / 高亮、触控板角上的小按钮——small 的 onImage：触控板上有背景图时平时垫不透明的触控板底色）；颜色从当前主题取（setTheme，MainActivity 设），设置页预览用带 Theme 参数的那几个；键帽（整屏键盘、数字键盘）走 keyButton / keyLook（边框跟"按键边框"开关），其它按钮走 button / look（一直有边框）；键帽分主次：keyLook / look 带 fn（功能键的颜色；高亮时照旧是普通键帽底色 + 强调色的边） |
+| `src/dev/douhua/Style.java` | 共用样式（边框、按下 / 高亮、触控板角上的小按钮——small 的 onImage：触控板上有背景图时平时垫不透明的触控板底色）；颜色从当前主题取（setTheme，MainActivity 设），设置页预览用带 Theme 参数的那几个；键帽（整屏键盘、数字键盘）走 keyButton / keyLook（边框跟"按键边框"开关；缩到最小字号还放不下的键名末尾省略"…"），其它按钮走 button / look（一直有边框）；sp 换像素（Style.sp，跟着系统字体大小）；键帽分主次：keyLook / look 带 fn（功能键的颜色；高亮时照旧是普通键帽底色 + 强调色的边）；被小红点切掉一块的键帽（keyLook 的 cut → CutCap：圆角矩形减去圆，底色、边框沿着圆弧走，颜色同别的键帽） |
 | `src/dev/douhua/Theme.java` | 主界面的十八套配色（设置 → 外观；ALL 先深色后浅色）：每套写几个底子、其余按规则推（灰字取"刚够 4.5:1"的、强调色当字用不够就推亮 / 推暗）；功能键的槽位 fnKey / fnText / fnPressed（底色掺强调色，到和键帽、页面色差 ≥ 8 为止，fnTint）；纯黑每个槽位照以前的常量写死（功能键和普通键一样）；对比度、CIE76 色差计算，纯 Java（离线测 ThemeTest）；小红点的红（stick：ThinkPad 红推到对页面、触控板底色都 ≥ 3:1，stickRed） |
 | `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），六页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、轻点 = 左键、负惯性、三键条开关和上沿 / 下沿）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它） |
 | `src/dev/douhua/ThemeGrid.java` | 设置 → 外观的主题色块网格（一组深色或浅色）：每格一小块样子（普通键 A + 功能键 ⇧ + 一小块触控板）+ 名字，每行几格按宽度定（每格 ≥ 96dp），选中框用设置页自己的蓝 |
@@ -51,7 +51,7 @@
 | `src/dev/douhua/PadArea.java` | 触控板 + 数字键盘的排布 |
 | `src/dev/douhua/PadStack.java` | 主界面的触控板（连四角的小按钮）+ 顶上正中的 ⋯（KeyboardPlan.padMenuTop，三键条在上沿时在它正下方）+ 可选的三键条（KeyboardPlan.cutBar，onLayout 里按离窗口边多远切；48dp 高，中键窄、左右键宽（约 2.2 : 1 : 2.2、中键在正中），KeyboardPlan.middleKey）；离边 20dp 按窗口算，屏幕边缘留白不用另外管 |
 | `src/dev/douhua/TrackPoint.java` | 小红点（模拟 ThinkPad TrackPoint），纯 Java（离线测，TrackPointTest）：手指离按下点的位移 → 速度（S 形曲线：死区、爬行、平台、陡升、封顶）× 灵敏度，负惯性，按节拍积分、余数留着；轻点 = 左键；中键按着时出滚轮（推哪边视野往哪边走、主方向）；颗粒 / 咔嗒；20 秒没事件暂停 |
-| `src/dev/douhua/TrackPointView.java` | 小红点的样子：红帽 + 九个凹点（RoundPad.dots）；不压键时外面一圈淡圆（帽占 0.7），嵌在键里时（setEmbedded）先用页面底色画一个方块当键上挖的洞（角上只圆 2dp，和按得到的正方形一样大；帽占 0.8）；按着时圈 / 洞边换 focus 色 |
+| `src/dev/douhua/TrackPointView.java` | 小红点的样子：红帽 + 九个凹点（RoundPad.dots）；不压键时外面一圈淡圆（帽占 0.7），按着时圈换 focus 色；嵌在键里时（setEmbedded）只画红帽（半径 = 按得到的圆的半径 − 缝 / 2，键自己沿圆弧切口），按着时缝的里半圈描一圈 focus 色；isEmbedded（服务连着没接管时 MainActivity 让嵌在键里的红点一根手指都不收、全落到底下的面板上，面板按内切圆挖洞；放在键盘外面时整块吃掉） |
 | `src/dev/douhua/GamepadSpec.java` | 手柄页摆哪些控件：一组参数（左手 / 面键排法 / 字样 / 右摇杆 / L1 R1 LT RT 各自有没有 / 中间 / 摇杆按下 / 偏好方向），15 个固定预设（PRESETS，⋯ 菜单里轮换、设置页网格同序，默认 Xbox）+ 自定义（Builder 从一个预设复制再改，encode / decode 存成一行，取值写名字、认不出的跳过、缺的照 base 那个预设）；每种排法 × 字样印什么（faceOutputs / faceLabels / outputLabel；N64、GameCube 的键帽固定），预设自己的肩键名（N64 的 Z；GameCube 左边本来没有的肩键也写了 ZL，不和左扳机 L 重名）只在字样没换时用，shoulderLabel 给设置页"肩键 / 扳机"开关写这一对在这一套里叫什么；按位置发（任天堂的 A 发东），纯 Java（离线测，GamepadSpecTest） |
 | `src/dev/douhua/GamepadPlan.java` | 手柄页自动排（预设和自定义一样排），纯 Java（离线测，GamepadPlanTest）：宽 ≥ 1.3 × 高横排（两块对称的手区贴下沿、中间 Select / Home / Start + LS / RS、肩键贴上沿两角），不然竖排（手区在下半截）；一只手两个控件斜着错开（上靠外、下靠里）；放不下先缩缝、再按比例缩到最小值、再不放 LS / RS，还不行缩到最小值以下（fitted 假）；面键十种排法（faceCenters 给每颗圆心和直径，N64 的 C 键小一点、GameCube 的 A 大 B 小——按真机比例，不受 44dp 下限约束，各自的最小值 faceMin：C 键 / B 33dp、X Y 约 37dp）；一只手可以空着、两边肩键颗数可以不一样；输出控件的判定 / 画的范围（dp）、⋯、状态字 |
 | `src/dev/douhua/GamepadTouch.java` | 手柄页的触摸模型，纯 Java（离线测，GamepadTouchTest）：单键（引用计数、滑出照样按着）、面键簇（最近的键、两颗中间一起按、回差、簇里滑动换键、滑出 24dp 全松）、十字键（8 方向斜向窄、5° 回差、只看角度）、摇杆（浮动中心、底座跟着走、死区 + 抗死区、推到边咔嗒）、N64 的 C 键（右摇杆推满，相邻两颗斜着、相反两颗回中，和右摇杆那根手指取远的）；键 / 十字键 / 扳机变了当场发、摇杆轴攒到一帧发；收尾一定全零 |
@@ -60,7 +60,7 @@
 | `src/dev/douhua/GamepadPainter.java` | 手柄控件的画法（手柄页和设置页的预览共用）：面键圆、△○×□ 和 N64 的 C 键画形状、十字键、街机摇杆底座、摇杆、肩键 / 扳机 / 中间小长条；k = 一个 dp 画成几像素，minText = 0 时不写字（网格小图） |
 | `src/dev/douhua/GamepadPreview.java` | 设置 → 手柄的预览：按 930 × 350dp（分屏下半边）摆、缩小了画（GamepadPainter，没按着的键），大预览写字、网格小图不写；颜色用设置里的主题 |
 | `src/dev/douhua/GamepadGrid.java` | 设置 → 手柄的预设网格：每格一张 GamepadPreview 小图 + 名字，最后一格自定义；每行几格按宽度定、选中框用设置页的蓝（同 ThemeGrid） |
-| `src/dev/douhua/MouseKeys.java` | 一排左 / 中 / 右三个鼠标键（选小红点时键盘最下面那排、触控板的三键条）：中键窄、左右键宽（setMiddle，没设时平分）；不写字，照真 ThinkPad：左右键下沿（靠用户那条长边）横着一道红线、几乎占满键宽，中键没有红线、上沿附近一排 7 个小点；按掩码画按下 |
+| `src/dev/douhua/MouseKeys.java` | 一排左 / 中 / 右三个鼠标键（选小红点时底行、快捷行让出的空位里，触控板的三键条）：中键窄、左右键宽（setMiddle，没设时平分）；铺满模式（setTiled，键盘里）三个键的 view 铺满空位、不留缝（报的区域也就铺满），键帽各缩进同键盘的键画；不写字，照真 ThinkPad：左右键下沿（靠用户那条长边）横着一道红线、几乎占满键宽，中键没有红线、上沿附近一排 7 个小点；按掩码画按下 |
 | `src/dev/douhua/TrackpadView.java` | 只画底色、背景图（PadImage，可选）、边缘滚动带的细线、状态字和边框（颜色画的时候从当前主题现取）；状态字两边让出多宽（setStatusSide：主界面下面两个角有按钮时让过它们）；有图时状态字、⋯（setMenuChip，KeyboardScreen / PadStack 告诉它 ⋯ 在哪）下面垫不透明的触控板底色、细线下面垫 3dp 底条，边框最后画 |
 | `src/dev/douhua/PadFit.java` | 触控板背景图怎么摆，纯 Java（离线测，PadFitTest）：五种显示方式（填满 / 完整显示 / 拉伸 / 平铺 / 原大小）、焦点规则（offset：要裁时焦点尽量在正中、有空余时照百分比）、吸附（snap）、平铺相位、按形状挑哪套（Settings.pick：分开设时高 > 宽用高的那套）、解码多大（decodeSize：短边到窗口最大长边、总像素 2²³、单边 4096）|
 | `src/dev/douhua/PadImage.java` | 触控板背景图的 Android 部分：导入（后台拷原文件进 files/padbg/、限 50MB、ImageDecoder 解一张小图验证、换名、写 Prefs、删旧的；完了通知设置页——不在就留下结果码，下次 start 取走——和在前台的主界面）、显示用的后台解码（软件位图 + mipmap、代数号丢过时结果、文件不在就清 Prefs）、画（每块触控板一个 Brush，BitmapShader：平铺 REPEAT、其它 DECAL）；设置页预览的小图（loadPreview）、删文件（deleteAll）|
@@ -184,9 +184,11 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **键盘的缝分给最近的键只改"按在缝里"的触点**：hit() 先照旧按列表找第一个包含的区域，只有命中键盘范围（REGION_KEYBOARD，
   排在它的键后面）才找最近的键；按在键上的结果、排在前面的区域优先都不变（TouchRouterTest 逐点锁住）。规则只有 TouchRouter.nearestKey 一份，
   KeyboardPanel 自己收触摸、KeyReplay 重放都调它。
-  **嵌在键里的小红点**（2026-11-01，压着 g、h、v、b 的角）的区域排在键和键盘范围前面（MainActivity.collectRegions）：红点那块的触点归红点，
-  nearestKey 不选红点；红点外的每一点和没有红点时一模一样（KeyboardPlanTest.stickRouting 三层、合并 / 分裂逐点锁住；面板自己收触摸时
-  KeyFingers.pick 带洞，同样锁住）。按在红点上的触点不进键盘触点日志（不是按键）。
+  **嵌在键里的小红点**（2026-11-01，g、h、v、b 被和红点同心的圆切掉一块）的区域排在键和键盘范围前面（MainActivity.collectRegions）：
+  按得到的是报上来那个正方形的内切圆（TouchRouter.Region.contains；圆外、正方形的四个角归底下的键或照缝分），圆里的触点归红点；
+  **小红点状态下三个鼠标键铺满底行、快捷行让出的空位**，同样排在键盘范围前面：空位里每一点归某个鼠标键。nearestKey 不选红点、鼠标键；
+  红点圆、空位外的每一点和没有它们时一模一样（KeyboardPlanTest.stickRouting 三层逐点锁住；面板自己收触摸时 KeyFingers.pick 带洞——红点圆、空位——同样锁住；
+  服务连着没接管时 TrackPointView 只吃圆里的按下）。按在红点、键盘里的鼠标键上的触点不进键盘触点日志（不是按键）。
 - **键盘触点日志等于按键记录**：只在可调试包、只能由 adb 广播（DUMP 权限）打开、租期 10 秒不续自己关、只写 logcat 不落盘；
   服务端每条连接默认关，开关只能由通过 uid 校验的连接发（CMD_TRACE）。
 - **主机实测扫描（DEBUG_KEYSCAN）只在可调试包、只由 adb 广播（DUMP 权限）触发**；一次广播最多 12 个键，只许出字的位置和 Shift / Alt，
@@ -256,7 +258,11 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   服务接管时本地分流收尾）、换参数（setConfig → clearSlots）都 stopTicks；服务收尾 ticker.shutdownNow 兜底；迟到的节拍 TouchRouter.onTick 看红点没按着就什么都不出
   （TouchRouterTest / TrackPointTest 锁住，startTicks / stopTicks 配对）。按着却 20 秒没事件就暂停（TrackPoint.IDLE_PAUSE_MS），这根手指再动接着。
   中键收尾（releaseAll）和被取消的抬起（TouchRouter.up 的 canceled：手掌 / 丢数据、TouchReader 收尾补报的、App 带 FLAG_CANCELED 的）都不补中键单击；
-  三键条 / 键盘最下面那排的左键和"左键"按钮、CMD_HOLD_LEFT 共用 TouchRouter.holds 一个计数。
+  三键条 / 键盘里（底行、快捷行空位）的左键和"左键"按钮、CMD_HOLD_LEFT 共用 TouchRouter.holds 一个计数。
+- **键盘上会显示的每个键都有键帽**：KeyboardPanel 只按 KeyRows.capKeys 建键帽（showLayer 按 KeyRows.keys 取，取到没键帽的键就闪退），
+  加新的行、新的布局变体（像小红点状态底行的 before / after）只改 KeyRows，两处规则在一起；KeyRowsTest.capKeysCover 锁住"keys() 给的每个键都在 capKeys 里"。
+- **嵌在键里的小红点、键上切了角的键，三条触摸路径按同一个圆分**：分流（服务 / App 本地分流）是 REGION_STICK 的内切圆（TouchRouter.Region.contains，红点区域排在键前面）；
+  View 自己收触摸时红点 view 不收手指，面板的 KeyFingers 洞按同一个内切圆挖（不靠红点 view 的触摸目标：ViewGroup 会把落在它方块里的后来的手指直接交给它）。
 - **每根手指归谁在按下那一刻定，抬起前不变**（TouchRouter 按按下点 hit；App 本地分流在按下时定整次手势；分屏透传 TouchSplit 同样按下时定）：
   从触控板出发的手指划出触控板（划到键盘上、屏幕边、别的区域）照样是触控板在动光标。用户 2026-10-31 点名要保留（"只要我是从触控板区域出发的，
   就可以连续的在超过的区域继续滑动，这个很好，不要改掉"）。加新区域、新手势时不能改成按当前位置重新判断。
@@ -943,7 +949,8 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **小红点放进键盘里、三个鼠标键放大**（2026-11-01，用户："红点可以稍微大一点，现在太小了；三个按键做得太小了，基本上没法点……甚至可以像真的 ThinkPad
   键盘一样，指点杆直接放键盘中间，然后在键盘下边有三个按键"；协调者给了两种做法，用户选"ThinkPad 那样"）。只改 App，不改服务、不改协议；
   手感（TrackPoint 曲线、负惯性、轻点 = 左键）、节拍、中键滚动、反馈、"碰哪里都停"、红点颜色都没动。几何全在纯 Java 的 KeyboardPlan（离线测）。
-  - 三个鼠标键是键盘最下面一排，横跨整块键盘（分裂时左半 + 中间 + 右半），48dp 高，四边和键帽一样缩进 2dp（和上面的键隔 4dp，同键与键）。
+  - （**2026-11-01 已改**：三个鼠标键改成占底行和快捷行中间让出的空位、红点按圆切键、小红点固定合并，见"小红点状态再改一轮"一条；下面这段是当时的做法。）
+    三个鼠标键是键盘最下面一排，横跨整块键盘（分裂时左半 + 中间 + 右半），48dp 高，四边和键帽一样缩进 2dp（和上面的键隔 4dp，同键与键）。
     **算在键盘的框里**（Plan.block）：从框的下沿切走 52dp，键盘面板（键）变矮这么多；调大小拖的、存的、默认位置都是连这一排的整块。没另加在键盘下面：
     默认位置（竖屏占下面七成、横屏占满）下面本来就没地方，加在下面就得另定一套默认位置、调大小时拖两个框。代价：选小红点时键比关着时矮约 7dp 一行
     （手机竖屏 7 行，从约 91 到 84dp），上面那三成照旧空着（同指点关着）。框太矮、切完面板不到 3 × 48dp（键会挤成一条条）就不切这一排。
@@ -1009,7 +1016,72 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   ⑥ 中键点一下触发了安卓自己的动作：豆花这边没问题——中键单击照常发给系统（桌面模式下豆花的虚拟鼠标就是这台手机的一个鼠标），是用户手机上
   三星"鼠标和触控板 → 自定义鼠标按键"把中键设成了一个动作（`settings get system mouse_middle_button_option` = 6，默认应是中键单击），所有鼠标（含豆花的）中键都被系统截走；
   另外用户开着的无障碍服务 Solaar Android（MouseActionService）也可能截鼠标按键。用户自己的设置，豆花不动（按住中键滚动不受影响：按着时不发中键）。
-  ⑦ 用户提的"三个键占空格的位置、别让它们占一整行把别的键压矮"还没做，摆法要先和用户对一下。
+  ⑦ 用户提的"三个键占空格的位置、别让它们占一整行把别的键压矮"：已做，见下一条"小红点状态再改一轮"。
+- **小红点状态再改一轮：固定合并、三个键占空格行 + 快捷行、G / H / V / B 圆弧切口**（2026-11-01，用户上手后："小红点状态把分裂布局取消掉，默认就是合并的布局"；
+  "现在 UI 是直接叠加的吧，G、H、V、B 这四个键得做一个避让，它那个边缘现在看起来有点丑"；"三个键……想用它占用空格行，还有包括空格下边那一行（那不是有一个自定义的按键吗），
+  高度跟这两个高度等高"；协调者之前给的摆法 ?123 │ , │ 空格（缩短）│ 左 │ 中 │ 右 │ . │ ↵、中键正对红点下方，用户说"大致没错"）。只改 App，不改协议
+  （TouchRouter 是服务和 App 共用的，红点按圆认要服务也换新代码：装完照样重启服务，不重启的话服务那边按正方形认，四个角会归红点）。
+  - **固定合并**：指点 = 小红点时 KeyboardPlan.plan 一律按合并摆（不管"布局"选的自动 / 分裂 / 合并），shouldSplit 对小红点永远假；⋯ 菜单的"布局"那一项小红点状态下不显示
+    （MainActivity.onMenuScreen），选过的布局值不动，换回触控板 / 关时照它。删掉的：分裂中间留一列（STICK_COLUMN、Sizes.stickColumn、defaultSplit 的小红点分支、
+    自动分裂按这一列算）、红点嵌在两半之间的缝上、KeyRows.stickPoint 的分裂参数、对应的测试（stickSplitDefault / stickAutoThreshold / stickSeam / stickSavedSplit）。
+    Prefs 里小红点那份分裂格子（kb_split_stick_*）不再读，留着无害。
+  - **三个鼠标键占底行 + 快捷行**：不再从键盘下面切一排（Plan.block、Sizes.mouseRow、MOUSE_ROW_MIN_KEYS 删了），别的行恢复原来的高度（7 行时同指点关着）。
+    底行（空格那一排）和快捷行在中间让出同一段空位（Plan.hole，面板 x；KeyRows.place 的 hole），三个键竖着跨这两行（连两行之间的缝；快捷行没有键时只占底行；
+    快捷行分到两边太挤时也只占底行——审查后加的，见本条最后），
+    view 铺满空位（MouseKeys 铺满模式，键帽各缩进 2dp，同键盘的键），报的区域也铺满——空位里每一点都归某个鼠标键，不会被"缝分给最近的键"分给旁边的键。
+    底行：?123 , 空格 │ 空位 │ . ↵（连苹果设备时 🌐 照旧跟在 ?123 后面）；?123 , 照整行时的宽度不动，只有空格伸缩（又一个键帽，STICK_SPACE_KEY）；
+    快捷行的键按个数分到空位两边（KeyRows.spreadLeft：按两边宽度的比例、四舍五入，两边都有地方又不止一个键时每边至少一个），顺序不变、各自变窄。
+    一个快捷键时它放在宽的那边，另一边那截空着，按上去照"先定行"分给同一行的它（以前它铺满整行，结果一样）。
+    空位多宽（KeyboardPlan.stickHole），先后照顾：① 中键正对红点、左右键一样宽（空位以红点那一点为中线对称，照真 ThinkPad）；② 空格尽量长；③ 三个键各 ≥ 44dp（Sizes.keyW）：
+    1. 对称：空格能多长就多长、最长 1.5 份（同 ?123、↵，协调者建议的"不少于 1.5 份"），空位至少 144dp（三个 44 + 缩进）；对称时空位右边比 . 原来的左边靠左，
+       多出来的那截给 . ↵（一起变宽）。宽的窗口（手机横屏、大屏分屏）空格 1.5 份、空位 3 份宽（884dp 宽时三个键帽约 98 : 56 : 98dp）；
+       手机竖屏空格 1–1.5 份、三个键各 44dp（411dp 宽：空格 1.25 份；360dp：1 份）；连苹果设备的宽窗口（≥ 约 720dp）空格约 1–1.35 份、三个键各 44dp。
+    2. 对称放不下（连苹果设备 + 窗口不到约 720dp 宽：🌐 把空位左边挤到红点附近；或者很窄的窗口）：空格最短 1 份（STICK_SPACE_MIN）、右边到 . 原来的左边，中键离红点最近
+       （苹果设备 + 411dp 宽的手机竖屏：三个键各约 37dp、中键往右偏约 20dp），三个键各最窄 32dp（Sizes.minKey）。
+    3. 再窄（不到约 270dp；苹果设备不到约 360dp）：不让位、没有三个鼠标键（红点照样有）。
+    **和要求不一样**：① 空格不是一直 ≥ 1.5 份：手机竖屏（360–480dp 宽）三个 44dp 的键对称摆、空格就只剩 1–1.5 份，要 1.5 份就只能让三个键比 44 窄、或者中键偏离红点；
+    按"中键正对红点 > 空格长 > 鼠标键宽"的顺序取舍（空格最短 1 份 = 一个字母键宽）。② 苹果设备 + 手机竖屏时三个键比 44dp 窄（最窄 32）：空格 1 份、. ↵ 不缩也排不下三个 44，
+    要么不显示三个键、要么变窄，取了变窄（三个键有两行高，按得到）。③ 中键在宽窗口上下限 56dp 比 1 / 5.4 宽（照旧的 middleKey 规则），所以 2.2 : 1 : 2.2 只在空位很宽时成立。
+  - **G / H / V / B 圆弧切口**（照真 ThinkPad：键帽被和红点同心的圆弧切掉，切口和红点之间约 0.5 毫米的缝）：红点按得到的范围改成圆（报的还是正方形，
+    TouchRouter.Region.contains 对 REGION_STICK 按内切圆算，服务、App 本地分流、KeyFingers 同一份），半径 R；红帽半径 R − 1.5dp，
+    键上切口半径 R + 1.5dp（Sizes.stickGap = 3dp，范围的边在缝的中线：缝的一半归红点、一半归键，同"缝分给最近的键"的意思）。凡是键帽矩形碰到切口圆的键
+    （字母层是 g、h、v、b；符号层是 ] < ~ 这些，Fn 层是 PgUp / PrtSc……）都按"圆角矩形减去圆"画（Style.CutCap，Path 的 DIFFERENCE；底色、按下、高亮、边框都沿圆弧走，
+    按键边框开关、主题色照旧）；TrackPointView 嵌在键里时不再画方块洞（页面底色），只画红帽和按着时缝里的一圈。看着是键的地方按下去就是键（以前方块的四个角看着是键、按上去归红点）。
+    服务连着没接管（View 自己收触摸）时：（已改，见本条最后"审查后"④）第一版只让红点 view 吃圆里的按下，圆外落到底下的面板上（KeyFingers 的洞也按圆）。
+  - **红点多大**（KeyboardPlan.stickRadius）：每个键被切掉的面积按切口圆和键帽矩形相交的面积精确算（cutShare：按 x 积分竖条，圆和上下边交点处分段，弧那段用原函数），
+    门槛照旧——字母层每个键 ≤ 16%、每一层每个键 ≤ 25%；外加**字不被切口吃掉**：把键上的字看成以键帽中心为圆心、半径 10sp（Sizes.labelRoom，跟着系统字体大小；第一版是 10dp，审查后改的，见本条最后；18sp 的单个字连上下出头约 ±9sp）的一块，
+    切口碰到它时字竖着往远离切口的方向挪（labelShift，KeyboardPanel 加上下内边距：往上挪 d 就在下面加 2d），挪完那块字还要在键帽里，挪不开就算嵌不下。
+    切口也不过底行的上沿（三个鼠标键在那儿）。同样的面积，圆比方块能大约 13%：手机竖屏 360 / 411dp 宽时直径 40 / 46dp（以前方块边长 36 / 42），大屏分屏下半边（884 × 360）46dp（以前 40），
+    画出来的红帽 = 直径 − 3dp（以前 0.8 × 边长）。卡住大小的是符号层的 ]、<（25%，红点正对着 ] 的下沿正中），字母层只切掉约 10–12%；横屏 / 分屏这种行矮的键盘上 ] 的字往上挪约 8dp、< 往下挪约 6dp。
+    嵌不下的退路照旧（放键盘上面 / 下面 / 旁边，STICK_OUTSIDE 从 3 改成 2）。
+  - 打字测试的触点日志不记按在键盘里那三个鼠标键上的触点（同红点：它们在键盘范围里面、不是按键；TouchRouter.down）。
+  - 没加：三个鼠标键的最小高度（它们和底行、快捷行一样高，键盘矮到这两行加起来不到 48dp 时照样摆——那时字母键本来也没法按）。
+  - 测试：KeyboardPlanTest 的小红点部分改写（固定合并扫一遍、空位规则、切口几何、红点 + 鼠标键 + 键的逐点分流、全尺寸扫描），KeyRowsTest（让位的行、摆法），
+    KeyFingersTest（圆形的洞、空位的洞），TouchRouterTest（红点按内切圆认、角上按的是键）。
+  - **审查后的修改（同一天，只跑了离线测试和编译）**：
+    ① **一进小红点状态就闪退**：缩短的空格（STICK_SPACE_KEY）只在底行的 before 里，KeyboardPanel.addCaps 只给 whole / left / right 建键帽，
+    showLayer 拿到 null、refreshLabels 抛 NullPointerException；指点存在 Prefs 里，之后每次打开键盘页都闪退、菜单也改不回去。离线测试不编译 KeyboardPanel（Android 类），测不出来。
+    改法：哪些键要建键帽收进纯 Java 的 KeyRows.capKeys（whole / left / right / before / after，去重、不含空位），addCaps 只调它；
+    KeyRowsTest.capKeysCover 照 KeyboardPanel 建键帽的范围（功能行带 ⋯ 那份 + 三层中间四行 + 底行和快捷行）收一遍，拿 keys() 在功能行带不带 ⋯ × 三层 × 整块 / 分裂 / 让位
+    × 苹果与否 × 快捷键 9 / 3 / 1 / 0 个时给的每个键去比（把 capKeys 改回漏 before / after 的样子，这组检查报缺缩短的空格）。
+    ② **快捷行分到两边太挤就不让位**（**和用户的要求不一样**：用户要三个键"高度跟这两个高度等高"）：手机竖屏 9 个默认快捷键分到空位两边，键帽只剩 21–27dp 宽、
+    空格 32–47dp，德 / 法 / 西 / 意 / 日 / 韩语的短名缩到 8sp 也放不下、从词中间截成半截（审查者用本机 Noto Sans 量的，没在真机上看）。现在 KeyboardPlan.shortcutsSpread：按 spreadLeft 分开后每边每个键连缝 ≥ 32dp
+    （Sizes.minKey，同分裂时字母键"再窄拇指按不准"的门槛）才让，Plan.spread；不让时快捷行照旧铺满整行（KeyRows.place 的 spread 为假），三个键只占空格那一排
+    （Plan.keys 的下沿 = 底行下沿，KeyRows.holeBottom；面板自己收触摸时的空位洞同样只到底行下沿）。结果：手机竖屏（360–411dp）9 个快捷键时三个键只有空格那排高，
+    411dp 宽 7 个以下、手机横屏、大屏分屏下半边（884dp）照旧跨两行；用户主力机分屏下半边存的那份合并键盘（约 390dp 宽）9 个快捷键时也只占空格那排。
+    没取的另一条路：把三个鼠标键缩到 32dp 宽（411dp 宽时快捷键就有约 34dp），但 360dp 宽照样分不开，中键对着红点、左右一样宽也保不住。
+    ③ 键帽（Style.keyButton，整屏键盘和数字键盘）放不下时末尾省略（ellipsize END），不再在词中间断开只露半截；按钮条、菜单项这些（Style.button）不动。
+    缩短的空格在 360dp 宽时约 32dp，德语"Leertaste"在 8sp 下约 35dp（审查者量的），会显示成"Leerta…"这类。
+    ④ 服务连着没接管（View 自己收触摸）时，嵌在键里的红点 view 一根手指都不收（MainActivity，TrackPointView.isEmbedded），全落到底下的面板上，
+    面板的 KeyFingers 洞按内切圆把红点挖掉——和分流同一条规则。第一版只在 ACTION_DOWN 时看圆：红点收下第一根手指后，ViewGroup 把落在它方块里的后来的手指
+    直接交给它、不再问（AOSP ViewGroup.dispatchTouchEvent 的"Child is already receiving touch within its bounds"），第二根手指按在 g 被切掉的那个角上就被吞了。
+    红点放在键盘外面时照旧整块吃掉（不然第一根手指落空，这次手势后来按在键上的手指也收不到）。TrackPointView.hits 没人用了，删了。
+    ⑤ 键上的字离切口多远（labelRoom）从 10dp 改成 10sp（Style.sp，KeyboardScreen.LABEL_ROOM_SP；KeyboardPlan 判断嵌不嵌得下、面板挪字用同一个值）：键上的字是 18sp / 13sp，
+    系统字体调大后按 dp 算的字块比字小，挪开的字压进切口。系统字体大小一改 Activity 就重建，跟着重算。没改的：挪字靠加上下内边距，留给字的高 = 键高 − 2 × 挪的距离，
+    18sp 的一行（连字体自带的上下留白）比 2 × 10sp 高一点，被挪的那几个键可能被自动缩字号缩小一点、比旁边的键小一号（字体放大前后都有，没量过）。
+- **实体键盘的指点杆**（2026-11-01 用户提的，第 1B 批的要求，这次没做）：实体键盘模拟时红点的位置不一样——真键盘最下一排比中间一排往右错半个键，
+  红点在真实的 G、H、B 之间（B 骑在 G|H 那条缝下面，V 不挨着）；要切口的也不是 g、h、v、b，按实际挨着的键算（真 ThinkPad 是 G 的右下、H 的左下、B 的上沿正中）；
+  实体键盘布局没有快捷行，三个键主要占空格那一排。电脑键盘不对称，空位和中键的位置要按那套键位重算（KeyboardPlan.stickHole 的规则可以照用）。
 - **桌面模式的虚拟鼠标只留竖向滚轮倍率**（2026-11-01，排查"桌面模式下内核一直没来设倍率"）。主力机上服务日志只有"内核发来 START，+1ms""内核发来 OPEN，+1ms"，
   之后"建好 5 秒内核没来设 Feature 报告"，一个 GET / SET_REPORT 都没有。主线内核 hid-input.c 的
   __hidinput_change_resolution_multipliers：一个 Feature 报告里有不止一个字段（maxfield > 1）时要先 GET 当前值，设备带 HID_QUIRK_NO_INIT_REPORTS 就直接放弃、一个请求都不发；
@@ -1080,10 +1152,16 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   加两组随机序列）在 PassthroughTest 里，每个事件都过一个照 AOSP input_verifier.rs 写的校验器（校验器本身也测了能认出坏流）。
   小红点：TrackPointTest（曲线的点、单调 / 平台 / 封顶、8 / 12 / 抖动的节拍积分、50ms 上限、灵敏度、负惯性起步更快 / 平台一样 / 不反向、轻点、颗粒、中键滚动的方向 / 主方向 /
   按格 / 连续、停、20 秒暂停）、TouchRouterTest（第二根手指不理、节拍开停配对、左键三处共用计数、中键单击 / 滚过不补 / 被取消不补、中键 + 触控板滚动、releaseAll / 换参数停、
-  onTarget、nearestKey 不选、碰红点停惯性、按在红点上不记触点）、GestureEngineTest（中键滚动）、KeyboardPlanTest（2026-11-01 改写：最下面那排三个鼠标键怎么切、
-  红点在分裂中间那一列 / 嵌在键里 / 放外面、嵌在键里多大（四个键各让出多少、每层 ≤ 25%）、中键宽度（总宽的 1 / 5.4、2.2 : 1 : 2.2、不窄于 56）和对着红点、三键条 48 高、⋯ 回功能行；stickRouting 把红点、
-  三个鼠标键、三层的键、键盘范围照 MainActivity 的顺序交给真正的 TouchRouter / KeyFingers 逐点核对红点里归红点、红点外和没有红点时一模一样；
-  再扫一遍各种尺寸 × 布局 × 指点 × 三键条 × 存的位置 × 有没有快捷行 / 苹果底行）、KeyRowsTest（stickPoint 正好在 g、h、v、b 交界，rows / layers）、KeyFingersTest（洞）、
+  onTarget、nearestKey 不选、碰红点停惯性、按在红点 / 键盘里的鼠标键上不记触点、红点按正方形的内切圆认——圆里归红点、四个角归键）、GestureEngineTest（中键滚动）、
+  KeyboardPlanTest（2026-11-01 第二次改写：小红点固定合并（布局 × 尺寸 × 存的格子扫一遍，都和合并一模一样）、底行和快捷行让出的空位（stickHole 的几种情况：对称 / 空格最短 / 不让）、
+  三个键怎么铺（holeKeys：对称时中键正对红点、左右一样宽，2.2 : 1 : 2.2）、切口几何（cutShare 对公式、cuts、labelShift）、红点嵌在键里多大（每层每个键被切掉 ≤ 25%、字母层 ≤ 16%、字躲得开）、
+  放外面、⋯ 回功能行；stickRouting 把红点、铺满空位的三个鼠标键、三层的键、键盘范围照 MainActivity 的顺序交给真正的 TouchRouter / KeyFingers 逐点核对：红点圆里归红点、空位里归那一格的鼠标键、
+  别处和没有它们时一模一样、方块角上和切口外看得见的键就是那个键；再扫一遍各种尺寸 × 布局 × 指点 × 三键条 × 存的位置 × 有没有快捷行 / 一个快捷键 / 苹果底行，
+  查空位规则、空格 1–1.5 份、鼠标键宽度、切口比例、字挪完不被吃掉、不出键帽、快捷行让不让位是 shortcutsSpread 给的——让了每个快捷键连缝 ≥ 32、没让的和指点关着时一模一样、
+  三个键的下沿跟着走；stickHoleRules 里 shortcutsSpread 的几种宽度和 32 那条边界）、KeyRowsTest（stickPoint 正好在 g、h、v、b 交界，rows / layers；
+  让位的行（底行 before / after、快捷行 spread、份数、holeTop、holeBottom、spreadLeft）、让位时的摆法（空位里没有键、?123 , . ↵ 宽度、空格伸缩、快捷行分到两边顺序不变、别的行不变；
+  spread 为假时快捷行和不让位时一模一样）、capKeysCover（每个会显示的键都有键帽，照 KeyboardPanel 建键帽的范围核对））、
+  KeyFingersTest（洞：红点按内切圆、空位整块）、
   ThemeTest（每套小红点对页面 / 触控板 ≥ 3:1、还是红的）、HidTest（CMD_CONFIG 56 字节往返）。
   触控板背景图：PadFitTest（填满盖满不变形、完整显示整张在里面、拉伸铺满、原大小补回解码缩的、平铺相位、焦点规则 / S = B 处连续 / 拖分隔条不跳、吸附、按形状挑哪套、
   解码尺寸的上限和"没撞上限不用再放大"（撞上限时打出最多放大几倍）、空的 / 坏的输入、每套主题 padFill 不透明）。
@@ -1152,6 +1230,24 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 
 ## 进行中（交接；做完删掉这一节）
 
+- **小红点状态再改一轮：固定合并、三个键占空格行 + 快捷行、G / H / V / B 圆弧切口（2026-11-01 写完，没提交，待真机验证；不改协议，但 TouchRouter 两边共用，装完要重启服务）**：
+  见决策记录。只跑了离线测试（KeyboardPlanTest 320 项含逐点分流核对约 102 万点、扫描 19 万种；KeyRowsTest 1118 项；KeyFingersTest 512 项；TouchRouterTest 231 项）和编译，界面一次都没看过。
+  审查后又改了一轮（同一天，决策记录那条最后"审查后的修改"①–⑤；离线测试 KeyboardPlanTest 332 项、KeyRowsTest 1275 项，编译过）。要看：
+  ⓪ **先看不闪退**：⋯ → 指点换成小红点，键盘页正常显示（第一版这里必闪退）；关掉豆花再开（Prefs 里存着小红点）照样能开；
+  ⓪′ 手机竖屏 9 个默认快捷键：三个鼠标键只有空格那排高、快捷行照旧铺满整行；快捷行只留 7 个以下（411dp 宽）、手机横屏、大屏分屏下半边时三个键跨两行；
+  这样自动退回能不能接受（不能的话另一条路是把三个鼠标键缩到 32dp 宽）；九种语言下快捷行、缩短的空格的字放不放得下，放不下的末尾是"…"、不是半截字；
+  ⓪″ 系统字体调到 1.3 倍左右：大屏分屏下半边带快捷行切到 ?123 层，] < PrtSc 这些被挪开的字不压切口、比旁边的键小多少；
+  ⓪‴ 桌面模式服务连着没接管（View 自己收触摸）：一根手指按住红点圆里，另一根按 g 被切掉的那个角（圆外、方块里），出 g；红点放在键盘外面时按着它再按键照样出字；
+  ① 小红点状态下 ⋯ 菜单没有"布局"那一项，大屏分屏下半边、手机横屏都是合并的；换回触控板 / 关时"布局"那一项回来、还是原来选的；
+  ② 底行 ?123 , 空格 │ 左 中 右 │ . ↵、快捷行分在两边：三个鼠标键和空格那排、快捷行等高（快捷行一个都不留、或者分开后太挤时只有空格那排高）、中键正对红点下面；
+  宽窗口空格 1.5 份、手机竖屏空格 1–1.25 份——空格这么短打字顺不顺；快捷行分到两边时（宽窗口）还认不认得、按不按得准（太挤的已经自动不让位，见 ⓪′）；对称时 . ↵ 变宽一点看着别不别扭；
+  连 iPad（🌐）时手机竖屏三个键只有约 37dp 宽、中键往右偏约 20dp，能不能接受（不能接受的话可以把 🌐 挪到空位右边）；
+  ③ g、h、v、b 被圆弧切掉的样子（边框沿着圆弧、和红帽之间约 3dp 的缝）好不好看，按下、锁 Shift（g h 不受影响）、按键边框关掉、十八套主题下都对；
+  切到 ?123 / Fn 层：] < ~ PgUp PrtSc 这些被切的键的样子，横屏 / 分屏下 ] 的字往上挪、< 往下挪了几 dp 看着别不别扭、字有没有被切口压到；
+  ④ 红点变大了（手机竖屏直径约 40–46dp、帽约 37–43dp）好不好按；贴着切口按在键上出的是那个键，按在红帽上（连缝的里半圈）是红点；按着红点时缝里一圈 focus 色；
+  ⑤ 三条路都试：桌面模式服务接管、蓝牙模式服务接管 / 没开服务（本地分流）、桌面模式服务连着没接管（View 自己收：按在红点方块的角上出键、红帽上什么都不出；三个键轻点能点、
+  三个键之间的缝按了也算鼠标键不出字）；服务没重启时（旧服务按正方形认）方块的四个角会归红点，重启后才对；
+  ⑥ 存过的小红点那份键盘大小位置（以前连着最下面那排）照用，键变高了；"调整大小"的框就是键盘（三个键在框里）；拖得很窄时三个键消失（空位让不出）、红点挪到键盘上面。
 - **手柄页第二批（2026-11-01 写完，没提交，待真机验证；不升协议，但 GamepadTouch / Proto 两边共用，装完照样重启服务）**：见决策记录。只跑了离线测试
   （手柄组件清单 341 项、手柄页摆法 209033 项、手柄触摸 130 项、服务端部件 274 项）和编译，设置页、手柄页一次都没看过。要看：
   ① 设置 → 手柄：六个标签手机竖屏放不放得下（横着滑）、九种语言（德 / 法语长、阿拉伯文）；预览和网格小图（15 个预设 + 自定义，竖屏一行 3 格）认不认得出、名字放不放得下，
@@ -1190,12 +1286,14 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   ⑦ 转着的惯性碰到留白也停（同空白处），能不能接受。
 
 - **三个鼠标键照真 ThinkPad 改样子（2026-11-01 写完，没提交，待真机验证；不改协议、不改服务，只装 App 就行）**：见决策记录"小红点放进键盘里"一条的"和真 ThinkPad 对照"。
+  （键盘里那三个键 2026-11-01 已改成占底行、快捷行的空位、两行高，见"小红点状态再改一轮"；红线、小点的画法没变。）
   只跑了离线测试（KeyboardPlanTest 383 项）和编译，界面没看过。要看：① 键盘最下面那排、主界面 / 键盘页触控板的三键条：左右键下沿的红线（2dp、两头让开圆角）看不看得清、
   像不像 ThinkPad，三键条在触控板上沿时红线也在下沿顺不顺眼；② 中键上沿的 7 个小点（点距最多 5dp、半径 1.2dp）看不看得清，三个一样宽（整排很窄）时挤不挤；
   ③ 中键变窄（手机竖屏合并约 74dp、主界面三键条约 67dp，以前约 100 / 88dp）后还好不好按、拇指按中键滚动时会不会按到左右键；左键比右键宽（红点在 0.55 处）看着别不别扭；
   ④ 十八套主题（尤其浅色、高对比 2.5dp 边框）下红线、小点和边框挤不挤。
 
 - **小红点放进键盘里、三个鼠标键放大（2026-11-01 写完，没提交，待真机验证；不改协议、不改服务，只装 App 就行）**：见决策记录。
+  （**已改**：分裂、最下面那排三个鼠标键、方块洞 2026-11-01 都推翻了，见最上面"小红点状态再改一轮"那条；下面 ①②③④⑦ 里和分裂、最下面那排、方洞有关的不用再看。）
   只跑了离线测试（KeyboardPlanTest 379 项含逐点分流核对和扫描、KeyRowsTest 393 项、KeyFingersTest 507 项、TouchRouterTest 191 项）和编译，界面一次都没看过。要看：
   ① 大屏分屏下半边、手机横屏（分裂）：中间那一列的红点（帽约 45dp）好不好按、两半（各约 410dp）打字顺不顺；红点竖着在 a–l / z–m 两行交界那么高合不合适；
   ② 手机竖屏（合并）：红点嵌在 g、h、v、b 中间的样子（键上挖的方洞（角上只圆 2dp）+ 帽约 35dp）好不好看、贴着洞边按在键上出的是那个键、按 g / h / v / b 的右下 / 左下 / 右上 / 左上角会不会误按到红点（离线算的每个键让出约 14%）；
@@ -1224,6 +1322,9 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   要看：页面能不能在 iPad Safari 上打开、Tab 能不能被拦住（不跳出框）、有没有 e.code、死键是走 key=Dead 还是输入法组合；扫描中点别处手机马上停；
   report.txt 里的结论（尤其 iPad 的 0x35 / 0x64、0x32、⌥ 层、Linux / 三星和数据差几格）。新克隆上 `gen_layouts.py` 第一次下载核不核得上 sha256 也没试过。
   无线 adb / iPad 省电这类慢的时候，终端里"发第 a–b 步"每段只出现一次（起点隔 6 个，不再出现紧挨着的两段），report.txt 的对齐那条成立。
+  这一批只是扫描工具和键帽数据，设置里还没有"实体键盘布局"（1B 的键帽界面才读这些数据），所以设置页找不到它（用户 2026-11-01 问过）。
+  1B 做实体键盘模拟时小红点要跟着改（用户 2026-11-01，见决策记录"实体键盘的指点杆"）：红点在真实的 G、H、B 之间（最下一排右错半个键），切口按实际挨着的键算
+  （不是 g、h、v、b），没有快捷行、三个鼠标键主要占空格那一排，空位和中键位置按那套不对称的键位重算。
 
 - **触控板背景图（2026-10-31 写完，没提交，待真机验证；不改协议、不改服务，只装 App 就行）**：见决策记录。只跑了离线测试（PadFitTest 23548 项）和编译，
   界面一次都没看过。要看：① 格式：带透明的 PNG（透明处露触控板底色）、竖着拍带 EXIF 旋转的 JPEG（是正的）、三星相机的 HEIC、WebP、动态 GIF（第一帧 + 提示）、AVIF、

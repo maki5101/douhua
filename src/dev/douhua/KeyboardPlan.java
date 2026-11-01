@@ -35,15 +35,15 @@ import java.util.List;
  * 分不分裂（{@link #shouldSplit}）不看存的格子。拖法见 {@link #dragSplit}，吸附见 KeyboardSnap.applySplit。
  *
  * 指点（⋯ 菜单里"指点"，触控板 → 小红点 → 关，记在 Prefs；2026-10-31 用户：原来的"触控板：开 / 关"换成三选一）：
- * 小红点时照真的 ThinkPad 键盘摆（2026-11-01 用户："指点杆直接放键盘中间，然后在键盘下边有三个按键"），不放触控板，⋯ 回功能行上：
- * - 三个鼠标键是键盘最下面一排（{@link Plan#keys}），横跨整块键盘（分裂时左半 + 中间 + 右半），高 {@link Sizes#keyH}。
- *   这一排算在键盘的框里（{@link Plan#block}：调大小、存的位置、默认位置都是连这一排的整块），从框的下沿切出来，键盘面板（键）变矮这么多；
- *   不另加在键盘下面：默认位置（竖屏占下面七成、横屏占满）下面本来就没地方，调大小时也只要拖一个框。面板剩下不到
- *   {@link #MOUSE_ROW_MIN_KEYS} × keyH 就不切（键会挤成一条条）。中键窄、左右键宽（约 2.2 : 1 : 2.2，{@link #middleKey}），中键对着红点。
- * - 红点在键盘里：字母层 g、h、v、b 交界那一点（KeyRows.stickPoint）。分裂、两半中间留得出一列（{@link Sizes#stickColumn}：
- *   红点 + 两边各一条缝）时在这一列正中、不压键（{@link #STICK_COLUMN}；没调过大小时自动留这一列，两半相应变宽，自动分不分裂也按这一列算）；
- *   合并、或者两半挨得近时嵌在四个键的交界上，挨着的键各让出一个角（{@link #STICK_KEYS}），多大见 {@link #stickSize}；
- *   嵌不下（键太小）就放在键盘上面（或下面）、对着那一点（{@link #STICK_OUTSIDE}），都没地方就不放。
+ * 小红点时照真的 ThinkPad 键盘摆（2026-11-01 用户："指点杆直接放键盘中间，然后在键盘下边有三个按键"），不放触控板，⋯ 回功能行上，
+ * 而且固定合并（2026-11-01 用户："小红点状态把分裂布局取消掉，默认就是合并的布局"；"布局"选的值不管、也不改）：
+ * - 三个鼠标键（{@link Plan#keys}）竖着跨底行（空格那一排）和快捷行（2026-11-01 用户："想用它占用空格行，还有包括空格下边那一行……
+ *   高度跟这两个高度等高"；快捷行没有键、或者分到两边后快捷键太窄（{@link #shortcutsSpread}）时只占空格那一排）：这两行在中间让出同一段空位（{@link Plan#hole}，{@link #stickHole}），
+ *   三个键铺满空位（{@link #holeKeys}：每个键帽四边缩进同键盘的键，中键窄、左右键宽，中键对着红点）。别的行照原来的高度，不再多一排。
+ * - 红点在键盘里：字母层 g、h、v、b 交界那一点（KeyRows.stickPoint），挨着的键（字母层是 g、h、v、b，符号层、Fn 层是那一层压着的键）
+ *   被一个和红点同心的圆切掉一块（{@link #STICK_KEYS}，切口和红帽之间留 {@link Sizes#stickGap}，照真 ThinkPad 的 G、H、B），
+ *   按得到的范围是圆（报上去的正方形的内切圆，TouchRouter.Region.contains），多大见 {@link #stickRadius}；
+ *   嵌不下（键太小）就放在键盘上面（或下面、旁边）、对着那一点（{@link #STICK_OUTSIDE}），都没地方就不放。
  * 三键条（设置里的开关，主界面和键盘页的触控板都管）：从触控板的上沿或下沿切出一条（{@link #cutBar}），切完触控板短边不够就不切；
  * 放上沿时 ⋯ 挪到三键条正下方。
  */
@@ -73,15 +73,16 @@ final class KeyboardPlan {
     static final int KEYS_BOTTOM = 1;
     static final int KEYS_TOP = 2;
 
-    /** 小红点放在哪：没放 / 嵌在键里（压着挨着的键的角）/ 分裂两半中间那一列（不压键）/ 键盘外面（嵌不下时，键盘上面或下面）。 */
+    /** 小红点放在哪：没放 / 嵌在键里（挨着的键被圆弧切掉一块）/ 键盘外面（嵌不下时，键盘上面、下面或旁边）。 */
     static final int STICK_NONE = 0;
     static final int STICK_KEYS = 1;
-    static final int STICK_COLUMN = 2;
-    static final int STICK_OUTSIDE = 3;
+    static final int STICK_OUTSIDE = 2;
 
     /**
-     * 小红点嵌在键里时每个键最多让出多少面积：字母层（天天打字的那层，含功能行、底行）按 {@link #STICK_LETTER_SHARE} 定大小，
+     * 小红点嵌在键里时每个键最多被切掉多少面积（切口圆和键帽矩形相交的面积 / 键帽面积，{@link #cutShare}）：
+     * 字母层（天天打字的那层，含功能行、底行）按 {@link #STICK_LETTER_SHARE} 定大小，
      * 所有层（符号层、Fn 层那一点上是别的键，不一定四个键交在一起）都不超过 {@link #STICK_MAX_SHARE}（硬上限）。
+     * 以前按正方形算（2026-11-01 改成照真 ThinkPad 的圆切口）：同样的面积，圆能大约 13%。
      */
     static final float STICK_LETTER_SHARE = 0.16f;
     static final float STICK_MAX_SHARE = 0.25f;
@@ -90,8 +91,6 @@ final class KeyboardPlan {
      * 中键 = 总宽 / 5.4。以前凭印象按 3 : 2 : 3（四分之一）。
      */
     static final float MIDDLE_SHARE = 1 / 5.4f;
-    /** 键盘最下面那排三个鼠标键：切完键盘面板至少还有这么多个键高（{@link Sizes#keyH}），不然不切。 */
-    static final int MOUSE_ROW_MIN_KEYS = 3;
 
     /** 宽窗口里合并、没调过大小时，键盘占的宽度比例（靠左）。 */
     static final float WIDE_MERGED_WIDTH = 2f / 3;
@@ -143,10 +142,20 @@ final class KeyboardPlan {
         final int minPad;
         /** 分裂时一份（字母键连缝，KeyRows.splitUnit）至少这么宽才分裂。 */
         final int minKey;
-        /** 小红点按得到的范围（正方形）最大边长（64dp）：分裂两半中间那一列放的就是这么大；0 = 没给（放不了小红点，也切不了三键条）。 */
+        /** 小红点按得到的范围（圆）最大直径（64dp，放在键盘外面时就这么大）；0 = 没给（放不了小红点，也切不了三键条）。 */
         final int stick;
-        /** 嵌在键里时红点的范围至少多大（32dp，约 5 毫米），再小就不嵌（{@link #stickSize}）。 */
+        /** 嵌在键里时红点的范围至少多大（直径 32dp，约 5 毫米），再小就不嵌（{@link #stickRadius}）。 */
         final int minStick;
+        /**
+         * 嵌在键里时红帽和键上切口之间的缝（3dp，照真 ThinkPad 约 0.5 毫米的缝放大一点、手机上看得出来）：按得到的范围（圆）的边在这条缝的中线，
+         * 红帽半径 = 范围半径 − 缝 / 2，切口半径 = 范围半径 + 缝 / 2（{@link #cutRadius}）。
+         */
+        final int stickGap;
+        /**
+         * 键上的字要离切口多远（10sp，跟着系统字体大小）：把字看成以键帽中心为圆心、这么大半径的一块（18sp 的单个字连上下出头约 ±9sp），
+         * 切口碰到它时字往远离切口的方向竖着挪（{@link #labelShift}），挪出键帽还躲不开就算嵌不下。
+         */
+        final int labelRoom;
         /** 三个鼠标键：每个至少多宽（44dp）、多高（48dp）、键与键之间（和三键条与触控板之间）的缝（4dp）。 */
         final int keyW, keyH, keyGap;
         /** 中键至少多宽（56dp；整排窄得三个一样宽都不到这么宽时三个一样宽）。 */
@@ -160,21 +169,24 @@ final class KeyboardPlan {
         final int edgeL, edgeT, edgeR, edgeB;
 
         Sizes(int gap, int minPad, int minKey) {
-            this(gap, minPad, minKey, 0, 0, 0, 0, 0, 0, 0, 0);
+            this(gap, minPad, minKey, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
-        Sizes(int gap, int minPad, int minKey, int stick, int minStick, int keyW, int keyH, int keyGap, int minMiddle,
-              int capGap, int edge) {
-            this(gap, minPad, minKey, stick, minStick, keyW, keyH, keyGap, minMiddle, capGap, new int[]{edge, edge, edge, edge});
+        Sizes(int gap, int minPad, int minKey, int stick, int minStick, int stickGap, int labelRoom, int keyW, int keyH, int keyGap,
+              int minMiddle, int capGap, int edge) {
+            this(gap, minPad, minKey, stick, minStick, stickGap, labelRoom, keyW, keyH, keyGap, minMiddle, capGap,
+                    new int[]{edge, edge, edge, edge});
         }
 
-        private Sizes(int gap, int minPad, int minKey, int stick, int minStick, int keyW, int keyH, int keyGap, int minMiddle,
-                      int capGap, int[] edges) {
+        private Sizes(int gap, int minPad, int minKey, int stick, int minStick, int stickGap, int labelRoom, int keyW, int keyH,
+                      int keyGap, int minMiddle, int capGap, int[] edges) {
             this.gap = gap;
             this.minPad = minPad;
             this.minKey = minKey;
             this.stick = stick;
             this.minStick = minStick;
+            this.stickGap = stickGap;
+            this.labelRoom = labelRoom;
             this.keyW = keyW;
             this.keyH = keyH;
             this.keyGap = keyGap;
@@ -188,7 +200,7 @@ final class KeyboardPlan {
 
         /** 同一套尺寸，离页面四条边至少多远换成 edges {左, 上, 右, 下}（各边可以不一样）。 */
         Sizes withEdges(int[] edges) {
-            return new Sizes(gap, minPad, minKey, stick, minStick, keyW, keyH, keyGap, minMiddle, capGap, edges);
+            return new Sizes(gap, minPad, minKey, stick, minStick, stickGap, labelRoom, keyW, keyH, keyGap, minMiddle, capGap, edges);
         }
 
         /** 给了红点和鼠标键的尺寸（不然小红点当"关"、三键条不切）。 */
@@ -196,19 +208,14 @@ final class KeyboardPlan {
             return stick > 0 && minStick > 0 && minStick <= stick && keyW > 0 && keyH > 0;
         }
 
-        /** 三个键排一行至少多宽。 */
+        /** 三个键排一行至少多宽（三键条）。 */
         int keysWidth() {
             return 3 * keyW + 2 * keyGap;
         }
 
-        /** 分裂时两半中间给红点留的一列：红点 + 两边各一条缝。 */
-        int stickColumn() {
-            return stick + 2 * gap;
-        }
-
-        /** 键盘最下面那排三个鼠标键从键盘的框里切走多高：键高 + 上下各一道和键一样的缩进（和上面的键隔开的缝同键与键之间）。 */
-        int mouseRow() {
-            return keyH + 2 * capGap;
+        /** 底行、快捷行让出的空位至少多宽才放得下三个各宽 w 的鼠标键：每个键帽四边缩进 capGap，相邻两个之间隔 2 × capGap（同键盘的键）。 */
+        int holeWidth(int w) {
+            return 3 * w + 6 * capGap;
         }
     }
 
@@ -222,14 +229,12 @@ final class KeyboardPlan {
         final int middle;
         /** 分裂时两半只隔一条缝（middle == 缝）：两块键盘范围各伸到缝的中线（缝分给最近的键）；不然范围只到各自那一半的边。 */
         final boolean seam;
-        /** 键盘面板（只有键）：合并时是整块键盘，分裂时从左半的左边到右半的右边（中间那截面板不画东西）。 */
-        final int[] keyboard;
         /**
-         * 键盘的框：键盘面板 + 下面那排三个鼠标键（选小红点时，{@link #keys}）；没有那排时和 keyboard 一样。
-         * 调整模式画的框、拖的把手、调整栏让开的都是它；{@link #rect} / {@link #splitCell} 存的也是它。
+         * 键盘面板：合并时是整块键盘，分裂时从左半的左边到右半的右边（中间那截面板不画东西）。选小红点时三个鼠标键也在它里面
+         * （底行、快捷行让出的空位，{@link #hole}）。调整模式画的框、拖的把手、调整栏让开的都是它；{@link #rect} / {@link #splitCell} 存的也是它。
          */
-        final int[] block;
-        /** 分裂时左半、右半各自的范围（键盘面板的，不含下面那排鼠标键）；合并时是 null。 */
+        final int[] keyboard;
+        /** 分裂时左半、右半各自的范围；合并时是 null。 */
         final int[] leftHalf, rightHalf;
         final int padSide;
         /** 触控板；不放时是 null。 */
@@ -238,32 +243,50 @@ final class KeyboardPlan {
         final float[] rect;
         /** 分裂时用的左半格子（存下的守住约束后，或者默认的折算），0–1；调整模式从它开始拖。合并时是 null。 */
         final float[] splitCell;
-        /** 小红点放在哪（STICK_*）、按得到的范围（正方形）；没放时 STICK_NONE / null。 */
+        /** 小红点放在哪（STICK_*）、按得到的范围（正方形，按它的内切圆算）；没放时 STICK_NONE / null。 */
         final int stickAt;
         final int[] stick;
-        /** 三个鼠标键那一排（选小红点时键盘最下面那排，或者触控板上沿 / 下沿切出来的三键条）；没有时是 null。 */
+        /** 嵌在键里时键上切口的半径（像素，{@link #cutRadius}；圆心是 stick 的中心）；不嵌在键里是 0。 */
+        final float cut;
+        /**
+         * 三个鼠标键：选小红点时是底行、快捷行让出的空位（从空位左边到右边、从底行上沿到键盘下沿——快捷行不让位（{@link #spread} 为假）时
+         * 到底行的下沿，三个键铺满它，各自的键帽四边再缩进），触控板时是上沿 / 下沿切出来的三键条（三个键帽之间隔 keyGap）；没有时是 null。
+         */
         final int[] keys;
-        /** 三个鼠标键里中键的 {左, 右}（页面 x）：左键从 keys 左边到它左边隔一条缝，右键从它右边隔一条缝到 keys 右边；没有 keys 时是 null。 */
+        /**
+         * 三个鼠标键里中键的 {左, 右}（页面 x）。三键条：中键的键帽，左键从 keys 左边到它左边隔一条缝，右键从它右边隔一条缝到 keys 右边；
+         * 空位（hole 不是 null）：中键铺的那一格（键帽再缩进），左键那一格从 keys 左边到它，右键那一格从它到 keys 右边。没有 keys 时是 null。
+         */
         final int[] middleKey;
+        /** 选小红点时底行、快捷行让出的空位 {左, 右}（键盘面板里的 x，交给 KeyRows.place）；不让时是 null。 */
+        final int[] hole;
+        /**
+         * 快捷行也让出空位（{@link #shortcutsSpread}）：三个鼠标键竖着跨底行和快捷行。快捷行没有键、或者分到空位两边后快捷键太窄时为假，
+         * 快捷行照旧铺满整行，三个鼠标键只占空格那一排（{@link #keys} 的下沿是底行的下沿，KeyRows.holeBottom）。没让空位时是假。
+         */
+        final boolean spread;
         /** ⋯ 放在哪块的顶上正中（交给 {@link #menuTop}）、离那块顶边多远；null = 没地方，⋯ 是功能行上的键。 */
         final int[] menuArea;
         final int menuMargin;
 
-        Plan(boolean split, int middle, boolean seam, int[] keyboard, int[] block, int padSide, int[] pad, float[] rect,
-             float[] splitCell, int stickAt, int[] stick, int[] keys, int[] middleKey, int[] menuArea, int menuMargin) {
+        Plan(boolean split, int middle, boolean seam, int[] keyboard, int padSide, int[] pad, float[] rect,
+             float[] splitCell, int stickAt, int[] stick, float cut, int[] keys, int[] middleKey, int[] hole, boolean spread,
+             int[] menuArea, int menuMargin) {
             this.split = split;
             this.middle = middle;
             this.seam = seam;
             this.keyboard = keyboard;
-            this.block = block;
             this.padSide = padSide;
             this.pad = pad;
             this.rect = rect;
             this.splitCell = splitCell;
             this.stickAt = stickAt;
             this.stick = stick;
+            this.cut = cut;
             this.keys = keys;
             this.middleKey = middleKey;
+            this.hole = hole;
+            this.spread = spread;
             this.menuArea = menuArea;
             this.menuMargin = menuMargin;
             if (split) {
@@ -295,11 +318,14 @@ final class KeyboardPlan {
      * mode = MODE_*；pointer = POINTER_*（指点：触控板 / 小红点 / 关）；keys = KEYS_*（触控板的三键条，只在触控板时有用）；
      * w × h = 键盘区；saved = 存下的合并键盘位置（0–1，没存过是 null）；savedSplit = 存下的分裂左半格子（0–1，没存过是 null）；
      * landscape = 横屏（决定没存过时的默认位置）；layers = 键盘三层各自的全部行（KeyRows.layers，KeyboardPanel.layers 给），
-     * 小红点嵌在键里时按它算压着键多少（null = 默认的键）。
+     * 小红点时按它算底行、快捷行让多宽的空位、红点切掉键多少（null = 默认的键）。
+     * 小红点固定合并（不管 mode；mode 本身不改，换回触控板 / 关时照它）。
      */
     static Plan plan(int mode, int pointer, int keys, int w, int h, float[] saved, float[] savedSplit, boolean landscape, Sizes s,
                      KeyRows.Row[][] layers) {
         pointer = validPointer(pointer);
+        // 2026-11-01 用户："小红点状态把分裂布局取消掉，默认就是合并的布局"
+        if (pointer == POINTER_STICK) mode = MODE_MERGE;
         if (pointer == POINTER_STICK && !s.stickReady()) pointer = POINTER_NONE;
         boolean padOn = pointer == POINTER_PAD;
         boolean stickOn = pointer == POINTER_STICK;
@@ -339,12 +365,11 @@ final class KeyboardPlan {
         return finish(d, padOn ? keys : KEYS_OFF, stickOn, r, w, h, s, layers);
     }
 
-    /** 摆到一半的结果（键盘的框、触控板），{@link #finish} 再切三个鼠标键那排 / 三键条、放红点、定 ⋯ 放哪。 */
+    /** 摆到一半的结果（键盘、触控板），{@link #finish} 再让空位放三个鼠标键 / 切三键条、放红点、定 ⋯ 放哪。 */
     private static final class Draft {
         final boolean split;
         int middle;
         boolean seam;
-        /** 键盘的框（选小红点时连下面那排三个鼠标键，finish 再切开）。 */
         final int[] keyboard;
         final float[] cell;
         int padSide = PAD_NONE;
@@ -366,20 +391,10 @@ final class KeyboardPlan {
     /**
      * 没存过分裂格子时的分裂摆法（原来的规则）：宽窗口占满，窄窗口照合并时的上下沿（merged）；触控板放得进中间（三分之一布局）、
      * 上方、下方里面积最大的那块，没放进中间两半就往中间伸、只隔一条缝。顺带折算成格子（调整模式从它开始拖）。
-     * 小红点：中间只留一列刚够红点（{@link Sizes#stickColumn}，键够宽时），两半相应变宽；不够宽就两半往中间伸、只隔一条缝，
-     * 红点嵌在缝上（{@link #finish}）。
+     * 小红点不会走到这里（固定合并，2026-11-01 起；以前中间留一列给红点）。
      */
     private static Draft defaultSplit(int pointer, int w, int h, int[] merged, Sizes s) {
         int[] k = KeyRows.shouldSplit(w, h) ? new int[]{0, 0, w, h} : new int[]{0, merged[1], w, merged[3]};
-        if (pointer == POINTER_STICK) {
-            int m = s.stickColumn();
-            if (KeyRows.splitUnit(w, m) >= s.minKey) {
-                return new Draft(true, m, k, cellOf(k, w, h, (KeyRows.leftEnd(w, m) + s.gap / 2f) / w));
-            }
-            Draft d = new Draft(true, s.gap, k, cellOf(k, w, h, SPLIT_MEET));
-            d.seam = true;
-            return d;
-        }
         int[][] bands = {{0, 0, w, k[1] - s.gap}, {0, k[3] + s.gap, w, h}};
         int side = PAD_NONE;
         int[] pad = null;
@@ -408,10 +423,7 @@ final class KeyboardPlan {
         return new float[]{0, h > 0 ? (float) k[1] / h : 0, right, h > 0 ? (float) k[3] / h : 1};
     }
 
-    /**
-     * 存过格子：照存的摆（先守住约束），触控板放得进中间就放中间，不然上方 / 下方 / 不放，两半不动。
-     * 小红点不用在这里挑地方：中间留得出一列就在这一列里，不然嵌在两半交界的缝上（{@link #finish}）。
-     */
+    /** 存过格子：照存的摆（先守住约束），触控板放得进中间就放中间，不然上方 / 下方 / 不放，两半不动。 */
     private static Draft savedSplit(int pointer, float[] savedSplit, int w, int h, Sizes s) {
         float[] cell = fitSplit(savedSplit, w, s);
         int left = Math.round(cell[0] * w);
@@ -437,19 +449,25 @@ final class KeyboardPlan {
     /**
      * 收尾：触控板开着三键条就从它上沿 / 下沿切一条（{@link #cutBar}，切不了就不切）；定 ⋯ 放哪——触控板顶上正中（三键条在上沿时
      * 在三键条正下方、隔一条缝），没有触控板（小红点、关）回到功能行上。
-     * 小红点：从键盘的框的下沿切出三个鼠标键那排（面板剩下不到 {@link #MOUSE_ROW_MIN_KEYS} 个键高、或者排不下三个键就不切），
-     * 再把红点放进键盘面板（{@link #placeStick}）；中键对着红点（{@link #middleKey}）。
+     * 小红点（一定是合并）：底行、快捷行让出空位（{@link #stickHole}，让不出就没有三个鼠标键；快捷行分开后太窄就只有底行让，
+     * {@link #shortcutsSpread}），三个键铺满它、中键对着红点那一点（{@link #holeKeys}）；再把红点放进键盘（{@link #placeStick}）。
      */
     private static Plan finish(Draft d, int keys, boolean stickOn, float[] r, int w, int h, Sizes s, KeyRows.Row[][] layers) {
-        int[] block = d.keyboard;
-        int[] panel = block;
-        int[] bar = null;
+        int[] panel = d.keyboard;
+        int[] bar = null, middleKey = null, hole = null;
+        boolean spread = false;
         if (stickOn) {
-            int reserve = s.mouseRow();
-            if (block[3] - block[1] - reserve >= MOUSE_ROW_MIN_KEYS * s.keyH
-                    && block[2] - block[0] - 2 * s.capGap >= s.keysWidth()) {
-                panel = new int[]{block[0], block[1], block[2], block[3] - reserve};
-                bar = new int[]{block[0] + s.capGap, panel[3] + s.capGap, block[2] - s.capGap, block[3] - s.capGap};
+            int pw = panel[2] - panel[0], ph = panel[3] - panel[1];
+            KeyRows.Row[] letters = layers[KeyRows.LAYER_LETTERS];
+            hole = stickHole(pw, letters, s);
+            int top = KeyRows.holeTop(letters, ph);
+            if (hole != null && top > 0) {
+                spread = shortcutsSpread(hole, pw, letters, s);
+                bar = new int[]{panel[0] + hole[0], panel[1] + top, panel[0] + hole[1], panel[1] + KeyRows.holeBottom(letters, ph, spread)};
+                int[] m = holeKeys(hole, KeyRows.stickPoint(pw, ph, letters.length)[0], s);
+                middleKey = new int[]{panel[0] + m[0], panel[0] + m[1]};
+            } else {
+                hole = null;
             }
         }
         int[] pad = d.pad;
@@ -469,22 +487,80 @@ final class KeyboardPlan {
         }
         int stickAt = STICK_NONE;
         int[] stick = null;
-        int aim = 0;   // 中键对着的横坐标（placeStick 的第 6 个数）
+        float cut = 0;
         if (stickOn) {
-            int[] placed = placeStick(panel, block, d.split, d.middle, w, h, s, layers);
+            int[] placed = placeStick(panel, w, h, s, layers, hole, spread);
             if (placed != null) {
                 stickAt = placed[4];
                 stick = Arrays.copyOf(placed, 4);
-                aim = placed[5];
+                if (stickAt == STICK_KEYS) cut = cutRadius((stick[2] - stick[0]) / 2, s);
             }
+        } else if (bar != null) {
+            middleKey = middleKey(bar, (bar[0] + bar[2]) / 2, s);   // 三键条：中键在正中
         }
-        int[] middleKey = null;
-        if (bar != null) {
-            int center = stick != null ? aim : (bar[0] + bar[2]) / 2;
-            middleKey = middleKey(bar, center, s);
+        return new Plan(d.split, d.middle, d.seam, panel, d.padSide, pad, r, d.cell,
+                stickAt, stick, cut, bar, middleKey, hole, spread, menu, margin);
+    }
+
+    /**
+     * 小红点状态下底行、快捷行在中间让出的空位 {左, 右}（键盘面板里的 x；pw = 面板宽，rows = 一层的全部行），让不出返回 null。
+     * 空位右边最远到 . 原来的左边（. ↵ 不变窄），左边是缩短的空格的右边（空格 {@link KeyRows#STICK_SPACE} 份到 {@link KeyRows#STICK_SPACE_MIN} 份）。
+     * 先后照顾：① 中键正对红点、左右键一样宽（空位以红点那一点为中线左右对称，照真 ThinkPad），做不到就尽量近；② 空格尽量长；
+     * ③ 三个鼠标键每个至少 keyW（{@link Sizes#holeWidth}）。对称时空位右边比 . 原来的左边靠左，多出来的那截给 . ↵（一起变宽）。
+     * 1. 对称：空格能多长就多长（不超过 STICK_SPACE 份），空位至少够三个 keyW 宽的键——宽的窗口（手机横屏、大屏分屏）空格 1.5 份、
+     *    空位 3 份宽；手机竖屏空格 1–1.5 份、三个键各 keyW；连苹果设备（多一个 🌐）的宽窗口空格 1–1.5 份、三个键各 keyW。
+     * 2. 对称放不下（连苹果设备 + 窗口不到约 720dp 宽：空位左边被 🌐 挤到红点附近；或者很窄的窗口）：空格最短（STICK_SPACE_MIN 份）、
+     *    右边到 . 原来的左边，这样中键离红点最近；三个键分这一段，每个最窄 minKey（32dp，同分裂时字母键的门槛）——
+     *    比 keyW 窄，但三个键有两行高，比以前那排 48dp 高的好按。再窄就不让位（三个鼠标键不显示，红点照样有）。
+     */
+    static int[] stickHole(int pw, KeyRows.Row[] rows, Sizes s) {
+        float[] u = KeyRows.holeUnits(rows);
+        if (u == null || pw <= 0 || u[2] <= 0) return null;
+        float unit = pw / u[2];
+        int cx = KeyRows.stickPoint(pw, 1, rows.length)[0];
+        int right = Math.round(unit * (u[2] - u[1]));   // . 原来的左边
+        int longest = Math.round(unit * u[0]);   // 空格 STICK_SPACE 份时空位的左边
+        int shortest = Math.round(unit * (u[0] - (KeyRows.STICK_SPACE - KeyRows.STICK_SPACE_MIN)));   // 空格 STICK_SPACE_MIN 份
+        int need = s.holeWidth(s.keyW);
+        // 1. 对称：左边 ≤ 红点 − 半个空位（够宽）、≤ longest（空格不超过 1.5 份），尽量靠右；还得 ≥ shortest、右边不过 . 原来的左边
+        int l = Math.min(longest, cx - (need + 1) / 2);
+        if (l >= Math.max(shortest, 2 * cx - right)) return new int[]{l, 2 * cx - l};
+        // 2. 空格最短、右边到 . 原来的左边（离对称最近），三个键分这一段
+        if (right - shortest >= s.holeWidth(s.minKey)) return new int[]{shortest, right};
+        return null;
+    }
+
+    /**
+     * 快捷行也让出空位 hole 吗（三个鼠标键跨两行，2026-11-01 用户要的"高度跟这两个高度等高"）：快捷键按 KeyRows.spreadLeft 分到空位两边后，
+     * 每边每个键（连缝）都不窄于 minKey（32dp，同分裂时字母键的门槛：再窄拇指按不准）才让；没有快捷行、或者分开后太窄，返回假——
+     * 快捷行照旧铺满整行，三个鼠标键只占空格那一排（2026-11-01 审查发现：手机竖屏 9 个快捷键分到两边每个只剩 21–27dp，
+     * 德 / 法 / 西 / 意 / 日 / 韩语的短名缩到最小字号也放不下）。pw = 面板宽，rows = 一层的全部行。
+     * 手机竖屏（360–411dp）上 9 个默认快捷键分不开、只让底行；7 个以下（411dp）、宽窗口（手机横屏、大屏分屏下半边）跨两行。
+     */
+    static boolean shortcutsSpread(int[] hole, int pw, KeyRows.Row[] rows, Sizes s) {
+        if (hole == null) return false;
+        for (KeyRows.Row row : rows) {
+            if (!row.spread) continue;
+            int n = row.whole.length;
+            if (n == 0) return false;
+            int left = hole[0], right = pw - hole[1];
+            int k = KeyRows.spreadLeft(n, left, right);
+            if (k > 0 && left < (long) k * s.minKey) return false;
+            if (k < n && right < (long) (n - k) * s.minKey) return false;
+            return true;
         }
-        return new Plan(d.split, d.middle, d.seam, panel, block, d.padSide, pad, r, d.cell,
-                stickAt, stick, bar, middleKey, menu, margin);
+        return false;
+    }
+
+    /**
+     * 三个鼠标键怎么铺空位 hole {左, 右}（返回中键那一格的 {左, 右}，同一套 x）：每个键帽四边缩进 capGap，键帽之间隔 2 × capGap；
+     * 键帽宽度照 {@link #middleKey}（中键是三个键帽总宽的 {@link #MIDDLE_SHARE}、至少 minMiddle，左右键填满剩下的、不比中键窄），
+     * 中键对着 center（红点那一点，挪不过去就挪到最近的地方）。左键那一格从 hole 左边到中键那一格，右键那一格从它到 hole 右边。
+     */
+    static int[] holeKeys(int[] hole, int center, Sizes s) {
+        int g = s.capGap;
+        int[] m = middleKey(new int[]{hole[0] + g, 0, hole[1] - g, 0}, center, 2 * g, s.minMiddle);
+        return new int[]{m[0] - g, m[1] + g};
     }
 
     /**
@@ -519,113 +595,197 @@ final class KeyboardPlan {
      * 没红点时是这一排的中线），红点不在正中时左右键不一样宽，挪不过去就挪到最近的地方。键与键之间隔 keyGap。
      */
     static int[] middleKey(int[] bar, int center, Sizes s) {
-        int inner = Math.max(0, bar[2] - bar[0] - 2 * s.keyGap);
-        int m = Math.min(inner / 3, Math.max(s.minMiddle, Math.round(inner * MIDDLE_SHARE)));
-        int lo = bar[0] + m + s.keyGap;
-        int hi = bar[2] - 2 * m - s.keyGap;
+        return middleKey(bar, center, s.keyGap, s.minMiddle);
+    }
+
+    /** 同上，键与键之间隔 gap、中键至少 minMiddle。 */
+    private static int[] middleKey(int[] bar, int center, int gap, int minMiddle) {
+        int inner = Math.max(0, bar[2] - bar[0] - 2 * gap);
+        int m = Math.min(inner / 3, Math.max(minMiddle, Math.round(inner * MIDDLE_SHARE)));
+        int lo = bar[0] + m + gap;
+        int hi = bar[2] - 2 * m - gap;
         int left = Math.max(lo, Math.min(center - m / 2, hi));
         return new int[]{left, left + m};
     }
 
     /**
-     * 小红点放哪，返回 {左, 上, 右, 下, STICK_*}（页面坐标，正方形），放不下返回 null。
-     * 先放进键盘面板 panel 里 KeyRows.stickPoint 那一点（g、h、v、b 交界；分裂时两半中间那截的正中），多大见 {@link #stickSize}：
-     * 压着键是 STICK_KEYS，不压（分裂中间那一列）是 STICK_COLUMN。
-     * 嵌不下（键太小）就放到键盘的框 block 上面、隔一条缝，对着那一点（STICK_OUTSIDE）：边长不超过 stick、不小于 minStick，
-     * 离页面边至少 edge（Sizes.edgeL / T / R / B）；上面没地方放下面；上下都没有就放 block 右边或左边空着的那块（空得多的那边，挨着 block、
-     * 隔一条缝，竖着对齐那一点）。2026-11-01 用户在分屏下半边换成合并：存下的键盘只占左边六成、扣掉鼠标键那排后键只剩约 29dp 高，
+     * 小红点放哪，返回 {左, 上, 右, 下, STICK_*}（页面坐标，正方形，按得到的范围是它的内切圆），放不下返回 null。
+     * 先嵌进键盘 panel 里 KeyRows.stickPoint 那一点（g、h、v、b 交界），半径见 {@link #stickRadius}（STICK_KEYS）；hole = 底行、
+     * 快捷行让出的空位（{@link #stickHole}，null = 没让），切口不碰到它。
+     * 嵌不下（键太小）就放到键盘上面、隔一条缝，对着那一点（STICK_OUTSIDE）：边长不超过 stick、不小于 minStick，
+     * 离页面边至少 edge（Sizes.edgeL / T / R / B）；上面没地方放下面；上下都没有就放键盘右边或左边空着的那块（空得多的那边，挨着键盘、
+     * 隔一条缝，竖着对齐那一点）。2026-11-01 用户在分屏下半边换成合并：存下的键盘只占左边六成、键很矮，
      * 嵌不下，上下也没地方，右边空着四成却不放——"完全找不见"。都没有才返回 null（三个鼠标键照样有）。
-     * 返回的第 6 个数是中键该对着的横坐标：放在旁边时是那一点（g|h 的缝），别的情况是红点的中线。
+     * 三个鼠标键的中键对着那一点（g|h 的缝），不看红点放在哪。
      */
-    static int[] placeStick(int[] panel, int[] block, boolean split, int middle, int w, int h, Sizes s, KeyRows.Row[][] layers) {
+    static int[] placeStick(int[] panel, int w, int h, Sizes s, KeyRows.Row[][] layers, int[] hole, boolean spread) {
         int pw = panel[2] - panel[0], ph = panel[3] - panel[1];
-        int[] p = KeyRows.stickPoint(pw, ph, layers[KeyRows.LAYER_LETTERS].length, split, middle);
-        List<List<KeyRows.Placed>> placed = placedLayers(layers, pw, ph, split, middle, s);
-        int size = stickSize(placed, pw, ph, p, s);
+        KeyRows.Row[] letters = layers[KeyRows.LAYER_LETTERS];
+        int[] p = KeyRows.stickPoint(pw, ph, letters.length);
+        int floor = hole != null ? KeyRows.holeTop(letters, ph) : ph;
+        int radius = stickRadius(placedLayers(layers, pw, ph, s, hole, spread), pw, floor, p, s);
         int cx = panel[0] + p[0];
-        if (size > 0) {
-            int l = cx - size / 2, t = panel[1] + p[1] - size / 2;
-            boolean onKeys = maxShare(placed, l - panel[0], t - panel[1], size) > 0;
-            return new int[]{l, t, l + size, t + size, onKeys ? STICK_KEYS : STICK_COLUMN, l + size / 2};
+        if (radius > 0) {
+            int cy = panel[1] + p[1];
+            return new int[]{cx - radius, cy - radius, cx + radius, cy + radius, STICK_KEYS};
         }
+        int size;
         int across = w - s.edgeL - s.edgeR;
-        int above = Math.min(across, block[1] - s.gap - s.edgeT);
-        int below = Math.min(across, h - s.edgeB - block[3] - s.gap);
+        int above = Math.min(across, panel[1] - s.gap - s.edgeT);
+        int below = Math.min(across, h - s.edgeB - panel[3] - s.gap);
         int top;
         if (above >= s.minStick) {
             size = Math.min(s.stick, above);
-            top = block[1] - s.gap - size;
+            top = panel[1] - s.gap - size;
         } else if (below >= s.minStick) {
             size = Math.min(s.stick, below);
-            top = block[3] + s.gap;
+            top = panel[3] + s.gap;
         } else {
-            // 上下都没地方：block 旁边空着的那块（右边、左边取空得多的），竖着对齐那一点
+            // 上下都没地方：键盘旁边空着的那块（右边、左边取空得多的），竖着对齐那一点
             int tall = h - s.edgeT - s.edgeB;
-            int rightRoom = Math.min(tall, w - s.edgeR - block[2] - s.gap);
-            int leftRoom = Math.min(tall, block[0] - s.gap - s.edgeL);
+            int rightRoom = Math.min(tall, w - s.edgeR - panel[2] - s.gap);
+            int leftRoom = Math.min(tall, panel[0] - s.gap - s.edgeL);
             boolean right = rightRoom >= leftRoom;
             size = Math.min(s.stick, right ? rightRoom : leftRoom);
             if (size < s.minStick) return null;
             int cy = panel[1] + p[1];
             int t = Math.max(s.edgeT, Math.min(cy - size / 2, h - s.edgeB - size));
-            int l = right ? block[2] + s.gap : block[0] - s.gap - size;
-            return new int[]{l, t, l + size, t + size, STICK_OUTSIDE, cx};
+            int l = right ? panel[2] + s.gap : panel[0] - s.gap - size;
+            return new int[]{l, t, l + size, t + size, STICK_OUTSIDE};
         }
         int left = Math.max(s.edgeL, Math.min(cx - size / 2, w - s.edgeR - size));
-        return new int[]{left, top, left + size, top + size, STICK_OUTSIDE, left + size / 2};
-    }
-
-    /** 三层的键各自摆在面板（pw × ph）里的位置（同 KeyboardPanel 摆的：缩进 capGap）。 */
-    static List<List<KeyRows.Placed>> placedLayers(KeyRows.Row[][] layers, int pw, int ph, boolean split, int middle, Sizes s) {
-        List<List<KeyRows.Placed>> out = new ArrayList<>();
-        for (KeyRows.Row[] rows : layers) out.add(KeyRows.place(rows, pw, ph, split, middle, s.capGap));
-        return out;
+        return new int[]{left, top, left + size, top + size, STICK_OUTSIDE};
     }
 
     /**
-     * 嵌在 p（面板 pw × ph 里的点）的红点按得到的范围多大（正方形边长，以 p 为中心，左上角 = p − size / 2）：
-     * 越大越好按，挨着的键让出的角也越大。取最大的一个：不超过 stick（64dp）、不出面板，字母层（天天打字的那层）每个键被占掉的面积
-     * ≤ {@link #STICK_LETTER_SHARE}、每一层（符号层、Fn 层在这一点上是别的键）每个键 ≤ {@link #STICK_MAX_SHARE}；
-     * 这样还不到 minStick（键小）时，只要 minStick 每一层每个键都 ≤ STICK_MAX_SHARE 就取 minStick，不然返回 0（嵌不下）。
-     * 分裂中间那一列（不压键）就是 stick。placed = {@link #placedLayers}。
+     * 三层的键各自摆在面板（pw × ph，整块）里的位置（同 KeyboardPanel 摆的：缩进 capGap；hole = 底行、快捷行让出的空位，
+     * spread = 快捷行也让，{@link Plan#spread}）。
      */
-    static int stickSize(List<List<KeyRows.Placed>> placed, int pw, int ph, int[] p, Sizes s) {
-        int room = 2 * Math.min(Math.min(p[0], pw - p[0]), Math.min(p[1], ph - p[1]));
-        int lo = 0, hi = Math.max(0, Math.min(s.stick, room));   // 越大压得越多（正方形只会变大、不会挪），二分找最大的
+    static List<List<KeyRows.Placed>> placedLayers(KeyRows.Row[][] layers, int pw, int ph, Sizes s, int[] hole, boolean spread) {
+        List<List<KeyRows.Placed>> out = new ArrayList<>();
+        for (KeyRows.Row[] rows : layers) out.add(KeyRows.place(rows, pw, ph, false, KeyRows.MIDDLE_PAD, s.capGap, hole, spread));
+        return out;
+    }
+
+    /** 按得到的范围半径 r 时键上切口的半径：范围的边在红帽和切口之间那条缝的中线上。 */
+    static float cutRadius(int r, Sizes s) {
+        return r + s.stickGap / 2f;
+    }
+
+    /**
+     * 嵌在 p（面板里的点，面板宽 pw）的红点按得到的范围（圆）半径多大：越大越好按，挨着的键被切掉的也越多。取最大的一个：
+     * 直径不超过 stick（64dp）；切口（{@link #cutRadius}）不出面板左右、上边，不过 floor（底行的上沿，三个鼠标键在那儿；没让空位时是面板下沿）；
+     * 字母层（天天打字的那层）每个键被切掉的面积 ≤ {@link #STICK_LETTER_SHARE}、每一层（符号层、Fn 层在这一点上是别的键）每个键
+     * ≤ {@link #STICK_MAX_SHARE}（{@link #cutShare}）；每个被切到的键上的字躲得开切口（{@link #labelShift}）。
+     * 这样还不到 minStick / 2（键小）时，只要 minStick / 2 每一层每个键都 ≤ STICK_MAX_SHARE、字也躲得开就取它，不然返回 0（嵌不下）。
+     * placed = {@link #placedLayers}。
+     */
+    static int stickRadius(List<List<KeyRows.Placed>> placed, int pw, int floor, int[] p, Sizes s) {
+        int lo = 0, hi = Math.max(0, s.stick / 2);   // 越大切得越多、字越难躲（只会变难），二分找最大的
         while (lo < hi) {
             int mid = (lo + hi + 1) / 2;
-            if (fits(placed, p, mid, STICK_LETTER_SHARE)) lo = mid;
+            if (fits(placed, pw, floor, p, mid, STICK_LETTER_SHARE, s)) lo = mid;
             else hi = mid - 1;
         }
-        if (lo >= s.minStick) return lo;
-        if (s.minStick <= room && fits(placed, p, s.minStick, STICK_MAX_SHARE)) return s.minStick;
+        int min = (s.minStick + 1) / 2;
+        if (lo >= min) return lo;
+        if (min > 0 && fits(placed, pw, floor, p, min, STICK_MAX_SHARE, s)) return min;
         return 0;
     }
 
-    /** 以 p 为中心、边长 size 的红点：字母层每个键被占掉的面积 ≤ letterShare，每一层每个键 ≤ STICK_MAX_SHARE。 */
-    private static boolean fits(List<List<KeyRows.Placed>> placed, int[] p, int size, float letterShare) {
-        int l = p[0] - size / 2, t = p[1] - size / 2;
+    /** 半径 r 的红点：切口在面板里、不过 floor，字母层每个键被切掉 ≤ letterShare、每一层每个键 ≤ STICK_MAX_SHARE，被切到的键上的字躲得开。 */
+    private static boolean fits(List<List<KeyRows.Placed>> placed, int pw, int floor, int[] p, int r, float letterShare, Sizes s) {
+        float rc = cutRadius(r, s);
+        if (p[0] - rc < 0 || p[0] + rc > pw || p[1] - rc < 0 || p[1] + rc > floor) return false;
         for (int i = 0; i < placed.size(); i++) {
             float limit = i == KeyRows.LAYER_LETTERS ? Math.min(letterShare, STICK_MAX_SHARE) : STICK_MAX_SHARE;
-            for (KeyRows.Placed k : placed.get(i)) if (share(k, l, t, size) > limit) return false;
+            for (KeyRows.Placed k : placed.get(i)) {
+                if (!cuts(k, p[0], p[1], rc)) continue;
+                if (cutShare(k, p[0], p[1], rc) > limit) return false;
+                if (Float.isNaN(labelShift(k, p[0], p[1], rc, s.labelRoom))) return false;
+            }
         }
         return true;
     }
 
-    /** 左上角 (l, t)、边长 size 的正方形占掉键 k 多少面积（0–1）。 */
-    static float share(KeyRows.Placed k, int l, int t, int size) {
-        long area = (long) (k.right - k.left) * (k.bottom - k.top);
-        if (area <= 0) return 0;
-        long ox = Math.max(0, Math.min(k.right, l + size) - Math.max(k.left, l));
-        long oy = Math.max(0, Math.min(k.bottom, t + size) - Math.max(k.top, t));
-        return (float) (ox * oy) / area;
+    /** 圆心 (cx, cy)、半径 r 的切口碰不碰到键帽 k（矩形里离圆心最近的点在圆里面）。 */
+    static boolean cuts(KeyRows.Placed k, float cx, float cy, float r) {
+        float dx = Math.max(0, Math.max(k.left - cx, cx - k.right));
+        float dy = Math.max(0, Math.max(k.top - cy, cy - k.bottom));
+        return dx * dx + dy * dy < r * r;
     }
 
-    /** 三层里被这个正方形占掉最多的那个键占掉了多少（0 = 一个键都没压着）。 */
-    static float maxShare(List<List<KeyRows.Placed>> placed, int l, int t, int size) {
+    /**
+     * 圆心 (cx, cy)、半径 r 的切口切掉键帽 k 多少面积（0–1），精确算：按 x 积分竖条的长度（圆和矩形上下边的交点处分段，
+     * 每段里竖条的上端要么是矩形的上边、要么是圆弧，下端同样），圆弧那部分用 ∫√(r² − u²) du 的原函数。
+     */
+    static float cutShare(KeyRows.Placed k, float cx, float cy, float r) {
+        double w = k.right - k.left, hgt = k.bottom - k.top;
+        if (w <= 0 || hgt <= 0 || r <= 0) return 0;
+        double x0 = Math.max(k.left, cx - r), x1 = Math.min(k.right, cx + r);
+        if (x1 <= x0) return 0;
+        double[] at = new double[6];
+        int n = 0;
+        at[n++] = x0;
+        at[n++] = x1;
+        for (double e : new double[]{k.bottom - cy, k.top - cy}) {   // 圆弧和这条边相交的地方：√(r² − u²) = |e|
+            double v = Math.abs(e);
+            if (v >= r) continue;
+            double d = Math.sqrt((double) r * r - v * v);
+            for (double x : new double[]{cx - d, cx + d}) if (x > x0 && x < x1) at[n++] = x;
+        }
+        Arrays.sort(at, 0, n);
+        double area = 0;
+        for (int i = 0; i + 1 < n; i++) {
+            double a = at[i], b = at[i + 1];
+            if (b <= a) continue;
+            double m = (a + b) / 2, hm = arcHalf(m - cx, r);
+            boolean topArc = cy - hm > k.top, bottomArc = cy + hm < k.bottom;   // 竖条的上端 / 下端是圆弧（不是矩形的边）
+            if (Math.min(k.bottom, cy + hm) <= Math.max(k.top, cy - hm)) continue;   // 这一段圆和矩形竖着不重叠
+            double arc = arcArea(b - cx, r) - arcArea(a - cx, r);   // ∫ √(r² − u²)
+            double upper = topArc ? cy * (b - a) - arc : k.top * (b - a);
+            double lower = bottomArc ? cy * (b - a) + arc : k.bottom * (b - a);
+            area += lower - upper;
+        }
+        return (float) (area / (w * hgt));
+    }
+
+    /** 半个弦长 √(r² − u²)（u 出了 [−r, r] 是 0）。 */
+    private static double arcHalf(double u, double r) {
+        return Math.sqrt(Math.max(0, r * r - u * u));
+    }
+
+    /** ∫₀ᵘ √(r² − t²) dt = (u √(r² − u²) + r² asin(u / r)) / 2，u 夹到 [−r, r]。 */
+    private static double arcArea(double u, double r) {
+        u = Math.max(-r, Math.min(r, u));
+        return (u * arcHalf(u, r) + r * r * Math.asin(u / r)) / 2;
+    }
+
+    /** 三层里被切口（圆心 (cx, cy)、半径 r）切掉最多的那个键被切掉了多少（0 = 一个键都没碰到）。 */
+    static float maxCut(List<List<KeyRows.Placed>> placed, float cx, float cy, float r) {
         float max = 0;
-        for (List<KeyRows.Placed> layer : placed) for (KeyRows.Placed k : layer) max = Math.max(max, share(k, l, t, size));
+        for (List<KeyRows.Placed> layer : placed) for (KeyRows.Placed k : layer) max = Math.max(max, cutShare(k, cx, cy, r));
         return max;
+    }
+
+    /**
+     * 键帽 k 上的字要竖着挪多少（像素，负 = 往上）才躲得开切口（圆心 (cx, cy)、半径 rc）：把字看成以键帽中心为圆心、半径 room 的一块，
+     * 和切口之间至少不重叠；往远离切口圆心的方向挪（切口在下面就往上），挪得最少的那个。挪完那块字还得在键帽里
+     * （|挪的| ≤ 键帽高 / 2 − room），做不到返回 NaN。不用挪（离得够远、或者横着就隔得开）返回 0。
+     * 只竖着挪：红点在两行的交界上，切口总是从键帽的上沿或下沿切进来。KeyboardPanel 照它给键帽加上下内边距（字跟着挪），KeyboardPlan 拿它判断嵌不嵌得下。
+     */
+    static float labelShift(KeyRows.Placed k, float cx, float cy, float rc, float room) {
+        float kx = (k.left + k.right) / 2f, ky = (k.top + k.bottom) / 2f;
+        float dx = kx - cx, vy = ky - cy;
+        float reach = rc + room;
+        float q2 = reach * reach - dx * dx;
+        if (q2 <= 0) return 0;
+        float q = (float) Math.sqrt(q2);
+        if (Math.abs(vy) >= q) return 0;
+        float shift = q - Math.abs(vy);
+        float max = (k.bottom - k.top) / 2f - room;
+        if (shift > max) return Float.NaN;
+        return vy < 0 ? -shift : vy > 0 ? shift : -shift;   // 正对着圆心（竖着）时往上挪
     }
 
     /** 分裂时一半至少多宽（像素）：一份（字母键连缝）够 {@link Sizes#minKey}。 */
@@ -711,16 +871,15 @@ final class KeyboardPlan {
     }
 
     /**
-     * 分不分裂。自动：宽窗口，而且键够宽（触控板时按中间放触控板的三分之一布局算，小红点时按中间只留红点那一列算，关着时按两半伸满算）；
-     * 强制分裂：两半伸满时键够宽就分（触控板放不进中间就去上方 / 下方或者不放，红点留不出一列就嵌在两半交界的缝上）；合并：不分。
+     * 分不分裂。自动：宽窗口，而且键够宽（触控板时按中间放触控板的三分之一布局算，关着时按两半伸满算）；
+     * 强制分裂：两半伸满时键够宽就分（触控板放不进中间就去上方 / 下方或者不放）；合并：不分。小红点：一律不分（2026-11-01 起）。
      */
     static boolean shouldSplit(int mode, int pointer, int w, int h, Sizes s) {
-        if (mode == MODE_MERGE || h <= 0) return false;
+        if (mode == MODE_MERGE || h <= 0 || pointer == POINTER_STICK) return false;
         boolean wideOk = KeyRows.splitUnit(w, s.gap) >= s.minKey;
         if (mode == MODE_SPLIT) return wideOk;
         if (!KeyRows.shouldSplit(w, h)) return false;
         if (pointer == POINTER_PAD) return KeyRows.splitUnit(w, KeyRows.MIDDLE_PAD) >= s.minKey;
-        if (pointer == POINTER_STICK && s.stickReady()) return KeyRows.splitUnit(w, s.stickColumn()) >= s.minKey;
         return wideOk;
     }
 

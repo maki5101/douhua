@@ -33,9 +33,10 @@ import java.util.Arrays;
  * 分裂键盘（2026-10-30）：布局"自动"时键盘区宽 ≥ 2 × 高（大屏分屏的下半边、手机横屏）就分成左右两半，占满键盘区，
  * 触控板放在两半中间、和键盘一样高；"分裂" / "合并"强制（2026-10-30 键盘布局按钮）。
  * 合并时触控板放在键盘旁边空得最多的那一侧（上 / 右 / 左 / 下），太小（剩一条）就不放；触控板也可以整个藏起来。
- * 指点（⋯ 菜单里"指点"：触控板 / 小红点 / 关，2026-10-31）：小红点时照真的 ThinkPad 键盘摆（2026-11-01）——不放触控板，
- * 红点（{@link #stick}）在键盘里 g、h、v、b 交界那一点（分裂时两半中间那一列），左 / 中 / 右三个键（{@link #mouseKeys}）是键盘最下面一排，
- * 摆法见 KeyboardPlan；触控板时可以从它上沿 / 下沿切一条三键条（设置里的开关，同一组三个键 view）。
+ * 指点（⋯ 菜单里"指点"：触控板 / 小红点 / 关，2026-10-31）：小红点时照真的 ThinkPad 键盘摆（2026-11-01）——不放触控板、不分裂，
+ * 红点（{@link #stick}）在键盘里 g、h、v、b 交界那一点（挨着的键帽被圆弧切掉一块，KeyboardPanel.setStick），左 / 中 / 右三个键（{@link #mouseKeys}）
+ * 竖着跨底行和快捷行、铺满这两行在中间让出的空位（KeyboardPanel.setHole；快捷行分开后太挤就不让位，三个键只占底行），摆法见 KeyboardPlan；
+ * 触控板时可以从它上沿 / 下沿切一条三键条（设置里的开关，同一组三个键 view）。
  *
  * 键盘的大小和位置可以调（照 Gboard 的"调整大小"）：进入调整模式后，拖键盘的上下左右边改大小、拖中间整体挪位置。
  * 横屏和竖屏各记一份，合并、分裂各记一份。调整模式下服务不接管触摸（拖动要 App 自己收触摸）。
@@ -105,6 +106,13 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
 
     /** 合并时键盘在可用区域里的位置 {左, 上, 右, 下}，0–1；custom 为假时是默认位置（每次量尺寸按窗口重算）。 */
     private final float[] rect = new float[4];
+    /** 小红点嵌在键里时红帽和键上切口之间的缝（dp，KeyboardPlan.Sizes.stickGap）。 */
+    static final float STICK_GAP_DP = 3;
+    /**
+     * 键上的字离切口多远（sp，KeyboardPlan.Sizes.labelRoom；面板挪字也按它）：键上的字是 18sp / 13sp、跟着系统字体大小变，
+     * 这块也得跟着变（按 dp 算的话字体调大以后挪开的字压进切口，2026-11-01 审查发现）。系统字体大小一改 Activity 就重建，这里跟着重算。
+     */
+    static final float LABEL_ROOM_SP = 10;
     /** 用户调过大小位置（存着的，或者正在拖）；没调过的跟着窗口用默认位置（KeyboardPlan.defaultRect）。 */
     private boolean custom;
     /** 按下时 custom 和 rect 是什么样：抬起时 rect 没变（只是点了一下、没拖动）就恢复 custom、不存。 */
@@ -149,9 +157,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     private boolean split;
     /** 键盘面板、小触控板的位置（本容器坐标），onMeasure 按 KeyboardPlan 算好。分裂时 kbRect 从左半的左边到右半的右边。 */
     private final RectF kbRect = new RectF();
-    /** 键盘的框（KeyboardPlan.Plan.block）：面板 + 选小红点时下面那排三个鼠标键。调整模式的框、把手、压暗、调整栏让开都按它。 */
-    private final RectF blockRect = new RectF();
-    /** 分裂时左半、右半的框（本容器坐标；下边到键盘的框的下边，连着下面那排鼠标键）。 */
+    /** 分裂时左半、右半的框（本容器坐标）。 */
     private final RectF leftRect = new RectF();
     private final RectF rightRect = new RectF();
     private final RectF padRect = new RectF();
@@ -206,10 +212,12 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         barMargin = Style.dp(context, 8);
         // 触控板短边 96dp（约 15 毫米）：一根手指按上去还能来回划；以前只看高 ≥ 56dp，剩一条也照放、摁不了。
         // 分裂时一份（字母键连缝）至少 32dp（约 5 毫米，手机竖屏整块键盘一份约 40dp）：再窄拇指按不准。
-        // 小红点按得到的范围最大 64dp（约 10 毫米；分裂中间那一列就这么大，画出来的红帽约 45dp），嵌在键里时按键的大小定、至少 32dp；
-        // 三个鼠标键每个至少 44dp 宽、48dp 高（2026-11-01 用户嫌 36dp 的"基本上没法点"）、隔 4dp，中键至少 56dp；键帽四边缩进 2dp（同 KeyboardPanel）；
-        // 离屏幕边 20dp。
+        // 小红点按得到的范围（圆）直径最大 64dp（约 10 毫米；放在键盘外面时就这么大，画出来的红帽约 45dp），嵌在键里时按键的大小定、至少 32dp，
+        // 红帽和键上切口之间缝 3dp、键上的字离切口 10sp（跟着系统字体大小）；
+        // 三个鼠标键每个至少 44dp 宽（2026-11-01 用户嫌 36dp 高的"基本上没法点"；三键条 48dp 高，键盘里跨两行）、隔 4dp，中键至少 56dp；
+        // 键帽四边缩进 2dp（同 KeyboardPanel）；离屏幕边 20dp。
         baseSizes = new KeyboardPlan.Sizes(gap, Style.dp(context, 96), Style.dp(context, 32), Style.dp(context, 64), Style.dp(context, 32),
+                Style.dp(context, STICK_GAP_DP), Style.sp(context, LABEL_ROOM_SP),
                 Style.dp(context, 44), Style.dp(context, 48), Style.dp(context, 4), Style.dp(context, 56), Style.dp(context, 2), edgeInset);
         Arrays.fill(edges, edgeInset);
         sizes = baseSizes;
@@ -378,7 +386,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         areaTop = 0;
         areaWidth = w;
         areaHeight = h;
-        // 小红点嵌在键里能多大要按键算：功能行带 ⋯（选小红点时没有触控板，⋯ 一定在功能行上）、现在的底行和快捷行
+        // 小红点嵌在键里能多大、底行和快捷行让多宽的空位要按键算：功能行带 ⋯（选小红点时没有触控板，⋯ 一定在功能行上）、现在的底行和快捷行
         KeyboardPlan.Plan plan = KeyboardPlan.plan(layoutMode, pointer, keysMode, areaWidth, areaHeight,
                 custom ? rect : null, splitCustom ? splitCell : null, isLandscape(), sizes, keyboard.layers(true));
         if (!custom) System.arraycopy(plan.rect, 0, rect, 0, 4);   // 默认位置跟着窗口；调整模式从这里开始拖
@@ -401,17 +409,21 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         menuButton.measure(exactly(menuButtonW), exactly(menuButtonH));
         keyboard.setMenuKey(!menuOnPad);   // 量键盘之前换好显示的键
         keyboard.setSplit(split, plan.middle, plan.seam);
+        keyboard.setHole(plan.hole, plan.spread);   // 小红点状态：底行（快捷行分得开时连快捷行）在中间让出空位给三个鼠标键
         int[] k = plan.keyboard;
         kbRect.set(areaLeft + k[0], areaTop + k[1], areaLeft + k[2], areaTop + k[3]);
-        setRect(blockRect, plan.block);
         if (split) {
             int[] a = plan.leftHalf, b = plan.rightHalf;
-            leftRect.set(areaLeft + a[0], areaTop + a[1], areaLeft + a[2], blockRect.bottom);
-            rightRect.set(areaLeft + b[0], areaTop + b[1], areaLeft + b[2], blockRect.bottom);
+            leftRect.set(areaLeft + a[0], areaTop + a[1], areaLeft + a[2], areaTop + a[3]);
+            rightRect.set(areaLeft + b[0], areaTop + b[1], areaLeft + b[2], areaTop + b[3]);
         } else {
             leftRect.setEmpty();
             rightRect.setEmpty();
         }
+        // 红点嵌在键里：挨着的键帽沿圆弧切掉一块（面板量尺寸时按它画、挪字），面板自己收触摸时红点圆里不算任何键。在量面板之前设
+        boolean inKeys = plan.stickAt == KeyboardPlan.STICK_KEYS;
+        keyboard.setStick(inKeys ? new int[]{plan.stick[0] - k[0], plan.stick[1] - k[1], plan.stick[2] - k[0], plan.stick[3] - k[1]} : null,
+                plan.cut);
         keyboard.measure(exactly(k[2] - k[0]), exactly(k[3] - k[1]));
         padUsable = plan.pad != null;
         if (padUsable) {
@@ -425,10 +437,9 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         keysShown = plan.keys != null;
         setRect(stickRect, plan.stick);
         setRect(keysRect, plan.keys);
-        // 红点嵌在键里：画成键上挖出的一个洞（挨着的四个键各让出一个角），面板自己收触摸时这块不算任何键
-        boolean inKeys = plan.stickAt == KeyboardPlan.STICK_KEYS;
-        stick.setEmbedded(inKeys);
-        keyboard.setStickHole(inKeys ? new int[]{plan.stick[0] - k[0], plan.stick[1] - k[1], plan.stick[2] - k[0], plan.stick[3] - k[1]} : null);
+        // 红点嵌在键里只画红帽（键自己切口），不然画一圈淡圆；三个鼠标键在键盘里时铺满空位（键帽各缩进同键盘的键），三键条时一排三个键帽
+        stick.setEmbedded(inKeys, sizes.stickGap);
+        mouseKeys.setTiled(plan.hole != null, sizes.capGap);
         if (plan.middleKey != null) mouseKeys.setMiddle(plan.middleKey[0] - plan.keys[0], plan.middleKey[1] - plan.keys[0]);
         stick.measure(exactly(Math.round(stickRect.width())), exactly(Math.round(stickRect.height())));
         mouseKeys.measure(exactly(Math.round(keysRect.width())), exactly(Math.round(keysRect.height())));
@@ -437,7 +448,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         int barW = fitBar(w);
         adjustBar.measure(exactly(barW), exactly(barHeight));
         barLeft = (w - barW) / 2;
-        barTop = KeyboardPlan.adjustBarTop(h, barHeight, edges[1], edges[3], Math.round(blockRect.top), Math.round(blockRect.bottom));
+        barTop = KeyboardPlan.adjustBarTop(h, barHeight, edges[1], edges[3], Math.round(kbRect.top), Math.round(kbRect.bottom));
     }
 
     /** plan 里的矩形（键盘区坐标，null = 没有）换成本容器坐标。 */
@@ -544,8 +555,8 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
             canvas.drawText(previewLabel, previewRect.centerX(), baseline, previewText);
         }
         if (!adjusting) return;
-        RectF k = blockRect;
-        canvas.drawRect(k, shade);   // 分裂时连中间那截一起压暗（调整模式里触控板、红点本来就不能用）；连着下面那排鼠标键
+        RectF k = kbRect;
+        canvas.drawRect(k, shade);   // 分裂时连中间那截一起压暗（调整模式里触控板、红点本来就不能用）；小红点状态连着键盘里的三个鼠标键
         if (split) {   // 两半各一个框、各一套拖把手（对称），提示字横跨两半写在中间
             drawFrame(canvas, leftRect);
             drawFrame(canvas, rightRect);
@@ -687,7 +698,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     }
 
     private int pickHandle(float x, float y) {
-        RectF k = blockRect;
+        RectF k = kbRect;
         boolean inX = x > k.left - grab && x < k.right + grab;
         boolean inY = y > k.top - grab && y < k.bottom + grab;
         if (inX && Math.abs(y - k.top) < grab) return HANDLE_TOP;

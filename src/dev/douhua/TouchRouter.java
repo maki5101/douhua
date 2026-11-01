@@ -14,7 +14,7 @@ import java.util.Locale;
  * 键盘：按在键与键的缝、第二行两头的空位、外圈边距上（落在 Proto.REGION_KEYBOARD 里却没落在键上），
  * 分给范围里最近的键（{@link #nearestKey}）；按在键上的照旧按矩形判。
  *
- * 小红点（Proto.REGION_STICK）：第一根按在红点上的手指交给 {@link TrackPoint}，按着期间请宿主按固定节拍调 {@link #onTick}
+ * 小红点（Proto.REGION_STICK，按得到的是报上来那个正方形的内切圆，{@link Region#contains}）：第一根按在红点上的手指交给 {@link TrackPoint}，按着期间请宿主按固定节拍调 {@link #onTick}
  * （{@link Output#startTicks}），抬起 / 取消 / {@link #releaseAll} / 换参数都停。再来的手指按在红点上不理。
  * 三个鼠标键（Proto.REGION_MOUSE_BUTTON）：左 / 右键按住就按住（左键和"左键"按钮、{@link #holdLeft} 共用计数）；
  * 中键按着时推红点 / 单指划触控板 = 滚动（GestureEngine.setScrollHold），最后一个松开时这次一格都没滚过 = 补一次中键单击，
@@ -89,7 +89,10 @@ public final class TouchRouter implements GestureEngine.Output {
 
     public static final String TRACE_TAG = "douhua-keys";
 
-    /** 屏幕上的一块区域（像素），type 是 Proto.REGION_*。 */
+    /**
+     * 屏幕上的一块区域（像素），type 是 Proto.REGION_*。小红点（REGION_STICK）报的是正方形，按得到的是它的内切圆（{@link #contains}）：
+     * 嵌在键里时正方形的四个角压着挨着的键，看着是键（键帽沿圆弧切口，2026-11-01），按上去也得是键。
+     */
     public static final class Region {
         public final int type, id, left, top, right, bottom;
 
@@ -103,7 +106,12 @@ public final class TouchRouter implements GestureEngine.Output {
         }
 
         public boolean contains(float x, float y) {
-            return x >= left && x < right && y >= top && y < bottom;
+            if (!(x >= left && x < right && y >= top && y < bottom)) return false;
+            if (type != Proto.REGION_STICK) return true;
+            // 小红点：正方形的内切圆（不是正方形时取短边的一半当半径）；KeyFingers.pick 的洞、TrackPointView 画的范围是同一个圆
+            float r = Math.min(right - left, bottom - top) / 2f;
+            float dx = x - (left + right) / 2f, dy = y - (top + bottom) / 2f;
+            return dx * dx + dy * dy < r * r;
         }
 
         /** 同一个区域（App 每次重报布局都是新对象，按内容比）。 */
@@ -276,8 +284,9 @@ public final class TouchRouter implements GestureEngine.Output {
         lastX[slot] = x;
         lastY[slot] = y;
         slotRegion[slot] = r;
-        // 按在嵌在键里的小红点上（红点范围在键盘范围里面）不是按键，不记：触点记录只记键盘上的按键
-        slotTraced[slot] = trace != null && engine != null && (r == null || r.type != Proto.REGION_STICK) && traceDown(slot, x, y, r, t);
+        // 按在嵌在键里的小红点、键盘里的三个鼠标键上（都在键盘范围里面）不是按键，不记：触点记录只记键盘上的按键
+        slotTraced[slot] = trace != null && engine != null
+                && (r == null || (r.type != Proto.REGION_STICK && r.type != Proto.REGION_MOUSE_BUTTON)) && traceDown(slot, x, y, r, t);
         if (r == null || engine == null) {
             slotKind[slot] = KIND_NONE;
             return r;

@@ -17,9 +17,15 @@ public final class TouchRouterTest {
         /** 宿主眼里有没有挂着的定时器（惯性转着时一直挂着）。 */
         boolean pending;
 
+        /** 光标位移加起来（计数）、带位移的帧里没按着左键的有几帧（左键杆的测试用）。 */
+        int dxSum, dySum, movesWithoutLeft;
+
         @Override
         public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
             log.add("m" + buttons + (dx != 0 || dy != 0 ? " d" : "") + (wheel != 0 ? " w" + wheel : "") + (pan != 0 ? " p" + pan : ""));
+            dxSum += dx;
+            dySum += dy;
+            if ((dx != 0 || dy != 0) && (buttons & Proto.BUTTON_LEFT) == 0) movesWithoutLeft++;
         }
 
         @Override
@@ -201,6 +207,21 @@ public final class TouchRouterTest {
         leverYieldsToPad();
         leverYieldsToZoomAndWheel();
         leverFirstThenStickAdds();
+        leftLeverTapClicks();
+        leftLeverDrags();
+        leftLeverSameAsStick();
+        leftLeverOutsideKey();
+        leftLeverOnPadBar();
+        leftLeverSecondFingerIgnored();
+        leftLeverOnlyOnMouseKey();
+        leftLeverCanceledAndReleaseAll();
+        leftLeverLateHoldLeftRelease();
+        leftLeverStopsSpin();
+        leftLeverIdlePause();
+        leftLeverYieldsToStick();
+        leftLeverYieldsToPad();
+        leftLeverFirstThenStickAdds();
+        leftLeverTicksRandom();
         gamepadRoutes();
         gamepadOwnedAtDown();
         gamepadTargets();
@@ -600,7 +621,11 @@ public final class TouchRouterTest {
         t.holdLeft(false);
         eq(r.only("m"), list("m1", "m0"), "最后一个松开：左键松");
         t.holdLeft(false);
-        eq(r.only("m"), list("m1", "m0", "m0"), "减到 0 以下截在 0（不会变负）");
+        eq(r.only("m"), list("m1", "m0"), "多出来的松开不理（不变负、什么都不发）");
+        t.holdLeft(true);
+        eq(r.only("m"), list("m1", "m0", "m1"), "多出来的松开之后再按：照常按下（计数没被减成负的）");
+        t.holdLeft(false);
+        eq(r.only("m"), list("m1", "m0", "m1", "m0"), "再松：照常松开");
 
         // 和屏幕上的"左键"按钮（REGION_HOLD_LEFT）共用计数
         Rec r2 = new Rec();
@@ -622,6 +647,27 @@ public final class TouchRouterTest {
         eq(r3.only("m"), list("m1", "m0"), "releaseAll：实体键按着的左键（CMD_HOLD_LEFT）也发松开");
         t3.holdLeft(true);
         eq(r3.only("m").get(r3.only("m").size() - 1), "m1", "releaseAll 归零后再按：照常按下");
+
+        // releaseAll 之前按下、之后才松开的实体键（转屏重新接管时音量键还按着）：迟到的松开不减收尾以后才按下的左键
+        String[] how = {"releaseAll", "换参数"};
+        for (int k = 0; k < 2; k++) {
+            Rec r4 = new Rec();
+            TouchRouter t4 = router(r4);
+            t4.holdLeft(true);
+            if (k == 0) t4.releaseAll();
+            else t4.setConfig(new GestureEngine.Config(), 1);
+            t4.down(1, 1050, 50, 1000);   // 收尾以后按住"左键"按钮
+            eq(last(r4.only("m")), "m1", how[k] + "后按住\"左键\"按钮：左键按下");
+            int at = r4.only("m").size();
+            t4.holdLeft(false);   // 实体键迟到的松开
+            eq(r4.only("m").size(), at, how[k] + "之前按下的实体键迟到的松开：不理，\"左键\"按钮按着的左键不松");
+            t4.up(1, 1100);
+            eq(last(r4.only("m")), "m0", how[k] + "后：松开\"左键\"按钮才松");
+            t4.holdLeft(true);
+            eq(last(r4.only("m")), "m1", how[k] + "后实体键再按：照常按下");
+            t4.holdLeft(false);
+            eq(last(r4.only("m")), "m0", how[k] + "后实体键再松：照常松开（这一份是它自己的）");
+        }
     }
 
     static void buttonTapAndSlideOff() {
@@ -1661,17 +1707,21 @@ public final class TouchRouterTest {
         int at2 = q.log.size();
         tq.onTick(1608);
         eq(q.log.size(), at2, "都松了以后迟到的节拍：什么都不出");
-        // 中键按着、左右键按着不影响；只按左键不开节拍
+        // 只按右键不开节拍；按左键开（左键杆，2026-11-01 晚起是第三个来源），松了停
         Rec l = new Rec();
         TouchRouter tl = stickRouter(l);
-        tl.down(1, 2015, 130, 1000);
         tl.down(3, 2085, 130, 1000);
-        check(!l.ticking && l.tickStarts == 0, "只按左 / 右键：不开节拍");
+        check(!l.ticking && l.tickStarts == 0, "只按右键：不开节拍");
+        tl.down(1, 2015, 130, 1000);
+        check(l.ticking && l.tickStarts == 1, "按左键：开节拍（左键杆）");
+        tl.up(1, 1100);
+        check(!l.ticking && l.tickStops == 1, "左键松了：节拍停");
     }
 
     /**
      * 随机交错：红点、中键（含第二根）、左键、触控板上的手指乱序按下 / 挪 / 抬起 / 取消，夹着 releaseAll、换参数、节拍、帧。
-     * 每一步之后：节拍开着 ⇔ 红点或中键滚动杆有一根按着；开停配对；两个都没按着时节拍不出任何滚轮、位移。
+     * 每一步之后：节拍开着 ⇔ 红点、中键滚动杆、左键杆（2026-11-01 晚起）有一个按着、杆没让位；开停配对；三个都没按着时节拍不出任何滚轮、位移。
+     * 左键杆让位的模型：没开始时出现了光标位移（只能是别的来源）；更细的三个来源交错见 {@link #leftLeverTicksRandom}。
      */
     static void leverTicksRandom() {
         java.util.Random rnd = new java.util.Random(20261101L);
@@ -1680,10 +1730,13 @@ public final class TouchRouterTest {
             Rec r = new Rec();
             TouchRouter t = stickRouter(r, rnd.nextBoolean() ? smoothCfg() : new GestureEngine.Config());
             int[] where = new int[6];   // 每个 slot 按在哪：0 没按，1 红点，2 中键，3 左键，4 触控板
-            int stickOwner = -1, leverOwner = -1;
+            int stickOwner = -1, leverOwner = -1, leftOwner = -1;
             // 滚动杆的模型：按下点、挪出过轻点容差没有（= 开始了）、让位了没有（没开始时出现了滚轮 = 别的来源先滚了）
             float leverX = 0, leverY = 0;
             boolean leverStarted = false, leverYielded = false;
+            // 左键杆的模型：同上，让位看的是光标位移
+            float leftX = 0, leftY = 0;
+            boolean leftStarted = false, leftYielded = false;
             float slop = new GestureEngine.Config().tapSlopDp;
             long now = 1000;
             for (int step = 0; step < 80; step++) {
@@ -1704,28 +1757,36 @@ public final class TouchRouterTest {
                         leverY = at[1][1];
                         leverStarted = leverYielded = false;
                     }
+                    if (kind == 3 && leftOwner < 0) {
+                        leftOwner = slot;
+                        leftX = at[2][0];
+                        leftY = at[2][1];
+                        leftStarted = leftYielded = false;
+                    }
                     t.frame(now);
                 } else if (op <= 4 && where[slot] != 0) {
                     float mx = 2050 + rnd.nextInt(41) - 20, my = 130 + rnd.nextInt(41) - 20;
                     t.move(slot, mx, my);
                     if (slot == leverOwner && !leverYielded && Math.hypot(mx - leverX, my - leverY) > slop) leverStarted = true;
+                    if (slot == leftOwner && !leftYielded && Math.hypot(mx - leftX, my - leftY) > slop) leftStarted = true;
                     t.frame(now);
                 } else if (op <= 6 && where[slot] != 0) {
                     t.up(slot, now, rnd.nextInt(3) == 0);
                     where[slot] = 0;
                     if (slot == stickOwner) stickOwner = -1;
                     if (slot == leverOwner) leverOwner = -1;
+                    if (slot == leftOwner) leftOwner = -1;
                 } else if (op == 7) {
                     int at = r.log.size();
                     t.onTick(now);
-                    if (stickOwner < 0 && leverOwner < 0) {
+                    if (stickOwner < 0 && leverOwner < 0 && leftOwner < 0) {
                         for (String s : r.log.subList(at, r.log.size())) if (s.startsWith("m")) bad++;
                     }
                 } else if (op == 8 && rnd.nextInt(8) == 0) {
                     if (rnd.nextBoolean()) t.releaseAll();
                     else t.setConfig(rnd.nextBoolean() ? smoothCfg() : new GestureEngine.Config(), 1);
                     java.util.Arrays.fill(where, 0);   // 收尾以后这些手指的抬起什么都不出，当作都没按着
-                    stickOwner = leverOwner = -1;
+                    stickOwner = leverOwner = leftOwner = -1;
                 } else {
                     t.onTick(now);
                 }
@@ -1734,14 +1795,19 @@ public final class TouchRouterTest {
                         if (s.startsWith("m") && (s.contains(" w") || s.contains(" p"))) leverYielded = true;
                     }
                 }
-                boolean want = stickOwner >= 0 || (leverOwner >= 0 && !leverYielded);
+                if (leftOwner >= 0 && !leftStarted && !leftYielded) {   // 左键杆没开始时光标动了：只能是别的来源，左键杆让位
+                    for (String s : r.log.subList(logAt, r.log.size())) {
+                        if (s.startsWith("m") && s.contains(" d")) leftYielded = true;
+                    }
+                }
+                boolean want = stickOwner >= 0 || (leverOwner >= 0 && !leverYielded) || (leftOwner >= 0 && !leftYielded);
                 if (r.ticking != want) bad++;
                 if (r.tickStarts - r.tickStops != (r.ticking ? 1 : 0)) bad++;
             }
             for (int s = 0; s < 6; s++) if (where[s] != 0) t.up(s, now + 1, false);
             if (r.ticking || r.tickStarts != r.tickStops) bad++;
         }
-        check(bad == 0, "随机交错 300 组 × 80 步（" + steps + " 步）：节拍开着 ⇔ 红点 / 中键滚动杆（没让位）按着、开停配对、都没按着时节拍不出东西（错 " + bad + "）");
+        check(bad == 0, "随机交错 300 组 × 80 步（" + steps + " 步）：节拍开着 ⇔ 红点 / 中键滚动杆 / 左键杆（没让位）按着、开停配对、都没按着时节拍不出东西（错 " + bad + "）");
     }
 
     static void leverModes() {
@@ -2050,6 +2116,694 @@ public final class TouchRouterTest {
         for (long x = n0 + 1008; x <= n0 + 2000; x += 8) tn.onTick(x);
         check(wheelSum(n, at3) < 0, "红点松了：滚动杆接着滚（12dp，爬行）");
         tn.up(1, n0 + 2000);
+    }
+
+    // ═══════════ 左键杆（按在左键上的那根手指自己推光标 = 拖动） ═══════════
+
+    /** 左键上按下（左键正中 (2015, 130)），挪到 (2015 + dx, 130 + dy)，再按 8ms 一拍跑 ms 毫秒。返回最后的时间。 */
+    static long leftLever(TouchRouter t, int slot, float dx, float dy, long t0, int ms) {
+        t.down(slot, 2015, 130, t0);
+        t.move(slot, 2015 + dx, 130 + dy);
+        t.frame(t0);
+        long now = t0;
+        while (now < t0 + ms) {
+            now += 8;
+            t.onTick(now);
+        }
+        return now;
+    }
+
+    static float slop() {
+        return new GestureEngine.Config().tapSlopDp;
+    }
+
+    static String last(List<String> l) {
+        return l.isEmpty() ? null : l.get(l.size() - 1);
+    }
+
+    /** 按下马上按住左键；轻点 = 单击、连点两下 = 双击；在轻点容差里挪着按多久都不动光标，松开就是一次按下 / 松开。 */
+    static void leftLeverTapClicks() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2015, 130, 1000);
+        eq(r.only("m"), list("m1"), "按下左键：马上按住左键");
+        check(r.ticking && r.tickStarts == 1, "按下左键：开节拍（左键杆）");
+        t.onTick(1008);
+        t.up(1, 1080);
+        eq(r.only("m"), list("m1", "m0"), "轻点左键：单击");
+        check(!r.ticking && r.tickStops == 1, "松开：节拍停");
+        t.down(1, 2015, 130, 1200);
+        t.onTick(1208);
+        t.up(1, 1260);
+        t.down(2, 2016, 131, 1320);
+        t.onTick(1328);
+        t.up(2, 1380);
+        eq(r.only("m"), list("m1", "m0", "m1", "m0", "m1", "m0"), "再连点两下：双击照旧（一个位移都没有）");
+        check(!r.ticking && r.tickStarts == 3 && r.tickStops == 3, "三次按下：节拍开停各三次");
+        for (float d : new float[]{0, 2, 4.5f, 5.5f}) {
+            for (boolean smooth : new boolean[]{false, true}) {
+                GestureEngine.Config c = smooth ? smoothCfg() : new GestureEngine.Config();
+                c.stickTap = true;   // 开着"轻点红点 = 左键"也不另外多点一下
+                Rec q = new Rec();
+                TouchRouter tq = stickRouter(q, c);
+                long now = leftLever(tq, 1, d, d == 0 ? 0 : 1, 1000, 1000);
+                check(q.dxSum == 0 && q.dySum == 0, "左键挪 " + d + "dp（轻点容差里）按 1 秒：不动光标");
+                tq.up(1, now + 4);
+                eq(q.only("m"), list("m1", "m0"), "左键挪 " + d + "dp 松开：只是一次按下 / 松开（单击）");
+                check(!q.ticking && q.tickStarts == 1 && q.tickStops == 1, "左键挪 " + d + "dp：节拍开停配对");
+            }
+        }
+        // 点左键时指肚滚出容差一点（离按下点容差 + 0.2 到容差 + 死区 − 0.1dp，8–40ms 滚到，按住 200ms 松开）：默认参数（负惯性开）下
+        // 位移从容差那一圈起算还在死区里，负惯性放大起步也不越过死区——照样只是一次单击（审查后加的）
+        int rolls = 0, rollBad = 0;
+        for (boolean smooth : new boolean[]{false, true}) {
+            GestureEngine.Config c = smooth ? smoothCfg() : new GestureEngine.Config();
+            check(c.stickInertia, "默认参数负惯性开着（下面这组测的就是它）");
+            for (float over = 0.2f; over < TrackPoint.DEAD_DP - 0.05f; over += 0.2f) {
+                for (int rampMs = 8; rampMs <= 40; rampMs += 8) {
+                    Rec q = new Rec();
+                    TouchRouter tq = stickRouter(q, c);
+                    tq.down(1, 2015, 130, 1000);
+                    tq.frame(1000);
+                    long now = 1000;
+                    while (now < 1200) {
+                        now += 8;
+                        float k = (slop() + over) * Math.min(1f, (now - 1000) / (float) rampMs);
+                        tq.move(1, 2015 + k, 130);
+                        tq.frame(now);
+                        tq.onTick(now);
+                    }
+                    tq.up(1, now + 4);
+                    rolls++;
+                    if (q.dxSum != 0 || q.dySum != 0 || !q.only("m").equals(list("m1", "m0")) || q.ticking) rollBad++;
+                }
+            }
+        }
+        check(rollBad == 0, "点左键时指肚滚出容差、还在容差 + 死区以内（" + rolls + " 种，负惯性开）：只是一次单击，不动光标（错 " + rollBad + "）");
+    }
+
+    /** 挪出轻点容差：按着左键推光标 = 拖动；位移都带着左键，不震、不发颗粒（持续轻震是 App 按左键的按下 / 松开做的）；松开左键松开、节拍停。 */
+    static void leftLeverDrags() {
+        GestureEngine.Config c = new GestureEngine.Config();
+        c.texture = true;
+        c.stickInertia = false;
+        float s = c.tapSlopDp;
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r, c);
+        long now = leftLever(t, 1, s + 15, 0, 1000, 1000);   // 往右挪到离按下点容差 + 15dp
+        float want = TrackPoint.dragLeverSpeed(s + 15, s) * (now - 1000) / 1000f;
+        check(Math.abs(r.dxSum - want) <= 1 && r.dySum == 0, "左键往右挪出容差 15dp 按 1 秒：光标往右走 " + r.dxSum + "（应约 " + want + "）");
+        check(r.log.contains("m1 d") && r.movesWithoutLeft == 0, "左键杆推出来的位移都带着左键：拖动");
+        check(r.only("h").isEmpty(), "左键杆推着：不发颗粒、不震（颗粒开着也一样）");
+        check(wheelSum(r, 0) == 0 && panSum(r, 0) == 0, "左键杆不滚");
+        check(r.ticking && r.tickStarts == 1, "推着：节拍开着");
+        t.up(1, now + 4);
+        eq(last(r.only("m")), "m0", "松开：左键松开（拖动结束）");
+        check(!r.ticking && r.tickStops == 1, "松开：节拍停");
+        int at = r.log.size();
+        t.onTick(now + 12);
+        eq(r.log.size(), at, "松开后迟到的节拍：什么都不出");
+        Rec u = new Rec();
+        TouchRouter tu = stickRouter(u, c);
+        long n2 = leftLever(tu, 1, 0, -(s + 15), 1000, 600);
+        check(u.dySum < 0 && u.dxSum == 0 && u.movesWithoutLeft == 0, "左键往上挪：往上拖（" + u.dySum + "）");
+        tu.move(1, 2015 + 1, 130 - 1);   // 挪回按下点附近：停
+        tu.frame(n2);
+        int y = u.dySum;
+        for (long x = n2 + 8; x <= n2 + 500; x += 8) tu.onTick(x);
+        check(u.dySum == y && u.ticking, "挪回按下点附近：光标停（左键还按着、节拍照开）");
+        tu.move(1, 2015, 130 + s + 15);
+        tu.frame(n2 + 500);
+        for (long x = n2 + 508; x <= n2 + 1000; x += 8) tu.onTick(x);
+        check(u.dySum > y, "再往下推：接着拖（往下）");
+        tu.up(1, n2 + 1000);
+        eq(last(u.only("m")), "m0", "松开：左键松开");
+    }
+
+    /**
+     * 同样的位移、同样的节拍：左键杆离按下点（容差 + m）出的光标位移和推红点 m 一模一样（顺着轴逐计数相等，斜着差不过 1），
+     * 负惯性开 / 关、灵敏度 1 / 2；只差在左键杆的位移带着左键。
+     */
+    static void leftLeverSameAsStick() {
+        float[][] dirs = {{1, 0}, {0, 1}, {0, -1}, {-0.6f, 0.8f}};
+        int cases = 0, bad = 0;
+        for (boolean inertia : new boolean[]{false, true}) {
+            for (float speed : new float[]{1, 2}) {
+                for (float[] d : dirs) {
+                    for (float m : new float[]{5, 15, 28}) {
+                        GestureEngine.Config c = new GestureEngine.Config();
+                        c.stickInertia = inertia;
+                        c.stickSpeed = speed;
+                        Rec a = new Rec(), b = new Rec();
+                        TouchRouter ta = stickRouter(a, c), tb = stickRouter(b, c);
+                        push(ta, 2, d[0] * m, d[1] * m, 1000, 1000);
+                        float k = c.tapSlopDp + m;
+                        leftLever(tb, 1, d[0] * k, d[1] * k, 1000, 1000);
+                        int tol = d[0] != 0 && d[1] != 0 ? 1 : 0;
+                        cases++;
+                        if (Math.abs(a.dxSum - b.dxSum) > tol || Math.abs(a.dySum - b.dySum) > tol || b.movesWithoutLeft != 0
+                                || (a.dxSum == 0 && a.dySum == 0)) {
+                            bad++;
+                            if (bad <= 3) System.err.println("  左键杆和红点不一样：负惯性 " + inertia + "、灵敏度 " + speed + "、方向 (" + d[0] + ", " + d[1]
+                                    + ")、m " + m + "：红点 (" + a.dxSum + ", " + a.dySum + ") 左键杆 (" + b.dxSum + ", " + b.dySum + ")");
+                        }
+                    }
+                }
+            }
+        }
+        check(bad == 0, "左键杆离按下点（容差 + m）= 推红点 m：" + cases + " 种出的光标位移一样，都带着左键（错 " + bad + "）");
+    }
+
+    /** 手指挪出左键（挪到所有区域外面、挪到红点上、挪进触控板）照样是左键杆（归属按下时定）：红点不被按，触控板不当手势。 */
+    static void leftLeverOutsideKey() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        long now = leftLever(t, 1, 0, 270, 1000, 1000);   // 挪到 (2015, 400)：什么区域都不是
+        check(Math.abs(r.dySum - TrackPoint.MOVE_MAX) <= 2 && r.dxSum == 0, "挪出左键很远：照样拖、封顶在红点的最快（" + r.dySum + " 计数 / 秒）");
+        t.move(1, 2050, 50);   // 挪到红点上
+        t.frame(now);
+        int y = r.dySum;
+        for (long x = now + 8; x <= now + 300; x += 8) t.onTick(x);
+        check(r.dySum < y && !r.log.contains("b" + STICK + ":" + Proto.BUTTON_DOWN), "挪到红点上：还是左键杆在拖（往右上），红点没被按");
+        t.move(1, 500, 500);   // 挪进触控板
+        t.frame(now + 300);
+        int before = r.log.size();
+        int x0 = r.dxSum;
+        t.move(1, 480, 520);
+        t.frame(now + 316);
+        eq(r.log.size(), before, "挪进触控板再动：触控板不当手势，节拍以外什么都不出");
+        for (long x = now + 324; x <= now + 600; x += 8) t.onTick(x);
+        check(r.dxSum < x0 && r.movesWithoutLeft == 0, "挪进触控板：还是左键杆在拖（往左下）");
+        t.up(1, now + 600);
+        eq(last(r.only("m")), "m0", "松开：左键松开");
+        check(!r.only("g").iterator().hasNext() && !r.ticking, "没有手势、节拍停");
+    }
+
+    /** 触控板下沿的三键条（主界面、键盘页的触控板）：左键往上挪进触控板，照样是左键杆，不按触控板算（密度 2：位移按 dp）。 */
+    static void leftLeverOnPadBar() {
+        Rec r = new Rec();
+        TouchRouter t = new TouchRouter(r);
+        GestureEngine.Config c = new GestureEngine.Config();
+        c.stickInertia = false;   // 关掉负惯性：起步不多冲一截，1 秒正好按曲线算
+        t.setConfig(c, 2);
+        t.setRegions(new TouchRouter.Region[]{
+                new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, M_LEFT, 0, 900, 400, 1000),
+                new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, M_MIDDLE, 400, 900, 600, 1000),
+                new TouchRouter.Region(Proto.REGION_MOUSE_BUTTON, M_RIGHT, 600, 900, 1000, 1000),
+                new TouchRouter.Region(Proto.REGION_PAD, PAD, 0, 0, 1000, 890),
+        });
+        float s = slop();
+        t.down(3, 200, 950, 1000);
+        t.move(3, 200, 950 - 2 * (s + 15));   // 往上 2 × (容差 + 15) 像素 = 容差 + 15dp，还在左键里
+        t.frame(1000);
+        long now = 1000;
+        while (now < 2000) {
+            now += 8;
+            t.onTick(now);
+        }
+        int y1 = r.dySum;
+        float want = TrackPoint.moveSpeed(15);
+        check(Math.abs(-y1 - want) <= 1 && r.dxSum == 0, "密度 2：左键往上挪容差 + 15dp 按 1 秒，光标往上走 " + (-y1) + "（应约 " + want + "）");
+        int at = r.log.size();
+        t.move(3, 200, 650);   // 挪进触控板
+        t.frame(now);
+        t.move(3, 260, 600);
+        t.frame(now + 8);
+        eq(r.log.size(), at, "挪进触控板：触控板不当手势（节拍以外不出位移）");
+        for (long end = now + 300; now < end; ) {
+            now += 8;
+            t.onTick(now);
+        }
+        check(r.dySum < y1 && r.movesWithoutLeft == 0, "挪进触控板：还是左键杆在拖");
+        t.up(3, now + 4);
+        eq(last(r.only("m")), "m0", "松开：左键松开");
+        check(!r.ticking && r.tickStarts == 1 && r.tickStops == 1, "节拍开停配对");
+    }
+
+    /** 同时两根手指按在左键上：只有第一根当杆；第一根先抬起，留下的那根也不接手，左键照旧按到两根都松（共用计数）。 */
+    static void leftLeverSecondFingerIgnored() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2015, 130, 1000);   // 第一根：不动
+        t.down(2, 2010, 130, 1000);
+        t.move(2, 2010, 160);   // 第二根往下挪 30dp
+        t.frame(1000);
+        for (long now = 1008; now <= 1500; now += 8) t.onTick(now);
+        check(r.dxSum == 0 && r.dySum == 0, "第二根按在左键上挪：不动光标");
+        eq(r.tickStarts, 1, "第二根按下：不再开一次节拍");
+        t.up(1, 1500);
+        check(!r.ticking && r.tickStops == 1, "第一根（杆）抬起：节拍停");
+        check(!r.only("m").contains("m0"), "还有一根按着左键：左键不松");
+        t.move(2, 2010, 200);
+        t.frame(1510);
+        for (long now = 1518; now <= 1800; now += 8) t.onTick(now);
+        check(r.dxSum == 0 && r.dySum == 0, "留下的那根不接手当杆");
+        t.up(2, 1800);
+        eq(r.only("m"), list("m1", "m0"), "两根都松了：左键松开（一次按下 / 松开）");
+        Rec r2 = new Rec();
+        TouchRouter t2 = stickRouter(r2);
+        t2.down(1, 2015, 130, 1000);
+        t2.down(2, 2010, 130, 1000);
+        t2.up(1, 1100);
+        long now = leftLever(t2, 3, slop() + 15, 0, 1200, 600);
+        check(r2.dxSum > 0, "杆抬起后新按下的手指：又是左键杆");
+        t2.up(3, now);
+        t2.up(2, now + 4);
+        check(r2.tickStarts == r2.tickStops && !r2.ticking, "节拍开停配对");
+        eq(last(r2.only("m")), "m0", "都松了：左键松开");
+    }
+
+    /** "左键"按钮（REGION_HOLD_LEFT）、CMD_HOLD_LEFT、右键都不是杆；"左键"按钮和左键杆共用左键的计数。 */
+    static void leftLeverOnlyOnMouseKey() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 1050, 50, 1000);   // "左键"按钮
+        t.move(1, 1050, 90);
+        t.frame(1000);
+        for (long now = 1008; now <= 1500; now += 8) t.onTick(now);
+        check(r.dxSum == 0 && r.dySum == 0 && r.tickStarts == 0, "\"左键\"按钮按着挪：不推光标、不开节拍");
+        t.up(1, 1500);
+        t.holdLeft(true);
+        check(r.tickStarts == 0, "CMD_HOLD_LEFT：不开节拍");
+        t.holdLeft(false);
+        t.down(2, 2085, 130, 1600);   // 右键
+        t.move(2, 2085, 170);
+        t.frame(1600);
+        for (long now = 1608; now <= 2000; now += 8) t.onTick(now);
+        check(r.dxSum == 0 && r.dySum == 0 && r.tickStarts == 0, "右键按着挪：不推光标、不开节拍");
+        t.up(2, 2000);
+        // "左键"按钮按着时左键杆拖完松开：左键还按着（"左键"按钮那一份），杆停；"左键"按钮也松了才松开
+        Rec q = new Rec();
+        TouchRouter tq = stickRouter(q);
+        tq.down(1, 1050, 50, 1000);
+        long now = leftLever(tq, 2, slop() + 15, 0, 1000, 500);
+        check(q.dxSum > 0 && q.movesWithoutLeft == 0, "\"左键\"按钮按着、左键杆推：拖");
+        tq.up(2, now);
+        check(!q.only("m").contains("m0") && !q.ticking, "左键杆松了、\"左键\"按钮还按着：左键不松、节拍停");
+        tq.up(1, now + 10);
+        eq(last(q.only("m")), "m0", "\"左键\"按钮也松了：左键松开");
+    }
+
+    static void leftLeverCanceledAndReleaseAll() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        long now = leftLever(t, 1, slop() + 15, 0, 1000, 300);
+        check(r.dxSum > 0, "拖着");
+        t.up(1, now + 4, true);   // 手掌 / 服务收尾补报的抬起
+        check(!r.ticking && r.tickStarts == r.tickStops, "左键杆被取消：节拍停");
+        eq(last(r.only("m")), "m0", "被取消：左键照常松开");
+        int at = r.log.size();
+        t.onTick(now + 12);
+        eq(r.log.size(), at, "被取消后迟到的节拍：什么都不出");
+        Rec a = new Rec();
+        TouchRouter ta = stickRouter(a);
+        long n3 = leftLever(ta, 1, slop() + 15, 0, 1000, 300);
+        check(a.ticking, "左键杆推着：节拍开着");
+        ta.releaseAll();
+        check(!a.ticking && a.tickStarts == a.tickStops, "releaseAll：节拍停（开停配对）");
+        check(a.log.contains("b" + M_LEFT + ":" + Proto.BUTTON_UP) && "m0".equals(last(a.only("m"))), "releaseAll：左键报松开、左键松开");
+        int at2 = a.log.size();
+        ta.onTick(n3 + 8);
+        ta.move(1, 2100, 200);
+        ta.frame(n3 + 10);
+        ta.onTick(n3 + 16);
+        ta.up(1, n3 + 20);
+        eq(a.log.size(), at2, "releaseAll 之后迟到的节拍、移动、抬起：什么都不出");
+        check(!a.ticking, "releaseAll 之后：节拍没被重新打开");
+        Rec c = new Rec();
+        TouchRouter tc = stickRouter(c);
+        long n4 = leftLever(tc, 1, slop() + 15, 0, 1000, 300);
+        tc.setConfig(new GestureEngine.Config(), 1);
+        check(!c.ticking && c.tickStarts == c.tickStops, "换参数：左键杆的节拍停");
+        eq(last(c.only("m")), "m0", "换参数：左键松开");
+        int at3 = c.log.size();
+        tc.onTick(n4 + 8);
+        tc.move(1, 2100, 200);
+        tc.frame(n4 + 10);
+        tc.onTick(n4 + 16);
+        tc.up(1, n4 + 20);
+        eq(c.log.size(), at3, "换参数后迟到的节拍、移动、抬起：什么都不出");
+    }
+
+    /**
+     * 实体键（CMD_HOLD_LEFT）按着时收尾（releaseAll / 换参数：转屏重新接管、重发参数），之后拇指按住左键挪出容差拖东西，这时才松开实体键：
+     * 迟到的松开只减实体键自己那一份（收尾清成 0 了，不理），左键杆按着的左键不松，杆推出的每一帧都带着左键；拇指抬起才松（审查发现）。
+     */
+    static void leftLeverLateHoldLeftRelease() {
+        String[] how = {"releaseAll", "换参数"};
+        for (int k = 0; k < 2; k++) {
+            Rec r = new Rec();
+            TouchRouter t = stickRouter(r);
+            t.holdLeft(true);
+            if (k == 0) t.releaseAll();
+            else t.setConfig(new GestureEngine.Config(), 1);
+            long now = leftLever(t, 1, slop() + 15, 0, 1000, 300);
+            check(r.dxSum > 0 && r.movesWithoutLeft == 0, how[k] + "后左键杆拖着：位移都带着左键");
+            int m = r.only("m").size(), x = r.dxSum;
+            t.holdLeft(false);   // 实体键迟到的松开
+            eq(r.only("m").size(), m, how[k] + "之前按下的实体键迟到的松开：什么都不发（左键不松）");
+            for (long end = now + 500; now < end; ) {
+                now += 8;
+                t.onTick(now);
+            }
+            check(r.dxSum > x && r.movesWithoutLeft == 0, how[k] + "：实体键松开以后左键杆接着拖，位移都带着左键（不带左键的 " + r.movesWithoutLeft + " 帧）");
+            check(!r.only("m").subList(m, r.only("m").size()).contains("m0"), how[k] + "：拖到一半左键没被松开");
+            t.up(1, now + 4);
+            eq(last(r.only("m")), "m0", how[k] + "：拇指抬起，左键松开");
+            check(!r.ticking && r.tickStarts == r.tickStops, how[k] + "：节拍停、开停配对");
+        }
+    }
+
+    /** 惯性转着时按左键：先停惯性（震"刹住"），之后左键照样当杆。 */
+    static void leftLeverStopsSpin() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        long up = flick(t, 1000);
+        check(r.pending, "惯性转着");
+        int at = r.log.size();
+        long now = leftLever(t, 1, slop() + 15, 0, up + 30, 600);
+        check(!r.pending, "按左键：惯性马上停");
+        check(r.log.subList(at, r.log.size()).contains(SPIN_CATCH), "按左键停：震\"刹住\"");
+        check(r.dxSum > 0, "停了以后左键往右挪：拖（左键杆照常）");
+        t.up(1, now);
+        eq(last(r.only("m")), "m0", "松开：左键松开");
+    }
+
+    static void leftLeverIdlePause() {
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(1, 2015, 130, 0);
+        t.move(1, 2015 + slop() + 15, 130);
+        t.frame(0);
+        long now = 0;
+        while (r.ticking && now < 30000) {
+            now += 8;
+            t.onTick(now);
+        }
+        check(!r.ticking && now > TrackPoint.IDLE_PAUSE_MS && now < TrackPoint.IDLE_PAUSE_MS + 20, "左键按着 20 秒没事件：停节拍（" + now + "ms）");
+        eq(r.tickStops, 1, "暂停：停了一次");
+        int x = r.dxSum;
+        t.move(1, 2015 + slop() + 16, 130);
+        t.frame(now + 10);
+        check(r.ticking && r.tickStarts == 2, "再动：重新开节拍");
+        for (long y = now + 18; y <= now + 200; y += 8) t.onTick(y);
+        check(r.dxSum > x, "接着拖");
+        t.up(1, now + 210);
+        check(!r.ticking && r.tickStarts == r.tickStops, "松开：节拍停");
+        eq(last(r.only("m")), "m0", "松开：左键松开");
+    }
+
+    /**
+     * 拇指按住左键当"按着左键"用（不打算动、慢慢往右下漂），另一根手指往下推红点拖东西：拇指漂出轻点容差也不另外推光标（左键杆让位），
+     * 光标和拇指不漂时一模一样；红点松了、拇指接着按 2 秒还在漂，什么都不出；拇指松开左键松开。
+     */
+    static void leftLeverYieldsToStick() {
+        for (boolean inertia : new boolean[]{false, true}) {
+            String mode = inertia ? "负惯性开" : "负惯性关";
+            GestureEngine.Config c = new GestureEngine.Config();
+            c.stickInertia = inertia;
+            int baseX = 0, baseY = 0;
+            for (float drift : new float[]{0, 4, 7, 10, 30}) {
+                Rec r = new Rec();
+                TouchRouter t = stickRouter(r, c);
+                t.down(1, 2015, 130, 1000);   // 拇指按住左键
+                t.frame(1000);
+                t.down(2, 2050, 50, 1010);
+                t.move(2, 2050, 65);   // 红点往下 15dp
+                t.frame(1010);
+                for (long now = 1018; now <= 2000; now += 8) {
+                    float d = drift * Math.min(1f, (now - 1018) / 600f);
+                    t.move(1, 2015 + d, 130 + d * 0.3f);
+                    t.frame(now);
+                    t.onTick(now);
+                }
+                if (drift == 0) {
+                    baseX = r.dxSum;
+                    baseY = r.dySum;
+                }
+                check(r.dxSum == baseX && r.dySum == baseY && baseY > 0 && baseX == 0 && r.movesWithoutLeft == 0,
+                        mode + "：拇指漂 " + drift + "dp + 推红点往下：只有红点在拖（" + r.dxSum + ", " + r.dySum + "，拇指不漂时 " + baseX + ", " + baseY + "）");
+                t.up(2, 2000);
+                check(!r.ticking && r.tickStarts == 1 && r.tickStops == 1, mode + "：拇指漂 " + drift + "dp，红点松了：节拍停（左键杆让位了，不留着）");
+                int x = r.dxSum, y = r.dySum;
+                for (long now = 2008; now <= 4000; now += 8) {   // 拇指接着按 2 秒、接着漂（宿主不该再调节拍，调了也不出）
+                    t.move(1, 2015 + drift + (now - 2000) / 100f, 130 + (now - 2000) / 50f);
+                    t.frame(now);
+                    t.onTick(now);
+                }
+                check(r.dxSum == x && r.dySum == y && !r.ticking, mode + "：拇指漂 " + drift + "dp，红点松了以后拇指再挪 40dp：光标不动、不开节拍");
+                t.up(1, 4004);
+                check("m0".equals(last(r.only("m"))) && r.tickStarts == r.tickStops, mode + "：拇指漂 " + drift + "dp 松开：左键松开、节拍开停配对");
+            }
+        }
+        // 红点先按着（在挪光标），拇指再按左键、漂：红点先动了光标，左键杆让位
+        Rec r = new Rec();
+        TouchRouter t = stickRouter(r);
+        t.down(2, 2050, 50, 1000);
+        t.move(2, 2050, 65);
+        t.frame(1000);
+        for (long now = 1008; now <= 1200; now += 8) t.onTick(now);
+        t.down(1, 2015, 130, 1200);
+        for (long now = 1208; now <= 2200; now += 8) {
+            t.move(1, 2015 + Math.min(10f, (now - 1208) / 60f), 130);
+            t.frame(now);
+            t.onTick(now);
+        }
+        check(r.dySum > 0 && r.dxSum == 0, "红点先按、拇指后按左键再漂 10dp：只有红点在动（横 " + r.dxSum + "）");
+    }
+
+    /** 拇指按住左键、另一根手指单指划触控板拖东西：拇指漂了也不另外推光标，触控板一动左键杆就让位、节拍停。 */
+    static void leftLeverYieldsToPad() {
+        int baseX = 0, baseY = 0;
+        for (float drift : new float[]{0, 7, 10, 30}) {
+            Rec r = new Rec();
+            TouchRouter t = stickRouter(r);
+            t.down(1, 2015, 130, 1000);
+            t.frame(1000);
+            t.down(0, 500, 300, 1010);
+            t.frame(1010);
+            long now = 1010;
+            boolean stopped = false;
+            for (int i = 1; i <= 60; i++) {
+                now = 1010 + i * 16;
+                float d = drift * Math.min(1f, i / 40f);
+                t.move(0, 500, 300 + i * 5);   // 触控板往下划 300dp
+                t.move(1, 2015 + d, 130);
+                t.frame(now);
+                if (r.dySum != 0 && !r.ticking) stopped = true;
+                t.onTick(now);
+                t.onTick(now + 8);
+            }
+            if (drift == 0) {
+                baseX = r.dxSum;
+                baseY = r.dySum;
+            }
+            check(r.dxSum == baseX && r.dySum == baseY && baseY > 0 && baseX == 0 && r.movesWithoutLeft == 0,
+                    "拇指漂 " + drift + "dp + 划触控板：只有触控板在拖（" + r.dxSum + ", " + r.dySum + "，拇指不漂时 " + baseX + ", " + baseY + "）");
+            check(stopped, "拇指漂 " + drift + "dp：触控板一动，左键杆让位、节拍马上停（红点没按着，节拍没用了）");
+            t.up(0, now + 10);
+            int x = r.dxSum, y = r.dySum;
+            t.move(1, 2015 + drift + 20, 160);
+            t.frame(now + 20);
+            for (long z = now + 28; z <= now + 600; z += 8) t.onTick(z);
+            check(r.dxSum == x && r.dySum == y, "拇指漂 " + drift + "dp，触控板那根松了以后拇指再挪：光标不动");
+            t.up(1, now + 610);
+            check("m0".equals(last(r.only("m"))) && !r.ticking && r.tickStarts == 1 && r.tickStops == 1,
+                    "拇指漂 " + drift + "dp 松开：左键松开、节拍开停各一次");
+        }
+    }
+
+    /**
+     * 先用左键杆拖起来（挪出了轻点容差），再加红点：不让位，两个叠加；挪出了容差、还在死区里（还没出位移）时加红点也一样。
+     * 只看光标位移：中键按着、红点滚动（出的是滚轮）时左键杆不让位，之后照样推光标（中键按着也是移动、不是滚动）。
+     */
+    static void leftLeverFirstThenStickAdds() {
+        GestureEngine.Config c = new GestureEngine.Config();
+        float s = c.tapSlopDp;
+        Rec lone = new Rec();
+        TouchRouter tl = stickRouter(lone, c);
+        leftLever(tl, 1, 0, s + 15, 1000, 1000);
+        Rec both = new Rec();
+        TouchRouter tb = stickRouter(both, c);
+        long now = leftLever(tb, 1, 0, s + 15, 1000, 300);   // 左键杆先单独拖 300ms
+        int y300 = both.dySum;
+        tb.down(2, 2050, 50, now);
+        tb.move(2, 2050, 65);
+        tb.frame(now);
+        while (now < 2000) {
+            now += 8;
+            tb.onTick(now);
+        }
+        Rec ref = new Rec();   // 红点那一路从头推 696ms 该出多少
+        TouchRouter tr = stickRouter(ref, c);
+        push(tr, 2, 0, 15, 1000, 696);
+        check(y300 > 0 && Math.abs(both.dySum - (lone.dySum + ref.dySum)) <= 2 && both.movesWithoutLeft == 0,
+                "左键杆先拖、后加红点：不让位，叠加（只有左键杆 " + lone.dySum + " + 红点 " + ref.dySum + "，一起 " + both.dySum + "）");
+        tb.up(2, now);
+        check(both.ticking, "红点松了、左键杆还按着：节拍照开");
+        int y = both.dySum;
+        for (long x = now + 8; x <= now + 200; x += 8) tb.onTick(x);
+        check(both.dySum > y, "红点松了：左键杆接着拖");
+        tb.up(1, now + 200);
+        check(!both.ticking && both.tickStarts == both.tickStops, "都松了：节拍停、配对");
+        // 挪出了轻点容差、还在死区里（还没出位移），这时加红点：左键杆已经开始了，不让位
+        Rec n = new Rec();
+        TouchRouter tn = stickRouter(n, c);
+        long n0 = leftLever(tn, 1, s + 1, 0, 1000, 200);
+        check(n.dxSum == 0 && n.dySum == 0, "左键挪出容差 1dp：开始了但还在死区里，没出位移");
+        tn.down(2, 2050, 50, n0);
+        tn.move(2, 2050, 65);
+        tn.frame(n0);
+        for (long x = n0 + 8; x <= n0 + 500; x += 8) tn.onTick(x);
+        tn.up(2, n0 + 500);
+        check(n.dySum > 0 && n.ticking, "左键杆开始了以后红点先动了光标：左键杆不让位，节拍照开");
+        tn.move(1, 2015 + s + 15, 130);
+        tn.frame(n0 + 510);
+        int nx = n.dxSum;
+        for (long x = n0 + 518; x <= n0 + 1000; x += 8) tn.onTick(x);
+        check(n.dxSum > nx, "红点松了：左键杆接着拖（往右）");
+        tn.up(1, n0 + 1000);
+        // 中键按着、红点滚动：出的是滚轮，左键杆不让位；之后左键挪出容差照样推光标（不滚）
+        Rec w = new Rec();
+        TouchRouter tw = stickRouter(w, c);
+        tw.down(1, 2015, 130, 1000);   // 拇指按住左键（左键杆，还没开始）
+        tw.down(3, 2050, 130, 1000);   // 中键
+        tw.down(2, 2050, 50, 1000);
+        tw.move(2, 2050, 65);   // 红点往下推 = 滚动
+        tw.frame(1000);
+        for (long x = 1008; x <= 1500; x += 8) tw.onTick(x);
+        check(wheelSum(w, 0) < 0 && w.dxSum == 0 && w.dySum == 0 && w.ticking, "左键 + 中键按着推红点：只滚，左键杆没让位、节拍照开");
+        tw.move(1, 2015 + s + 15, 130);
+        tw.frame(1500);
+        int wh = wheelSum(w, 0);
+        for (long x = 1508; x <= 2000; x += 8) tw.onTick(x);
+        check(w.dxSum > 0 && w.dySum == 0 && w.movesWithoutLeft == 0, "之后左键挪出容差：推光标（中键按着也是移动、不是滚动）：" + w.dxSum);
+        check(wheelSum(w, 0) < wh, "红点照样在滚（各出各的）");
+        tw.up(2, 2000);
+        tw.up(3, 2000);
+        tw.up(1, 2000);
+        check(!w.ticking && w.tickStarts == w.tickStops, "都松了：节拍停、配对");
+    }
+
+    /**
+     * 三个来源随机交错：红点、中键（含第二根）、左键（含第二根）、触控板、"左键"按钮上的手指乱序按下 / 小挪（轻点容差里）/ 大挪 / 抬起 / 取消，
+     * 夹着 CMD_HOLD_LEFT、releaseAll、换参数、节拍、帧；挪都是相对按下点的（小挪在容差里，杆不开始；大挪开始），触控板的大挪会动光标。
+     * 收尾以后实体键照样当还按着（App 不知道服务这边收尾了），之后照样发松开（迟到的松开，审查后加的）。
+     * 每一步之后：节拍开着 ⇔ 红点、中键滚动杆、左键杆有一个按着、杆没让位；开停配对；三个都不在推时节拍不出任何东西；
+     * 节拍出来的光标位移只有红点、左键杆推得出：红点没按着时都带着左键。全部抬起后左键松开。
+     */
+    static void leftLeverTicksRandom() {
+        java.util.Random rnd = new java.util.Random(202611012L);
+        int bad = 0, steps = 0, yields = 0, starts = 0, late = 0;
+        float slop = slop();
+        float[][] at = {{2050, 50}, {2050, 130}, {2015, 130}, {500, 500}, {1050, 50}};
+        for (int seq = 0; seq < 400; seq++) {
+            Rec r = new Rec();
+            TouchRouter t = stickRouter(r, rnd.nextBoolean() ? smoothCfg() : new GestureEngine.Config());
+            int[] where = new int[8];   // 0 没按，1 红点，2 中键，3 左键，4 触控板，5 "左键"按钮
+            float[] ox = new float[8], oy = new float[8];
+            int stickOwner = -1, leverOwner = -1, leftOwner = -1;
+            boolean leverStarted = false, leverYielded = false, leftStarted = false, leftYielded = false;
+            int holdLeft = 0, cmdHolds = 0;   // 实体键按着几份（App 那边）、其中收尾以后才按下的（服务那边还认的）
+            long now = 1000;
+            for (int step = 0; step < 100; step++) {
+                steps++;
+                now += 1 + rnd.nextInt(12);
+                int slot = rnd.nextInt(8);
+                int op = rnd.nextInt(12);
+                int logAt = r.log.size();
+                boolean tickOp = false;
+                if (op <= 2 && where[slot] == 0) {
+                    int kind = 1 + rnd.nextInt(5);
+                    float x = at[kind - 1][0] + rnd.nextInt(5) - 2, y = at[kind - 1][1] + rnd.nextInt(5) - 2;
+                    t.down(slot, x, y, now);
+                    where[slot] = kind;
+                    ox[slot] = x;
+                    oy[slot] = y;
+                    if (kind == 1 && stickOwner < 0) stickOwner = slot;
+                    if (kind == 2 && leverOwner < 0) {
+                        leverOwner = slot;
+                        leverStarted = leverYielded = false;
+                    }
+                    if (kind == 3 && leftOwner < 0) {
+                        leftOwner = slot;
+                        leftStarted = leftYielded = false;
+                    }
+                    t.frame(now);
+                } else if (op <= 5 && where[slot] != 0) {
+                    float range = rnd.nextBoolean() ? 4 : 30;   // 小挪（轻点容差里，不会开始）、大挪
+                    float mx = ox[slot] + (rnd.nextFloat() * 2 - 1) * range, my = oy[slot] + (rnd.nextFloat() * 2 - 1) * range;
+                    t.move(slot, mx, my);
+                    float dist = (float) Math.hypot(mx - ox[slot], my - oy[slot]);
+                    if (slot == leverOwner && !leverYielded && dist > slop) leverStarted = true;
+                    if (slot == leftOwner && !leftYielded && dist > slop) leftStarted = true;
+                    t.frame(now);
+                } else if (op <= 7 && where[slot] != 0) {
+                    t.up(slot, now, rnd.nextInt(3) == 0);
+                    where[slot] = 0;
+                    if (slot == stickOwner) stickOwner = -1;
+                    if (slot == leverOwner) leverOwner = -1;
+                    if (slot == leftOwner) leftOwner = -1;
+                } else if (op == 8) {
+                    if (holdLeft > 0 && rnd.nextBoolean()) {
+                        t.holdLeft(false);
+                        holdLeft--;
+                        if (cmdHolds > 0) cmdHolds--;
+                        else late++;   // 收尾之前按下的：迟到的松开
+                    } else {
+                        t.holdLeft(true);
+                        holdLeft++;
+                        cmdHolds++;
+                    }
+                } else if (op == 9 && rnd.nextInt(8) == 0) {
+                    if (rnd.nextBoolean()) t.releaseAll();
+                    else t.setConfig(rnd.nextBoolean() ? smoothCfg() : new GestureEngine.Config(), 1);
+                    java.util.Arrays.fill(where, 0);   // 收尾以后这些手指的抬起什么都不出，当作都没按着
+                    stickOwner = leverOwner = leftOwner = -1;
+                    // holdLeft 不清：实体键还按着（App 不知道服务这边收尾了），之后照样会发迟到的松开——不能减收尾以后才按下的左键（左键杆）
+                    cmdHolds = 0;
+                } else {
+                    tickOp = true;
+                    t.onTick(now);
+                }
+                if (leverOwner >= 0 && !leverStarted && !leverYielded) {
+                    for (String s : r.log.subList(logAt, r.log.size())) {
+                        if (s.startsWith("m") && (s.contains(" w") || s.contains(" p"))) leverYielded = true;
+                    }
+                }
+                if (leftOwner >= 0 && !leftStarted && !leftYielded) {   // 左键杆没开始时光标动了：只能是别的来源，左键杆让位
+                    for (String s : r.log.subList(logAt, r.log.size())) {
+                        if (s.startsWith("m") && s.contains(" d")) {
+                            leftYielded = true;
+                            yields++;
+                        }
+                    }
+                }
+                if (tickOp) {
+                    boolean leftLive = leftOwner >= 0 && !leftYielded;
+                    for (String s : r.log.subList(logAt, r.log.size())) {
+                        if (!s.startsWith("m")) continue;
+                        if (stickOwner < 0 && (leverOwner < 0 || leverYielded) && !leftLive) bad++;   // 没有来源在推：节拍什么都不出
+                        if (s.contains(" d")) {
+                            if (stickOwner < 0 && !leftLive) bad++;   // 节拍出的位移只能是红点、左键杆推的
+                            if (stickOwner < 0 && (Integer.parseInt(s.substring(1, s.indexOf(' '))) & Proto.BUTTON_LEFT) == 0) bad++;
+                            if (stickOwner < 0) starts++;
+                        }
+                    }
+                }
+                boolean want = stickOwner >= 0 || (leverOwner >= 0 && !leverYielded) || (leftOwner >= 0 && !leftYielded);
+                if (r.ticking != want) bad++;
+                if (r.tickStarts - r.tickStops != (r.ticking ? 1 : 0)) bad++;
+            }
+            for (int s = 0; s < 8; s++) if (where[s] != 0) t.up(s, now + 1, false);
+            while (holdLeft-- > 0) t.holdLeft(false);
+            if (r.ticking || r.tickStarts != r.tickStops) bad++;
+            for (int i = 0; r.pending && i < 10; i++) t.onTimer(now + 1000 * (i + 1));   // 触控板轻点后引擎按着左键等第二下（轻点拖动），到点才松
+            List<String> m = r.only("m");
+            if (!m.isEmpty() && (Integer.parseInt(m.get(m.size() - 1).replaceAll("^m(\\d+).*", "$1")) & Proto.BUTTON_LEFT) != 0) bad++;   // 全部抬起：左键松开
+        }
+        check(bad == 0 && yields > 0 && starts > 0 && late > 0, "三个来源随机交错 400 组 × 100 步（" + steps + " 步，左键杆让位 " + yields + " 次、左键杆单独推出位移 " + starts
+                + " 帧、实体键迟到的松开 " + late + " 次）：节拍开着 ⇔ 有来源在推、开停配对、节拍不出多余的东西、红点没按着时节拍出的位移都带着左键、全部抬起后左键松开（错 " + bad + "）");
     }
 
     // ═══════════ 手柄页 ═══════════

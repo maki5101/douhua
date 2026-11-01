@@ -8,7 +8,9 @@ import java.util.List;
  * 总量对、余数不丢、一拍最多算 50ms）、负惯性（起步更快、按住不动时一样快、往回收手指时不反向）、轻点 = 左键（快、近才算，关掉 / 取消不算，
  * 轻点过程中不出位移）、颗粒（每 30 计数一颗、最短间隔、按着键 / 滚动 / 关掉时不发）、中键滚动（只出滚轮、方向、主方向、按格 / 连续、咔嗒）、
  * 停（抬起 / 取消后迟到的节拍什么都不出）、兜底暂停（20 秒没事件停、再动接着）；
- * 中键滚动杆模式（一直是滚动、和红点的中键滚动出的量一样、先挪出轻点容差才开始、开始以后挪回死区停 / 再推接着、不算轻点、不发颗粒、按格 / 连续、停、暂停）。
+ * 中键滚动杆模式（一直是滚动、和红点的中键滚动出的量一样、先挪出轻点容差才开始、开始以后挪回死区停 / 再推接着、不算轻点、不发颗粒、按格 / 连续、停、暂停）；
+ * 左键杆模式（一直是移动、离按下点容差 + m 出的量和红点推 m 一模一样（负惯性开 / 关、8 / 12ms 节拍、灵敏度）、先挪出轻点容差才开始、
+ * 位移从容差那一圈起算、挪回来停 / 再推接着、不算轻点、不发颗粒、不滚、停、暂停）。
  * 数字只证明代码照设计跑，证明不了手感。
  */
 public final class TrackPointTest {
@@ -74,6 +76,11 @@ public final class TrackPointTest {
         leverNoTapNoTexture();
         leverModes();
         leverStopsAndPauses();
+        dragLeverSameAsStick();
+        dragLeverGate();
+        dragLeverRollTap();
+        dragLeverNoTapNoTextureNoScroll();
+        dragLeverStopsAndPauses();
         System.err.println("小红点：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -441,7 +448,7 @@ public final class TrackPointTest {
     // ── 中键滚动杆 ──
 
     static TrackPoint lever(Rec r, GestureEngine.Config c) {
-        TrackPoint t = new TrackPoint(r, true);
+        TrackPoint t = new TrackPoint(r, TrackPoint.MODE_SCROLL_LEVER);
         t.setConfig(c);
         return t;
     }
@@ -666,6 +673,238 @@ public final class TrackPointTest {
         q.move(0, 16);
         check(q.frame(now + 20), "滚动杆再动：接着");
         check(q.tick(now + 28, true, false, true) && p.wheel < pw, "滚动杆接着滚");
+    }
+
+    // ── 左键杆 ──
+
+    static TrackPoint dragLever(Rec r, GestureEngine.Config c) {
+        TrackPoint t = new TrackPoint(r, TrackPoint.MODE_DRAG_LEVER);
+        t.setConfig(c);
+        return t;
+    }
+
+    /**
+     * 左键杆离按下点（容差 + m）、红点推 m，同样的节拍：出的位移一模一样（顺着轴推逐计数相等，斜着推差不过 1 个计数）——
+     * 左键杆就是"挪出轻点容差以后的小红点"。scroll / buttons 参数故意给 true / false（左键杆不看：一直移动、一直当按着键）。
+     */
+    static void dragLeverSameAsStick() {
+        float[][] dirs = {{1, 0}, {0, 1}, {0, -1}, {-0.6f, 0.8f}};
+        float[] ms = {4, 10, 15, 25, 40};
+        int cases = 0, bad = 0;
+        for (boolean inertia : new boolean[]{false, true}) {
+            for (int period : new int[]{8, 12}) {
+                for (float speed : new float[]{1, 2.5f}) {
+                    GestureEngine.Config c = cfg(inertia);
+                    c.stickSpeed = speed;
+                    for (float[] d : dirs) {
+                        for (float m : ms) {
+                            Rec a = new Rec(), b = new Rec();
+                            TrackPoint st = stick(a, c), lv = dragLever(b, c);
+                            float k = c.tapSlopDp + m;
+                            st.down(0, 0, 0);
+                            st.move(d[0] * m, d[1] * m);
+                            st.frame(0);
+                            lv.down(0, 0, 0);
+                            lv.move(d[0] * k, d[1] * k);
+                            lv.frame(0);
+                            for (long now = period; now <= 1000; now += period) {
+                                st.tick(now, false, false, false);
+                                lv.tick(now, true, false, true);
+                            }
+                            cases++;
+                            int tol = d[0] != 0 && d[1] != 0 ? 1 : 0;
+                            if (Math.abs(a.dx - b.dx) > tol || Math.abs(a.dy - b.dy) > tol || b.scrolls != 0 || (m > TrackPoint.DEAD_DP && b.moves == 0)) {
+                                bad++;
+                                if (bad <= 3) System.err.println("  左键杆和红点不一样：负惯性 " + inertia + "、" + period + "ms、灵敏度 " + speed
+                                        + "、方向 (" + d[0] + ", " + d[1] + ")、m " + m + "：红点 (" + a.dx + ", " + a.dy + ") 左键杆 (" + b.dx + ", " + b.dy + ")");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        check(bad == 0, "左键杆离按下点（容差 + m）= 红点推 m：" + cases + " 种（负惯性 × 节拍 × 灵敏度 × 方向 × 位移）出的位移一样，不滚（错 " + bad + "）");
+        GestureEngine.Config c = cfg(false);
+        check(TrackPoint.dragLeverSpeed(c.tapSlopDp + TrackPoint.DEAD_DP, c.tapSlopDp) == 0, "刚挪出轻点容差：还在死区里，从 0 起");
+        check(TrackPoint.dragLeverSpeed(c.tapSlopDp + 15, c.tapSlopDp) == TrackPoint.moveSpeed(15), "离按下点容差 + 15dp：照红点推 15dp 的速度");
+        check(TrackPoint.dragLeverSpeed(80, c.tapSlopDp) == TrackPoint.MOVE_MAX, "推得很远：封顶在红点的最快");
+        Rec far = new Rec();
+        TrackPoint t = dragLever(far, c);
+        t.down(0, 0, 0);
+        t.move(200, 0);
+        t.frame(0);
+        for (long now = 8; now <= 1000; now += 8) t.tick(now, false, true, false);
+        check(Math.abs(far.dx - TrackPoint.MOVE_MAX) <= 1 && far.dy == 0, "推到很远 1 秒：走 " + far.dx + "（封顶 " + TrackPoint.MOVE_MAX + "）");
+    }
+
+    /** 先挪出轻点容差才开始；位移从容差那一圈起算：离按下点容差 + 死区以内不动，推出去照曲线走，挪回来就停、再推接着。 */
+    static void dragLeverGate() {
+        GestureEngine.Config c = cfg(false);
+        Rec r = new Rec();
+        TrackPoint t = dragLever(r, c);
+        t.down(0, 0, 0);
+        float inside = (TrackPoint.DEAD_DP + c.tapSlopDp) / 2;   // 出了死区、没出轻点容差（红点在这里已经在走了）
+        t.move(inside, 0);
+        t.frame(0);
+        long now = 0;
+        for (; now < 1000; ) {
+            now += 8;
+            t.tick(now, false, true, false);
+        }
+        check(r.moves == 0 && !t.started() && t.active(), "挪 " + inside + "dp（死区外、轻点容差里）按 1 秒：不动、没开始");
+        t.move(c.tapSlopDp + 1, 0);
+        t.frame(now);
+        check(t.started(), "挪出轻点容差：开始");
+        for (long end = now + 500; now < end; ) {
+            now += 8;
+            t.tick(now, false, true, false);
+        }
+        check(r.moves == 0, "刚挪出容差（位移从容差那一圈起算，还在死区里）：开始了但还不动");
+        float out = c.tapSlopDp + TrackPoint.DEAD_DP + 3;
+        t.move(out, 0);
+        t.frame(now);
+        for (long end = now + 500; now < end; ) {
+            now += 8;
+            t.tick(now, false, true, false);
+        }
+        check(r.dx > 0 && r.dy == 0, "推出容差 + 死区：往右走：" + r.dx);
+        int x = r.dx;
+        t.move(inside, 0);   // 挪回容差以内：位移从容差那一圈起算，这里是 0
+        t.frame(now);
+        for (long end = now + 500; now < end; ) {
+            now += 8;
+            t.tick(now, false, true, false);
+        }
+        check(r.dx == x, "挪回容差以内：停（离按下点容差 + 死区以内都不动）");
+        t.move(out, 0);
+        t.frame(now);
+        for (long end = now + 500; now < end; ) {
+            now += 8;
+            t.tick(now, false, true, false);
+        }
+        check(r.dx > x && t.started(), "再推出容差 + 死区：接着走（开始过了，不用再挪出容差一次）");
+        t.move(0, -40);   // 往上推：方向照按下点量
+        t.frame(now);
+        int y0 = r.dy;
+        for (long end = now + 300; now < end; ) {
+            now += 8;
+            t.tick(now, false, true, false);
+        }
+        check(r.dy < y0, "往上推：往上走");
+        t.up(now, false);
+        check(!t.started() && !t.active(), "抬起后不算开始了");
+    }
+
+    /**
+     * 点左键时指肚一滚（8–40ms 里滚到离按下点容差 + 0.2 到容差 + 死区 − 0.1dp，按住 200ms 再松开），负惯性开（默认）/ 关、两种节拍、
+     * 四个方向、灵敏度 1 / 3：一个计数都不出。挪出了容差、"开始"了，可位移从容差那一圈起算还在死区里——
+     * 负惯性把起步放大（m + 3 × (m − 滞后)）也不越过死区出去（审查发现：死区那一行对左键杆不看的话最多出 2 个计数 = 一次微拖动，
+     * 单击可能被主机当成拖动；dragLeverGate 用的是负惯性关，测不到）。
+     */
+    static void dragLeverRollTap() {
+        int cases = 0, bad = 0, startedCases = 0;
+        float[][] dirs = {{1, 0}, {0, 1}, {-1, 0}, {0.6f, -0.8f}};
+        for (boolean inertia : new boolean[]{true, false}) {
+            for (int period : new int[]{8, 12}) {
+                for (float speed : new float[]{1, 3}) {
+                    GestureEngine.Config c = cfg(inertia);
+                    c.stickSpeed = speed;
+                    for (float[] d : dirs) {
+                        for (float over = 0.2f; over < TrackPoint.DEAD_DP - 0.05f; over += 0.2f) {
+                            for (int rampMs = 8; rampMs <= 40; rampMs += 8) {
+                                Rec r = new Rec();
+                                TrackPoint t = dragLever(r, c);
+                                float roll = c.tapSlopDp + over;
+                                t.down(0, 0, 0);
+                                t.frame(0);
+                                long now = 0;
+                                boolean started = false;
+                                while (now < 200) {
+                                    now += period;
+                                    float k = roll * Math.min(1f, now / (float) rampMs);
+                                    t.move(d[0] * k, d[1] * k);
+                                    t.frame(now);
+                                    t.tick(now, false, true, false);
+                                    started |= t.started();
+                                }
+                                t.up(now + 4, false);
+                                cases++;
+                                if (started) startedCases++;
+                                if (r.moves != 0 || r.dx != 0 || r.dy != 0 || r.clicks != 0) {
+                                    bad++;
+                                    if (bad <= 3) System.err.println("  左键杆指肚一滚出了位移：负惯性 " + inertia + "、" + period + "ms、灵敏度 " + speed
+                                            + "、方向 (" + d[0] + ", " + d[1] + ")、离按下点 " + roll + "dp、" + rampMs + "ms 滚到：(" + r.dx + ", " + r.dy + ")");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        check(bad == 0 && startedCases == cases, "点左键时指肚一滚（挪出容差、还在容差 + 死区以内，" + cases
+                + " 种：负惯性开 / 关 × 节拍 × 灵敏度 × 方向 × 滚多远 × 多快滚到）：都算开始了，一个计数都不出（错 " + bad + "）");
+    }
+
+    static void dragLeverNoTapNoTextureNoScroll() {
+        GestureEngine.Config c = tapOn();
+        c.texture = true;
+        Rec r = new Rec();
+        TrackPoint t = dragLever(r, c);
+        t.down(0, 0, 0);
+        t.move(1, 1);
+        t.frame(50);
+        t.tick(58, false, false, false);
+        t.up(100, false);
+        check(r.clicks == 0 && r.haptics.isEmpty() && r.moves == 0, "左键杆轻点（开着轻点 = 左键）：不另外点左键、不震（单击是左键自己的按下 / 松开）");
+        Rec p = new Rec();
+        TrackPoint q = dragLever(p, c);
+        q.down(0, 0, 0);
+        q.move(30, 0);
+        q.frame(0);
+        for (long now = 8; now <= 1000; now += 8) q.tick(now, true, false, true);   // scroll = true、buttons = false 都故意给错
+        check(p.moves > 0 && p.dx > 0 && p.scrolls == 0, "左键杆推着：只移动，不滚（中键按着也一样）");
+        check(p.count(GestureEngine.HAPTIC_TEXTURE) == 0 && p.haptics.isEmpty(), "左键杆推着：不发颗粒（拖动有持续轻震）");
+        Rec s = new Rec();   // 对照：红点没按着鼠标键时同样推是发颗粒的
+        TrackPoint st = stick(s, c);
+        st.down(0, 0, 0);
+        st.move(30 - c.tapSlopDp, 0);
+        st.frame(0);
+        for (long now = 8; now <= 1000; now += 8) st.tick(now, false, false, false);
+        check(s.count(GestureEngine.HAPTIC_TEXTURE) > 0, "对照：红点不按鼠标键推着发颗粒");
+    }
+
+    static void dragLeverStopsAndPauses() {
+        Rec r = new Rec();
+        TrackPoint t = dragLever(r, cfg(false));
+        t.down(0, 0, 0);
+        t.move(30, 0);
+        t.frame(0);
+        t.tick(8, false, true, false);
+        t.up(300, false);
+        int x = r.dx;
+        check(!t.tick(316, false, true, false) && r.dx == x, "左键杆抬起后迟到的节拍：不出东西，返回 false");
+        t.down(0, 0, 400);
+        t.move(30, 0);
+        t.frame(400);
+        t.cancel();
+        check(!t.tick(500, false, true, false) && r.dx == x && !t.active() && !t.started(), "左键杆取消后：不出东西");
+        Rec p = new Rec();
+        TrackPoint q = dragLever(p, cfg(false));
+        q.down(0, 0, 0);
+        q.move(25, 0);
+        q.frame(0);
+        long now = 0;
+        boolean going = true;
+        while (going && now < 30000) {
+            now += 8;
+            going = q.tick(now, false, true, false);
+        }
+        check(!going && now > TrackPoint.IDLE_PAUSE_MS && now < TrackPoint.IDLE_PAUSE_MS + 20, "左键杆 20 秒没事件：暂停（" + now + "ms）");
+        int px = p.dx;
+        check(!q.tick(now + 8, false, true, false) && p.dx == px, "左键杆暂停中不出东西");
+        q.move(26, 0);
+        check(q.frame(now + 20), "左键杆再动：接着");
+        check(q.tick(now + 28, false, true, false) && p.dx > px, "左键杆接着走");
     }
 
     // ── 工具 ──

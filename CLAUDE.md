@@ -32,7 +32,8 @@
 | `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测）；惯性滚动（边缘一拨接着转、碰触控板抓住，用唯一的定时器槽 TIMER_SPIN）、连续滚动（按 1/120 格出、每滚过一格咔嗒、双指锁主方向）也在这里；滚轮量的单位是 1/120 格；中键按着时单指划 = 滚动（setScrollHold，方向"推哪边视野往哪边走"、不起长按 / 惯性），小红点的位移、滚轮经 externalMove / externalScroll 出 |
 | `src/dev/douhua/ScrollInertia.java` | 惯性滚动的物理（黏滞 + 恒定摩擦的闭式解、阻尼档位 → τ、停止时间 / 距离），纯 Java（离线测，HidTest），引擎和设置页共用 |
 | `src/dev/douhua/ConfigCodec.java` | CMD_CONFIG 的编解码（App 的 Link 写、服务的 Session 读、TestClient 写，三处共用一份），纯 Java（离线测往返）；协议 22 起末尾多一个 leverSpeed:f32（中键滑动的滚动速度倍数），共 60 字节 |
-| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键（按住要计时的修饰键 / Caps / 合并键交给 KeyHolds，报文、自带修饰键的键、开合的 Ctrl 自己管），纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，按得到的是报上来那个正方形的内切圆——Region.contains，服务、App 本地分流、KeyFingers 共用；第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数，中键按着 = 滚动、没滚过松开补中键单击；按在中键上的第一根手指自己也是滚动杆——lever，另一个滚动杆模式的 TrackPoint，和红点共用一套节拍：任一按着就开、都松了才停（stopTicksIfIdle），挪出轻点容差就算滚过、松开不补单击；中键按着、滚动杆还没挪出轻点容差时别的来源——红点、触控板、开合、滚轮动作——先出了滚轮，滚动杆让位到抬起（leverYield：按着中键当修饰键时拇指漂一点不另外滚））；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立）；按键（2026-11-01，协议 20）：区域那一路（down / up）和界面那一路（key(key, action, t)）都进 KeyHolds，按键专用的第二个定时器 Output.scheduleKeys / cancelKeys → onKeyTimer（和引擎那个槽分开），每个带时间的入口记下 now；鼠标键按下 / 松开、带着按住的鼠标键移动、滚轮、开合、三指四指手势给按着的修饰键标"用过"（mouse 第一行在 lastButtons 赋值之前比），开合开始前先结算待定的键；unlatch（CMD_UNLATCH）；Output.modifiers(锁住, 按着, 快锁了, Fn) 变了才报（协议 21 起带 Fn 的状态）、Output.caps(sent) 报"Caps 显示翻一下"；Mac 模式 fn🌐 单点时报 Proto.GLOBE_BUTTON_ID 的 BUTTON_TAP（HoldsHost.globe，和 🌐 键同一条路）；换参数时按着键的手指留着（clearSlots(true)：键不依赖引擎，抬起照常松开、照常判；按着的 Fn、锁着的 Fn 同样留着） |
+| `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键（按住要计时的修饰键 / Caps / 合并键交给 KeyHolds，报文、自带修饰键的键、开合的 Ctrl 自己管），纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，按得到的是报上来那个正方形的内切圆——Region.contains，服务、App 本地分流、KeyFingers 共用；第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数——holdLeft 的松开只减它自己那几份 cmdLeftHolds，收尾以后迟到的松开不理，中键按着 = 滚动、没滚过松开补中键单击；按在中键上的第一根手指自己也是滚动杆——lever，另一个滚动杆模式的 TrackPoint，和红点共用一套节拍：任一按着就开、都松了才停（stopTicksIfIdle），挪出轻点容差就算滚过、松开不补单击；中键按着、滚动杆还没挪出轻点容差时别的来源——红点、触控板、开合、滚轮动作——先出了滚轮，滚动杆让位到抬起（leverYield：按着中键当修饰键时拇指漂一点不另外滚））；按在左键上的第一根手指是左键杆（leftLever，2026-11-01 晚：另一个 TrackPoint 的左键杆模式，按下照旧马上按住左键、轻点 = 单击，
+挪出轻点容差后照红点推光标的曲线出位移 = 拖动；节拍和红点、滚动杆三个来源共用——ticksWanted / stopTicksIfIdle；左键杆还没开始时别的来源——红点、触控板——先动了光标就让位到抬起，leftLeverYield；滑出左键照样是杆）；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立）；按键（2026-11-01，协议 20）：区域那一路（down / up）和界面那一路（key(key, action, t)）都进 KeyHolds，按键专用的第二个定时器 Output.scheduleKeys / cancelKeys → onKeyTimer（和引擎那个槽分开），每个带时间的入口记下 now；鼠标键按下 / 松开、带着按住的鼠标键移动、滚轮、开合、三指四指手势给按着的修饰键标"用过"（mouse 第一行在 lastButtons 赋值之前比），开合开始前先结算待定的键；unlatch（CMD_UNLATCH）；Output.modifiers(锁住, 按着, 快锁了, Fn) 变了才报（协议 21 起带 Fn 的状态）、Output.caps(sent) 报"Caps 显示翻一下"；Mac 模式 fn🌐 单点时报 Proto.GLOBE_BUTTON_ID 的 BUTTON_TAP（HoldsHost.globe，和 🌐 键同一条路）；换参数时按着键的手指留着（clearSlots(true)：键不依赖引擎，抬起照常松开、照常判；按着的 Fn、锁着的 Fn 同样留着） |
 | `src/dev/douhua/KeyHolds.java` | 按着时要计时的键（2026-11-01），纯 Java（离线测，KeyHoldsTest 全经真 TouchRouter 跑），TouchRouter 持有一份、不加锁：修饰键（0xE0–0xE7、不带自带修饰键，左右八个含 AltGr / ⌃⌥⌘）按下马上发，按住期间用过（按了别的键、TouchRouter 报的鼠标 / 滚轮 / 开合 / 手势，used）或按下时已有别的键 / 鼠标键按着（Host.mouseBusy）= 组合、松手就松，单独点一下 = 点一下，单独按住 HOLD_MS（0.4 秒）–LOCK_MAX_MS（1 秒）松手 = 锁（到 0.4 秒 armed + 震），超过 1 秒退回不锁；锁了以后打完下一个普通键解开、再按一下锁住的键也解开；Caps（0x39）按下先不发，点一下发 Caps Lock（按着 CAPS_TAP_MS 60ms 再松）+ Host.caps(true)，按住 0.4 秒只 Host.caps(false) + 震；合并键（Proto.dualKey）点一下 tap 键、按住 0.4 秒 hold 键（只发一次）+ 震；待定的 Caps / 合并键在别的键按下、手指按着的修饰键（正常）松开、开合开始（settle）之前当点一下结算（被取消的修饰键松开不结算）；按着的键按 id 计数（计数 0 的松开整个不理：releaseAll 之后迟到的）；到点按截止时刻 + 当前状态处理（onTimer，过期的回调什么都不多做），排定时器正好排在最早的截止时刻；Host 的 pressKey / releaseKey 是原语、不回调这里；Fn（第 3 批，协议 21，Proto.FN_KEY / FN_GLOBE_KEY）：阶段和修饰键放在一起算（第 9 格，到点、用过、排定时器同一份代码）；协议 22 起（2026-11-01 晚）不再照修饰键——组合 = 那一下出 Fn 层，Windows 模式单独点一下 = 单次锁（fnOnce：下一个普通键出 Fn 层、它松开时解开，修饰键不消耗它），fn🌐 单独点一下照旧 = 🌐（Host.globe，没有单次锁），单独按住到 0.4 秒 = 永久锁（fnLock，到点 ARMED + 震，没有 1 秒的上限，按多久都算），锁着（单次或永久）时单独再按一下 Fn = 松手解开（阶段 UNLOCK；按住也算、不震、fn🌐 不出 🌐），锁着时当组合用（用过、按下时别的键按着）锁照旧；不发 HID；fn() 报 Fn 的单次锁 / 按着 / 快永久锁了 / 永久锁（FN_LATCHED / HELD / ARMED / LOCKED）；fnActive = 按着 \| 单次锁 \| 永久锁；带 Fn 层的键（Proto.fnLayerKey）按下那一刻按 Fn 按着或锁着（fnActive）定码、记在 fnPresses，之后当那个码处理（底层是修饰键的照修饰键），松开松记下的码；同一个 id 已经按着时后来的手指跟着第一根的码，最后一根松开才忘；releaseAll / unlatch 连 Fn 的单次锁、永久锁一起清，打完普通键只清单次锁 |
 | `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号；带滚轮分辨率倍率的鼠标描述符（MOUSE_DESC_HIRES 蓝牙用，竖、横两个倍率；MOUSE_DESC_HIRES_V 桌面模式 uhid 用，只有竖向一个；输入报文都和旧的一字不差）、倍率字节编解码、WheelOut（1/120 格 → 计数、余数、拆帧；uhid 那份设 / 问倍率的 setUhidFeature / uhidFeatureReport，UhidMouse 只调它们；离线测 HidTest）；手柄描述符 GAMEPAD_DESC（Game Pad、15 键 + Hat + X/Y/Z/Rz + Brake/Accelerator，13 字节，全零 = 中立）和 Gamepad（状态、报文、两路合并 merge）；修饰键掩码的小工具（ctrl：左右 Ctrl 都算；modifierBit）。以前的 modifierUsages（界面替服务解开锁定时逐个点一下）2026-11-01 随协议 20 删了，改发 CMD_UNLATCH |
 | `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停；描述符跟着"连续滚动"开关（变了就注销、重新注册，descriptorChanged），回应主机设 / 问滚轮倍率 |
@@ -59,7 +60,8 @@
 | `src/dev/douhua/ButtonStrip.java` | 自定义按键（主界面左边一列，原来的左侧按钮条；设置里打开，默认关），屏幕矮时自动分列 |
 | `src/dev/douhua/PadArea.java` | 触控板 + 数字键盘的排布 |
 | `src/dev/douhua/PadStack.java` | 主界面的触控板（连四角的小按钮）+ 顶上正中的 ⋯（KeyboardPlan.padMenuTop，三键条在上沿时在它正下方）+ 可选的三键条（KeyboardPlan.cutBar，onLayout 里按离窗口边多远切；48dp 高，中键窄、左右键宽（约 2.2 : 1 : 2.2、中键在正中），KeyboardPlan.middleKey）；离边 20dp 按窗口算，屏幕边缘留白不用另外管 |
-| `src/dev/douhua/TrackPoint.java` | 小红点（模拟 ThinkPad TrackPoint），纯 Java（离线测，TrackPointTest）：手指离按下点的位移 → 速度（S 形曲线：死区、爬行、平台、陡升、封顶）× 灵敏度，负惯性，按节拍积分、余数留着；轻点 = 左键；中键按着时出滚轮（推哪边视野往哪边走、主方向）；颗粒 / 咔嗒；20 秒没事件暂停；中键滚动杆模式（TrackPoint(out, true)，TouchRouter 给中键上那根手指用：一直是滚动、抬起不算轻点、先挪出轻点容差 tapSlopDp 才开始——started，之后照曲线、挪回死区就停；自己一条曲线 LEVER_* = 1 / 5 / 20 格每秒（2026-11-01 晚再慢一半），另乘设置里的 Config.leverSpeed，按住中键推红点的不乘） |
+| `src/dev/douhua/TrackPoint.java` | 小红点（模拟 ThinkPad TrackPoint），纯 Java（离线测，TrackPointTest）：手指离按下点的位移 → 速度（S 形曲线：死区、爬行、平台、陡升、封顶）× 灵敏度，负惯性，按节拍积分、余数留着；轻点 = 左键；中键按着时出滚轮（推哪边视野往哪边走、主方向）；颗粒 / 咔嗒；20 秒没事件暂停；三种模式（TrackPoint(out, mode)：MODE_STICK 红点 / MODE_SCROLL_LEVER / MODE_DRAG_LEVER）；中键滚动杆模式（MODE_SCROLL_LEVER，TouchRouter 给中键上那根手指用：一直是滚动、抬起不算轻点、先挪出轻点容差 tapSlopDp 才开始——started，之后照曲线、挪回死区就停；自己一条曲线 LEVER_* = 1 / 5 / 20 格每秒（2026-11-01 晚再慢一半），另乘设置里的 Config.leverSpeed，按住中键推红点的不乘）；左键杆模式（MODE_DRAG_LEVER，2026-11-01 晚，TouchRouter 给左键上那根手指用：一直是移动、一直当按着鼠标键（不发颗粒）、抬起不算轻点、
+同样先挪出轻点容差才开始、位移从容差那一圈起算（leverLevel），走红点推光标的那条曲线 MOVE_* × 灵敏度、负惯性照设置——离按下点容差 + m = 推红点 m，dragLeverSpeed） |
 | `src/dev/douhua/TrackPointView.java` | 小红点的样子：红帽 + 九个凹点（RoundPad.dots）；不压键时外面一圈淡圆（帽占 0.7），按着时圈换 focus 色；嵌在键里时（setEmbedded）只画红帽（半径 = 按得到的圆的半径 − 缝 / 2，键自己沿圆弧切口），按着时缝的里半圈描一圈 focus 色；isEmbedded（服务连着没接管时 MainActivity 让嵌在键里的红点一根手指都不收、全落到底下的面板上，面板按内切圆挖洞；放在键盘外面时整块吃掉） |
 | `src/dev/douhua/GamepadSpec.java` | 手柄页摆哪些控件：一组参数（左手 / 面键排法 / 字样 / 右摇杆 / L1 R1 LT RT 各自有没有 / 中间 / 摇杆按下 / 偏好方向），15 个固定预设（PRESETS，⋯ 菜单里轮换、设置页网格同序，默认 Xbox）+ 自定义（Builder 从一个预设复制再改，encode / decode 存成一行，取值写名字、认不出的跳过、缺的照 base 那个预设）；每种排法 × 字样印什么（faceOutputs / faceLabels / outputLabel；N64、GameCube 的键帽固定），预设自己的肩键名（N64 的 Z；GameCube 左边本来没有的肩键也写了 ZL，不和左扳机 L 重名）只在字样没换时用，shoulderLabel 给设置页"肩键 / 扳机"开关写这一对在这一套里叫什么；按位置发（任天堂的 A 发东），纯 Java（离线测，GamepadSpecTest） |
 | `src/dev/douhua/GamepadPlan.java` | 手柄页自动排（预设和自定义一样排），纯 Java（离线测，GamepadPlanTest）：宽 ≥ 1.3 × 高横排（两块对称的手区贴下沿、中间 Select / Home / Start + LS / RS、肩键贴上沿两角），不然竖排（手区在下半截）；一只手两个控件斜着错开（上靠外、下靠里）；放不下先缩缝、再按比例缩到最小值、再不放 LS / RS，还不行缩到最小值以下（fitted 假）；面键十种排法（faceCenters 给每颗圆心和直径，N64 的 C 键小一点、GameCube 的 A 大 B 小——按真机比例，不受 44dp 下限约束，各自的最小值 faceMin：C 键 / B 33dp、X Y 约 37dp）；一只手可以空着、两边肩键颗数可以不一样；输出控件的判定 / 画的范围（dp）、⋯、状态字 |
@@ -103,7 +105,7 @@
 | `src/dev/douhua/DexDisplay.java` | 找外接屏（按键注入目标；类名是改叫"桌面模式"之前起的） |
 | `src/dev/douhua/DisplayReceiver.java` | 服务叫醒它：接上外接屏弹通知（点开在手机屏上打开豆花），拔掉收回 |
 | `src/dev/douhua/server/Server.java` | 服务入口：主线程只 accept，按 SessionPolicy 接 / 顶掉旧会话 / 回"忙"，每条连接一个 douhua-session 线程；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒；`keys` 只读：用 getevent -i 列出输入设备、音量键能不能截、会截哪块 / 旁观哪块；`tasks <屏幕编号>` 只读：列出那块屏上的任务、分屏里豆花拿着焦点时会交给谁（TaskFocus.handOff(…, false)，不交；豆花这时没拿着焦点——交焦点已经生效——就另外说"豆花拿着焦点的话会怎样"） |
-| `src/dev/douhua/server/Session.java` | 一次 App 连接：建虚拟设备、发 hello、独占时机、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App；10 秒没消息自己断开，可被新连接顶掉（kick）；小红点的节拍在单独的 douhua-tick 线程上（桌面模式 8ms、蓝牙转发 12ms，startTicks / stopTicks）；TouchRouter 的定时器交给 OneShotTimer（引擎那个 routerTimer、按键专用的 keyTimer 两个，协议 20）；CMD_HID_KEY（key:i32, action，时间用收到的时刻）、CMD_UNLATCH → router.unlatch，MSG_MODIFIERS 四个字节（协议 21 起带 Fn）、MSG_CAPS；虚拟手柄（第一次用到才建 UhidGamepad、会话结束才关；CMD_GAMEPAD / CMD_GAMEPAD_CONFIG、MSG_GAMEPAD；两路合并 GamepadMux，接管时清 App 那路）；CMD_FOCUS_OTHER（协议 22）→ 单独的 douhua-focus 线程（requestFocusOther / handFocus：排着一次就只换屏幕编号；TaskFocus.handOff，诊断模式每次记、平时同一条连接里同一行 60 秒一次——限频器每条连接一份，每次从设置页回来是新连接、记一行） |
+| `src/dev/douhua/server/Session.java` | 一次 App 连接：建虚拟设备、发 hello、独占时机、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App；10 秒没消息自己断开，可被新连接顶掉（kick）；小红点 / 中键滚动杆 / 左键杆的节拍在单独的 douhua-tick 线程上（桌面模式 8ms、蓝牙转发 12ms，startTicks / stopTicks）；TouchRouter 的定时器交给 OneShotTimer（引擎那个 routerTimer、按键专用的 keyTimer 两个，协议 20）；CMD_HID_KEY（key:i32, action，时间用收到的时刻）、CMD_UNLATCH → router.unlatch，MSG_MODIFIERS 四个字节（协议 21 起带 Fn）、MSG_CAPS；虚拟手柄（第一次用到才建 UhidGamepad、会话结束才关；CMD_GAMEPAD / CMD_GAMEPAD_CONFIG、MSG_GAMEPAD；两路合并 GamepadMux，接管时清 App 那路）；CMD_FOCUS_OTHER（协议 22）→ 单独的 douhua-focus 线程（requestFocusOther / handFocus：排着一次就只换屏幕编号；TaskFocus.handOff，诊断模式每次记、平时同一条连接里同一行 60 秒一次——限频器每条连接一份，每次从设置页回来是新连接、记一行） |
 | `src/dev/douhua/server/OneShotTimer.java` | TouchRouter 的一次性定时器（Output.schedule / cancelSchedule 的服务端实现）：再排取代上一次；撤掉 / 被取代之后，已经到点、卡在锁上的那次回调拿到锁先比令牌、过期了就不调（ScheduledFuture.cancel 撤不掉已经开始跑的任务），纯 JDK（离线测，ServerPartsTest 真起一个定时器线程） |
 | `src/dev/douhua/server/TaskFocus.java` | 分屏里豆花拿着键盘焦点时把焦点交给另一半（协议 22，2026-11-01 晚）：IActivityTaskManager.getTasks（14–16 四参数带 displayId、13 三参数）列这块屏的任务 → FocusPick 挑 → setFocusedTask（= WMS 点别的窗口时走的那条，handleTaskFocusChange）→ 再列一次核对焦点过没过去；只读时（apply = false）豆花没拿着焦点就另外按"拿着焦点"再挑一次说给人看；签名、字段、权限（REAL_GET_TASKS / MANAGE_ACTIVITY_TASKS，shell 都有）照 AOSP 原文写在类注释；代理现取、失败重取再试一次（同 DexFocus），接口 / 方法 / 字段对不上就永久停用（日志里列出接口里实际有的签名）；只在 douhua-focus 线程和 Server tasks 里调 |
 | `src/dev/douhua/server/FocusPick.java` | 挑谁接焦点，纯 Java（离线测，FocusPickTest）：RunningTaskInfo 按字段名反射读成 Task（read：taskId / displayId / topActivity / isVisible / isFocused / topActivityType 必须有，isVisibleRequested 14 起、isTopActivityNoDisplay 16 起、getWindowingMode 读不出算不知道）；pick：只看这块屏、豆花的任务（顶上或最底下是 dev.douhua）得正拿着焦点（pick(…, false) 不看这条，只读用），**只在分屏时交**（审查后，2026-11-01 晚：豆花的任务窗口模式得是 MULTI_WINDOW 6——小窗 5、全屏 1、读不出来都不交，候选也得是 6，分屏的另一半），候选 = 不是豆花 / SystemUI、普通应用类型（0 / 1，不是桌面、最近任务、助手、屏保）、不是画中画、看得见且没在藏起来、不是 noDisplay，挑 lastActiveTime 最大的、一样取靠前的；Pick.ownNotFocused 标出"不交是因为豆花没拿着焦点"；focusedOn 核对用 |
@@ -269,13 +271,18 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **描述符带 Feature 报告就必须有人回应内核的 SET / GET_REPORT**（server.Uhid 的读线程）：不回内核干等 5 秒、退回 ×1，虚拟鼠标晚 5 秒才出现。
   **uhid 读线程退出前不关 fd**（Uhid.close 先等它，300ms 没退出就留给它退出时关）：fd 号会被马上复用，晚一步 poll 的读线程会读到新会话鼠标的请求、把倍率记错。
 - 一次手势里出现过多根手指，就按多指处理到全部抬起。
-- **小红点的节拍在所有收尾路径上都停**（节拍 = 手指不动也一直推光标 / 一直滚，漏停 = 光标一直漂、页面一直滚）：节拍有两个来源——红点那根手指、
-  中键滚动杆那根手指（按在三个鼠标键中键上的第一根，2026-11-01），共用一套 startTicks / stopTicks：任一按着就开着，两个都松了才停（TouchRouter.stopTicksIfIdle；滚动杆让位了——leverYield——算松了，
+- **小红点的节拍在所有收尾路径上都停**（节拍 = 手指不动也一直推光标 / 一直滚，漏停 = 光标一直漂、页面一直滚、一直拖着）：节拍有三个来源——红点那根手指、
+  中键滚动杆那根手指（按在三个鼠标键中键上的第一根，2026-11-01）、左键杆那根手指（按在三个鼠标键左键上的第一根，2026-11-01 晚），共用一套 startTicks / stopTicks：
+  任一按着就开着，三个都松了才停（TouchRouter.ticksWanted / stopTicksIfIdle；杆让位了——leverYield / leftLeverYield——算松了，
   它那根手指还按着也不留节拍；按着的都 20 秒没事件暂停了，下一拍 onTick 停）。各自那根手指抬起 / 被取消、releaseAll（释放独占、断开、退后台、
-  服务接管时本地分流收尾）、换参数（setConfig → clearSlots，两个都作废）都 stopTicks；服务收尾 ticker.shutdownNow 兜底；迟到的节拍 TouchRouter.onTick 看红点、滚动杆都没按着（或滚动杆让位了）就什么都不出
-  （TouchRouterTest / TrackPointTest 锁住，startTicks / stopTicks 配对；两个来源乱序交错开停 TouchRouterTest.leverTicksRandom 锁住）。按着却 20 秒没事件就暂停（TrackPoint.IDLE_PAUSE_MS），这根手指再动接着。
+  服务接管时本地分流收尾）、换参数（setConfig → clearSlots，三个都作废）都 stopTicks；服务收尾 ticker.shutdownNow 兜底；迟到的节拍 TouchRouter.onTick 看三个都没按着（或杆让位了）就什么都不出
+  （TouchRouterTest / TrackPointTest 锁住，startTicks / stopTicks 配对；乱序交错开停 TouchRouterTest.leverTicksRandom、三个来源加小挪 / 大挪 / CMD_HOLD_LEFT 的 leftLeverTicksRandom 锁住）。按着却 20 秒没事件就暂停（TrackPoint.IDLE_PAUSE_MS），这根手指再动接着。
+  左键杆推出来的每一帧都带着左键（它那根手指按着左键；抬起时先停杆再松左键，之后迟到的节拍不再推光标）；左键杆按着时左键照旧在所有收尾路径上松开。
   中键收尾（releaseAll）和被取消的抬起（TouchRouter.up 的 canceled：手掌 / 丢数据、TouchReader 收尾补报的、App 带 FLAG_CANCELED 的）都不补中键单击；
-  三键条 / 键盘里（底行、快捷行空位）的左键和"左键"按钮、CMD_HOLD_LEFT 共用 TouchRouter.leftHolds 一个计数。
+  三键条 / 键盘里（底行、快捷行空位）的左键和"左键"按钮、CMD_HOLD_LEFT 共用 TouchRouter.leftHolds 一个计数。**计数里每一份只由按下它的那个来源减**：
+  三键条的左键、"左键"按钮按 slot 配对（收尾清了 slot，迟到的抬起什么都不做）；CMD_HOLD_LEFT 不按 slot，它的松开只减它自己那几份（TouchRouter.cmdLeftHolds，
+  releaseAll / clearSlots 一起清零），收尾之前按下、收尾以后才松开的实体键，迟到的松开整个不理——不然会把收尾以后才按下的左键（左键杆正拖着）减掉，拖到一半左键松了、
+  杆接着推出不带左键的位移（审查发现，TouchRouterTest.leftLeverLateHoldLeftRelease、holdLeftCommand、leftLeverTicksRandom 带迟到的松开锁住）。加新的按左键的来源照这条：不按 slot 配对的就单独记一份。
 - **键盘上会显示的每个键都有键帽**（实体键盘同样：每个显示的键有外框、有字，出字的键在字表里有这一行，锁着哪种修饰键都有字——FixedLayoutTest.caps 按
   布局 × 形状 × 尺寸 × 模式 × ⋯ × 让位 × 窗口扫，笔记本另扫一遍；清单里每个布局（第 2 批起 34 个）、每种**有数据的**模式都扫，没数据的模式（拉美的 Mac，意大利 QZERTY、瑞典旧版的 Windows）拼不出键盘、退回豆花布局，
   FixedLegendsTest.missingModes 锁住"清单的 modes 和字表有没有那一段对得上"；巴西按 ABNT2 扫（多的 0x87 在字表里、小键盘的 0x85 写清单的 kpco），拼音的 Mac 模式 Caps 写 中/英
@@ -1504,7 +1511,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   向下移就向下滚动，模拟类似于我按住它、移动小红点的这个操作"）。只改 TouchRouter / TrackPoint（服务和 App 共用），不改协议、不加设置、不改界面文字。
   - 原来的中键全保留：按下先不发；按着时推红点 / 单指划触控板 = 滚动；一格都没滚过就松开 = 补一次中键单击，收尾、被取消的不补。
   - 新加：按在中键（REGION_MOUSE_BUTTON 的中键：键盘页小红点状态下空位里的三个鼠标键——豆花布局、实体键盘都是——和主界面 / 键盘页触控板的三键条）上的**第一根手指**
-    另开一个 TrackPoint（TouchRouter.lever，滚动杆模式 TrackPoint(out, true)）：按下点当原点、手指离它的位移当推力，和"按住中键推红点"同一条滚动曲线
+    另开一个 TrackPoint（TouchRouter.lever，滚动杆模式 TrackPoint(out, true)，2026-11-01 晚起写成 TrackPoint(out, MODE_SCROLL_LEVER)）：按下点当原点、手指离它的位移当推力，和"按住中键推红点"同一条滚动曲线
     （SCROLL_CRAWL / PLATEAU / MAX、死区、推满、灵敏度、负惯性、主方向占 2 倍以上只滚它、方向"推哪边视野往哪边走"、按格 / 连续、每滚过一格咔嗒）、同一套节拍积分
     （推着不动一直匀速滚，挪回按下点附近就停）。手指滑出中键（滑进触控板、滑到红点上、滑出所有区域）照样是滚动杆（归属按下时定）。再来的手指按在中键上照旧只是中键、
     不当滚动杆；滚动杆那根先抬起，留下的那根也不接手（同红点"第二根手指不理"），下一根新按下的才是。
@@ -1533,6 +1540,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     （4 / 20 / 80 格每秒，从按下点量；挪出 6dp 容差那一下已经在曲线上）20dp 就到平台 20 格 / 秒。现在滚动杆自己一组（**2026-11-01 晚再慢一半成 1 / 5 / 20、设置里另加 25%–200% 的滑块**，见"上手后的一批"）LEVER_CRAWL / PLATEAU / MAX = 2 / 10 / 40（红点翻倍之前那组），
     位移从轻点容差那一圈起算（TrackPoint.leverLevel：离按下点的距离 − 6dp），所以离按下点 8.5dp（容差 + 死区）以内都不滚、挪回来就停（第一版是挪回 2.5dp 以内才停）；
     同样挪 20dp 是 9 格 / 秒（以前 20），12dp 是 2 格 / 秒（以前约 14），推到底（38dp）40 格 / 秒。红点那条（按住中键推红点）不变。数字是猜的，用户再试；还不对就加一个"中键滚动速度"滑块。
+  - 2026-11-01 晚左键也照这套加了一根杆（推光标 = 拖动），见"左键也当杆"。
 - **修饰键点一下 = 按一下、按住才锁；Caps 点一下发、按住只切显示；小红点状态的逗号句号合键**（2026-11-01，协议 20；用户："Shift 键单点就是 Shift 键及时触发，
   长按变成锁定，然后超过长按的时间就取消锁定……我只要按住 Shift，我再按字母键，它就是大写。然后这个时候，我是不需要它锁定的……如果锁定了还在按住，那就说明我不需要锁定"；
   "Caps 键做成点按就锁定的，但是，长按切换状态不发送键码"；小红点状态"右手边没有空格"；协调者的方案 design-mods.md 第 0–3、5 节，定稿前过了一轮审查）。
@@ -1664,6 +1672,40 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     （MenuOrderTest.invariants 锁住每屏每种状态的这三条）。顺手把菜单项的编号、顺序、"哪屏有哪几项"从 MainActivity 挪进纯 Java 的 MenuOrder（离线测），项的字改成照编号取（menuLabel），
     不再靠和 MENU_IDS 对齐的平行数组（改顺序时漏改一个就张冠李戴）；编号的值一个没变。
   - 只跑了离线测试和编译，真机要看的见"进行中"。
+- **左键也当杆：按住左键挪 = 拖动**（2026-11-01 晚，协调者的方案 design-left-lever.md；用户："在小红点键盘……单手实现不了，也就是拖动。我觉得这个考虑可以跟那个中间一样，
+  就比如说我左键点击，并且摁住，然后上下左右移动的时候，那么这个时候就假装这个键它就是小红点"）。照"中键自己当滚动杆"的做法，只改 TouchRouter / TrackPoint（服务和 App 共用），
+  不改协议（还是 22，这批本来就没出过）、不加设置、不改界面文字。
+  - 哪个键：三个鼠标键（REGION_MOUSE_BUTTON）里的左键——键盘页小红点状态空位里那三个（豆花布局、实体键盘）、主界面 / 键盘页触控板的三键条。**第一根**按在左键上的手指当杆
+    （TouchRouter.leftLever / leftLeverSlot），再来的手指只是左键；杆那根先抬起，留下的那根也不接手（同中键）。右键、"左键"按钮（REGION_HOLD_LEFT）、CMD_HOLD_LEFT 都不是杆。
+  - 按下照旧马上按住左键（mouseButton，和"左键"按钮、CMD_HOLD_LEFT 共用 leftHolds），轻点 = 单击、连点 = 双击照旧（轻点容差里一个位移都不出）。
+  - 挪：TrackPoint 的左键杆模式（MODE_DRAG_LEVER；原来的 TrackPoint(out, boolean) 换成 TrackPoint(out, mode)，三种模式），先挪出轻点容差（tapSlopDp，6dp）才开始，
+    位移从那一圈起算（leverLevel，同中键滚动杆：一出容差不跳一下，离按下点容差 + 死区 = 8.5dp 以内不动、挪回来就停），之后照**红点推光标的那条曲线**（MOVE_*、死区、爬行、平台、陡升、封顶、
+    × 小红点灵敏度、负惯性照设置）按节拍积分出光标位移——离按下点容差 + m 出的量和推红点 m 一模一样（TrackPoint.dragLeverSpeed；离线逐计数比过）。位移经引擎的 externalMove 出，
+    按着的左键照带，所以就是拖动。滑出左键（滑进触控板、滑到红点上、滑出所有区域）照样是杆（归属按下时定），触控板不当手势。
+  - 让位（TouchRouter.leftLeverYield，同中键的 leverYield）：左键杆还没挪出轻点容差时，光标动了（TouchRouter.mouse 里 dx / dy 不是 0：触控板、红点——左键杆没开始前一点不出，所以只能是别的来源），
+    左键杆就让位到这根手指抬起（leftLeverSlot 照旧占着），它是节拍唯一的来源的话节拍马上停。用途：一只手按住左键、另一只手推红点 / 划触控板拖东西时，拇指漂一点不另外推光标，
+    光标和拇指不漂时一模一样（离线锁住，拇指漂 0–30dp）。左键杆先挪出了容差（先用杆、后加红点 / 触控板）就不让位，两路叠加。剩下的缺口同中键：拇指在另一根手指开始动之前就漂出了轻点容差，照样叠加。
+  - **只看光标位移、不看滚轮**（方案只写了"别的来源先动了光标"，滚轮是这里定的）：中键按着、红点出的是滚轮时左键杆不让位；之后左键挪出容差照样推光标。
+    **中键也按着时左键杆照样是移动、不是滚动**（方案没写到）：左键杆是"按着左键的小红点"，按住中键推红点 = 滚动那条只管红点本身；TrackPoint 的左键杆模式不看 tick 的 scroll。
+  - 反馈不新增：左键按下 / 松开时 App 本来就"嗒" + 持续轻震（MainActivity.holdLeftFeedback，按左键的按下 / 松开做）；左键杆推着时 TrackPoint 当按着鼠标键（不发颗粒）——"拖动 = 持续轻震、不发颗粒"，同那张表。
+  - 节拍：和红点、中键滚动杆三个来源共用一套（TouchRouter.ticksWanted：任一按着、杆没让位就开着），按下左键就开（同中键：没挪出容差时也要按拍更新负惯性的滞后，开始那一下不突变），
+    20 秒没事件暂停、再动接着。onTick 按 红点 → 滚动杆 → 左键杆 的顺序算，红点这一拍先动了光标、左键杆还没开始的话左键杆当拍就让位。
+  - 收尾：左键杆那根手指抬起 / 被取消、releaseAll、换参数（clearSlots）都作废它、配好 stopTicks；抬起时先停杆再松左键；被取消的抬起左键照常松开（同以前），杆什么都不出（不算轻点）。
+  - 服务连着没接管、各 View 自己收触摸时（MouseKeys 轻点 = 点一下那条路）没有杆，照旧只能点（同中键）。
+  - 代价：每次按左键都开停一次节拍（同中键）；按住左键不动、另一只手也不动时节拍空转到 20 秒暂停。
+  - **审查后的修改**（同一天，三条发现都核实过；只跑了离线测试和编译）：
+    ① 实体键（CMD_HOLD_LEFT）迟到的松开把左键杆按着的左键减掉：音量键配了"按住 = 左键"、按着时收尾（转屏重新接管、onStart 重发参数 → releaseAll / clearSlots 把 leftHolds 清零），
+    接着拇指按住左键拖，再松开音量键，leftHolds 减到 0、左键松了，拇指还偏着、杆照样按节拍推光标——拖到一半东西掉下、光标接着走（审查者用真 TouchRouter 量到 0.5 秒 62 帧不带左键的位移；
+    不会卡住左键，抬起后计数截在 0）。不是这批写出来的（计数本来就共用），只是现在会让杆推出"不带左键的拖动"。照审查者的 (b) 改：TouchRouter.holdLeft 的松开只减它自己按着的那几份
+    （cmdLeftHolds，releaseAll / clearSlots 一起清零），这份是 0 就整个不理——三键条的左键、"左键"按钮本来就按 slot 配对，只有 CMD_HOLD_LEFT 不配对。没取 (a)（杆单独记一份左键、externalMove 总带上）：
+    那样"左键"按钮按着时被迟到的松开减掉的问题照样在，(b) 一处把所有按左键的来源都护住。行为变化：多出来的 holdLeft(false) 以前会再报一帧 m0（按钮状态没变），现在什么都不发。
+    ② 不变量"左键杆推出来的每一帧都带着左键"原来说得太满（就是①那条路），①改完以后成立了；不变量那条补写了"计数里每一份只由按下它的那个来源减"，技术债那条补了一句。
+    随机序列 leftLeverTicksRandom 原来收尾时把模型的实体键计数清 0、之后只在计数大于 0 时才发松开，从来不出迟到的松开；现在收尾以后实体键照样当还按着、之后照样发松开（400 组里约 160 次）。
+    ③ "挪出容差但还在死区里（离按下点 6–8.5dp）不出位移"在默认参数（负惯性开）下没被锁住：dragLeverGate 用的是负惯性关，把死区那一行对左键杆跳过，所有测试照过，
+    可负惯性开时（z = m + 3 × (m − 滞后)）指肚一滚会越过死区、出一两个带左键的计数 = 一次微拖动（审查者变异测试核实）。代码本来就对，只补测试：TrackPointTest.dragLeverRollTap
+    （负惯性开 / 关 × 8 / 12ms × 灵敏度 1 / 3 × 四个方向 × 滚到容差 + 0.2 到容差 + 2.4dp × 8–40ms 滚到，共 1920 种）、TouchRouterTest.leftLeverTapClicks 加一组经真 TouchRouter 的（默认参数，按格 / 连续，120 种：只出 m1 / m0）。
+    三处改法都在 scratchpad 的副本上改坏跑过（实体键松开照旧减共用计数 12 项报错、收尾不清实体键那份 9 项、左键杆不看死区 2 项），新检查都报错。
+  - 只跑了离线测试和编译，真机要看的见"进行中"。
 
 ## 测试
 
@@ -1690,13 +1732,25 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   键帽齐全那一扫加了 Caps 开 / 关）。
   小红点：TrackPointTest（曲线的点、单调 / 平台 / 封顶、8 / 12 / 抖动的节拍积分、50ms 上限、灵敏度、负惯性起步更快 / 平台一样 / 不反向、轻点、颗粒、中键滚动的方向 / 主方向 /
   按格 / 连续、停、20 秒暂停；中键滚动杆模式：不看 scroll 参数一直滚、和按着中键推红点出的量一模一样（负惯性开 / 关 × 按格 / 连续）、方向 / 主方向 / 封顶 / 灵敏度、
-  先挪出轻点容差才开始、开始以后挪回死区停 / 再推出死区接着、不算轻点、不发颗粒、咔嗒、停、暂停）、TouchRouterTest（第二根手指不理、节拍开停配对、左键三处共用计数、中键单击 / 滚过不补 / 被取消不补、中键 + 触控板滚动、releaseAll / 换参数停、
+  先挪出轻点容差才开始、开始以后挪回死区停 / 再推出死区接着、不算轻点、不发颗粒、咔嗒、停、暂停；左键杆模式（2026-11-01 晚）：离按下点容差 + m 和推红点 m 出的位移一样
+  （负惯性开 / 关 × 8 / 12ms × 灵敏度 × 四个方向 × 五种位移共 160 种，顺着轴逐计数相等、斜着差不过 1）、dragLeverSpeed、封顶、先挪出轻点容差才开始、位移从容差那一圈起算、
+  挪回容差以内停 / 再推接着（不用再挪出容差一次）、点左键时指肚一滚（挪出容差、还在容差 + 死区以内，负惯性开 / 关 × 节拍 × 灵敏度 × 方向 × 滚多远 × 多快滚到共 1920 种）一个计数都不出、
+  不算轻点、颗粒开着也不发、scroll 参数给 true 也只移动、停、暂停）、TouchRouterTest（第二根手指不理、节拍开停配对、左键三处共用计数、中键单击 / 滚过不补 / 被取消不补、中键 + 触控板滚动、releaseAll / 换参数停、
   onTarget、nearestKey 不选、碰红点停惯性、按在红点 / 键盘里的鼠标键上不记触点、红点按正方形的内切圆认——圆里归红点、四个角归键；中键滚动杆：往上 / 下挪滚的方向、
   和"按住中键推红点"一样多、死区里 / 轻点容差里松开 = 中键单击（连续模式也一格不滚，开着轻点 = 左键也只出中键单击）、挪出容差就不补单击、滚过不补、被取消 / releaseAll 不补、
   滑出中键 / 滑到红点上照样是滚动杆、三键条的中键挪进触控板不动光标（密度 2）、第二根手指不当滚动杆、留下的那根不接手、和红点交错开停、随机交错 300 组 × 80 步
   （节拍开着 ⇔ 红点 / 滚动杆按着、开停配对、都没按着时节拍不出东西）、按格 / 连续、和红点 / 触控板叠加、惯性转着时按中键先停、换参数停、20 秒暂停再动接着；滚动杆让位：按着中键、拇指往右下漂 0 / 4 / 7 / 10 / 30dp 的同时推红点 / 划触控板，
   滚轮和拇指不漂时一模一样、一点横向都没有，另一根松了以后拇指再挪也不滚、节拍停，红点先按、拇指后按中键再漂也一样，开合 / 滚轮动作也让位；先用滚动杆、后加红点照旧叠加，
-  挪出了容差、按格还没攒满一格时加红点也不让位；随机交错的模型也带上让位）、GestureEngineTest（中键滚动）、
+  挪出了容差、按格还没攒满一格时加红点也不让位；随机交错的模型也带上让位；左键杆（2026-11-01 晚）：按下马上按住左键、轻点 = 单击、连点 = 双击、轻点容差里挪着按 1 秒不动光标（按格 / 连续、
+  开着轻点 = 左键也不多点）、挪出容差 = 带着左键的光标位移（量照 dragLeverSpeed、往上 / 往右、挪回按下点附近停、再推接着、不震不发颗粒不滚）、和推红点出的量一样（48 种）、
+  滑出左键 / 滑到红点上 / 挪进触控板照样是杆（红点不被按、触控板不当手势）、三键条的左键挪进触控板（密度 2）、第二根手指不当杆、留下的那根不接手（左键照旧按到两根都松）、
+  "左键"按钮 / CMD_HOLD_LEFT / 右键不是杆、"左键"按钮和左键杆共用计数、被取消 / releaseAll / 换参数（节拍停、左键松开、之后迟到的什么都不出）、碰左键停惯性、20 秒暂停再动接着；
+  点左键时指肚滚出容差一点（容差 + 0.2 到容差 + 2.4dp、8–40ms 滚到，默认参数负惯性开，120 种）只是一次单击；实体键按着时 releaseAll / 换参数、之后左键杆拖着时才松开实体键：
+  迟到的松开什么都不发、杆接着拖、位移都带着左键（leftLeverLateHoldLeftRelease；holdLeftCommand 也锁住多出来的松开不理、不减收尾以后才按下的"左键"按钮）；
+  左键杆让位：拇指按左键往右下漂 0 / 4 / 7 / 10 / 30dp 的同时推红点（负惯性开 / 关）/ 划触控板，光标和拇指不漂时一模一样，另一根松了以后拇指再挪也不动、节拍停，红点先按、拇指后按也一样；
+  先用左键杆、后加红点叠加，挪出容差还在死区里时加红点也不让位，中键按着红点滚动（滚轮）时不让位、之后左键杆照样推光标（中键按着也是移动）；
+  三个来源随机交错 400 组 × 100 步（红点、中键、左键、触控板、"左键"按钮，相对按下点的小挪 / 大挪、CMD_HOLD_LEFT（收尾以后实体键照样当还按着，之后发迟到的松开）、收尾：节拍开着 ⇔ 有来源在推、开停配对、
+  节拍只出红点 / 杆推的东西、红点没按着时节拍出的位移都带着左键、全部抬起后左键松开），原来的 leverTicksRandom 的模型也带上左键杆）、GestureEngineTest（中键滚动）、
   KeyboardPlanTest（2026-11-01 第二次改写：小红点固定合并（布局 × 尺寸 × 存的格子扫一遍，都和合并一模一样）、底行和快捷行让出的空位（stickHole 的几种情况：对称 / 空格最短 / 不让）、
   三个键怎么铺（holeKeys：对称时中键正对红点、左右一样宽，2.2 : 1 : 2.2）、切口几何（cutShare 对公式、cuts、labelShift）、红点嵌在键里多大（每层每个键被切掉 ≤ 25%、字母层 ≤ 16%、字躲得开）、
   放外面、⋯ 回功能行；stickRouting 把红点、铺满空位的三个鼠标键、三层的键、键盘范围照 MainActivity 的顺序交给真正的 TouchRouter / KeyFingers 逐点核对：红点圆里归红点、空位里归那一格的鼠标键、
@@ -1877,6 +1931,24 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   界面（PairKey 画出来的样子、Fn 实底、设置页的滑块、菜单）离线编不到，没在真机上看过。
 
 ## 进行中（交接；做完删掉这一节）
+
+- **左键也当杆：按住左键挪 = 拖动（2026-11-01 晚写完，没提交，待真机验证；不改协议（还是 22），但 TouchRouter / TrackPoint 是服务和 App 共用的，装完要重启服务——
+  App 更新后按 hello 里的 APK 路径会自己重启旧服务；旧服务接管时左键还是只能点、按住不能自己推）**：见决策记录"左键也当杆"。只跑了离线测试（触摸分流 612 项——原来 422、
+  小红点 154 项——原来 130，别的各组照旧；审查后的三条修改也只跑了离线测试）和编译，真机一次都没试过。要看：
+  ① 键盘页小红点状态（豆花布局、实体键盘笔记本 / 75% / 65% 的 Windows 模式各一次）：单手按住左键往上下左右挪，光标跟着走、拖得动东西（桌面上拖文件、选一段字、拖窗口）；
+  推着不动光标一直匀速走、挪回按下点附近就停；快慢和推红点同样远一样（离按下点多出 6dp 才算，1 毫米左右）；
+  ② 点一下左键 = 单击、快点两下 = 双击（浏览器里双击选词），按下 / 抬起时指肚滚一下不会把单击变成一小段拖动；6dp 这个门槛嫌不跟手还是还嫌太灵；
+  ③ 手指滑出左键、滑到空格 / 红点 / 键盘外面照样在拖，不打字、不动红点；
+  ④ 一只手按住左键、另一只手推红点 / 划触控板拖东西：拇指稍微动一下（漂一两毫米）光标不另外走，另一根手指松了以后光标也不接着走（左键杆让位）；
+  反过来先按住左键挪起来、再推红点：两路一起走（更快）；
+  ⑤ 两根手指都按在左键上：只有先按的那根能推；"左键"按钮（自定义按键 / 角上按钮）、音量键配的"左键"按住不能推，照旧；
+  ⑥ 主界面、键盘页触控板的三键条（设置 → 触控板最后一节打开）：左键往上挪进触控板照样是杆，不会变成触控板上的手势；
+  ⑦ 三条路：桌面模式服务接管（8ms 节拍）、蓝牙模式服务接管（12ms）、蓝牙模式没开服务（本地分流）；桌面模式服务连着没接管时（View 自己收）左键照旧只能点；
+  ⑧ 收尾：拖着的时候豆花退后台、拉通知栏、转屏、拔外接屏、断开蓝牙，光标马上不走、左键松开（电脑上不留着按住）；
+  ⑨ 反馈：按下"嗒"一下再持续轻震、松开停震（和"左键"按钮一样），推着走不发颗粒（颗粒开着也一样）；
+  ⑩ 按住中键、再按住左键挪：光标移动（不是滚动），能不能接受；
+  ⑪ 审查后改的（桌面模式）：音量键配了"按住 = 左键"、按着音量键时转一下屏（触摸屏重新接管），松开前用拇指按住三键条 / 键盘里的左键拖东西，这时松开音量键：拖动不断、东西不掉，
+  拇指抬起才放下；平时音量键按住 = 左键照旧（按下按住、松开松开）。
 
 - **分屏里豆花拿到键盘焦点就交给另一半（2026-11-01 晚写完，没提交，待真机验证；协议 22，App 和服务一起改了，装完要重启服务——App 更新后按 hello 里的 APK 路径会自己重启旧服务）**：
   见决策记录"分屏里豆花拿到键盘焦点就交给另一半"。这是方案 design-fixes-1101b 的第 1 条和协议 22 的底子；第 2–6 条接着做了，见下一条。
@@ -2599,7 +2671,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   会话中途卡住、App 照常写的情况 App 也察觉不到（服务不给 App 发保活）。
 - 服务用 `--debug` 起时，Session.onDown 把每次按下落在哪个区域（键 id）写进手机上的 /data/local/tmp/douhua-server.log，等于把打的字落了盘（打字测试的触点日志只走 logcat，不受这条影响）。
 - 实体键：音量上 + 音量下一起按（无障碍快捷方式）没当组合键交还，只要有一个音量键配了动作（被截住），豆花在前台时就用不了它（配了的那个被豆花吃掉，系统只看到另一个）；
-  触摸屏释放时 router.releaseAll 会把实体键按着的"左键"（CMD_HOLD_LEFT）一起松掉；服务被直接杀掉时，透传中按着的音量键
+  触摸屏释放时 router.releaseAll 会把实体键按着的"左键"（CMD_HOLD_LEFT）一起松掉（之后实体键迟到的松开不理，不减收尾以后才按下的左键 / 左键杆，见不变量）；服务被直接杀掉时，透传中按着的音量键
   系统会一直连发到下一次按键；交还系统时最后一次读 grabFd 和关掉它之间（微秒级）到的事件会丢；只配了"点一下"的音量键按下当场就发给 App，
   之后才认出是组合键的话动作已经做了。
 - 键盘键位是初版，按实际用起来再调；竖屏一行 12 个键偏窄。

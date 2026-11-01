@@ -28,7 +28,12 @@ import java.util.Locale;
  * 滚动杆让位（{@link #leverYield}）：中键按着、滚动杆还没挪出轻点容差时，别的来源（红点、触控板、开合、滚轮动作）先出了滚轮，
  * 滚动杆这次就作废到抬起——按着中键当修饰键、另一根手指推红点 / 划触控板时，拇指漂一点不会另外滚（和以前一模一样）；
  * 滚动杆先挪出了轻点容差，之后再加红点 / 触控板就叠加。
- * 服务连着没接管时各 View 自己收触摸（MouseKeys 轻点 = 点一下），那条路没有滚动杆。
+ * 按在左键上的第一根手指同样是一根杆（{@link #leftLever}，2026-11-01 晚：单手用键盘 + 小红点时拖不了东西）：按下照旧马上按住左键
+ * （轻点 = 单击、双击照旧），挪出轻点容差后这根手指自己当小红点——另一个 TrackPoint（左键杆模式），手指离按下点的位移（从容差那一圈起算）
+ * 当推力、照红点推光标的那条曲线出光标位移，左键按着所以就是拖动；节拍和红点、中键滚动杆三个共用。再来的手指按在左键上照旧只是左键。
+ * 左键杆让位（{@link #leftLeverYield}）：左键杆还没挪出轻点容差时别的来源（红点、触控板）先动了光标，左键杆这次就作废到抬起——
+ * 按住左键、另一根手指推红点 / 划触控板拖东西时，拇指漂一点不另外推光标；左键杆先开始了就叠加。
+ * 服务连着没接管时各 View 自己收触摸（MouseKeys 轻点 = 点一下），那条路没有这两根杆。
  *
  * 手柄页（Proto.REGION_GAMEPAD）：按下的手指交给 {@link GamepadTouch}（单键、面键簇、十字键、摇杆），报文经 {@link Output#gamepad} 出；
  * 归属照旧按下时定，唯一的例外是面键簇内部（归属定到簇，簇里按当前位置挑键，见 GamepadTouch）。releaseAll / 换参数 /
@@ -76,7 +81,7 @@ public final class TouchRouter implements GestureEngine.Output {
         void cancelKeys();
 
         /**
-         * 开始按固定节拍调 {@link #onTick}（桌面模式 8ms、蓝牙 12ms，由实现方定）；已经在跑就不动。小红点按着时用。
+         * 开始按固定节拍调 {@link #onTick}（桌面模式 8ms、蓝牙 12ms，由实现方定）；已经在跑就不动。小红点、中键滚动杆、左键杆按着时用。
          * 和 schedule 是两条独立的路（引擎的轻点拖动 / 长按 / 惯性用 schedule）。不做成 default：忘了实现就静默失效，宁可编译报错。
          */
         void startTicks();
@@ -180,20 +185,31 @@ public final class TouchRouter implements GestureEngine.Output {
     private Trace trace;
     /** 上次记下的键盘布局（同样的布局重报时不重复记）。 */
     private String tracedLayout;
-    /** 按着的左键：REGION_HOLD_LEFT、三键条 / 键盘最下面那排的左键、holdLeft（实体键）共用。 */
+    /** 按着的左键：REGION_HOLD_LEFT、三键条 / 键盘最下面那排的左键（含左键杆那根手指）、holdLeft（实体键）共用。 */
     private int leftHolds;
+    /**
+     * leftHolds 里 holdLeft（CMD_HOLD_LEFT）按着的那几份。别的来源按 slot 配对（收尾清了 slot，迟到的抬起什么都不做），只有 holdLeft 不按 slot：
+     * releaseAll / clearSlots 把 leftHolds 清零以后，实体键迟到的松开只减这一份、这份是 0 就不理——不然会把收尾以后才按下的
+     * 三键条左键（左键杆正拖着）、"左键"按钮按着的那一份减掉，拖到一半左键松了、杆接着推出不带左键的位移。
+     */
+    private int cmdLeftHolds;
     /** 按着的右键、中键（三键条 / 键盘最下面那排）。 */
     private int rightHolds, middleHolds;
     /** 中键这次按着期间滚过（出过滚轮）：松开时不补中键单击。 */
     private boolean middleScrolled;
-    /** 小红点：哪个 slot 按着它（-1 = 没有），宿主的节拍开着没有（红点、中键滚动杆共用一套节拍）。 */
+    /** 小红点：哪个 slot 按着它（-1 = 没有），宿主的节拍开着没有（红点、中键滚动杆、左键杆共用一套节拍）。 */
     private final TrackPoint stick = new TrackPoint(new StickOutput());
     private int stickSlot = -1;
     /** 中键滚动杆：按在中键上的第一根手指（-1 = 没有），只出滚动（输出同红点，经引擎出）。 */
-    private final TrackPoint lever = new TrackPoint(new StickOutput(), true);
+    private final TrackPoint lever = new TrackPoint(new StickOutput(), TrackPoint.MODE_SCROLL_LEVER);
     private int leverSlot = -1;
     /** 滚动杆这次让位了（别的来源先滚了，见 {@link #leverYield}）：作废到这根手指抬起，leverSlot 照旧占着（再来的中键手指还是不当滚动杆）。 */
     private boolean leverYielded;
+    /** 左键杆：按在左键上的第一根手指（-1 = 没有），只出光标位移（输出同红点，经引擎出，按着的左键照带 = 拖动）。 */
+    private final TrackPoint leftLever = new TrackPoint(new StickOutput(), TrackPoint.MODE_DRAG_LEVER);
+    private int leftLeverSlot = -1;
+    /** 左键杆这次让位了（别的来源先动了光标，见 {@link #leftLeverYield}）：作废到这根手指抬起，leftLeverSlot 照旧占着（再来的左键手指还是不当杆）。 */
+    private boolean leftLeverYielded;
     private boolean ticking;
     /** 手柄页的控件（REGION_GAMEPAD）。 */
     private final GamepadTouch gamepad = new GamepadTouch(new PadOutput());
@@ -225,6 +241,7 @@ public final class TouchRouter implements GestureEngine.Output {
         engine.setCtrlHeld(Hid.ctrl(modifierMask()));
         stick.setConfig(c);
         lever.setConfig(c);
+        leftLever.setConfig(c);
         this.density = density > 0 ? density : 1;
         gamepad.setDensity(this.density);
         clearSlots(true);
@@ -357,17 +374,24 @@ public final class TouchRouter implements GestureEngine.Output {
                 out.button(r.id, Proto.BUTTON_DOWN);
                 startTicks();
                 break;
-            case Proto.REGION_MOUSE_BUTTON:
+            case Proto.REGION_MOUSE_BUTTON: {
                 slotKind[slot] = KIND_MOUSE;
-                mouseButton(r.id & MOUSE_MASK, true, false);
+                int mask = r.id & MOUSE_MASK;
+                mouseButton(mask, true, false);   // 左键照旧马上按住（轻点 = 单击、双击照旧）
                 out.button(r.id, Proto.BUTTON_DOWN);
-                if ((r.id & MOUSE_MASK) == Proto.BUTTON_MIDDLE && leverSlot < 0) {   // 中键上的第一根手指：滚动杆（再来的不当）
+                if (mask == Proto.BUTTON_MIDDLE && leverSlot < 0) {   // 中键上的第一根手指：滚动杆（再来的不当）
                     leverSlot = slot;
                     leverYielded = false;
                     lever.down(x / density, y / density, t);
                     startTicks();
+                } else if (mask == Proto.BUTTON_LEFT && leftLeverSlot < 0) {   // 左键上的第一根手指：左键杆（再来的不当）
+                    leftLeverSlot = slot;
+                    leftLeverYielded = false;
+                    leftLever.down(x / density, y / density, t);
+                    startTicks();
                 }
                 break;
+            }
             case Proto.REGION_KEY:
                 slotKind[slot] = KIND_KEY;
                 holds.down(r.id, t);
@@ -398,6 +422,8 @@ public final class TouchRouter implements GestureEngine.Output {
         else if (slot == leverSlot) {   // 滑出中键照样算（归属按下时定）
             lever.move(x / density, y / density);
             if (lever.started()) middleScrolled = true;   // 挪出了轻点容差 = 要滚了：松开不补单击（按格模式还没攒满一格也一样）
+        } else if (slot == leftLeverSlot) {   // 滑出左键（滑进触控板、滑到红点上）照样是杆（归属按下时定）
+            leftLever.move(x / density, y / density);
         }
     }
 
@@ -407,6 +433,7 @@ public final class TouchRouter implements GestureEngine.Output {
         if (engine != null) engine.endFrame(t);
         if (stickSlot >= 0 && stick.frame(t)) startTicks();   // 太久没动暂停了的红点又动了：接着发
         if (leverLive() && lever.frame(t)) startTicks();   // 中键滚动杆同样
+        if (leftLeverLive() && leftLever.frame(t)) startTicks();   // 左键杆同样
         gamepad.frame();   // 摇杆轴一帧只发一次
     }
 
@@ -416,7 +443,7 @@ public final class TouchRouter implements GestureEngine.Output {
 
     /**
      * canceled：被取消的手指（手掌、丢数据、服务释放触摸屏时补报的抬起）照旧当抬起，只是这次手势松手不起惯性
-     * （见 GestureEngine#up(int, long, boolean)）、红点轻点不算左键、中键不补单击。
+     * （见 GestureEngine#up(int, long, boolean)）、红点轻点不算左键、中键不补单击（左键照常松开，杆什么都不出）。
      */
     public void up(int slot, long t, boolean canceled) {
         if (slot < 0 || slot >= SLOTS) return;
@@ -452,6 +479,11 @@ public final class TouchRouter implements GestureEngine.Output {
                     leverSlot = -1;
                     leverYielded = false;
                     lever.up(t, canceled);   // 滚动杆不算轻点，什么都不出
+                    stopTicksIfIdle();
+                } else if (slot == leftLeverSlot) {   // 左键杆先停（之后的节拍不再推光标），再松左键
+                    leftLeverSlot = -1;
+                    leftLeverYielded = false;
+                    leftLever.up(t, canceled);   // 杆不算轻点，什么都不出（单击是左键自己的按下 / 松开）
                     stopTicksIfIdle();
                 }
                 mouseButton(r.id & MOUSE_MASK, false, canceled);
@@ -498,23 +530,25 @@ public final class TouchRouter implements GestureEngine.Output {
     }
 
     /**
-     * 节拍到了（宿主在 {@link Output#startTicks} 之后按固定间隔调）：小红点、中键滚动杆按到 t 为止积分，出位移或滚轮。
-     * 两个都按着时各出各的（滚轮叠加；红点先算，这一拍它先出了滚轮、滚动杆还没开始的话滚动杆让位，见 {@link #leverYield}）。
-     * 两个都没按着（迟到的节拍、滚动杆让位了）什么都不出；按着的都太久没事件暂停了就停节拍。
+     * 节拍到了（宿主在 {@link Output#startTicks} 之后按固定间隔调）：小红点、中键滚动杆、左键杆按到 t 为止积分，出位移或滚轮。
+     * 几个都按着时各出各的（位移 / 滚轮叠加）；按顺序算：红点、滚动杆、左键杆——红点这一拍先出了滚轮、滚动杆还没开始的话滚动杆让位
+     * （{@link #leverYield}），红点先动了光标、左键杆还没开始的话左键杆让位（{@link #leftLeverYield}）。
+     * 都没按着（迟到的节拍、杆让位了）什么都不出；按着的都太久没事件暂停了就停节拍。
      */
     public void onTick(long t) {
         tick(t);
-        if (engine == null || (stickSlot < 0 && !leverLive())) {
+        if (engine == null || !ticksWanted()) {
             stopTicks();
             return;
         }
         boolean going = false;
         if (stickSlot >= 0) going |= stick.tick(t, middleHolds > 0, engine.heldButtons() != 0, engine.smoothNow());
         if (leverLive()) going |= lever.tick(t, true, false, engine.smoothNow());
+        if (leftLeverLive()) going |= leftLever.tick(t, false, true, false);   // 左键按着：拖动（不发颗粒）
         if (!going) {
             boolean was = ticking;   // 停了以后还在路上的节拍不再记
             stopTicks();
-            if (was) out.note("小红点 / 中键滚动杆按着但 " + TrackPoint.IDLE_PAUSE_MS / 1000 + " 秒没收到这根手指的事件：先停节拍，再动就接着");
+            if (was) out.note("小红点 / 中键滚动杆 / 左键杆按着但 " + TrackPoint.IDLE_PAUSE_MS / 1000 + " 秒没收到这根手指的事件：先停节拍，再动就接着");
         }
     }
 
@@ -525,16 +559,20 @@ public final class TouchRouter implements GestureEngine.Output {
 
     /**
      * 按住 / 松开鼠标左键，和 {@link Proto#REGION_HOLD_LEFT} 共用 {@link #leftHolds} 计数（桌面模式下实体键按住配了"左键"时用）。
-     * 第一个按下时按住左键，最后一个松开时清零；减到 0 以下截在 0。{@link #releaseAll} / {@link #clearSlots} 会把计数归零，
-     * 这时若实体键还按着，之后的松开减到 0 以下也不会出错。
+     * 第一个按下时按住左键，最后一个松开时放开。松开只减它自己按着的那几份（{@link #cmdLeftHolds}）：{@link #releaseAll} / {@link #clearSlots}
+     * 把两份计数都归零（实体键按着的左键跟着松掉，见技术债），之后实体键迟到的松开整个不理，不减别人（三键条左键、左键杆、"左键"按钮）按着的。
      */
     public void holdLeft(boolean down) {
         if (engine == null) return;
         if (down) {
+            cmdLeftHolds++;
             if (leftHolds++ == 0) applyExternal();
-        } else if (--leftHolds <= 0) {
-            leftHolds = 0;
-            applyExternal();
+        } else if (cmdLeftHolds > 0) {
+            cmdLeftHolds--;
+            if (--leftHolds <= 0) {
+                leftHolds = 0;
+                applyExternal();
+            }
         }
     }
 
@@ -592,14 +630,24 @@ public final class TouchRouter implements GestureEngine.Output {
         out.stopTicks();
     }
 
-    /** 红点、中键滚动杆都没按着（滚动杆让位了也算没有）才停节拍（还有一个按着的话，它要是也暂停了，下一拍 onTick 停）。 */
+    /** 红点、中键滚动杆、左键杆都没按着（杆让位了也算没有）才停节拍（还有一个按着的话，它要是也暂停了，下一拍 onTick 停）。 */
     private void stopTicksIfIdle() {
-        if (stickSlot < 0 && !leverLive()) stopTicks();
+        if (!ticksWanted()) stopTicks();
+    }
+
+    /** 节拍的三个来源有一个按着（杆让位了不算）。 */
+    private boolean ticksWanted() {
+        return stickSlot >= 0 || leverLive() || leftLeverLive();
     }
 
     /** 中键滚动杆按着、没让位。 */
     private boolean leverLive() {
         return leverSlot >= 0 && !leverYielded;
+    }
+
+    /** 左键杆按着、没让位。 */
+    private boolean leftLeverLive() {
+        return leftLeverSlot >= 0 && !leftLeverYielded;
     }
 
     /**
@@ -613,6 +661,19 @@ public final class TouchRouter implements GestureEngine.Output {
         if (leverSlot < 0 || leverYielded || lever.started()) return;
         leverYielded = true;
         lever.cancel();
+        stopTicksIfIdle();
+    }
+
+    /**
+     * 光标动了（mouse 里调，触控板、红点、左键杆自己的都走这里）：左键杆还没挪出轻点容差的话，这一下只能是别的来源动的
+     * （左键杆没开始前一点不出），左键杆就让位到这根手指抬起——拇指按住左键、另一根手指推红点 / 划触控板拖东西时，
+     * 拇指漂出 6dp 也不会按漂的方向另外推光标（另一根手指松了以后也不会接着推）。左键杆已经开始了（先用左键杆、后加红点 / 触控板）就叠加。
+     * 只看光标位移：滚轮（中键滚动、开合）不算。同中键滚动杆，剩下的缺口：拇指在另一根手指开始动之前就漂出了轻点容差，照样叠加。
+     */
+    private void leftLeverYield() {
+        if (leftLeverSlot < 0 || leftLeverYielded || leftLever.started()) return;
+        leftLeverYielded = true;
+        leftLever.cancel();
         stopTicksIfIdle();
     }
 
@@ -646,7 +707,7 @@ public final class TouchRouter implements GestureEngine.Output {
     }
 
     /**
-     * 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开、小红点和中键滚动杆停（节拍停）、中键不补单击、手柄回中立；
+     * 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开、小红点和两根杆（中键滚动杆、左键杆）停（节拍停）、中键不补单击、手柄回中立；
      * 修饰键和 Fn 的锁定 / 按着 / 快锁了全部归零，待定的 Caps / 合并键丢掉（不发），按键定时器撤掉。之后迟到的松开计数是 0、整个不理。
      * 触摸屏被释放、连接断开时调。
      */
@@ -678,6 +739,7 @@ public final class TouchRouter implements GestureEngine.Output {
             slotTraced[s] = false;
         }
         leftHolds = 0;
+        cmdLeftHolds = 0;   // 实体键迟到的松开不再减 leftHolds（见 holdLeft）
         rightHolds = 0;
         middleHolds = 0;
         middleScrolled = false;
@@ -686,6 +748,9 @@ public final class TouchRouter implements GestureEngine.Output {
         lever.cancel();
         leverSlot = -1;
         leverYielded = false;
+        leftLever.cancel();
+        leftLeverSlot = -1;
+        leftLeverYielded = false;
         stopTicks();
         gamepad.releaseAll();   // 按着的手柄键报松开、发全零（没用过就什么都不发）
     }
@@ -813,6 +878,7 @@ public final class TouchRouter implements GestureEngine.Output {
             middleScrolled = true;
             leverYield();
         }
+        if (dx != 0 || dy != 0) leftLeverYield();   // 光标动了：左键杆还没开始的话让位
         out.mouse(buttons, dx, dy, wheel, pan);
     }
 
@@ -933,7 +999,7 @@ public final class TouchRouter implements GestureEngine.Output {
         }
     }
 
-    /** 小红点（和中键滚动杆）的输出：位移、滚轮经引擎出（按着的鼠标键照带），轻点 = 引擎点一下左键（滚动杆只出滚轮）。 */
+    /** 小红点（和两根杆）的输出：位移、滚轮经引擎出（按着的鼠标键照带），轻点 = 引擎点一下左键（滚动杆只出滚轮，左键杆只出位移）。 */
     private final class StickOutput implements TrackPoint.Output {
         @Override
         public void move(int dx, int dy) {

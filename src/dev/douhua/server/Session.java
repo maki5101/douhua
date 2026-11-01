@@ -38,7 +38,7 @@ import dev.douhua.TouchRouter;
  *
  * 线程：命令线程（douhua-session，每条连接一个）读 App 的消息；监管线程负责独占和读触摸；
  * 实体键线程（douhua-keys）负责独占和读音量键（{@link #superviseKeys}；电源键从不独占）；
- * 定时器线程跑轻点拖动的等待、惯性滚动的每一帧、修饰键 / Caps / 合并键按住到点（router 的第二个定时器，keyTimer）和切键盘焦点（router 的定时器撤掉 / 被取代后，已经到点、在等锁的那次不调，见 {@link OneShotTimer}）；节拍线程（douhua-tick）在小红点 / 中键滚动杆按着时按固定间隔推它（{@link #startTicks}）；
+ * 定时器线程跑轻点拖动的等待、惯性滚动的每一帧、修饰键 / Caps / 合并键按住到点（router 的第二个定时器，keyTimer）和切键盘焦点（router 的定时器撤掉 / 被取代后，已经到点、在等锁的那次不调，见 {@link OneShotTimer}）；节拍线程（douhua-tick）在小红点 / 中键滚动杆 / 左键杆按着时按固定间隔推它（{@link #startTicks}）；
  * 交焦点线程（douhua-focus）在分屏里豆花拿着键盘焦点时把焦点交给另一半（{@link Proto#CMD_FOCUS_OTHER}，{@link TaskFocus}，几次 binder，不和定时器挤）。
  * router 只在持有 lock 时访问。
  * 惯性滚动转着时：释放触摸屏（TouchReader 的 finally → router.releaseAll）、会话结束、换参数（setConfig）都走 engine.cancel 停下；
@@ -1237,7 +1237,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         keyTimer.cancel();
     }
 
-    /** 小红点 / 中键滚动杆按着：按固定节拍推（调用方持有 lock）。释放触摸屏 → router.releaseAll → stopTicks，所以放开之后不会还在推光标。 */
+    /** 小红点 / 中键滚动杆 / 左键杆按着：按固定节拍推（调用方持有 lock）。释放触摸屏 → router.releaseAll → stopTicks，所以放开之后不会还在推光标。 */
     @Override
     public void startTicks() {
         if (tickTask != null) return;

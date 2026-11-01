@@ -77,7 +77,7 @@
     <string name="inertia_speed">はじきと判定する速さ（dp/ミリ秒）</string>
     <string name="inertia_speed_hint">大きいほど強くはじく必要がある。小さすぎると普通のスクロールでも離したあと回り続ける。</string>
     <string name="smooth_scroll">なめらかスクロール（段ごとではなく連続で）</string>
-    <string name="smooth_scroll_hint">Bluetooth：オン / オフを切り替えたら、相手の機器でこのスマホを削除してもう一度ペアリングする。相手のシステムが対応していなければ従来どおり一段ずつ。デスクトップモード：このスマホのシステムの対応が必要で、未対応なら一段ずつ。ズームは従来どおり一段ずつ。</string>
+    <string name="smooth_scroll_hint">Bluetooth：オン / オフを切り替えたら、相手の機器でこのスマホを削除してもう一度ペアリングする。相手のシステムが対応していなければ従来どおり一段ずつ。デスクトップモード：Samsung のスマホでは実測で非対応（システムがホイールの分解能を設定しない）なので一段ずつ。ほかのスマホはシステムしだい。ズームは従来どおり一段ずつ。</string>
     <string name="smooth_host_on">%1$s はなめらかスクロールが有効</string>
     <string name="smooth_host_off">%1$s はまだ一段ずつ（再ペアリングが必要か、システムが未対応の可能性）</string>
     <string name="spin_try">感触のテスト（デバッグ版のみ）：タップすると振動する。選んだものが慣性で使われる。</string>

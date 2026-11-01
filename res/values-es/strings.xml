@@ -77,7 +77,7 @@
     <string name="inertia_speed">Velocidad mínima de un impulso (dp/ms)</string>
     <string name="inertia_speed_hint">Cuanto más alto, más fuerte hay que lanzarlo; si es muy bajo, un desplazamiento normal sigue tras soltar.</string>
     <string name="smooth_scroll">Desplazamiento suave (sin muescas)</string>
-    <string name="smooth_scroll_hint">Bluetooth: tras activarlo o desactivarlo, elimina este teléfono en el otro dispositivo y vuelve a vincularlo una vez; si su sistema no lo admite, sigue muesca a muesca. Modo escritorio: el sistema de este teléfono tiene que admitirlo; si no, muesca a muesca. El zoom sigue por pasos.</string>
+    <string name="smooth_scroll_hint">Bluetooth: tras activarlo o desactivarlo, elimina este teléfono en el otro dispositivo y vuelve a vincularlo una vez; si su sistema no lo admite, sigue muesca a muesca. Modo escritorio: no funciona en teléfonos Samsung (probado: el sistema nunca ajusta la resolución de la rueda), así que muesca a muesca; en otros teléfonos depende del sistema. El zoom sigue por pasos.</string>
     <string name="smooth_host_on">%1$s: desplazamiento suave activado</string>
     <string name="smooth_host_off">%1$s todavía se desplaza muesca a muesca (seguramente hay que volver a vincularlo, o su sistema no lo admite)</string>
     <string name="spin_try">Probar la sensación (solo versión de depuración): toca una opción para sentirla; la marcada es la que usa la inercia.</string>

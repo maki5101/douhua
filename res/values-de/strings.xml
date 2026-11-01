@@ -77,7 +77,7 @@
     <string name="inertia_speed">Ab welcher Geschwindigkeit ein Wisch zählt (dp/ms)</string>
     <string name="inertia_speed_hint">Je höher, desto kräftiger muss man wischen; zu niedrig, und normales Scrollen läuft nach dem Loslassen weiter.</string>
     <string name="smooth_scroll">Stufenloses Scrollen (ohne Rasten)</string>
-    <string name="smooth_scroll_hint">Bluetooth: Nach dem Ein- oder Ausschalten dieses Handy auf dem anderen Gerät entfernen und einmal neu koppeln; unterstützt dessen System es nicht, scrollt es weiter Raste für Raste. Desktop-Modus: Das System dieses Handys muss es unterstützen, sonst Raste für Raste. Zoomen bleibt stufenweise.</string>
+    <string name="smooth_scroll_hint">Bluetooth: Nach dem Ein- oder Ausschalten dieses Handy auf dem anderen Gerät entfernen und einmal neu koppeln; unterstützt dessen System es nicht, scrollt es weiter Raste für Raste. Desktop-Modus: Auf Samsung-Handys geht es nicht (getestet: das System stellt die Radauflösung nie ein), also Raste für Raste; auf anderen Handys hängt es vom System ab. Zoomen bleibt stufenweise.</string>
     <string name="smooth_host_on">%1$s: stufenloses Scrollen an</string>
     <string name="smooth_host_off">%1$s scrollt noch Raste für Raste (wahrscheinlich neu koppeln nötig, oder das System unterstützt es nicht)</string>
     <string name="spin_try">Gefühl ausprobieren (nur Debug-Version): antippen zum Fühlen; die ausgewählte Variante nutzt der Nachlauf.</string>

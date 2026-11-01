@@ -77,7 +77,7 @@
     <string name="inertia_speed">How fast counts as a flick (dp/ms)</string>
     <string name="inertia_speed_hint">Higher needs a harder flick; too low and ordinary scrolling keeps going after you let go.</string>
     <string name="smooth_scroll">Smooth scrolling (no notches)</string>
-    <string name="smooth_scroll_hint">Bluetooth: after turning this on or off, remove this phone on the other device and pair again once; if its system doesn\'t support it, it still scrolls notch by notch. Desktop mode: this phone\'s system has to support it, otherwise notch by notch. Zoom still goes step by step.</string>
+    <string name="smooth_scroll_hint">Bluetooth: after turning this on or off, remove this phone on the other device and pair again once; if its system doesn\'t support it, it still scrolls notch by notch. Desktop mode: doesn\'t work on Samsung phones (tested: the system never sets the wheel resolution), so it scrolls notch by notch; on other phones it depends on the system. Zoom still goes step by step.</string>
     <string name="smooth_host_on">%1$s has smooth scrolling on</string>
     <string name="smooth_host_off">%1$s still scrolls notch by notch (it probably needs to pair again, or its system doesn\'t support it)</string>
     <string name="spin_try">Try the feel (debug build only): tap one to feel it; the selected one is what inertia uses.</string>

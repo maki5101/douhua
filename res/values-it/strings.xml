@@ -77,7 +77,7 @@
     <string name="inertia_speed">Velocità minima di un colpo (dp/ms)</string>
     <string name="inertia_speed_hint">Più è alto, più forte bisogna dare il colpo; troppo basso e anche lo scorrimento normale continua dopo aver lasciato.</string>
     <string name="smooth_scroll">Scorrimento fluido (senza scatti)</string>
-    <string name="smooth_scroll_hint">Bluetooth: dopo averlo attivato o disattivato, rimuovi questo telefono sull\'altro dispositivo e associalo di nuovo una volta; se il suo sistema non lo supporta, scorre ancora a scatti. Modalità desktop: serve che il sistema di questo telefono lo supporti, altrimenti a scatti. Lo zoom resta a passi.</string>
+    <string name="smooth_scroll_hint">Bluetooth: dopo averlo attivato o disattivato, rimuovi questo telefono sull\'altro dispositivo e associalo di nuovo una volta; se il suo sistema non lo supporta, scorre ancora a scatti. Modalità desktop: sui telefoni Samsung non funziona (provato: il sistema non imposta mai la risoluzione della rotella), quindi a scatti; sugli altri telefoni dipende dal sistema. Lo zoom resta a passi.</string>
     <string name="smooth_host_on">%1$s: scorrimento fluido attivo</string>
     <string name="smooth_host_off">%1$s scorre ancora a scatti (probabilmente va associato di nuovo, oppure il suo sistema non lo supporta)</string>
     <string name="spin_try">Prova la sensazione (solo versione di debug): tocca un\'opzione per sentirla; quella selezionata è usata dall\'inerzia.</string>

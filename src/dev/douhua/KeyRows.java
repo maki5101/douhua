@@ -30,10 +30,16 @@ final class KeyRows {
     /** "符"和"Fn"切换键的按钮编号（不是 HID 键，由 App 自己处理）。 */
     static final int SYMBOLS_BUTTON_ID = 300;
     static final int FN_BUTTON_ID = 301;
-    /** 🌐：切换输入法（动作 lang_switch），由 App 执行。 */
-    static final int GLOBE_BUTTON_ID = 302;
+    /** 🌐：切换输入法（动作 lang_switch），由 App 执行。编号在 Proto（实体键盘 Mac 模式 fn🌐 单点时分流报的就是它）。 */
+    static final int GLOBE_BUTTON_ID = Proto.GLOBE_BUTTON_ID;
     /** ⋯：键盘界面的菜单（收起键盘 / 调整大小 / 布局 / 触控板），小触控板没摆出来时放在功能行最右边，由 App 执行。 */
     static final int MENU_BUTTON_ID = 303;
+    /**
+     * 实体键盘 75% / 65% / 苹果紧凑的 Fn 键（第 3 批，FixedLayout.FN_ID）在几何（FixedLayout）里的编号：只在几何、画键帽、测试里用。
+     * 报给分流、面板发给分流时换成 Proto.FN_KEY / FN_GLOBE_KEY（REGION_KEY，按住 / 点一下 / 锁的规矩在 KeyHolds，FixedLayout.keyId）。
+     * 和豆花布局的 Fn 层按钮（{@link #FN_BUTTON_ID}）不是一回事。
+     */
+    static final int FIXED_FN_BUTTON_ID = 304;
 
     /**
      * 这个键是不是 ⋯（豆花布局功能行最右的 ⋯ 键、实体键盘 Esc 和 F1 中间的 ⋯ 槽，FixedLayout.MENU_ID 是同一个编号）：

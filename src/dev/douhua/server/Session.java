@@ -1153,8 +1153,8 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     }
 
     @Override
-    public void modifiers(int latched, int held, int armed) {
-        send(new byte[]{(byte) Proto.MSG_MODIFIERS, (byte) latched, (byte) held, (byte) armed});
+    public void modifiers(int latched, int held, int armed, int fn) {
+        send(new byte[]{(byte) Proto.MSG_MODIFIERS, (byte) latched, (byte) held, (byte) armed, (byte) fn});   // 协议 21：第四个字节是 Fn
     }
 
     @Override

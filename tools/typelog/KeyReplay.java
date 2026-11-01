@@ -179,7 +179,7 @@ public class KeyReplay {
         @Override public void haptic(int kind) { }
         @Override public void gesture(int fingers, int kind) { }
         @Override public void button(int id, int action) { }
-        @Override public void modifiers(int latched, int held, int armed) { }
+        @Override public void modifiers(int latched, int held, int armed, int fn) { }
         @Override public void caps(boolean sent) { }
         @Override public void schedule(long delayMs) { }
         @Override public void cancelSchedule() { }

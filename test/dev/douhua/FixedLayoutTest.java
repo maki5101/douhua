@@ -20,8 +20,9 @@ import java.util.Set;
  * 尺寸按 1dp = 1px 算。从仓库根目录跑（读 res/raw 的键帽数据）。
  */
 public final class FixedLayoutTest {
-    private static int failures;
-    private static int checks;
+    /** 第 3 批的测试（FixedCompactTest）借这里的扫描和计数，所以不是 private。 */
+    static int failures;
+    static int checks;
 
     private static final int GAP = 2;
     /** 同 KeyboardScreen 的 baseSizes（1dp = 1px）。 */
@@ -37,9 +38,7 @@ public final class FixedLayoutTest {
     private static List<FixedLegends.Layout> catalog;
 
     public static void main(String[] args) throws IOException {
-        win = FixedLegends.parseTables(FixedLegendsTest.read("res/raw/kbd_win.txt"));
-        mac = FixedLegends.parseTables(FixedLegendsTest.read("res/raw/kbd_mac.txt"));
-        catalog = FixedLegends.parseCatalog(FixedLegendsTest.read("res/raw/kbd_catalog.txt"));
+        load();
         counts();
         rowsFill(SHAPES);
         noOverlap(SHAPES);
@@ -84,6 +83,17 @@ public final class FixedLayoutTest {
         abnt2();
         System.err.println("实体键盘几何 / 分流：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
+    }
+
+    /** 读 res/raw 的键帽数据和清单（main 先调；FixedCompactTest 借这里的扫描时也先调）。 */
+    static void load() throws IOException {
+        win = FixedLegends.parseTables(FixedLegendsTest.read("res/raw/kbd_win.txt"));
+        mac = FixedLegends.parseTables(FixedLegendsTest.read("res/raw/kbd_mac.txt"));
+        catalog = FixedLegends.parseCatalog(FixedLegendsTest.read("res/raw/kbd_catalog.txt"));
+    }
+
+    static List<FixedLegends.Layout> catalog() {
+        return catalog;
     }
 
     static FixedLayout layout(String shape, String size, String mode) {
@@ -289,6 +299,7 @@ public final class FixedLayoutTest {
     // ── 摆到像素：段不重叠、在面板里，相邻键共用边界，范围不重叠、每段恰好在一块里 ──
     static void placement(String[] shapes, String[] sizes, int[][] windows) {
         for (String sh : shapes) for (String sz : sizes) for (String m : MODES) for (int[] wh : windows) {
+            if (!FixedLayout.available(sh, sz, m)) continue;   // 第 3 批：苹果紧凑只有 Mac 模式、ANSI / ISO
             FixedLayout l = layout(sh, sz, m);
             FixedPanel p = new FixedPanel();
             p.setBoard(l, geoTable(sh, m));
@@ -330,11 +341,11 @@ public final class FixedLayoutTest {
         }
     }
 
-    /** 面板报的区域（id 用键的下标，方便和 keyAt 比）：段在前、范围在后，同 FixedPanel.regions 的顺序。 */
+    /** 面板报的区域（id 用键的下标，方便和 keyAt 比；类型同 FixedPanel.regions：⋯ / 🌐 是按钮，Fn 和别的是键）：段在前、范围在后，同 FixedPanel.regions 的顺序。 */
     static TouchRouter.Region[] regions(FixedPanel p) {
         List<TouchRouter.Region> out = new ArrayList<>();
         for (FixedPanel.Seg s : p.segs()) {
-            out.add(new TouchRouter.Region(p.keys().get(s.key).special ? Proto.REGION_BUTTON : Proto.REGION_KEY, s.key, s.left, s.top, s.right, s.bottom));
+            out.add(new TouchRouter.Region(FixedLayout.regionType(p.keys().get(s.key)), s.key, s.left, s.top, s.right, s.bottom));
         }
         for (int[] r : p.ranges()) out.add(new TouchRouter.Region(Proto.REGION_KEYBOARD, 0, r[0], r[1], r[2], r[3]));
         return out.toArray(new TouchRouter.Region[0]);
@@ -348,9 +359,15 @@ public final class FixedLayoutTest {
 
     // ── 分流（TouchRouter）和面板自己收触摸（KeyFingers）逐点一致；按在键上是那个键、缝里是同一行这一段里最近的、空格子里什么都没有 ──
     static void routing(String[] shapes, String[] sizes, int[][] windows, String label) {
+        routing(shapes, sizes, windows, label, true);
+    }
+
+    /** 同上；blanks = 这几种尺寸里有没有键的格子（第 3 批的 75% / 65% / 苹果紧凑每行都铺满到面板边，一个空格子都没有）。 */
+    static void routing(String[] shapes, String[] sizes, int[][] windows, String label, boolean blanks) {
         int points = 0, inKeys = 0, inGaps = 0, nothing = 0, bad = 0;
         String first = null;
         for (String sh : shapes) for (String sz : sizes) for (String m : MODES) for (int[] wh : windows) {
+            if (!FixedLayout.available(sh, sz, m)) continue;
             FixedLayout l = layout(sh, sz, m);
             for (boolean menu : new boolean[]{false, true}) {
                 FixedPanel p = new FixedPanel();
@@ -393,7 +410,7 @@ public final class FixedLayoutTest {
         }
         check(bad == 0, "实体键盘分流" + label + "扫了 " + points + " 个点（键上 " + inKeys + "、缝里 " + inGaps + "、空格子 " + nothing + "），"
                 + bad + " 个不对" + (first == null ? "" : "，比如 " + first));
-        check(inKeys > 0 && inGaps > 0 && nothing > 0, "扫到了键上、缝里、空格子里的点" + label);
+        check(inKeys > 0 && inGaps > 0 && (blanks ? nothing > 0 : nothing == 0), "扫到了键上、缝里、空格子里的点" + label);
         System.err.println("  实体键盘分流扫描" + label + "：" + points + " 个点（键上 " + inKeys + "、缝里 " + inGaps + "、空格子 " + nothing + "）");
     }
 
@@ -459,6 +476,7 @@ public final class FixedLayoutTest {
             for (String sh : lang.shapes) for (String sz : sizes) for (String m : MODES) for (boolean menu : new boolean[]{false, true}) {
                 // 这个布局这种模式没有数据（第 2 批：拉美没有 Mac 的）：App 拼不出实体键盘、退回豆花布局，FixedLegendsTest.missingModes 锁着
                 if (!lang.hasMode(m)) continue;
+                if (!FixedLayout.available(sh, sz, m)) continue;   // 第 3 批：苹果紧凑 × Windows / ABNT2 拼不出（forEntry 返回 null），FixedCompactTest 锁着
                 FixedLegends.Table t = table(lang.id, m);
                 FixedLayout l = FixedLayout.forEntry(sh, sz, m, t, lang);
                 for (int[] wh : windows) {
@@ -498,11 +516,84 @@ public final class FixedLayoutTest {
                         }
                         check(ok && bad == null, what + " 每个键都有键帽和字" + (bad == null ? "" : "：" + bad));
                         if (l.laptop()) laptopCapShapes(p, holed, what);
+                        if (l.hasFn()) fnCaps(p, t, mods, what);
                     }
                 }
             }
         }
         System.err.println("  键帽齐全" + label + "：" + combos + " 种（布局 × 形状 × 尺寸 × 模式 × ⋯ × 让位 × 窗口）");
+    }
+
+    /**
+     * 第 3 批：有 Fn 层的键在 Fn 层也都有字（FixedPanel.fnGlyphs，Fn 按着 / 锁着时键帽整片换成它）：写着名字的不是空的，
+     * 出字的（65% 的 Esc → 1 左边那个键）字表里有那个码、锁着哪种修饰键都有字；没有 Fn 层的键 fnGlyphs 是 null。
+     * 协议 21 起再查 FixedKeyboardView 真用的那几个（Fn 层显示着时）：glyphs(…, fn = true, …) 每个键都有字——带 Fn 层的就是 fnGlyphs、别的和 Fn 没显示时一样；
+     * 写不写名字（字号）、主次、放大提示照 Fn 层那一项；高亮：Fn 键只看 Fn 锁住 | 快锁了，Fn 层显示着时带 Fn 层的键不画底层修饰键的高亮。
+     */
+    static void fnCaps(FixedPanel p, FixedLegends.Table t, int[] mods, String what) {
+        FixedLayout l = p.layout();
+        String bad = null;
+        int withFn = 0;
+        for (int i = 0; i < p.keys().size(); i++) {
+            FixedLayout.Key k = p.keys().get(i);
+            FixedLayout.FnKey f = k.special ? null : l.fn(k.id);
+            if (f == null) {
+                if (p.fnGlyphs(i, 0, false) != null) bad = k + " 没有 Fn 层却有 Fn 层的字";
+                continue;
+            }
+            withFn++;
+            if (f.charKey() && !t.has(f.usage)) bad = k + " 的 Fn 层 " + f + " 字表里没有";
+            for (int md : mods) for (boolean cl : new boolean[]{false, true}) {
+                List<FixedPanel.Glyph> gs = p.fnGlyphs(i, md, cl);
+                boolean any = false;
+                if (gs != null) for (FixedPanel.Glyph g : gs) {
+                    if (g.text == null || g.text.isEmpty()) bad = k + " 的 Fn 层有空的字";
+                    if (g.slot != FixedPanel.Glyph.CORNER) any = true;
+                }
+                if (!any) bad = k + " 的 Fn 层锁着 " + Integer.toHexString(md) + (cl ? " + Caps" : "") + " 时没有字";
+            }
+        }
+        check(bad == null && withFn == l.fnKeys().size(), what + " Fn 层每个键都有字（" + withFn + " 个）" + (bad == null ? "" : "：" + bad));
+        String view = null;
+        int fnKeyIndex = -1;
+        for (int i = 0; i < p.keys().size(); i++) {
+            FixedLayout.Key k = p.keys().get(i);
+            FixedLayout.FnKey f = p.fnKey(i);
+            if (FixedLayout.fnKey(k)) fnKeyIndex = i;
+            for (int md : mods) for (boolean cl : new boolean[]{false, true}) {
+                List<FixedPanel.Glyph> on = p.glyphs(i, md, cl, true, "Space");
+                List<FixedPanel.Glyph> want = f != null ? p.fnGlyphs(i, md, cl) : p.glyphs(i, md, cl, "Space");
+                boolean any = false;
+                for (FixedPanel.Glyph g : on) {
+                    if (g.text == null || g.text.isEmpty()) view = k + " Fn 层显示着时有空的字";
+                    if (g.slot != FixedPanel.Glyph.CORNER) any = true;
+                }
+                if (!any) view = k + " Fn 层显示着、锁着 " + Integer.toHexString(md) + (cl ? " + Caps" : "") + " 时没有字";
+                if (!String.valueOf(on).equals(String.valueOf(want))) view = k + " Fn 层显示着时画的 " + on + " 不是 " + want;
+                if (!String.valueOf(p.glyphs(i, md, cl, false, "Space")).equals(String.valueOf(p.glyphs(i, md, cl, "Space")))) {
+                    view = k + " Fn 没显示时和以前画的不一样";
+                }
+            }
+            if (p.named(i, true) != (f != null ? !f.charKey() : !k.charKey())) view = k + " Fn 层显示着时写不写名字不对";
+            if (f != null && !f.charKey() && (!p.functionKey(i, true) || p.preview(i, 0, false, true) != null)) {
+                view = k + " Fn 层的 " + f + " 是功能键、不放大";
+            }
+            if (f != null && f.charKey() && (p.functionKey(i, true) || p.preview(i, 0, false, true) == null)) {
+                view = k + " Fn 层出字的 " + f + " 是普通键、放大提示照它的字";
+            }
+            if (f == null && p.functionKey(i, true) != p.functionKey(i)) view = k + " 没有 Fn 层：主次和平时一样";
+            boolean lit = p.active(i, 0, false, Proto.FN_LATCHED), litArmed = p.active(i, 0, false, Proto.FN_HELD | Proto.FN_ARMED),
+                    held = p.active(i, 0, false, Proto.FN_HELD);
+            if (FixedLayout.fnKey(k) ? !(lit && litArmed && !held) : (lit || litArmed || held) && !FixedPanel.active(k, 0, false)) {
+                view = k + " Fn 的高亮只在 Fn 键上、只看锁住 | 快锁了";
+            }
+            if (k.id >= 0xE0 && k.id <= 0xE7 && !k.special) {
+                int bit = 1 << (k.id - 0xE0);
+                boolean shownOff = p.active(i, bit, false, 0), shownOn = p.active(i, bit, false, Proto.FN_HELD);
+                if (!shownOff || shownOn != (f == null)) view = k + " 锁着的修饰键：Fn 层显示着时带 Fn 层的不亮（写着 Fn 层的字）、别的照亮";
+            }
+        }
+        check(view == null && fnKeyIndex >= 0, what + " Fn 层显示着时每个键的字、主次、高亮" + (view == null ? "" : "：" + view));
     }
 
     static FixedPanel panel(String lang, String shape, String size, String mode) {
@@ -713,6 +804,7 @@ public final class FixedLayoutTest {
         int windows = 0, raisedW = 0, raisedH = 0, bad = 0;
         String firstBad = null;
         for (String sh : SHAPES) for (String sz : sizes) for (String m : MODES) {
+            if (!FixedLayout.available(sh, sz, m)) continue;
             FixedLayout l = layout(sh, sz, m);
             float natural = l.width / (l.height * KeyboardPlan.FIXED_ROW_ASPECT);
             for (int w = 300; w <= 2600; w += 20) for (int h = 100; h <= 1600; h += 20) {
@@ -741,6 +833,7 @@ public final class FixedLayoutTest {
     static void stickPlan(String[] shapes, String[] sizes, int[][] windows, String label) {
         int embedded = 0, outside = 0, ghb = 0, plans = 0;
         for (String sh : shapes) for (String sz : sizes) for (String m : MODES) for (int[] wh : windows) {
+            if (!FixedLayout.available(sh, sz, m)) continue;
             FixedLegends.Table t = glyphTable(sh, m);
             FixedLayout l = FixedLayout.build(sh, sz, m, t.hasThird(), ".");
             if (!KeyboardPlan.fixedFits(l, wh[0], T)) continue;
@@ -772,14 +865,15 @@ public final class FixedLayoutTest {
                 List<FixedPanel.Seg> sp = new ArrayList<>();
                 for (FixedPanel.Seg s : panel.segs()) if (panel.keys().get(s.key).id == 0x2C) sp.add(s);
                 float unit = pw / l.width;
-                // 笔记本的空格最短 0.75 份（FixedPanel.LAPTOP_SPACE_MIN，只在 1 份时让不出三个 minKey 的键时才往下缩）
-                float minSpace = l.laptop() ? FixedPanel.LAPTOP_SPACE_MIN : KeyRows.STICK_SPACE_MIN;
+                // 笔记本（第 3 批起苹果紧凑也是）的空格最短 0.75 份（FixedPanel.LAPTOP_SPACE_MIN，只在 1 份时让不出三个 minKey 的键时才往下缩）
+                boolean shortSpace = l.laptop() || l.apple();
+                float minSpace = shortSpace ? FixedPanel.LAPTOP_SPACE_MIN : KeyRows.STICK_SPACE_MIN;
                 check(sp.size() == 2 && sp.get(0).right == p.hole[0] - GAP && sp.get(1).left == p.hole[1] + GAP
                                 && sp.get(0).right - sp.get(0).left >= unit * minSpace - 2 * GAP - 1
                                 && sp.get(1).right - sp.get(1).left >= unit * minSpace - 2 * GAP - 1,
-                        what + " 空格切成左右两段（发同一个键）、各至少 " + (l.laptop() ? "0.75" : "1") + " 份");
+                        what + " 空格切成左右两段（发同一个键）、各至少 " + (shortSpace ? "0.75" : "1") + " 份");
                 check(panel.capBoxes(panel.index(0x2C)).size() == 2, what + " 两段空格各一个键帽");
-                if (l.laptop() && sp.size() == 2) {
+                if (shortSpace && sp.size() == 2) {
                     int a = sp.get(0).right - sp.get(0).left, b = sp.get(1).right - sp.get(1).left;
                     check(Math.abs(a - b) <= 1, what + " 笔记本的空格以红点为中线：两段一样长（" + a + " / " + b + "）");
                 }
@@ -818,6 +912,7 @@ public final class FixedLayoutTest {
         int points = 0, inStick = 0, inTiles = 0, corners = 0, bad = 0;
         String first = null;
         for (String sz : sizes) for (String sh : shapes) for (String m : MODES) for (int[] wh : windows) {
+            if (!FixedLayout.available(sh, sz, m)) continue;
             FixedLegends.Table t = glyphTable(sh, m);
             FixedLayout l = FixedLayout.build(sh, sz, m, t.hasThird(), ".");
             KeyboardPlan.Plan p = KeyboardPlan.planFixed(KeyboardPlan.POINTER_STICK, KeyboardPlan.KEYS_OFF, wh[0], wh[1], null, l, T);
@@ -1018,11 +1113,12 @@ public final class FixedLayoutTest {
             check(near(l.segTop(up, 5), 5.25f) && near(l.segBottom(down, 5), 6.5f) && near(l.segTop(sp, 5), 5.25f) && near(l.segBottom(sp, 5), 6.5f),
                     name(l) + " segTop / segBottom：方向键用自己那截、别的键占整行");
         }
-        check(FixedLayout.ladder(FixedLayout.FULL).equals(Arrays.asList(FixedLayout.FULL, FixedLayout.TKL, FixedLayout.LAPTOP))
-                && FixedLayout.ladder(FixedLayout.TKL).equals(Arrays.asList(FixedLayout.TKL, FixedLayout.LAPTOP))
+        // 第 3 批起 TKL 和笔记本之间多了 75%（FixedCompactTest.ladders 另查 65% / 75% / 苹果紧凑的梯子）
+        check(FixedLayout.ladder(FixedLayout.FULL).equals(Arrays.asList(FixedLayout.FULL, FixedLayout.TKL, FixedLayout.P75, FixedLayout.LAPTOP))
+                && FixedLayout.ladder(FixedLayout.TKL).equals(Arrays.asList(FixedLayout.TKL, FixedLayout.P75, FixedLayout.LAPTOP))
                 && FixedLayout.ladder(FixedLayout.LAPTOP).equals(Arrays.asList(FixedLayout.LAPTOP))
-                && FixedLayout.ladder("bogus").equals(Arrays.asList(FixedLayout.TKL, FixedLayout.LAPTOP))
-                && FixedLayout.ladder(null).equals(Arrays.asList(FixedLayout.TKL, FixedLayout.LAPTOP)), "ladder：从选的尺寸往下，只缩不涨，认不出的当 TKL");
+                && FixedLayout.ladder("bogus").equals(Arrays.asList(FixedLayout.TKL, FixedLayout.P75, FixedLayout.LAPTOP))
+                && FixedLayout.ladder(null).equals(Arrays.asList(FixedLayout.TKL, FixedLayout.P75, FixedLayout.LAPTOP)), "ladder：从选的尺寸往下，只缩不涨，认不出的当 TKL");
     }
 
     static int indexOfId(List<FixedLayout.Key> ks, int id) {
@@ -1276,9 +1372,15 @@ public final class FixedLayoutTest {
 
     // ── 特殊键（⋯、🌐，REGION_BUTTON）只有一段：跨段抬起不算点击（不变量）。三种尺寸都扫 ──
     static void specialOneSegment(String[] shapes, String label) {
+        specialOneSegment(FixedLayout.SIZES_DESC, shapes, label);
+    }
+
+    /** 同上，尺寸带参数（第 3 批的三种另跑一次）。特殊键：⋯（放在槽里时）、🌐（Mac 模式，没有 Fn 键的尺寸）、Fn / fn🌐（有 Fn 键的尺寸）。 */
+    static void specialOneSegment(String[] sizes, String[] shapes, String label) {
         int combos = 0;
-        for (String sz : FixedLayout.SIZES_DESC) for (String sh : shapes) for (String m : MODES) for (boolean menu : new boolean[]{false, true})
+        for (String sz : sizes) for (String sh : shapes) for (String m : MODES) for (boolean menu : new boolean[]{false, true})
             for (boolean holed : new boolean[]{false, true}) for (int[] wh : new int[][]{{933, 352}, {600, 230}, {480, 230}, {1800, 700}}) {
+                if (!FixedLayout.available(sh, sz, m)) continue;
                 FixedLayout l = layout(sh, sz, m);
                 FixedPanel p = new FixedPanel();
                 p.setBoard(l, geoTable(sh, m));
@@ -1295,7 +1397,7 @@ public final class FixedLayoutTest {
                     for (FixedPanel.Seg s : p.segs()) if (s.key == i) n++;
                     ok &= n == 1;
                 }
-                check(ok && specials == (menu ? 1 : 0) + (l.mac() ? 1 : 0), name(l) + (menu ? " ⋯" : "") + (holed ? " 让位" : "") + " " + wh[0] + "×" + wh[1]
+                check(ok && specials == (menu ? 1 : 0) + (l.hasFn() ? 1 : l.mac() ? 1 : 0), name(l) + (menu ? " ⋯" : "") + (holed ? " 让位" : "") + " " + wh[0] + "×" + wh[1]
                         + " 每个特殊键恰好一段（" + specials + " 个）");
             }
         System.err.println("  特殊键只有一段" + label + "：" + combos + " 种（尺寸 × 形状 × 模式 × ⋯ × 让位 × 窗口）");
@@ -1303,7 +1405,13 @@ public final class FixedLayoutTest {
 
     // ── ⋯ / 🌐：按下、在键里挪到靠下沿 / 靠左边、抬起，真 TouchRouter 报 BUTTON_TAP（MainActivity 只认它）──
     static void buttonTap() {
-        for (String sz : FixedLayout.SIZES_DESC) for (String m : MODES) for (int[] wh : new int[][]{{751, 300}, {480, 230}, {933, 352}}) {
+        buttonTap(FixedLayout.SIZES_DESC);
+    }
+
+    /** 同上，尺寸带参数（第 3 批的三种另跑一次：⋯；Fn / fn🌐 协议 21 起是键、不是按钮，不在这里，见 FixedCompactTest.fnPaths）。 */
+    static void buttonTap(String[] sizes) {
+        for (String sz : sizes) for (String m : MODES) for (int[] wh : new int[][]{{751, 300}, {480, 230}, {933, 352}}) {
+            if (!FixedLayout.available(FixedLayout.ANSI, sz, m)) continue;
             FixedLayout l = layout(FixedLayout.ANSI, sz, m);
             FixedPanel p = new FixedPanel();
             p.setBoard(l, table("us", m));
@@ -1314,7 +1422,7 @@ public final class FixedLayoutTest {
             router.setConfig(new GestureEngine.Config(), 1);
             router.setRegions(regions(p));
             for (int i = 0; i < p.keys().size(); i++) {
-                if (!p.keys().get(i).special) continue;
+                if (FixedLayout.regionType(p.keys().get(i)) != Proto.REGION_BUTTON) continue;   // 报成按钮的特殊键（⋯、🌐）
                 FixedPanel.Seg seg = null;
                 for (FixedPanel.Seg s : p.segs()) if (s.key == i) seg = s;
                 if (seg == null) continue;

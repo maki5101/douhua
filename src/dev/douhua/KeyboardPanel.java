@@ -194,7 +194,7 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
      * 锁住或按着 Shift 时显示大写和上档符号，Caps 开着时字母按 KeyRows.capText 换大小写。
      */
     @Override
-    public void setKeyState(int latched, int held, int armed, boolean caps) {
+    public void setKeyState(int latched, int held, int armed, int fn, boolean caps) {   // fn：豆花布局没有实体键盘的 Fn 键，不看
         if (latched == this.latched && held == this.held && armed == this.armed && caps == capsOn) return;
         // 按着的修饰键松开了：分流照 KeyHolds 的规则先把待定的合并键当点一下结算掉，提示不再换成角上那个字
         if ((this.held & ~held) != 0) settleCorners(-1);

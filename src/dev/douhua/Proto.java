@@ -16,7 +16,7 @@ public final class Proto {
      */
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
-    public static final int VERSION = 20;
+    public static final int VERSION = 21;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
     /**
@@ -55,7 +55,8 @@ public final class Proto {
     /** 心跳：App 主线程每秒一次。服务超过 HEARTBEAT_TIMEOUT_MS 收不到就释放触摸屏。 */
     public static final int CMD_HEARTBEAT = 6;
     /**
-     * 虚拟键盘按键：key:i32（同 REGION_KEY 的 id，含合并键 {@link #dualKey}）, action:u8（{@link #KEY_UP} / {@link #KEY_DOWN} / {@link #KEY_CANCEL}）。
+     * 虚拟键盘按键：key:i32（同 REGION_KEY 的 id，含合并键 {@link #dualKey}、协议 21 起的 Fn 键 {@link #FN_KEY} 和带 Fn 层的键 {@link #fnLayerKey}）,
+     * action:u8（{@link #KEY_UP} / {@link #KEY_DOWN} / {@link #KEY_CANCEL}）。
      * 服务没接管触摸屏时，App 自己收到键盘区的触摸、动作里的组合键就发这个；服务的分流按同一份规则判点一下 / 按住 / 锁（KeyHolds），时间用收到的时刻。
      * 协议 20 起（以前是 key:u16, down:u8）：i32 是合并键的 id 放不进 16 位；CANCEL 是被取消的手指不能当"点了一下"（不然取消一下就发 Caps / 逗号）。
      * 不算心跳。
@@ -107,7 +108,8 @@ public final class Proto {
      */
     public static final int CMD_GAMEPAD_CONFIG = 15;
     /**
-     * 清掉锁住的修饰键（协议 20 起）：不带参数。服务的分流把锁定全部解开（HID 里这些位松开，同一位还有手指按着的照旧按着；快锁了的、待定的不动）。
+     * 清掉锁住的修饰键（协议 20 起）：不带参数。服务的分流把锁定全部解开（HID 里这些位松开，同一位还有手指按着的照旧按着；快锁了的、待定的不动；
+     * 协议 21 起锁住的 Fn 也解开）。
      * 进空中鼠标、手柄页时 App 发（不然 Ctrl 一直按着、每次点击都成了 Ctrl+点击）。取代以前"逐个点一下"：现在没锁着的修饰键点一下
      * 就是给主机一次真单点（Super 打开开始菜单）；也不带 App 记的锁定掩码，那份可能晚一步。不算心跳。
      */
@@ -123,19 +125,24 @@ public final class Proto {
      * 比如"@" = 0x1F | (2 << 8)（Shift+2），"复制" = 0x06 | (1 << 8)（Ctrl+C）。服务直接操作虚拟键盘；
      * 报给 App 的按钮编号是 KEY_ID_BASE + id。
      * 另有合并键（协议 20 起，小红点状态的逗号句号）：id = {@link #dualKey}(点一下的键, 按住 0.4 秒的键)，两个都是上面那种 16 位的键 id。
+     * 协议 21 起还有实体键盘 75% / 65% / 苹果紧凑的 Fn 键（{@link #FN_KEY} / {@link #FN_GLOBE_KEY}）和带 Fn 层的键（{@link #fnLayerKey}）。
+     * 三种 id 的范围互不重叠（ServerPartsTest 锁住）：普通键 0–0xFFFF；合并键 0x10000–0x3FFFFFFF；Fn 那一段 0x40000000–0x40FFFFFF。
+     * KEY_ID_BASE + id 都还是正数（App 只看 ≥ KEY_ID_BASE）。
      */
     public static final int REGION_KEY = 3;
 
     /**
-     * 合并键的 id：tap | hold << 16（hold ≠ 0 且 ≤ 0x7FFF，id 保持正数）。点一下 = tap，按住 0.4 秒 = hold（只发一次点按），见 KeyHolds。
+     * 合并键的 id：tap | hold << 16（hold ≠ 0 且 ≤ 0x3FFF）。点一下 = tap，按住 0.4 秒 = hold（只发一次点按），见 KeyHolds。
      * 报给 App 的按钮编号照旧 KEY_ID_BASE + id（App 只看 ≥ KEY_ID_BASE）。
+     * hold 协议 21 起最多 0x3FFF（以前 0x7FFF）：第 30 位让给 Fn 那一段（{@link #FN_FLAG}）；以前最大的 hold 加上 KEY_ID_BASE 会溢出成负数，
+     * 现在最大的合并键加上它照样是正数。真用到的 hold 只有句号 0x37。
      */
     public static int dualKey(int tap, int hold) {
-        return (tap & 0xFFFF) | (hold & 0x7FFF) << 16;
+        return (tap & 0xFFFF) | (hold & 0x3FFF) << 16;
     }
 
     public static boolean isDualKey(int id) {
-        return id > 0xFFFF;
+        return id > 0xFFFF && id < FN_FLAG;
     }
 
     public static int dualTap(int id) {
@@ -143,7 +150,47 @@ public final class Proto {
     }
 
     public static int dualHold(int id) {
-        return (id >>> 16) & 0x7FFF;
+        return (id >>> 16) & 0x3FFF;
+    }
+
+    /**
+     * Fn 那一段（协议 21 起）的标志位：id 的高 8 位正好是 0x40 的都是 Fn 那一段——Fn 键自己（{@link #FN_KEY} / {@link #FN_GLOBE_KEY}，
+     * 第 16–23 位是 0）和带 Fn 层的键（{@link #fnLayerKey}，第 16–23 位是 Fn 层的码，不是 0）。
+     */
+    public static final int FN_FLAG = 0x40000000;
+    /**
+     * 实体键盘 75% / 65% 的 Fn 键（Windows 模式）：按住 = Fn 层，规矩同修饰键（KeyHolds：组合 = 那一下出 Fn 层、单独按住 0.4–1 秒松手锁一个键、
+     * 超过 1 秒不锁），单独点一下什么都不做（同点一下 Shift）。不发 HID（真键盘的 Fn 也不发），只改带 Fn 层的键按下时发哪个码。
+     */
+    public static final int FN_KEY = FN_FLAG;
+    /** Mac 模式的 fn🌐（75% / 65% / 苹果紧凑）：同 {@link #FN_KEY}，只是单独点一下 = 🌐（报 {@link #GLOBE_BUTTON_ID} 的点击，和 🌐 键走同一条路）。 */
+    public static final int FN_GLOBE_KEY = FN_FLAG | 1;
+    /** 🌐 的按钮编号（App 的 🌐 键、实体键盘 Mac 模式的 🌐，KeyRows.GLOBE_BUTTON_ID 就是它）：分流对 fn🌐 的单点报这个编号的 BUTTON_TAP。 */
+    public static final int GLOBE_BUTTON_ID = 302;
+
+    /**
+     * 带 Fn 层的键的 id：FN_FLAG | fn << 16 | base。base = 底层的键 id（16 位，现在都是用法码，可以是修饰键：Windows 模式右 Ctrl 的 Fn 层是 Menu），
+     * fn = Fn 层的用法码（1–0xFF）。按下那一刻 Fn 按着或锁着就发 fn、不然发 base，记下来，松开松的是按下时的那个（KeyHolds）。
+     */
+    public static int fnLayerKey(int base, int fn) {
+        return FN_FLAG | (fn & 0xFF) << 16 | (base & 0xFFFF);
+    }
+
+    public static boolean isFnLayerKey(int id) {
+        return (id & 0xFF000000) == FN_FLAG && ((id >>> 16) & 0xFF) != 0;
+    }
+
+    /** Fn 键自己（{@link #FN_KEY} / {@link #FN_GLOBE_KEY}）。 */
+    public static boolean isFnKey(int id) {
+        return id == FN_KEY || id == FN_GLOBE_KEY;
+    }
+
+    public static int fnBase(int id) {
+        return id & 0xFFFF;
+    }
+
+    public static int fnCode(int id) {
+        return (id >>> 16) & 0xFF;
     }
     /**
      * 键盘面板的整块范围（不是键，id 不用、填 0），排在它的键后面。按在这里却没落在任何键上（键间的缝、
@@ -265,11 +312,14 @@ public final class Proto {
      */
     public static final int GRAB_WAIT_LIFT = 9;
     /**
-     * 修饰键的状态：latched:u8, held:u8, armed:u8（HID 修饰键位：1 Ctrl、2 Shift、4 Alt、8 Win，右边四个 << 4）。
+     * 修饰键的状态：latched:u8, held:u8, armed:u8（HID 修饰键位：1 Ctrl、2 Shift、4 Alt、8 Win，右边四个 << 4）, fn:u8（{@link #FN_LATCHED} 等位）。
      * latched = 锁住的（单独按住 0.4–1 秒松手锁，打完下一个键自动解开）；held = 现在有手指按着的；armed = 单独按住到了 0.4 秒、"现在松手就锁"的。
-     * App 照 latched | armed 画高亮、照 latched | held 换键帽上的字。协议 20 起（以前只有 latched 一个字节）。
+     * App 照 latched | armed 画高亮、照 latched | held 换键帽上的字。协议 20 起三个字节（以前只有 latched 一个）；
+     * 协议 21 起第四个字节是 Fn 的同样三样（实体键盘 75% / 65% / 苹果紧凑）：App 照锁住 | 快锁了画 Fn 键的高亮、照锁住 | 按着把带 Fn 层的键帽整片换成 Fn 层的字。
      */
     public static final int MSG_MODIFIERS = 0x85;
+    /** MSG_MODIFIERS 第四个字节的位：Fn 锁住了（只管下一个键）、有手指按着、"现在松手就锁"。 */
+    public static final int FN_LATCHED = 1, FN_HELD = 2, FN_ARMED = 4;
     /**
      * 转发的鼠标报文（relay 模式）：buttons:u8, dx:i16, dy:i16, wheel:i16, pan:i16。wheel / pan 是 1/120 格（Hid.WHEEL_UNIT），
      * App 按蓝牙主机设的倍率换算成计数（Hid.WheelOut）。协议 18 以前是 i8 的格数。

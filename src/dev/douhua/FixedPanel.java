@@ -14,6 +14,8 @@ import java.util.Locale;
  * 跨两行的键（ISO 回车、小键盘 + 和 Enter）报区域、收触摸时按行切成同一个 id 的几段矩形，画的时候画成一个形状（{@link #shape}）。
  * 小红点状态（KeyboardScreen 量尺寸时设，同豆花布局）：空格那一排在中间让出空位给三个鼠标键（{@link #setHole}），空格被切成左右两段；
  * 红点嵌在 G、H、B 中间时碰到切口圆的键帽沿圆弧画、字竖着挪开（{@link #setStick}，规则同豆花布局：KeyboardPlan.cuts / labelShift）。
+ * Fn（第 3 批，协议 21）：报的区域、面板自己收触摸发给分流的都是 {@link #keyId}（Fn 键、带 Fn 层的键是协议的编码）；Fn 锁住或按着时画什么（字、主次、高亮）
+ * 也在这里（{@link #glyphs(int, int, boolean, boolean, String)}、{@link #active(int, int, boolean, int)}），按下发哪个码在 KeyHolds。
  */
 final class FixedPanel {
     /** 键的一段（面板像素，已经扣掉四周的缝）：key = 当前显示的键（{@link #keys}）的下标。 */
@@ -320,6 +322,8 @@ final class FixedPanel {
      * 红点那条竖线在空格里偏左（TKL / 全尺寸 ANSI / ISO / ABNT2 都是空格 3.75–10u、红点 6.75u），右边那段多 0.25u；笔记本的空格 4.25–9.25u 正好以红点为中线。
      * 笔记本多一步（{@link #LAPTOP_SPACE_MIN}）：上面几步都让不出时，三个键各 minKey、空格缩到刚好放得下，最短 0.75 份——
      * 照"三个键 ≥ keyW > 空格 ≥ 1 份 > 三个键 ≥ minKey > 空格 ≥ 0.75 份"的先后，空格、键宽随面板宽连续变，面板一格 ≥ minKey 就一定让得出。
+     * 苹果紧凑（第 3 批）照笔记本也多这一步：空格同样只有 5u、以红点为中线，逐级缩里它也是最后一级（放不下就是豆花布局），不加这一步的话
+     * 面板不到约 520dp 宽时让不出三个键。75% / 65% 的空格和 TKL 一样（3.75–10u），照 TKL 的规则，它们放不下还有笔记本。
      */
     static int[] stickHole(FixedLayout layout, int w, KeyboardPlan.Sizes s) {
         FixedLayout.Key space = layout.find(0x2C);
@@ -333,7 +337,7 @@ final class FixedPanel {
         int hw = Math.max(hwPref, (s.holeWidth(s.keyW) + 1) / 2);
         if (hw <= hwMax && hw > 0) return new int[]{cx - hw, cx + hw};
         if (hwMax > 0 && 2 * hwMax >= s.holeWidth(s.minKey)) return new int[]{cx - hwMax, cx + hwMax};
-        if (layout.laptop()) {
+        if (layout.laptop() || layout.apple()) {
             int need = (s.holeWidth(s.minKey) + 1) / 2;   // 三个键各 minKey
             int hwLaptop = narrow - Math.round(unit * LAPTOP_SPACE_MIN);
             if (need > 0 && need <= hwLaptop) return new int[]{cx - need, cx + need};
@@ -345,12 +349,13 @@ final class FixedPanel {
 
     /**
      * 报给服务的区域（加到 out 后面，每项 {type, id, 左, 上, 右, 下}，屏幕像素；dx / dy = 面板在屏幕上的左上角）：
-     * 先是每个键的每一段（特殊键是 REGION_BUTTON，别的 REGION_KEY，id 是用法码 / 按钮编号），后面是键盘范围（同 KeyboardPanel：hit 先找包含的键）。
+     * 先是每个键的每一段（⋯ / 🌐 是 REGION_BUTTON，别的 REGION_KEY；id 见 {@link #keyId}：Fn 键、带 Fn 层的键是协议 21 的编码，别的是用法码 / 按钮编号），
+     * 后面是键盘范围（同 KeyboardPanel：hit 先找包含的键）。
      */
     void regions(int dx, int dy, List<int[]> out) {
         for (Seg s : segs) {
             FixedLayout.Key k = keys.get(s.key);
-            out.add(new int[]{k.special ? Proto.REGION_BUTTON : Proto.REGION_KEY, k.id, dx + s.left, dy + s.top, dx + s.right, dy + s.bottom});
+            out.add(new int[]{FixedLayout.regionType(k), keyId(s.key), dx + s.left, dy + s.top, dx + s.right, dy + s.bottom});
         }
         for (int[] r : ranges) out.add(new int[]{Proto.REGION_KEYBOARD, 0, dx + r[0], dy + r[1], dx + r[2], dy + r[3]});
     }
@@ -363,9 +368,8 @@ final class FixedPanel {
         TouchRouter.Region[] rs = new TouchRouter.Region[segs.size()];
         for (int i = 0; i < rs.length; i++) {
             Seg s = segs.get(i);
-            // 编号直接用键的下标（只在这里用）
-            rs[i] = new TouchRouter.Region(keys.get(s.key).special ? Proto.REGION_BUTTON : Proto.REGION_KEY, s.key,
-                    s.left, s.top, s.right, s.bottom);
+            // 编号直接用键的下标（只在这里用），类型同报的区域
+            rs[i] = new TouchRouter.Region(FixedLayout.regionType(keys.get(s.key)), s.key, s.left, s.top, s.right, s.bottom);
         }
         TouchRouter.Region[] areas = new TouchRouter.Region[ranges.size()];
         for (int i = 0; i < areas.length; i++) {
@@ -395,9 +399,29 @@ final class FixedPanel {
         return i < 0 ? null : box(i).clone();
     }
 
-    /** 这个 id（用法码 / 按钮编号）是第几个键，没有返回 -1。 */
+    /** 这个 id（几何里的编号：用法码 / 按钮编号，FixedLayout.FN_ID）是第几个键，没有返回 -1。 */
     int index(int id) {
         for (int i = 0; i < keys.size(); i++) if (keys.get(i).id == id) return i;
+        return -1;
+    }
+
+    /**
+     * 第 i 个键报给分流、面板自己收触摸时发给分流的 id（FixedLayout.keyId：Fn 键 → Proto.FN_KEY / FN_GLOBE_KEY、带 Fn 层的键 → Proto.fnLayerKey，
+     * 别的就是几何里的编号）。服务转来的按下（MSG_BUTTON）也是它。
+     */
+    int keyId(int i) {
+        FixedLayout.Key k = keys.get(i);
+        return layout == null ? k.id : layout.keyId(k);
+    }
+
+    /** 第 i 个键是不是走分流的键（REGION_KEY：发 KEY_DOWN / KEY_UP，连 Fn）；⋯ / 🌐 是按钮（点了由 App 执行）。 */
+    boolean sendsKey(int i) {
+        return FixedLayout.regionType(keys.get(i)) == Proto.REGION_KEY;
+    }
+
+    /** 报的 id 是 id（{@link #keyId}）的键是第几个，没有返回 -1。 */
+    int indexOfKeyId(int id) {
+        for (int i = 0; i < keys.size(); i++) if (keyId(i) == id) return i;
         return -1;
     }
 
@@ -461,17 +485,72 @@ final class FixedPanel {
     List<Glyph> glyphs(int i, int mods, boolean caps, String spaceName) {
         List<Glyph> out = new ArrayList<>();
         FixedLayout.Key k = keys.get(i);
+        if (k.id == FixedLayout.FN_ID && layout != null && layout.mac()) {
+            // Mac 模式的 fn🌐（第 3 批）：照苹果现款键帽，上面 fn、下面一个地球（🌐 照别处去色）
+            out.add(new Glyph(FN_TOP, Glyph.TOP, false, false));
+            out.add(new Glyph(GLOBE, Glyph.BOTTOM, false, false));
+            return out;
+        }
         if (!k.charKey()) {
             String name = FixedLayout.SPACE_NAME.equals(k.name) && k.id == 0x2C && spaceName != null ? spaceName : k.name;
             out.add(new Glyph(name, Glyph.CENTER, false, false));
             return out;
         }
+        return charGlyphs(k.id, mods, caps);
+    }
+
+    /** Mac 模式 fn🌐 键帽上的两个字（FixedLayout.FN_NAME_MAC 拆开画）。 */
+    static final String FN_TOP = "fn", GLOBE = "🌐";
+
+    /**
+     * 同 {@link #glyphs(int, int, boolean, String)}，fn = Fn 层这时显示着（Fn 锁住或按着，MSG_MODIFIERS 第四个字节的 FN_LATCHED | FN_HELD）：
+     * 带 Fn 层的键帽整片换成 Fn 层的字（{@link #fnGlyphs}），别的键照旧。FixedKeyboardView 只调这一个。
+     */
+    List<Glyph> glyphs(int i, int mods, boolean caps, boolean fn, String spaceName) {
+        if (fn) {
+            List<Glyph> g = fnGlyphs(i, mods, caps);
+            if (g != null) return g;
+        }
+        return glyphs(i, mods, caps, spaceName);
+    }
+
+    /** 第 i 个键的 Fn 层那一项（FixedLayout.fn）；没有 Fn 层（特殊键、Fn 自己、没列的键）返回 null。 */
+    FixedLayout.FnKey fnKey(int i) {
+        FixedLayout.Key k = keys.get(i);
+        return k.special || layout == null ? null : layout.fn(k.id);
+    }
+
+    /** 这时第 i 个键帽上写的是名字（功能键那种，字号按名字取）而不是字：Fn 层显示着、这个键有 Fn 层时看 Fn 层那一项。 */
+    boolean named(int i, boolean fn) {
+        FixedLayout.FnKey f = fn ? fnKey(i) : null;
+        return f != null ? !f.charKey() : !keys.get(i).charKey();
+    }
+
+    /**
+     * 第 i 个键的 Fn 层画哪几个字（FixedLayout.fn；Fn 按着 / 锁着时键帽整片换成它）：没有 Fn 层返回 null；
+     * 写着名字的（F1、PgUp、Ins……）正中一个名字；出字的（65% 的 Esc → 1 左边那个键）照那个用法码画，规则同 {@link #glyphs}（锁着的修饰键、Caps 照样换层）。
+     * 平时（Fn 没显示）键帽上不另外画小号的 Fn 层提示：角上已经是第三层的字，再挤看不清。
+     */
+    List<Glyph> fnGlyphs(int i, int mods, boolean caps) {
+        FixedLayout.FnKey f = fnKey(i);
+        if (f == null) return null;
+        if (!f.charKey()) {
+            List<Glyph> out = new ArrayList<>();
+            out.add(new Glyph(f.name, Glyph.CENTER, false, false));
+            return out;
+        }
+        return charGlyphs(f.usage, mods, caps);
+    }
+
+    /** 出字的键（用法码 usage）键帽上画哪几个字，规则见 {@link #glyphs}。 */
+    private List<Glyph> charGlyphs(int usage, int mods, boolean caps) {
+        List<Glyph> out = new ArrayList<>();
         int layer = layer(mods, layout);
         boolean plain = layer == FixedLegends.NORMAL;
         boolean shift = layer == FixedLegends.SHIFT || layer == FixedLegends.THIRD_SHIFT;
         boolean third = layer >= FixedLegends.THIRD;
-        FixedLegends.Cell n = cell(k.id, FixedLegends.NORMAL), s = cell(k.id, FixedLegends.SHIFT);
-        FixedLegends.Cell t = cell(k.id, FixedLegends.THIRD), t4 = cell(k.id, FixedLegends.THIRD_SHIFT);
+        FixedLegends.Cell n = cell(usage, FixedLegends.NORMAL), s = cell(usage, FixedLegends.SHIFT);
+        FixedLegends.Cell t = cell(usage, FixedLegends.THIRD), t4 = cell(usage, FixedLegends.THIRD_SHIFT);
         if (letterLike(n, s)) {
             // 字母：Shift / Caps 定大小写（会出的就是它，不暗）；锁着第三层时会出的是角上那个，字母压暗
             FixedLegends.Cell c = upper(shift, caps, layout) ? s : n;
@@ -506,19 +585,39 @@ final class FixedPanel {
     /** 同上，caps = 豆花这边显示的大写锁定：字母类的键照 {@link #upper} 换大小写（第三层不看 Caps）。 */
     String preview(int i, int mods, boolean caps) {
         FixedLayout.Key k = keys.get(i);
-        if (!k.charKey()) return null;
+        return k.charKey() ? charPreview(k.id, mods, caps) : null;
+    }
+
+    /** 同上，fn = Fn 层显示着：带 Fn 层的键照 Fn 层那一项（出字的照它的码放大，写着名字的不放大）。 */
+    String preview(int i, int mods, boolean caps, boolean fn) {
+        FixedLayout.FnKey f = fn ? fnKey(i) : null;
+        if (f == null) return preview(i, mods, caps);
+        return f.charKey() ? charPreview(f.usage, mods, caps) : null;
+    }
+
+    /** 出字的键（用法码 usage）按下时放大提示写什么，规则见 {@link #preview(int, int)}。 */
+    private String charPreview(int usage, int mods, boolean caps) {
         int layer = layer(mods, layout);
         if (layer == FixedLegends.NORMAL || layer == FixedLegends.SHIFT) {
-            FixedLegends.Cell n = cell(k.id, FixedLegends.NORMAL), s = cell(k.id, FixedLegends.SHIFT);
+            FixedLegends.Cell n = cell(usage, FixedLegends.NORMAL), s = cell(usage, FixedLegends.SHIFT);
             if (letterLike(n, s)) return (upper(layer == FixedLegends.SHIFT, caps, layout) ? s : n).text;
         }
-        FixedLegends.Cell c = cell(k.id, layer);
+        FixedLegends.Cell c = cell(usage, layer);
         return c == null ? null : c.text;
     }
 
     /** 第 i 个键算不算功能键（主题的功能键颜色，规则同豆花布局 KeyRows.functionKey）。 */
     boolean functionKey(int i) {
         return KeyRows.functionKey(keys.get(i).face, false);
+    }
+
+    /**
+     * 同上，fn = Fn 层显示着：带 Fn 层的键按 Fn 层那个码判主次（同 KeyRows.functionKey：F1、PgUp、Ins 这些是功能键，65% 的 Fn+Esc 出的 ` 是普通键）。
+     */
+    boolean functionKey(int i, boolean fn) {
+        FixedLayout.FnKey f = fn ? fnKey(i) : null;
+        if (f == null) return functionKey(i);
+        return KeyRows.functionKey(new KeyRows.Key(f.usage, f.name == null ? "" : f.name, null, 1, false), false);
     }
 
     /** 这个键是修饰键，而且锁着（高亮）：左右八个都认（豆花布局只画左边四个）。 */
@@ -534,6 +633,22 @@ final class FixedPanel {
         if (k.special) return false;
         if (k.id == KeyHolds.CAPS) return caps;
         return k.id >= 0xE0 && k.id <= 0xE7 && (shown & (1 << (k.id - 0xE0))) != 0;
+    }
+
+    /**
+     * 第 i 个键画不画高亮（协议 21 起带 Fn）：Fn 键看 fn 的锁住 | 快锁了（Proto.FN_LATCHED / FN_ARMED）；Fn 层显示着时（fn 带 FN_LATCHED / FN_HELD）
+     * 带 Fn 层的键画的是 Fn 层那个键，不画底层修饰键的高亮（Windows 模式右 Ctrl 这时写着 ☰）；别的照 {@link #active(FixedLayout.Key, int, boolean)}。
+     */
+    boolean active(int i, int shown, boolean caps, int fn) {
+        FixedLayout.Key k = keys.get(i);
+        if (FixedLayout.fnKey(k)) return (fn & (Proto.FN_LATCHED | Proto.FN_ARMED)) != 0;
+        if (fnShown(fn) && fnKey(i) != null) return false;
+        return active(k, shown, caps);
+    }
+
+    /** Fn 层显示着吗（Fn 锁住或按着；Fn 层的字、按下时发 Fn 层的码，同 KeyHolds.fnActive）。 */
+    static boolean fnShown(int fn) {
+        return (fn & (Proto.FN_LATCHED | Proto.FN_HELD)) != 0;
     }
 
     /**

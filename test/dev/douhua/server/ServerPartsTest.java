@@ -75,6 +75,7 @@ public final class ServerPartsTest {
         gamepadNotHeartbeat();
         gamepadConfigCodec();
         protocol20();
+        protocol21();
         staleKeyTimerDoesNothing();
 
         System.err.println("服务端部件：" + checks + " 项检查，" + failures + " 项失败");
@@ -552,7 +553,7 @@ public final class ServerPartsTest {
             c.onMessage(Proto.CMD_UNLATCH, t);
         }
         check(!c.fresh(t0 + 3000), "只收按键 / 解开锁定：3 秒后照样不新鲜");
-        check(Proto.VERSION == 20, "协议 20");
+        check(Proto.VERSION >= 20, "协议 20 起");
         int[] cmds = {Proto.CMD_PING, Proto.CMD_KEY, Proto.CMD_CLICK, Proto.CMD_CONFIG, Proto.CMD_LAYOUT, Proto.CMD_HEARTBEAT, Proto.CMD_HID_KEY,
                 Proto.CMD_ROTATE, Proto.CMD_WHEEL, Proto.CMD_TRACE, Proto.CMD_HARD_KEYS, Proto.CMD_HOLD_LEFT, Proto.CMD_GAMEPAD,
                 Proto.CMD_GAMEPAD_CONFIG, Proto.CMD_UNLATCH};
@@ -571,12 +572,56 @@ public final class ServerPartsTest {
         int comma = Proto.dualKey(0x36, 0x37);
         check(comma == 0x00370036 && comma > 0 && Proto.isDualKey(comma), "逗号句号合键的 id = 0x00370036");
         check(Proto.dualTap(comma) == 0x36 && Proto.dualHold(comma) == 0x37, "取回点一下 / 按住的键");
-        int big = Proto.dualKey(0x1F | (2 << 8), 0x7FFF);
-        check(big > 0 && Proto.dualTap(big) == (0x1F | (2 << 8)) && Proto.dualHold(big) == 0x7FFF, "自带修饰键的键、最大的 hold 照样取得回来、id 还是正数");
+        int big = Proto.dualKey(0x1F | (2 << 8), 0x3FFF);   // 协议 21 起 hold 最多 0x3FFF（第 30 位让给 Fn 那一段）
+        check(big > 0 && Proto.dualTap(big) == (0x1F | (2 << 8)) && Proto.dualHold(big) == 0x3FFF, "自带修饰键的键、最大的 hold 照样取得回来、id 还是正数");
         boolean plain = true;
         for (int k = 0; k <= 0xFFFF; k++) plain &= !Proto.isDualKey(k);
         check(plain, "16 位的键 id 都不是合并键");
         check(Proto.KEY_ID_BASE + comma > Proto.KEY_ID_BASE, "报给 App 的按钮编号照旧 ≥ KEY_ID_BASE");
+    }
+
+    /**
+     * 协议 21（实体键盘的 Fn 层）：版本号；MSG_MODIFIERS 第四个字节的 Fn 位；三种键 id（普通键、合并键、Fn 那一段）互不重叠、各认各的、取得回来，
+     * 报给 App 的按钮编号（KEY_ID_BASE + id）都还是 ≥ KEY_ID_BASE 的正数；Fn 键自己和带 Fn 层的键分得开；🌐 的按钮编号是 302。
+     */
+    static void protocol21() {
+        check(Proto.VERSION == 21, "协议 21");
+        check(Proto.FN_LATCHED == 1 && Proto.FN_HELD == 2 && Proto.FN_ARMED == 4, "MSG_MODIFIERS 的 Fn 位：1 锁住、2 按着、4 快锁了");
+        check(Proto.GLOBE_BUTTON_ID == 302 && Proto.GLOBE_BUTTON_ID < Proto.MOUSE_BUTTON_ID_BASE, "🌐 的按钮编号 302（不是键盘键）");
+        // 普通键：0–0xFFFF 都不是合并键、不是 Fn 那一段
+        boolean plain = true;
+        for (int k = 0; k <= 0xFFFF; k++) plain &= !Proto.isDualKey(k) && !Proto.isFnKey(k) && !Proto.isFnLayerKey(k);
+        check(plain, "16 位的键 id 都不是合并键、不是 Fn");
+        // 合并键：hold 1–0x3FFF、tap 抽样，都是合并键、不是 Fn 那一段，取得回来，加上 KEY_ID_BASE 还是正数
+        boolean dual = true;
+        for (int hold = 1; hold <= 0x3FFF; hold++) {
+            for (int tap : new int[]{0, 0x36, 0x1F | (2 << 8), 0xFFFF}) {
+                int id = Proto.dualKey(tap, hold);
+                dual &= id > 0xFFFF && Proto.isDualKey(id) && !Proto.isFnKey(id) && !Proto.isFnLayerKey(id) && id < Proto.FN_FLAG
+                        && Proto.dualTap(id) == tap && Proto.dualHold(id) == hold && Proto.KEY_ID_BASE + id >= Proto.KEY_ID_BASE;
+            }
+        }
+        check(dual, "合并键（hold 1–0x3FFF）：都认得出、取得回来，不在 Fn 那一段，KEY_ID_BASE + id 是正数");
+        // Fn 那一段：底层 0–0xFFFF 抽样 × Fn 层 1–0xFF
+        boolean fn = true;
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        for (int code = 1; code <= 0xFF; code++) {
+            for (int base = 0; base <= 0xFF; base++) {
+                for (int chord : new int[]{0, 0x200, 0xF00}) {
+                    int b = base | chord, id = Proto.fnLayerKey(b, code);
+                    fn &= Proto.isFnLayerKey(id) && !Proto.isFnKey(id) && !Proto.isDualKey(id) && id > 0xFFFF
+                            && Proto.fnBase(id) == b && Proto.fnCode(id) == code && seen.add(id)
+                            && Proto.KEY_ID_BASE + id >= Proto.KEY_ID_BASE && (id & 0xFF000000) == Proto.FN_FLAG;
+                }
+            }
+        }
+        check(fn, "带 Fn 层的键：都认得出、底层 / Fn 层取得回来、各不相同，不是合并键、不是 Fn 键，KEY_ID_BASE + id 是正数");
+        check(Proto.isFnKey(Proto.FN_KEY) && Proto.isFnKey(Proto.FN_GLOBE_KEY) && Proto.FN_KEY != Proto.FN_GLOBE_KEY
+                && !Proto.isFnLayerKey(Proto.FN_KEY) && !Proto.isFnLayerKey(Proto.FN_GLOBE_KEY)
+                && !Proto.isDualKey(Proto.FN_KEY) && !Proto.isDualKey(Proto.FN_GLOBE_KEY)
+                && !seen.contains(Proto.FN_KEY) && !seen.contains(Proto.FN_GLOBE_KEY)
+                && Proto.KEY_ID_BASE + Proto.FN_GLOBE_KEY >= Proto.KEY_ID_BASE, "Fn 键（Windows / Mac 两种）：不是带 Fn 层的键、不是合并键");
+        check(Proto.dualKey(0x36, 0x37) == 0x00370036, "逗号句号合键的 id 没变（协议 21 只收窄了 hold 的范围）");
     }
 
     /** GamepadConfig 往返；长了（新版本多发的字段）跳过、后面的命令照读；短了（旧版本）缺的用默认。 */
@@ -1513,7 +1558,7 @@ public final class ServerPartsTest {
             public void button(int id, int action) {}
 
             @Override
-            public void modifiers(int latched, int held, int armed) {}
+            public void modifiers(int latched, int held, int armed, int fn) {}
 
             @Override
             public void caps(boolean sent) {}
@@ -1579,6 +1624,7 @@ public final class ServerPartsTest {
      * 按键专用的第二个定时器（Session.keyTimer，协议 20）+ 真 TouchRouter：
      * ① 按下 Shift，定时器到点、卡在锁上时松开（事件时间 300ms：用户在 0.4 秒之前就松了，只是消息晚到）——拿到锁的那次什么都不做：不震、不锁；
      * ② 正常按住：到 0.4 秒真到点（震一下、快锁了），0.5 秒松开锁住。
+     * ③ Fn（协议 21）同 ①：Mac 模式的 fn🌐 按下，0.4 秒到点卡在锁上时松开（事件时间 300ms）——拿到锁的那次不震、不快锁，松开当单点出 🌐、不锁。
      */
     static void staleKeyTimerDoesNothing() throws Exception {
         TimerThread tt = new TimerThread();
@@ -1604,11 +1650,13 @@ public final class ServerPartsTest {
             public void gesture(int fingers, int kind) {}
 
             @Override
-            public void button(int id, int action) {}
+            public void button(int id, int action) {
+                if (id == Proto.GLOBE_BUTTON_ID) log.add("globe" + action);
+            }
 
             @Override
-            public void modifiers(int latched, int held, int armed) {
-                log.add("mod" + latched + "/" + held + "/" + armed);
+            public void modifiers(int latched, int held, int armed, int fn) {
+                log.add("mod" + latched + "/" + held + "/" + armed + (fn != 0 ? "/fn" + fn : ""));
             }
 
             @Override
@@ -1669,6 +1717,24 @@ public final class ServerPartsTest {
             check(log.contains(hold) && log.contains("mod0/2/2"), "按键定时器：0.4 秒真到点，震一下、快锁了");
             t.key(0xE1, Proto.KEY_UP, t1 + 500);
             check(log.get(log.size() - 1).equals("mod2/0/0") && !log.contains("k0"), "0.5 秒松开：锁住（主机看不到松开）");
+            t.releaseAll();
+        }
+        // ③ Fn：到点卡在锁上时松开
+        synchronized (lock) {
+            log.clear();
+            long t2 = nowMs();
+            t.key(Proto.FN_GLOBE_KEY, Proto.KEY_DOWN, t2);
+            blocked = tt.awaitBlocked();
+            t.key(Proto.FN_GLOBE_KEY, Proto.KEY_UP, t2 + 300);
+        }
+        check(blocked, "按键定时器：fn🌐 0.4 秒到点的那次卡在锁上");
+        Thread.sleep(150);
+        synchronized (lock) {
+            String armed = "/fn" + (Proto.FN_HELD | Proto.FN_ARMED), latched = "/fn" + Proto.FN_LATCHED;
+            boolean bad = log.contains(hold);
+            for (String s : log) bad |= s.endsWith(armed) || s.endsWith(latched);
+            check(!bad && log.contains("globe" + Proto.BUTTON_TAP) && log.get(log.size() - 1).equals("mod0/0/0"),
+                    "fn🌐：撤掉之后才拿到锁的那次什么都不做（不震、不快锁、不锁），松开照单点出 🌐：" + log);
             t.releaseAll();
         }
         tt.exec.shutdownNow();

@@ -41,6 +41,7 @@ public final class BoardsTest {
         abnt2Shape(catalog);
         modes(catalog);
         names(catalog);
+        batch3(catalog);
         System.err.println("键盘切换 / 状态保留：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -313,6 +314,96 @@ public final class BoardsTest {
         eq(Boards.langName(catalog, FixedLegends.find(catalog, "se-legacy"), en, null, join), "Swedish · legacy", "没给翻译：区分词照写");
         eq(Boards.langName(catalog, FixedLegends.find(catalog, "se-legacy"), en, w -> null, join), "Swedish · legacy", "翻译返回 null：照写");
         check(Boards.langChoices(null, FixedLayout.WIN, en, words, join).isEmpty(), "清单是 null：空列表");
+    }
+
+    // ── 第 3 批：六种尺寸各存各的大小位置；苹果紧凑只有 Mac 模式、ANSI / ISO（灰不灰、存着时的退路），存的值不动 ──
+    static void batch3(List<FixedLegends.Layout> catalog) {
+        MapStore s = new MapStore();
+        Boards b = new Boards(s, catalog);
+        for (String z : FixedLayout.ALL_SIZES) {
+            b.setSize(z);
+            eq(b.size(), z, "尺寸 " + z + " 存得进、读得出");
+        }
+        eq(Boards.rectKey(FixedLayout.P75, KeyboardPlan.POINTER_PAD, true), "kbx_75_pad_land_", "75% 的键名");
+        eq(Boards.rectKey(FixedLayout.P65, KeyboardPlan.POINTER_NONE, false), "kbx_65_none_port_", "65% 的键名");
+        eq(Boards.rectKey(FixedLayout.APPLE, KeyboardPlan.POINTER_STICK, true), "kbx_apple_stick_land_", "苹果紧凑的键名");
+        int n = 0;
+        for (String z : FixedLayout.ALL_SIZES) b.setRect(z, true, new float[]{0.01f * ++n, 0, 1, 1});
+        Map<String, float[]> all = b.savedRects(true);
+        boolean ok = all.size() == 6;
+        n = 0;
+        for (String z : FixedLayout.ALL_SIZES) ok &= all.containsKey(z) && Math.abs(all.get(z)[0] - 0.01f * ++n) < 1e-6f;
+        check(ok, "savedRects：六种尺寸各一份、各回各的");
+        b.resetRect(FixedLayout.P65, true);
+        check(!b.savedRects(true).containsKey(FixedLayout.P65) && b.savedRects(true).size() == 5, "恢复默认只清 65% 那份");
+        // 静态规则和 FixedLayout.available 一致
+        for (String z : FixedLayout.ALL_SIZES) for (String sh : FixedLayout.SHAPES) for (String m : new String[]{FixedLayout.WIN, FixedLayout.MAC}) {
+            check(Boards.sizeAvailable(z, sh, m) == FixedLayout.available(sh, z, m), z + "/" + sh + "/" + m + "：sizeAvailable 同 FixedLayout.available");
+        }
+        // 存着的组合：苹果紧凑 + Windows / ABNT2 配不上，存的值不动
+        MapStore t = new MapStore();
+        Boards c = new Boards(t, catalog);
+        check(c.sizeAvailable(), "默认（美式 ANSI TKL Windows）配得上");
+        c.setSize(FixedLayout.APPLE);
+        check(!c.sizeAvailable() && c.modeAvailable(), "苹果紧凑 + Windows 模式：配不上（数据是有的）");
+        eq(c.spec().toString(), "us/ansi/apple/win", "配不上的组合存的值不动（不悄悄改成 Mac）");
+        c.setMode(FixedLayout.MAC);
+        check(c.sizeAvailable(), "苹果紧凑 + Mac 模式 + ANSI：配得上");
+        c.setLang("br");
+        check(!c.sizeAvailable() && "abnt2".equals(c.shape()), "苹果紧凑 + 巴西（只有 ABNT2）：配不上");
+        c.setLang("de");
+        check(c.sizeAvailable() && "iso".equals(c.shape()), "换成德语（ISO）：配得上");
+        c.setSize(FixedLayout.P65);
+        c.setMode(FixedLayout.WIN);
+        c.setLang("br");
+        check(c.sizeAvailable(), "65% 什么组合都配得上（巴西 ABNT2 + Windows）");
+        // 语言列表：苹果紧凑 + Mac 模式时巴西（只有 ABNT2）灰掉、原因是尺寸；拉美灰掉、原因是没有 Mac 的数据；别的尺寸巴西照常
+        java.util.Locale zh = java.util.Locale.forLanguageTag("zh-CN");
+        List<Boards.LangChoice> apple = Boards.langChoices(catalog, FixedLayout.MAC, FixedLayout.APPLE, zh, null, "%1$s · %2$s");
+        int greyBySize = 0;
+        for (Boards.LangChoice lc : apple) {
+            boolean onlyAbnt2 = !lc.layout.allows(FixedLayout.ANSI) && !lc.layout.allows(FixedLayout.ISO);
+            check(lc.enabled == (lc.layout.hasMode(FixedLayout.MAC) && !onlyAbnt2) && lc.modeOk == lc.layout.hasMode(FixedLayout.MAC),
+                    lc.layout.id + "：苹果紧凑 + Mac 模式时灰不灰、原因对");
+            if (lc.modeOk && !lc.enabled) greyBySize++;
+        }
+        check(greyBySize == 1, "苹果紧凑时因为尺寸灰掉的只有巴西：" + greyBySize);
+        for (String z : new String[]{FixedLayout.TKL, FixedLayout.P75, FixedLayout.P65, FixedLayout.LAPTOP, FixedLayout.FULL}) {
+            List<Boards.LangChoice> lcs = Boards.langChoices(catalog, FixedLayout.MAC, z, zh, null, "%1$s · %2$s");
+            List<Boards.LangChoice> old = Boards.langChoices(catalog, FixedLayout.MAC, zh, null, "%1$s · %2$s");
+            boolean same = lcs.size() == old.size();
+            for (int i = 0; same && i < lcs.size(); i++) same = lcs.get(i).enabled == old.get(i).enabled && lcs.get(i).layout == old.get(i).layout && lcs.get(i).modeOk == old.get(i).enabled;
+            check(same, z + "：语言列表和不看尺寸时一样（只有苹果紧凑多灰）");
+        }
+        // 随机序列（尺寸在六种里挑）：kb_ 开头的一个不动、只写 kbd_ / kbx_；配不上时一定是苹果紧凑 + Windows / ABNT2
+        java.util.Random rnd = new java.util.Random(20261103);
+        int ops = 0, wrong = 0;
+        for (int round = 0; round < 20; round++) {
+            MapStore u = new MapStore();
+            Map<String, Object> before = douhuaKeys();
+            u.map.putAll(before);
+            Boards d = new Boards(u, catalog);
+            for (int i = 0; i < 60; i++) {
+                ops++;
+                switch (rnd.nextInt(6)) {
+                    case 0: d.setLang(catalog.get(rnd.nextInt(catalog.size())).id); break;
+                    case 1: d.setShape(FixedLayout.SHAPES[rnd.nextInt(3)]); break;
+                    case 2: d.setSize(FixedLayout.ALL_SIZES[rnd.nextInt(6)]); break;
+                    case 3: d.setMode(rnd.nextBoolean() ? FixedLayout.WIN : FixedLayout.MAC); break;
+                    case 4: d.setRect(FixedLayout.ALL_SIZES[rnd.nextInt(6)], rnd.nextBoolean(), new float[]{0, 0, 1, 1}); break;
+                    default: d.resetRect(FixedLayout.ALL_SIZES[rnd.nextInt(6)], rnd.nextBoolean()); d.savedRects(rnd.nextBoolean()); break;
+                }
+                Boards.Spec sp = d.spec();
+                boolean expect = !FixedLayout.APPLE.equals(sp.size) || (FixedLayout.MAC.equals(sp.mode) && !FixedLayout.ABNT2.equals(sp.shape));
+                if (d.sizeAvailable() != expect) wrong++;
+            }
+            Map<String, Object> after = new TreeMap<>();
+            for (Map.Entry<String, Object> e : u.map.entrySet()) if (e.getKey().startsWith("kb_")) after.put(e.getKey(), e.getValue());
+            boolean only = true;
+            for (String k : u.written) only &= k.startsWith("kbd_") || k.startsWith("kbx_");
+            check(after.equals(before) && only, "第 3 批随机序列第 " + round + " 轮：kb_ 开头的一个没动、只写了 kbd_ / kbx_");
+        }
+        check(wrong == 0, "第 3 批随机序列 " + ops + " 步：配不上的一定是苹果紧凑 + Windows / ABNT2（" + wrong + " 步不对）");
     }
 
     private static boolean eq4(float[] a, float[] b) {

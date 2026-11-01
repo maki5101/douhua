@@ -40,8 +40,9 @@ final class Link {
         /**
          * 修饰键的状态（Proto.MSG_MODIFIERS，协议 20 起三样，HID 修饰键位）：latched = 锁住的，held = 有手指按着的，
          * armed = 单独按住到了 0.4 秒、"现在松手就锁"的。界面照 latched | armed 画高亮、照 latched | held 换键帽上的字。
+         * fn = Fn 的同样三样（协议 21，Proto.FN_LATCHED / FN_HELD / FN_ARMED 位）。
          */
-        void onModifiers(int latched, int held, int armed);
+        void onModifiers(int latched, int held, int armed, int fn);
 
         /** Caps 的显示该翻一下了（Proto.MSG_CAPS）：sent = 这次给主机发了 Caps Lock（点一下），假 = 只切显示（按住 0.4 秒）。 */
         void onCaps(boolean sent);
@@ -340,7 +341,8 @@ final class Link {
                             int latched = in.readUnsignedByte();
                             int held = in.readUnsignedByte();
                             int armed = in.readUnsignedByte();
-                            main.post(() -> listener.onModifiers(latched, held, armed));
+                            int fn = in.readUnsignedByte();   // 协议 21
+                            main.post(() -> listener.onModifiers(latched, held, armed, fn));
                             break;
                         }
                         case Proto.MSG_CAPS: {

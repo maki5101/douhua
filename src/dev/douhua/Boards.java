@@ -18,11 +18,12 @@ import java.util.function.Function;
  *   kbx_lang               布局（kbd_catalog 的 id：us、de……第 2 批起 34 个），默认 us
  *   kbx_shape              形状 ansi / iso / abnt2（第 2 批）；这个布局不能选的（德语只有 ISO、巴西只有 ABNT2）读的时候换成布局的默认形状，
  *                          存的值不动（换回能选的布局时还在）
- *   kbx_size               tkl（默认）/ full / laptop（笔记本，2026-11-01）：逐级缩的起点（放不下就往小换，FixedLayout.ladder），存的值不跟着缩
+ *   kbx_size               tkl（默认）/ full / laptop（笔记本，2026-11-01）/ 75 / 65 / apple（第 3 批：75%、65%、苹果紧凑）：逐级缩的起点
+ *                          （放不下就往小换，FixedLayout.ladder），存的值不跟着缩
  *   kbx_mode               win（默认，连 Linux、安卓也用它）/ mac（连 iPad 也用它）
  *   kbx_pointer            键盘页的指点（KeyboardPlan.POINTER_*），和豆花布局的 kb_pointer 分开记：在实体键盘上换成小红点不会把豆花布局也换了
  *   kbx_<尺寸>_<指点>_<land|port>_<l|t|r|b>   大小位置（键盘区的 0–1，没有 = 默认）：按尺寸 × 指点 × 横竖屏各一份
- *                          （换语言、形状、模式不挪；全尺寸、TKL、笔记本来回换各回各的；有触控板时避让、没有时不避让，同豆花布局按指点分开记）。
+ *                          （换语言、形状、模式不挪；六种尺寸来回换各回各的；有触控板时避让、没有时不避让，同豆花布局按指点分开记）。
  *                          尺寸是**显示着的**那个（逐级缩成笔记本时取、存的都是 kbx_laptop_…），所以存取都显式给尺寸，不按选的尺寸
  * 只有一块实体键盘（用户 2026-11-01 要的是"选哪块实体键盘：语言、形状、尺寸、Windows / Mac"，⋯ 菜单里豆花 / 实体两块切换）；
  * 方案里的"键盘列表、按主机记住、主机系统、互换开关"都不做（用户："主机怎么读那是主机的事，不是键盘设计者应该考虑的问题"）。
@@ -31,6 +32,10 @@ import java.util.function.Function;
  * 第 2 批（2026-11-01）多了设置页语言列表的规则（{@link #langName}、{@link #langChoices}、{@link #modeAvailable}）：布局叫什么、按名字排、
  * 某布局在某种模式下没有键帽数据（拉美没有 Mac 的）时灰掉。灰掉只管设置页能不能选；存着的组合要是正好没数据（以后清单变了之类），
  * 键盘页照 1B 的规则退回豆花布局（FixedData.ladder 是空的），存的值不动。
+ *
+ * 第 3 批（2026-11-01）：苹果紧凑只有 Mac 模式、只有 ANSI / ISO（FixedLayout.available）。同"没数据的模式"那条：设置页把不可用的那一边灰掉
+ * （{@link #sizeAvailable}：选 Windows 模式 / ABNT2 形状时尺寸里的苹果紧凑、选着苹果紧凑时模式里的 Windows、形状里的 ABNT2、语言列表里只有 ABNT2 的布局），
+ * 存着的组合正好不可用时键盘页退回豆花布局（FixedData.ladder 是空的），⋯ 菜单、设置页写原因，存的值不动。
  */
 final class Boards {
     /** 存储：get 不到给默认值，put / remove 马上生效（App 里是 SharedPreferences.apply）。 */
@@ -197,10 +202,10 @@ final class Boards {
         for (String e : new String[]{"l", "t", "r", "b"}) store.remove(p + e);
     }
 
-    /** 三个尺寸各自在现在这种指点、这个方向下存的那份（尺寸 → {左, 上, 右, 下}；没存过的不放进去）：逐级缩换到哪一级都有它自己那份（FixedSizing）。 */
+    /** 每个尺寸（六种，FixedLayout.ALL_SIZES）在现在这种指点、这个方向下存的那份（尺寸 → {左, 上, 右, 下}；没存过的不放进去）：逐级缩换到哪一级都有它自己那份（FixedSizing）。 */
     Map<String, float[]> savedRects(boolean landscape) {
         Map<String, float[]> out = new LinkedHashMap<>();
-        for (String size : FixedLayout.SIZES_DESC) {
+        for (String size : FixedLayout.ALL_SIZES) {
             float[] r = savedRect(size, landscape);
             if (r != null) out.put(size, r);
         }
@@ -238,16 +243,24 @@ final class Boards {
         return false;
     }
 
-    /** 设置页语言列表的一项：清单的一行、界面语言里的名字、在现在的模式下能不能选（没有这种模式的键帽数据就灰掉）。 */
+    /**
+     * 设置页语言列表的一项：清单的一行、界面语言里的名字、在现在的模式和尺寸下能不能选（enabled）。灰掉的原因：modeOk 假 = 没有这种模式的键帽数据；
+     * modeOk 真而 enabled 假 = 现在选的尺寸配不上这个布局的形状（第 3 批：苹果紧凑没有 ABNT2，巴西只有 ABNT2）。
+     */
     static final class LangChoice {
         final FixedLegends.Layout layout;
         final String name;
-        final boolean enabled;
+        final boolean enabled, modeOk;
 
         LangChoice(FixedLegends.Layout layout, String name, boolean enabled) {
+            this(layout, name, enabled, enabled);
+        }
+
+        LangChoice(FixedLegends.Layout layout, String name, boolean enabled, boolean modeOk) {
             this.layout = layout;
             this.name = name;
             this.enabled = enabled;
+            this.modeOk = modeOk;
         }
 
         @Override
@@ -261,10 +274,25 @@ final class Boards {
      * mode（现在选的模式）下没有键帽数据的灰掉（enabled 假：拉美在 Mac 模式下），不藏起来（看得见、写着原因）。
      */
     static List<LangChoice> langChoices(List<FixedLegends.Layout> catalog, String mode, Locale ui, Function<String, String> words, String join) {
+        return langChoices(catalog, mode, null, ui, words, join);
+    }
+
+    /**
+     * 同上，另看现在选的尺寸 size（null = 不看）：这个布局能选的形状没有一种配得上这个尺寸的也灰掉（第 3 批：苹果紧凑只有 ANSI / ISO，巴西只有 ABNT2），
+     * 原因看 {@link LangChoice#modeOk}。
+     */
+    static List<LangChoice> langChoices(List<FixedLegends.Layout> catalog, String mode, String size, Locale ui, Function<String, String> words,
+                                        String join) {
         List<LangChoice> out = new ArrayList<>();
         if (catalog == null) return out;
         String m = FixedLayout.validMode(mode);
-        for (FixedLegends.Layout l : catalog) out.add(new LangChoice(l, langName(catalog, l, ui, words, join), l.hasMode(m)));
+        for (FixedLegends.Layout l : catalog) {
+            boolean modeOk = l.hasMode(m);
+            boolean shapeOk = size == null;
+            // 只看形状配不配得上（按 Mac 模式问：模式那一边由"模式"那一行灰掉，苹果紧凑选着时 Windows 选不了）
+            if (!shapeOk) for (String sh : l.shapes) shapeOk |= FixedLayout.available(sh, size, FixedLayout.MAC);
+            out.add(new LangChoice(l, langName(catalog, l, ui, words, join), modeOk && shapeOk, modeOk));
+        }
         Collator c = Collator.getInstance(ui);
         out.sort((a, b) -> {
             int r = c.compare(a.name, b.name);
@@ -285,5 +313,20 @@ final class Boards {
     /** 现在选的布局在现在选的模式下有没有键帽数据（没有的话键盘页退回豆花布局，⋯ 菜单、设置页写明原因）。 */
     boolean modeAvailable() {
         return modeAvailable(catalog, lang(), mode());
+    }
+
+    // ═══════════ 尺寸配不配得上（第 3 批） ═══════════
+
+    /**
+     * 尺寸 size 配不配得上形状 shape、模式 mode（FixedLayout.available：苹果紧凑只有 Mac 模式、只有 ANSI / ISO）。设置页按它灰掉
+     * 尺寸里的苹果紧凑（选着 Windows / ABNT2 时）、模式里的 Windows 和形状里的 ABNT2（选着苹果紧凑时）。
+     */
+    static boolean sizeAvailable(String size, String shape, String mode) {
+        return FixedLayout.available(shape, size, mode);
+    }
+
+    /** 现在选的尺寸配不配得上现在的形状（这个布局读出来的那种）、模式；配不上键盘页退回豆花布局，⋯ 菜单、设置页写明原因，存的值不动。 */
+    boolean sizeAvailable() {
+        return sizeAvailable(size(), shape(), mode());
     }
 }

@@ -503,6 +503,7 @@
     <string name="kbd_menu_stepped">Tastiera: fisica · %1$s (%2$s → %3$s)</string>
     <string name="kbd_menu_no_data">Tastiera: fisica (dati illeggibili, mostro Douhua)</string>
     <string name="kbd_menu_no_mode">Tastiera: fisica · %1$s (nessun dato per la modalità %2$s, mostro Douhua)</string>
+    <string name="kbd_menu_no_size">Tastiera: fisica · %1$s (Apple compatta solo in modalità Mac con ANSI / ISO, mostro Douhua)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
     <string name="kbd_var_intl">Internazionale</string>
     <string name="kbd_var_legacy">Precedente</string>
@@ -510,11 +511,12 @@
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
     <string name="kbd_mode_unavailable">%1$s (nessun dato per questo layout)</string>
+    <string name="kbd_apple_unavailable">%1$s (non con Apple compatta)</string>
     <string name="sec_kbd_board">Quale tastiera</string>
     <string name="kbd_board">La schermata tastiera usa</string>
     <string name="kbd_board_douhua">Layout Douhua</string>
     <string name="kbd_board_fixed">Tastiera fisica</string>
-    <string name="kbd_board_note">Si può cambiare anche con «Tastiera» nel menu ⋯. Entrambe tengono le loro impostazioni: dimensione e posizione del layout Douhua, divisione, riga inferiore e livello mostrato restano com\'erano. Se non entra nemmeno la dimensione portatile (tasto lettera sotto i 32 dp, ad es. telefono in verticale) si mostra intanto il layout Douhua; ruotando in orizzontale torna la tastiera fisica.</string>
+    <string name="kbd_board_note">Si può cambiare anche con «Tastiera» nel menu ⋯. Entrambe tengono le loro impostazioni: dimensione e posizione del layout Douhua, divisione, riga inferiore e livello mostrato restano com\'erano. Se non entra nemmeno il passo più piccolo (tasto lettera sotto i 32 dp, ad es. telefono in verticale) si mostra intanto il layout Douhua; ruotando in orizzontale torna la tastiera fisica.</string>
     <string name="sec_kbd_fixed">Tastiera fisica</string>
     <string name="kbd_lang">Layout (cosa mostrano i tasti)</string>
     <string name="kbd_host_names">Scegli lo stesso layout sul computer o tablet: su Mac e iPad si chiama «%1$s», su Windows «%2$s».</string>
@@ -524,6 +526,7 @@
     <string name="kbd_lang_hosts_win">Windows: %1$s</string>
     <string name="kbd_lang_hosts_mac">Mac: %1$s · non su Windows</string>
     <string name="kbd_lang_no_mode">Nessun dato dei tasti per la modalità %1$s; cambia modalità per sceglierlo</string>
+    <string name="kbd_lang_no_apple">Solo ABNT2, che la Apple compatta non ha; cambia dimensione per sceglierlo</string>
     <string name="kbd_shape">Forma</string>
     <string name="kbd_shape_ansi">ANSI (USA, Invio su una riga)</string>
     <string name="kbd_shape_iso">ISO (Invio a L, tasto in più a sinistra della Z)</string>
@@ -532,16 +535,24 @@
     <string name="kbd_size_tkl">Senza tastierino numerico (TKL, %1$d tasti)</string>
     <string name="kbd_size_full">Completa (con tastierino numerico, %1$d tasti)</string>
     <string name="kbd_size_laptop">Portatile (stile ThinkPad, frecce in basso a destra, %1$d tasti)</string>
+    <string name="kbd_size_75">75%% (riga F e frecce, %1$d tasti)</string>
+    <string name="kbd_size_65">65%% (senza riga F, con frecce, %1$d tasti)</string>
+    <string name="kbd_size_apple">Apple compatta (proporzioni MacBook / Magic Keyboard, solo modalità Mac, %1$d tasti)</string>
+    <string name="kbd_size_apple_only">%1$s (solo modalità Mac con ANSI / ISO)</string>
     <string name="kbd_size_short_full">completa</string>
     <string name="kbd_size_short_tkl">TKL</string>
     <string name="kbd_size_short_laptop">portatile</string>
-    <string name="kbd_size_note">Se la dimensione scelta non entra nella finestra (tasto lettera sotto i 32 dp) si riduce un passo alla volta: completa → TKL → portatile; il layout Douhua si mostra solo se non entra nemmeno la portatile. Quando la finestra si allarga torna da sola. Ogni dimensione ricorda la propria grandezza e posizione.</string>
+    <string name="kbd_size_short_75" formatted="false">75%</string>
+    <string name="kbd_size_short_65" formatted="false">65%</string>
+    <string name="kbd_size_short_apple">Apple compatta</string>
+    <string name="kbd_size_note" formatted="false">Se la dimensione scelta non entra nella finestra (tasto lettera sotto i 32 dp) si riduce un passo alla volta: completa → TKL → 75% → portatile, e 65% → portatile; il layout Douhua si mostra solo se non entra nemmeno la portatile. La Apple compatta passa subito al layout Douhua. Quando la finestra si allarga torna da sola. Ogni dimensione ricorda la propria grandezza e posizione.</string>
     <string name="kbd_mode">Modalità</string>
     <string name="kbd_mode_hint">La modalità Mac è una tastiera Apple: riga inferiore ⌃ ⌥ ⌘ (Opzione invia Alt, Comando invia ⌘), i tasti mostrano ciò che digita un Mac; da usare anche per iPad. La modalità Windows è una tastiera PC: Ctrl, Super, Alt, AltGr, ☰, i tasti mostrano ciò che digita Windows; da usare anche per Linux e Android.</string>
     <string name="kbd_host_note">Douhua invia la posizione dei tasti; il carattere digitato dipende dal layout impostato sul computer o tablet. Imposta lo stesso layout lì e i tasti corrisponderanno a ciò che scrivi. In modalità desktop «lì» è questo telefono: nelle impostazioni della tastiera fisica del telefono scegli lo stesso layout per Douhua Keyboard.</string>
     <string name="kbd_open_hw">Apri le impostazioni della tastiera fisica del telefono</string>
     <string name="kbd_no_data">Impossibile leggere i dati della tastiera fisica</string>
     <string name="kbd_no_mode_data">%1$s non ha dati dei tasti per la modalità %2$s: la schermata tastiera mostra il layout Douhua. Scegli un\'altra modalità o un altro layout.</string>
+    <string name="kbd_no_size_data">La Apple compatta esiste solo in modalità Mac con forma ANSI / ISO: la schermata tastiera mostra il layout Douhua. Scegli un\'altra dimensione, modalità o layout.</string>
     <string name="sec_kbd_douhua">Layout Douhua</string>
     <string name="licenses">Licenze open source</string>
 </resources>

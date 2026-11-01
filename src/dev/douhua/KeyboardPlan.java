@@ -521,7 +521,7 @@ final class KeyboardPlan {
 
     /**
      * 逐级缩（2026-11-01，用户："不要去帮用户判断他现在什么屏幕状态、用什么键盘了……你设定一个最小的键帽的大小……只要小于这个，你就缩那个键盘的阵列。
-     * 缩完了还不放不进去，你就再缩；实在都放不进去，你就换成豆花"）：ladder = 设置里选的尺寸往下的几级（FixedLayout.ladder：全尺寸 → TKL → 笔记本），
+     * 缩完了还不放不进去，你就再缩；实在都放不进去，你就换成豆花"）：ladder = 设置里选的尺寸往下的几级（FixedLayout.ladder：全尺寸 → TKL → 75% → 笔记本……），
      * 返回第一个放得下（{@link #fixedFits}）的下标；都放不下（或者 ladder 是空的、w ≤ 0）返回 -1，这个窗口暂用豆花布局。
      * 纯按当前宽度算、不做回差（换尺寸不改变页宽，不会来回跳；页宽自己在门槛两边来回时本来就该换）。
      */
@@ -590,8 +590,8 @@ final class KeyboardPlan {
      * pointer / keys 同 {@link #plan}；saved = 存下的大小位置（这个尺寸的那份，Boards.savedRect，没存过是 null，用 {@link #fixedDefaultRect}；
      * 存过的经 {@link #fitFixedRect} 守住一格 ≥ minKey，Plan.rect 是撑过的那份）。
      * - 触控板：同合并时（键盘上 / 右 / 左 / 下空得最多的那块，短边够 minPad），可以切三键条。
-     * - ⋯：触控板顶上正中放得下就放那儿（{@link Plan#menuArea}），不然是这个尺寸的 ⋯ 槽里的键（FixedLayout.menu：TKL / 全尺寸在 Esc 和 F1 之间，
-     *   笔记本在左下角 Ctrl 右边那格）。
+     * - ⋯：触控板顶上正中放得下就放那儿（{@link Plan#menuArea}），不然是这个尺寸的 ⋯ 槽里的键（FixedLayout.menu：TKL / 全尺寸 / 75% 在 Esc 和 F1 之间，
+     *   笔记本 / 65% 在左下角 Ctrl 右边那格，苹果紧凑在 F 行最右）。
      * - 小红点（用户 2026-11-01："指点杆的位置是不一样的……也不是那几个键了，因为电脑键盘不是对称的；三个按键要占用的主要就是空格行了，因为没有自定义行"）：
      *   红点在真 ThinkPad 的位置（G、H 之间、B 上方，FixedPanel.stickPoint），碰到切口圆的键被切掉一块（一般是 G 的右下、H 的左下、B 的上沿正中），
      *   多大照豆花布局的规则（{@link #placeStickAt} → {@link #stickRadius}，实体键盘只有一层，每个键按字母层的门槛算），嵌不下放键盘外面；

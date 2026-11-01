@@ -103,7 +103,7 @@ final class FixedSizing {
         return level >= 0 && level < ladder.size() ? ladder.get(level) : null;
     }
 
-    /** 显示着的尺寸（FixedLayout.TKL / FULL / LAPTOP）；没显示是 null。 */
+    /** 显示着的尺寸（FixedLayout.ALL_SIZES 里的一种）；没显示是 null。 */
     String size() {
         FixedLayout l = layout();
         return l == null ? null : l.size;

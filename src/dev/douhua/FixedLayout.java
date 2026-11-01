@@ -3,13 +3,15 @@ package dev.douhua;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 实体键盘的几何（第 1B 批，2026-11-01），纯 Java（离线测，FixedLayoutTest）：每个键在哪、多宽、发哪个 HID 用法码，单位 u（1u = 一个字母键连缝）。
  * 豆花布局（KeyRows）每行按份数铺满，画不出实体键盘的 L 形回车、两行高的键、几个区块之间的空，所以另起一套，KeyRows 不动。
  *
- * 一块 = 形状（ANSI / ISO / ABNT2）× 尺寸（笔记本 / TKL / 全尺寸）× 模式（Windows / Mac）：形状只管主键区五行（ABNT2 还管小键盘右列），模式只管最下一排、编辑区和几个键名，
+ * 一块 = 形状（ANSI / ISO / ABNT2）× 尺寸（笔记本 / TKL / 全尺寸，第 3 批加 75% / 65% / 苹果紧凑）× 模式（Windows / Mac）：形状只管主键区五行（ABNT2 还管小键盘右列），模式只管最下一排、编辑区和几个键名，
  * 尺寸管有没有编辑区、数字小键盘（笔记本另有自己的 F 行和最下一排，见下面）。语言（键帽上的字）不在这里，在 FixedLegends（出字的键 name 是 null，字按用法码查表）。
  *
  * 竖着：F 行（第 0 行）、隔 0.25u、主键区五行（第 1–5 行：数字行、Q 行、A 行、Z 行、空格那一排），一共 6.25u 高（{@link #ROW_TOP}）。
@@ -24,7 +26,7 @@ import java.util.List;
  *   F 行右边 PrtSc ScrLk Pause。连 Linux、安卓也用这个模式。
  * - Mac 模式（照苹果键盘，连 iPad 也用它）：底行 ⌃ · ⌥ · ⌘ · 空格 · ⌘ · ⌥ · 🌐 · ⌃（Option 发 Alt 的用法码 0xE2 / 0xE6、Command 发 GUI 0xE3 / 0xE7，
  *   照真苹果键盘；🌐 是 KeyRows.GLOBE_BUTTON_ID，同豆花布局的 🌐 切换输入法）；PrtSc ScrLk Pause 换成 F13 F14 F15（苹果的全尺寸键盘就是 F13 起），
- *   Ins 那格空着（苹果那格是 fn，第 3 批）、没有 Menu 键，小键盘的 Num 写 Clear。
+ *   Ins 那格空着（苹果带数字键盘的那款这格是 fn；那款第 3 批没做，Mac 模式全尺寸已经有 F13–F15 和 Clear）、没有 Menu 键，小键盘的 Num 写 Clear。
  *   **ISO 的那两个键照真苹果 ISO 键盘发**：1 左边那个键（§ / ^）发 0x64、Z 左边那个键（` / <）发 0x35，和 PC 惯例正好对调。
  *   依据：Linux 的 hid-apple 驱动给苹果 ISO 键盘专门把 KEY_GRAVE（0x35）和 KEY_102ND（0x64）对调回来（apple_iso_keyboard[] 表、
  *   模块参数 iso_layout "Swap the backtick/tilde and greater-than/less-than keys"，默认按国家码自动开，2026-11-01 读了 torvalds/linux 的 hid-apple.c），
@@ -50,34 +52,64 @@ import java.util.List;
  *   真机下层比整排往下伸出一截，这里改成整排加高到 1.25 行，别的键跟着高、下面不留空着的机身。最下一排是一行，只有方向键竖着分两层：
  *   拆成两行的话 ⋯、🌐 会变成上下两段，跨段抬起就不算点击（TouchRouter.up 的按钮要 contains 或 same(hit)）。
  *   键盘范围：方向键以外一块（Ctrl–右 Ctrl），方向键上下两层各一块（{@link #ranges}：不分开的话两层之间那条缝全分给右 Ctrl）。
- * - 左下角放 Ctrl，第二格是 ⋯ 槽（真机这一格是 Fn；这批没有 Fn 层）：小触控板上摆出了 ⋯ 时左 Ctrl 伸过去占满 2.25u，摆不出时那 1u 是 ⋯ 键（{@link #keys(boolean)}）。
+ * - 左下角放 Ctrl，第二格是 ⋯ 槽（真机这一格是 Fn；第 3 批也不给笔记本加 Fn：⋯ 槽占着这一格，笔记本不动）：小触控板上摆出了 ⋯ 时左 Ctrl 伸过去占满 2.25u，摆不出时那 1u 是 ⋯ 键（{@link #keys(boolean)}）。
  *   Ctrl 在角上：逐级缩时左手小指的位置和 TKL / 全尺寸一样；拿手机的手最容易碰到角，碰到 Ctrl 不会弹菜单。
  * - Mac 模式位置不变：⌃ ·（⋯）· ⌥ · ⌘ · 空格 · ⌘ · 🌐 · ⌃（PrtSc 那格照 1B 的"Menu 位 → 🌐"；ThinkPad 没有右 Super，Mac 也就没有右 ⌥，左 ⌥ 照样能锁第三层）；
  *   F 行 Ins 那格空着，声明成空格子（{@link #blanks}），不在任何范围里，按了什么都不发生。
  * - 所有坐标都是 1/16u 的整数倍（浮点里是精确值，相邻两个键前一个的 x + w 和后一个的 x 是同一个数，摆到像素后一定共用边界）：
  *   右 Ctrl 和三个方向键各 0.9375，没取真机的 1 + 3 × 0.917。
- * - 键数：Windows 83 / 84 / 85（ANSI / ISO / ABNT2），Mac 82 / 83 / 84。比 TKL 少 ScrLk、Pause、右 Super、Menu（真机靠 Fn 组合键出，第 3 批做 Fn 层时再说）。
+ * - 键数：Windows 83 / 84 / 85（ANSI / ISO / ABNT2），Mac 82 / 83 / 84。比 TKL 少 ScrLk、Pause、右 Super、Menu（真机靠 Fn 组合键出；第 3 批的 Fn 层只给 75% / 65% / 苹果紧凑，笔记本不加）。
  *
  * 中文拼音（清单的 caps_mac，第 2 批）：Mac 模式 Caps 键帽写"中/英"（苹果中文键盘印的就是它），Windows 模式照旧写 Caps；发的码不变（0x39）。
+ *
+ * 第 3 批（2026-11-01，方案 design-batch3 §2）：75%、65%、苹果紧凑三种尺寸，都只有一个区块（主键区连 F 行、右边那一列、方向键），都有 Fn 键（{@link #FN_ID}）。
+ * 行表每种尺寸自己的（{@link #rowTop} / {@link #rowBottom}）：TKL / 全尺寸 / 笔记本 / 75% 照 {@link #ROW_TOP}；65% 没有 F 行（第 0 行零高、数字行从 0 起，5u 高）；
+ * 苹果紧凑的 F 行半行高、和数字行之间不隔（5.5u 高）。坐标都是 1/16u 的整数倍。
+ * - **75%**（照 Keychron K2 / Q1 一类，16u × 6.25u）：F 行 Esc ·（⋯ 槽，同 TKL）· F1–F12 · PrtSc（Mac 模式 F13）· Del；第 1–4 行主键区同 TKL，右边多一列 1u：
+ *   数字行 Home、Q 行 PgUp、A 行 PgDn；Z 行右 Shift 缩到 1.75u、后面 ↑ End；最下一排 Ctrl · Super · Alt · 空格 6.25 · AltGr / Alt · Fn · Ctrl · ← ↓ →
+ *   （Mac：⌃ · ⌥ · ⌘ · 空格 · ⌘ · ⌥ · fn🌐 · ← ↓ →）。键数 ANSI 83、ISO 84、ABNT2 85（两种模式一样：Mac 的 F13 顶 PrtSc、fn🌐 顶 Fn，⌥ 顶右 Ctrl）。
+ *   **ABNT2 的 Z 行和方案不一样**：方案写"右 Shift 1.75 + ↑ 在最右一列、没有 End，方向键整组靠右一格"，可 16u 里倒 T 的 ← ↓ → 靠右一格要到 17u、放不下，
+ *   ↑ 在最右一列就对不上 ↓。要 ↑ 正对 ↓（14–15u），/ ? 键（0x87）左边的位置是定死的（左 Shift 1.25 + 0x64 + Z–; 到 12.25、/ ? 到 13.25），右 Shift 只剩 0.75u；
+ *   取了"右 Shift 0.75u、↑ End 照旧"（左手的 Shift 1.25u 照旧；End 也照旧有，Fn+→ 照样出 End）。
+ * - **65%**（照 Keychron K6 / KBD67 一类，16u × 5u）：没有 F 行，数字行 Esc（占 ` 的位置）· 1–0 - = · ⌫ 2u · Del，第 2–5 行同 75%（数字行右边是 Del 不是 Home，没有 Home 键）。
+ *   ⋯ 槽在最下一排左下角 Ctrl 右边（同笔记本）：小触控板上摆出了 ⋯ 时 Ctrl · Super · Alt 各 1.25u；摆不出时 **Ctrl 1 · ⋯ 0.75 · Super 1 · Alt 1**
+ *   （Mac：⌃ · ⋯ · ⌥ · ⌘），空格不动——和方案不一样（方案写"空格缩 1u、⋯ 1u 插进去"）：小红点状态下 ⋯ 一定在槽里，空格缩成 4.75–10u 的话红点（6.75u）左边只剩 2u，
+ *   三个鼠标键要面板八百多 dp 宽才让得出；修饰键缩到 1u、⋯ 0.75u 的话空格位置和 75% / TKL 一样，红点空位的规则一模一样。键数 ANSI 68、ISO 69、ABNT2 70。
+ * - **苹果紧凑**（MacBook / 妙控键盘的比例，[F] §2.6，14.5u × 5.5u）：**只有 Mac 模式、只有 ANSI / ISO**（{@link #available}）。F 行半行高：Esc 1.5 · F1–F12 · 右上角那格（触控 ID）是 ⋯ 槽；
+ *   数字行 ` 1–0 - = · ⌫ 1.5；Q 行 Tab 1.5 · Q–] · \ 1（ISO：回车上半 1u）；A 行 Caps 1.75 · A–' · 回车 1.75（ISO：0x31 · 回车下半 0.75，L 形）；
+ *   Z 行 Shift 2.25 · Z–/ · Shift 2.25（ISO：Shift 1.25 · 0x35 · Z–/ · Shift 2.25；ISO 的那两个键照 1B 的苹果 ISO 对调）；
+ *   最下一排 fn🌐 · ⌃ · ⌥ · ⌘ 1.25 · 空格 5 · ⌘ 1.25 · ⌥ · ← · ↑↓ · →，↑↓ 是一格里上下两个半高的键（{@link Key#y0} / {@link Key#y1}，同笔记本的方向键，范围上下层各一块），← → 整高。
+ *   G|H 的缝 = B 的中线 = 6.75u（同 TKL），空格 4.25–9.25u 以红点为中线（同笔记本）。键数 ANSI 77、ISO 78。
+ * Fn 层（方案 §3.2，{@link #fn} / {@link #fnKeys}）：哪个键按着 Fn 时发什么、键帽写什么，只是数据；按 Fn 的规则（按住 / 点一下 / 锁、按下那一刻定码）在 TouchRouter / KeyHolds
+ * （协议 21）。报给分流的 id 由 {@link #keyId} 换：Fn 键 → Proto.FN_KEY / FN_GLOBE_KEY，带 Fn 层的键 → Proto.fnLayerKey(底层, Fn 层)，别的照旧。
  */
 final class FixedLayout {
     static final String ANSI = "ansi", ISO = "iso", ABNT2 = "abnt2";
     /** 能拼的形状（JIS / 韩国第 5 批）。 */
     static final String[] SHAPES = {ANSI, ISO, ABNT2};
     static final String TKL = "tkl", FULL = "full", LAPTOP = "laptop";
-    /** 从大到小（逐级缩的顺序，{@link #ladder}）。 */
+    /** 第 3 批的三种尺寸（存在 kbx_size、大小位置的键名 kbx_<尺寸>_… 里，定了别改）。 */
+    static final String P75 = "75", P65 = "65", APPLE = "apple";
+    /** 第 1B 批和笔记本那三种，从大到小（1B / 笔记本那几组扫描按它跑）。全部尺寸见 {@link #ALL_SIZES}，逐级缩的顺序见 {@link #ladder}。 */
     static final String[] SIZES_DESC = {FULL, TKL, LAPTOP};
+    /** 全部尺寸，从小到大（设置页的顺序；Boards.savedRects 按它取每个尺寸存的那份）。 */
+    static final String[] ALL_SIZES = {APPLE, LAPTOP, P65, P75, TKL, FULL};
     static final String WIN = "win", MAC = "mac";
 
     /** 区块：主键区（连 F 行的 Esc–F12）、编辑区（连 F 行右边那三个、方向键）、数字小键盘。 */
     static final int MAIN = 0, EDIT = 1, NUMPAD = 2;
 
     /**
-     * 每行的上沿（u）：第 0 行是 F 行，隔 0.25u 是主键区五行，三种尺寸一样。每行 1u 高，只有笔记本的最下一排 1.25u 高
-     * （下沿、总高按这一块取：{@link #rowBottom}、{@link #height}）。
+     * 标准的行表（每行的上沿，u）：第 0 行是 F 行，隔 0.25u 是主键区五行；TKL / 全尺寸 / 笔记本 / 75% 用它。每行 1u 高，只有笔记本的最下一排 1.25u 高。
+     * 65%、苹果紧凑另有自己的（{@link #rowTop} / {@link #rowBottom} 是每一块自己的，下沿、总高都按这一块取）。
      */
     static final float[] ROW_TOP = {0, 1.25f, 2.25f, 3.25f, 4.25f, 5.25f};
     static final int ROWS = ROW_TOP.length;
+    /** 65% 的行表：没有 F 行（第 0 行零高，没有键），数字行从 0 起，一行接一行，5u 高。 */
+    static final float[] ROW_TOP_65 = {0, 0, 1, 2, 3, 4}, ROW_BOTTOM_65 = {0, 1, 2, 3, 4, 5};
+    /** 苹果紧凑的行表：F 行半行高（0–0.5），和数字行之间不隔，5.5u 高；最下一排的 ↑ ↓ 在 {@link #APPLE_ARROW_SPLIT} 上下各半。 */
+    static final float[] ROW_TOP_APPLE = {0, 0.5f, 1.5f, 2.5f, 3.5f, 4.5f}, ROW_BOTTOM_APPLE = {0.5f, 1.5f, 2.5f, 3.5f, 4.5f, 5.5f};
+    static final float APPLE_ARROW_SPLIT = 5;
     /** 空格那一排（三个鼠标键从它的上沿铺到面板下沿，红点的切口不过它的上沿）。 */
     static final int SPACE_ROW = 5;
     /** 笔记本最下一排多高（u）、方向键上下两层的分界（u，= 94/16）。 */
@@ -88,14 +120,22 @@ final class FixedLayout {
     /** ⋯ 菜单键、🌐（编号同豆花布局，MainActivity 一样处理）。 */
     static final int MENU_ID = KeyRows.MENU_BUTTON_ID;
     static final int GLOBE_ID = KeyRows.GLOBE_BUTTON_ID;
+    /**
+     * Fn 键（第 3 批，75% / 65% / 苹果紧凑）在几何里的编号（KeyRows.FIXED_FN_BUTTON_ID，special：不是 HID 用法码）。报给分流、面板发给分流时
+     * 换成 Proto.FN_KEY（Windows 模式）/ Proto.FN_GLOBE_KEY（Mac 模式的 fn🌐，单点 = 🌐），是 REGION_KEY、规矩在 KeyHolds（{@link #keyId}）。
+     * 键名 Windows 模式 "Fn"、Mac 模式 "fn 🌐"（苹果现款键帽是 fn 加一个地球；FixedPanel.glyphs 画成上 fn、下 🌐 两个字）。
+     */
+    static final int FN_ID = KeyRows.FIXED_FN_BUTTON_ID;
+    static final String FN_NAME = "Fn", FN_NAME_MAC = "fn 🌐";
 
     /** 空格的键名占位（界面语言的"空格"由 App 换上，FixedPanel.glyphs）。 */
     static final String SPACE_NAME = "Space";
 
     /** 一个键。 */
     static final class Key {
-        /** HID 用法码；特殊键（⋯、🌐）是按钮编号。 */
+        /** HID 用法码；特殊键（⋯、🌐、Fn）是按钮编号（报给分流的 id 另见 {@link FixedLayout#keyId}：Fn 和带 Fn 层的键换成协议 21 的编码）。 */
         final int id;
+        /** 特殊键：id 不是 HID 用法码（⋯、🌐 报成按钮；Fn 报成 Proto.FN_KEY / FN_GLOBE_KEY 这个键，{@link FixedLayout#regionType}）。 */
         final boolean special;
         final int cluster;
         /** 从第几行起（0–5），占几行（小键盘的 + 和 Enter 两行；ISO 回车另有 {@link #x2}）。 */
@@ -175,9 +215,13 @@ final class FixedLayout {
      * 美式没有第三层，右 Alt 写 Alt，锁住它和锁左 Alt 一样什么都不变（两种 Alt + 字母都打不出字）。Mac 模式一律假（任一 Option 是第三层，不看它）。
      */
     final boolean altGr;
+    /** 这一块的行表（每行的上沿、下沿，u）：标准的是 {@link #ROW_TOP}（笔记本最下一排 1.25 行高），65% / 苹果紧凑见 {@link #ROW_TOP_65} / {@link #ROW_TOP_APPLE}。 */
+    private final float[] rowTops, rowBottoms;
+    /** Fn 层（底层用法码 → 那一项，按键在列表里的顺序）；没有 Fn 键的尺寸是空的。 */
+    private final Map<Integer, FnKey> fnLayer;
 
     private FixedLayout(String shape, String size, String mode, List<Key> keys, List<Key> keysMenu, Key menu, float width, float height,
-                        boolean altGr, List<float[]> blanks) {
+                        boolean altGr, List<float[]> blanks, float[] rowTops, float[] rowBottoms, Map<Integer, FnKey> fnLayer) {
         this.shape = shape;
         this.size = size;
         this.mode = mode;
@@ -188,6 +232,9 @@ final class FixedLayout {
         this.height = height;
         this.altGr = altGr;
         this.blanks = Collections.unmodifiableList(blanks);
+        this.rowTops = rowTops.clone();
+        this.rowBottoms = rowBottoms.clone();
+        this.fnLayer = Collections.unmodifiableMap(fnLayer);
     }
 
     boolean mac() {
@@ -212,9 +259,19 @@ final class FixedLayout {
         return LAPTOP.equals(size);
     }
 
-    /** 几个区块：全尺寸 3（主键区、编辑区、小键盘）、TKL 2、笔记本 1。 */
+    /** 苹果紧凑（第 3 批）。 */
+    boolean apple() {
+        return APPLE.equals(size);
+    }
+
+    /** 有 Fn 键、Fn 层（第 3 批的 75% / 65% / 苹果紧凑）。 */
+    boolean hasFn() {
+        return !fnLayer.isEmpty();
+    }
+
+    /** 几个区块：全尺寸 3（主键区、编辑区、小键盘）、TKL 2，笔记本、75%、65%、苹果紧凑 1。 */
     int clusterCount() {
-        return full() ? 3 : laptop() ? 1 : 2;
+        return full() ? 3 : TKL.equals(size) ? 2 : 1;
     }
 
     /** 这一块显示的键：menuKey = ⋯ 放在槽里（小触控板上没摆出 ⋯）。顺序就是报区域、画的顺序。 */
@@ -237,13 +294,16 @@ final class FixedLayout {
         return cluster == MAIN ? MAIN_RIGHT : cluster == EDIT ? EDIT_RIGHT : PAD_RIGHT;
     }
 
-    /** 第 r 行的上沿、下沿（u）：最下一排的下沿是总高（笔记本 6.5），别的行 1u 高。 */
+    /**
+     * 第 r 行的上沿、下沿（u），按这一块自己的行表：标准的每行 1u 高、最下一排的下沿是总高（笔记本 6.5）；65% 的第 0 行零高（没有 F 行）；
+     * 苹果紧凑的 F 行半行高。
+     */
     float rowTop(int r) {
-        return ROW_TOP[r];
+        return rowTops[r];
     }
 
     float rowBottom(int r) {
-        return r == ROWS - 1 ? height : ROW_TOP[r] + 1;
+        return rowBottoms[r];
     }
 
     /** 键 k 在第 r 行那一段的上沿、下沿（u）：带竖向子区间的（笔记本的方向键）用它，别的占整行。 */
@@ -261,23 +321,44 @@ final class FixedLayout {
     }
 
     static String validSize(String s) {
-        return FULL.equals(s) ? FULL : LAPTOP.equals(s) ? LAPTOP : TKL;
+        for (String z : ALL_SIZES) if (z.equals(s)) return z;
+        return TKL;
     }
 
     /**
      * 逐级缩（2026-11-01，用户："你设定一个最小的键帽的大小……只要小于这个，你就缩那个键盘的阵列。缩完了还不放不进去，你就再缩"）：
-     * 从选的尺寸往下的几级，ladder(FULL) = [全尺寸, TKL, 笔记本]，ladder(TKL) = [TKL, 笔记本]，ladder(LAPTOP) = [笔记本]。
-     * 选的是起点，只缩不涨（选 TKL 的不会在宽窗口里换成全尺寸）；认不出的当 TKL。哪一级放得下由 KeyboardPlan.fixedLevel 判断。
+     * 从选的尺寸往下的几级（第 3 批，方案 design-batch3 §2.4）：
+     * 全尺寸 → TKL → 75% → 笔记本；TKL → 75% → 笔记本；75% → 笔记本；65% → 笔记本；笔记本 → 笔记本；苹果紧凑 → 苹果紧凑。
+     * 65% 和 75% 一样宽（放不进 75% 也放不进 65%），不进别人的梯子；苹果紧凑（14.5u）只比笔记本窄 3%，也不进别人的梯子（形状突然换成苹果的比例反而意外），
+     * 它放不下就直接豆花布局。选的是起点，只缩不涨（选 TKL 的不会在宽窗口里换成全尺寸）；认不出的当 TKL。哪一级放得下由 KeyboardPlan.fixedLevel 判断。
      */
     static List<String> ladder(String selected) {
-        String s = validSize(selected);
         List<String> out = new ArrayList<>();
-        boolean on = false;
-        for (String z : SIZES_DESC) {
-            on |= z.equals(s);
-            if (on) out.add(z);
-        }
+        for (String s = validSize(selected); s != null; s = smaller(s)) out.add(s);
         return out;
+    }
+
+    /** 逐级缩的下一级（{@link #ladder}），没有了返回 null。 */
+    private static String smaller(String size) {
+        switch (size) {
+            case FULL:
+                return TKL;
+            case TKL:
+                return P75;
+            case P75:
+            case P65:
+                return LAPTOP;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * 这个组合拼不拼得出（第 3 批）：苹果紧凑只有 Mac 模式、只有 ANSI / ISO（Windows 模式、ABNT2 形状下不可用：设置页灰掉，
+     * 存着的组合正好不可用时 {@link #forEntry} 返回 null、键盘页照"没数据的模式"那条退回豆花布局）。别的尺寸都拼得出。
+     */
+    static boolean available(String shape, String size, String mode) {
+        return !APPLE.equals(validSize(size)) || (MAC.equals(validMode(mode)) && !ABNT2.equals(validShape(shape)));
     }
 
     static String validMode(String s) {
@@ -289,15 +370,16 @@ final class FixedLayout {
      * 就不拼、返回 null——KeyboardScreen 拿不到布局就照样显示豆花布局（⋯ 菜单写明），不显示一块出字的键全是空白的实体键盘。
      */
     static FixedLayout forLegends(String shape, String size, String mode, FixedLegends.Table legends, String kpdl) {
-        return legends == null ? null : build(shape, size, mode, legends.hasThird(), kpdl);
+        return legends == null || !available(shape, size, mode) ? null : build(shape, size, mode, legends.hasThird(), kpdl);
     }
 
     /**
      * 同 {@link #forLegends}，小键盘的字、Mac 模式的 Caps 键帽照布局清单的这一行（小数点按模式取 Layout.kpdl(mode)——Windows 模式照微软布局表的 kpdl_win、
      * Mac 模式照 xkb 的 kpdl；kpco、caps_mac；entry 是 null 时照默认的：小数点 "."、Caps）。FixedData.ladder 用这个。
+     * 不可用的组合（{@link #available}：苹果紧凑 × Windows 模式 / ABNT2）同样返回 null，键盘页退回豆花布局。
      */
     static FixedLayout forEntry(String shape, String size, String mode, FixedLegends.Table legends, FixedLegends.Layout entry) {
-        if (legends == null) return null;
+        if (legends == null || !available(shape, size, mode)) return null;
         return entry == null ? build(shape, size, mode, legends.hasThird(), ".")
                 : build(shape, size, mode, legends.hasThird(), entry.kpdl(mode), entry.kpco, entry.capsMac);
     }
@@ -318,6 +400,12 @@ final class FixedLayout {
         shape = validShape(shape);
         size = validSize(size);
         mode = validMode(mode);
+        if (P75.equals(size) || P65.equals(size)) return buildSixteen(shape, size, mode, altGr, capsMac);
+        if (APPLE.equals(size)) {
+            // 苹果紧凑只有 Mac 模式、ANSI / ISO：给了 Windows / ABNT2 时照 Mac / ISO 拼（设置页给灰掉的那一项算键数用）；
+            // App 拼键盘走 forEntry，不可用的组合在那里就返回 null，不会显示出来
+            return buildApple(ABNT2.equals(shape) ? ISO : shape, capsMac);
+        }
         boolean mac = MAC.equals(mode), abnt2 = ABNT2.equals(shape), iso = ISO.equals(shape) || abnt2;
         boolean full = FULL.equals(size), laptop = LAPTOP.equals(size);
         // 1 左边、Z 左边那两个键照真苹果 ISO 键盘对调：只在 Mac 模式的 ISO（ABNT2 不对调，见类注释）
@@ -508,7 +596,188 @@ final class FixedLayout {
         }
         float width = full ? PAD_RIGHT : laptop ? MAIN_RIGHT : EDIT_RIGHT;
         float height = ROW_TOP[ROWS - 1] + (laptop ? LAPTOP_BOTTOM_ROW : 1);
-        return new FixedLayout(shape, size, mode, k, km, menu, width, height, !mac && altGr, blanks);
+        return new FixedLayout(shape, size, mode, k, km, menu, width, height, !mac && altGr, blanks, ROW_TOP, standardBottoms(height),
+                new LinkedHashMap<>());
+    }
+
+    /** 标准行表的下沿：每行 1u 高，最下一排的下沿是总高（笔记本 6.5）。 */
+    private static float[] standardBottoms(float height) {
+        float[] b = new float[ROWS];
+        for (int r = 0; r < ROWS; r++) b[r] = r == ROWS - 1 ? height : ROW_TOP[r] + 1;
+        return b;
+    }
+
+    /**
+     * 75% / 65%（第 3 批，见类注释）：16u 宽、一个区块。主键区第 2–4 行的位置、用法码同 TKL（1 左边、Z 左边照 ISO 的苹果对调规矩），右边多一列 1u；
+     * 75% 有 F 行（同 TKL 的 ⋯ 槽在 Esc 和 F1 之间），65% 没有 F 行、Esc 占 1 左边那个键的位置、⋯ 槽在左下角 Ctrl 右边。
+     */
+    private static FixedLayout buildSixteen(String shape, String size, String mode, boolean altGr, String capsMac) {
+        boolean p75 = P75.equals(size), mac = MAC.equals(mode), abnt2 = ABNT2.equals(shape), iso = ISO.equals(shape) || abnt2;
+        boolean appleSwap = mac && iso && !abnt2;
+        int grave = appleSwap ? 0x64 : 0x35;   // 1 左边那个键发的码（同 TKL）
+        float right = 15;   // 右边那一列的左边
+        List<Key> k = new ArrayList<>();
+
+        // ── 第 0 行：F 行（只有 75%）：Esc ·（⋯ 槽）· F1–F12 · PrtSc / F13 · Del ──
+        if (p75) {
+            k.add(key(0x29, MAIN, 0, 0, 1, "Esc"));
+            for (int i = 0; i < 12; i++) k.add(key(0x3A + i, MAIN, 0, 2 + i, 1, "F" + (i + 1)));
+            k.add(mac ? key(0x68, MAIN, 0, 14, 1, "F13") : key(0x46, MAIN, 0, 14, 1, "PrtSc"));
+            k.add(key(0x4C, MAIN, 0, right, 1, "Del"));
+        }
+
+        // ── 第 1 行：数字行（65% 的 Esc 占 1 左边那个键的位置），右边 Home（75%）/ Del（65%）──
+        k.add(p75 ? key(grave, MAIN, 1, 0, 1, null) : key(0x29, MAIN, 1, 0, 1, "Esc"));
+        for (int i = 0; i < 10; i++) k.add(key(0x1E + i, MAIN, 1, 1 + i, 1, null));
+        k.add(key(0x2D, MAIN, 1, 11, 1, null));
+        k.add(key(0x2E, MAIN, 1, 12, 1, null));
+        k.add(key(0x2A, MAIN, 1, 13, 2, "⌫"));
+        k.add(p75 ? key(0x4A, MAIN, 1, right, 1, "Home") : key(0x4C, MAIN, 1, right, 1, "Del"));
+
+        // ── 第 2 行：Q 行，右边 PgUp ──
+        k.add(key(0x2B, MAIN, 2, 0, 1.5f, "Tab"));
+        letters(k, 2, 1.5f, "qwertyuiop");
+        k.add(key(0x2F, MAIN, 2, 11.5f, 1, null));
+        k.add(key(0x30, MAIN, 2, 12.5f, 1, null));
+        if (iso) k.add(new Key(0x28, false, MAIN, 2, 1, 13.5f, 1.5f, 13.75f, 1.25f, "↵"));
+        else k.add(key(0x31, MAIN, 2, 13.5f, 1.5f, null));
+        k.add(key(0x4B, MAIN, 2, right, 1, "PgUp"));
+
+        // ── 第 3 行：A 行，右边 PgDn ──
+        k.add(key(0x39, MAIN, 3, 0, 1.75f, mac && capsMac != null && !capsMac.isEmpty() ? capsMac : "Caps"));
+        letters(k, 3, 1.75f, "asdfghjkl");
+        k.add(key(0x33, MAIN, 3, 10.75f, 1, null));
+        k.add(key(0x34, MAIN, 3, 11.75f, 1, null));
+        if (iso) k.add(key(0x31, MAIN, 3, 12.75f, 1, null));
+        else k.add(key(0x28, MAIN, 3, 12.75f, 2.25f, "↵"));
+        k.add(key(0x4E, MAIN, 3, right, 1, "PgDn"));
+
+        // ── 第 4 行：Z 行，右 Shift 缩短，后面 ↑ End（↑ 在 14–15，正对最下一排的 ↓）──
+        if (iso) {
+            k.add(key(0xE1, MAIN, 4, 0, 1.25f, "⇧"));
+            k.add(key(appleSwap ? 0x35 : 0x64, MAIN, 4, 1.25f, 1, null));
+        } else {
+            k.add(key(0xE1, MAIN, 4, 0, 2.25f, "⇧"));
+        }
+        letters(k, 4, 2.25f, "zxcvbnm");
+        k.add(key(0x36, MAIN, 4, 9.25f, 1, null));
+        k.add(key(0x37, MAIN, 4, 10.25f, 1, null));
+        k.add(key(0x38, MAIN, 4, 11.25f, 1, null));
+        if (abnt2) {
+            // ABNT2：/ ?（0x87）占掉 1u，右 Shift 只剩 0.75u（↑ 要正对 ↓，见类注释）
+            k.add(key(0x87, MAIN, 4, 12.25f, 1, null));
+            k.add(key(0xE5, MAIN, 4, 13.25f, 0.75f, "⇧"));
+        } else {
+            k.add(key(0xE5, MAIN, 4, 12.25f, 1.75f, "⇧"));
+        }
+        k.add(key(0x52, MAIN, 4, 14, 1, "↑"));
+        k.add(key(0x4D, MAIN, 4, right, 1, "End"));
+
+        // ── 第 5 行：Ctrl · Super · Alt · 空格 6.25 · AltGr / Alt · Fn · Ctrl · ← ↓ →（Mac：⌃ · ⌥ · ⌘ · 空格 · ⌘ · ⌥ · fn🌐 · ← ↓ →）──
+        float m = 1.25f;
+        if (mac) {
+            k.add(key(0xE0, MAIN, 5, 0, m, "⌃"));
+            k.add(key(0xE2, MAIN, 5, m, m, "⌥"));
+            k.add(key(0xE3, MAIN, 5, 2 * m, m, "⌘"));
+            k.add(key(0x2C, MAIN, 5, 3 * m, 6.25f, SPACE_NAME));
+            k.add(key(0xE7, MAIN, 5, 10, 1, "⌘"));
+            k.add(key(0xE6, MAIN, 5, 11, 1, "⌥"));
+            k.add(new Key(FN_ID, true, MAIN, 5, 1, 12, 1, 0, 0, FN_NAME_MAC));
+        } else {
+            k.add(key(0xE0, MAIN, 5, 0, m, "Ctrl"));
+            k.add(key(0xE3, MAIN, 5, m, m, "Super"));
+            k.add(key(0xE2, MAIN, 5, 2 * m, m, "Alt"));
+            k.add(key(0x2C, MAIN, 5, 3 * m, 6.25f, SPACE_NAME));
+            k.add(key(0xE6, MAIN, 5, 10, 1, altGr ? "AltGr" : "Alt"));
+            k.add(new Key(FN_ID, true, MAIN, 5, 1, 11, 1, 0, 0, FN_NAME));
+            k.add(key(0xE4, MAIN, 5, 12, 1, "Ctrl"));
+        }
+        k.add(key(0x50, MAIN, 5, 13, 1, "←"));
+        k.add(key(0x51, MAIN, 5, 14, 1, "↓"));
+        k.add(key(0x4F, MAIN, 5, right, 1, "→"));
+
+        // ⋯ 槽：75% 同 TKL（Esc 和 F1 之间）；65% 在左下角 Ctrl 右边，放进去时 Ctrl 1 · ⋯ 0.75 · Super 1 · Alt 1（Mac：⌃ · ⋯ · ⌥ · ⌘），空格不动
+        List<Key> km = new ArrayList<>(k);
+        Key menu;
+        if (p75) {
+            menu = new Key(MENU_ID, true, MAIN, 0, 1, 1, 1, 0, 0, "⋯");
+            km.add(1, menu);
+        } else {
+            menu = new Key(MENU_ID, true, MAIN, 5, 1, 1, 0.75f, 0, 0, "⋯");
+            int c = indexOf(km, 0xE0);
+            int second = mac ? 0xE2 : 0xE3, third = mac ? 0xE3 : 0xE2;
+            km.set(c, key(0xE0, MAIN, 5, 0, 1, km.get(c).name));
+            km.set(indexOf(km, second), key(second, MAIN, 5, 1.75f, 1, km.get(indexOf(km, second)).name));
+            km.set(indexOf(km, third), key(third, MAIN, 5, 2.75f, 1, km.get(indexOf(km, third)).name));
+            km.add(c + 1, menu);
+        }
+        float[] tops = p75 ? ROW_TOP : ROW_TOP_65, bottoms = p75 ? standardBottoms(ROW_TOP[ROWS - 1] + 1) : ROW_BOTTOM_65;
+        return new FixedLayout(shape, size, mode, k, km, menu, 16, bottoms[ROWS - 1], !mac && altGr, new ArrayList<>(), tops, bottoms,
+                fnLayer(k, p75 ? P75 : P65, mac, grave));
+    }
+
+    /**
+     * 苹果紧凑（第 3 批，只有 Mac 模式，见类注释）：14.5u × 5.5u、一个区块，F 行半行高；ISO 的 1 左边 / Z 左边照 1B 的苹果 ISO 对调（发 0x64 / 0x35）。
+     * 右上角那格（触控 ID / 锁屏）是 ⋯ 槽：小触控板上摆出了 ⋯ 时空着，算在 F 行那一段里（{@link #ranges}）。
+     */
+    private static FixedLayout buildApple(String shape, String capsMac) {
+        boolean iso = ISO.equals(shape);
+        int grave = iso ? 0x64 : 0x35;
+        List<Key> k = new ArrayList<>();
+        // ── 第 0 行：F 行（半行高）：Esc 1.5 · F1–F12 ·（⋯ 槽）──
+        k.add(key(0x29, MAIN, 0, 0, 1.5f, "Esc"));
+        for (int i = 0; i < 12; i++) k.add(key(0x3A + i, MAIN, 0, 1.5f + i, 1, "F" + (i + 1)));
+        // ── 第 1 行：` 1–0 - = · ⌫ 1.5 ──
+        k.add(key(grave, MAIN, 1, 0, 1, null));
+        for (int i = 0; i < 10; i++) k.add(key(0x1E + i, MAIN, 1, 1 + i, 1, null));
+        k.add(key(0x2D, MAIN, 1, 11, 1, null));
+        k.add(key(0x2E, MAIN, 1, 12, 1, null));
+        k.add(key(0x2A, MAIN, 1, 13, 1.5f, "⌫"));
+        // ── 第 2 行：Tab 1.5 · Q–] · \ 1（ISO：回车上半 1u）──
+        k.add(key(0x2B, MAIN, 2, 0, 1.5f, "Tab"));
+        letters(k, 2, 1.5f, "qwertyuiop");
+        k.add(key(0x2F, MAIN, 2, 11.5f, 1, null));
+        k.add(key(0x30, MAIN, 2, 12.5f, 1, null));
+        if (iso) k.add(new Key(0x28, false, MAIN, 2, 1, 13.5f, 1, 13.75f, 0.75f, "↵"));   // L 形：上半 1u、下半 0.75u，右边对齐
+        else k.add(key(0x31, MAIN, 2, 13.5f, 1, null));
+        // ── 第 3 行：Caps 1.75 · A–' · 回车 1.75（ISO：0x31 · 回车下半）──
+        k.add(key(0x39, MAIN, 3, 0, 1.75f, capsMac != null && !capsMac.isEmpty() ? capsMac : "Caps"));
+        letters(k, 3, 1.75f, "asdfghjkl");
+        k.add(key(0x33, MAIN, 3, 10.75f, 1, null));
+        k.add(key(0x34, MAIN, 3, 11.75f, 1, null));
+        if (iso) k.add(key(0x31, MAIN, 3, 12.75f, 1, null));
+        else k.add(key(0x28, MAIN, 3, 12.75f, 1.75f, "↵"));
+        // ── 第 4 行：Shift 2.25 · Z–/ · Shift 2.25（ISO：Shift 1.25 · 0x35）──
+        if (iso) {
+            k.add(key(0xE1, MAIN, 4, 0, 1.25f, "⇧"));
+            k.add(key(0x35, MAIN, 4, 1.25f, 1, null));
+        } else {
+            k.add(key(0xE1, MAIN, 4, 0, 2.25f, "⇧"));
+        }
+        letters(k, 4, 2.25f, "zxcvbnm");
+        k.add(key(0x36, MAIN, 4, 9.25f, 1, null));
+        k.add(key(0x37, MAIN, 4, 10.25f, 1, null));
+        k.add(key(0x38, MAIN, 4, 11.25f, 1, null));
+        k.add(key(0xE5, MAIN, 4, 12.25f, 2.25f, "⇧"));
+        // ── 第 5 行：fn🌐 · ⌃ · ⌥ · ⌘ 1.25 · 空格 5 · ⌘ 1.25 · ⌥ · ← · ↑↓ · → ──
+        k.add(new Key(FN_ID, true, MAIN, 5, 1, 0, 1, 0, 0, FN_NAME_MAC));
+        k.add(key(0xE0, MAIN, 5, 1, 1, "⌃"));
+        k.add(key(0xE2, MAIN, 5, 2, 1, "⌥"));
+        k.add(key(0xE3, MAIN, 5, 3, 1.25f, "⌘"));
+        k.add(key(0x2C, MAIN, 5, 4.25f, 5, SPACE_NAME));
+        k.add(key(0xE7, MAIN, 5, 9.25f, 1.25f, "⌘"));
+        k.add(key(0xE6, MAIN, 5, 10.5f, 1, "⌥"));
+        float top = ROW_TOP_APPLE[5], mid = APPLE_ARROW_SPLIT, bottom = ROW_BOTTOM_APPLE[5];
+        k.add(key(0x50, MAIN, 5, 11.5f, 1, "←"));
+        k.add(arrow(0x52, 12.5f, 1, top, mid, "↑"));
+        k.add(arrow(0x51, 12.5f, 1, mid, bottom, "↓"));
+        k.add(key(0x4F, MAIN, 5, 13.5f, 1, "→"));
+        // ⋯ 槽：右上角那格，放在 F12 后面
+        Key menu = new Key(MENU_ID, true, MAIN, 0, 1, 13.5f, 1, 0, 0, "⋯");
+        List<Key> km = new ArrayList<>(k);
+        km.add(indexOf(km, 0x45) + 1, menu);
+        return new FixedLayout(shape, APPLE, MAC, k, km, menu, 14.5f, ROW_BOTTOM_APPLE[ROWS - 1], false, new ArrayList<>(), ROW_TOP_APPLE,
+                ROW_BOTTOM_APPLE, fnLayer(k, APPLE, true, grave));
     }
 
     private static Key key(int id, int cluster, int row, float x, float w, String name) {
@@ -529,6 +798,153 @@ final class FixedLayout {
     /** 一行字母键（a–z 的用法码 0x04 起，按字母算），从 x 起一个挨一个。 */
     private static void letters(List<Key> k, int row, float x, String s) {
         for (int i = 0; i < s.length(); i++) k.add(key(0x04 + (s.charAt(i) - 'a'), MAIN, row, x + i, 1, null));
+    }
+
+    // ═══════════ Fn 层（第 3 批的数据；按 Fn 的规则在 TouchRouter / KeyHolds） ═══════════
+
+    /**
+     * Fn 层的一项：底层发 base 的那个键，按着（或锁着）Fn 时发 usage，键帽换成 name（出字的键是 null：字按 usage 查 FixedLegends，
+     * 现在只有 65% 的 Esc → 1 左边那个键）。Fn 层的码都是 HID 键盘页的普通键（不是修饰键、不是豆花的按钮编号），和底层不一样。
+     * 有的码底层另有一个键也发（75% 的 Fn+↑ = PgUp 和右边那一列的 PgUp、Windows 模式 Fn+P = PrtSc 和 F 行的 PrtSc；65% 的 Fn+← 和 Fn+PgUp 都是 Home）：
+     * 照方案原样，{@link #fnSharedUsages} 列得出来。两个键同时按着时 KeyHolds 按定下来的码计数，HID 照普通键的老规矩：先松的那个就松开这个码
+     * （同两个空格副本），后松的那个什么都不多出——每个按下都配了松开，不会卡键（KeyHoldsTest、FixedCompactTest.fnPaths 锁住）。
+     */
+    static final class FnKey {
+        final int base, usage;
+        final String name;
+
+        FnKey(int base, int usage, String name) {
+            this.base = base;
+            this.usage = usage;
+            this.name = name;
+        }
+
+        boolean charKey() {
+            return name == null;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("0x%02X→%s", base, name != null ? name : String.format("0x%02X", usage));
+        }
+    }
+
+    /** 底层发 base 的那个键在 Fn 层出什么；没有 Fn 层（按着 Fn 照旧出底层的码）返回 null。 */
+    FnKey fn(int base) {
+        return fnLayer.get(base);
+    }
+
+    /** 这个键是 Fn 键（75% / 65% 的 Fn、Mac 模式的 fn🌐）。 */
+    static boolean fnKey(Key k) {
+        return k.special && k.id == FN_ID;
+    }
+
+    /** 这个键报给分流时的区域类型：⋯、🌐 是按钮（App 执行）；Fn 和别的键是键（REGION_KEY，按住 / 点一下 / 锁的规矩在 KeyHolds）。 */
+    static int regionType(Key k) {
+        return k.special && !fnKey(k) ? Proto.REGION_BUTTON : Proto.REGION_KEY;
+    }
+
+    /**
+     * 这个键报给分流（服务、本地分流）、面板自己收触摸时发给分流的 id（协议 21）：Fn 键 → Proto.FN_KEY（Windows 模式）/ Proto.FN_GLOBE_KEY（Mac 模式，
+     * 单点 = 🌐）；带 Fn 层的键 → Proto.fnLayerKey(底层用法码, Fn 层用法码)（按下那一刻 KeyHolds 按 Fn 定发哪个）；别的照旧是用法码 / 按钮编号。
+     * App 收到的按下（MSG_BUTTON 的 KEY_ID_BASE + id）也是这个 id，画按下的样子按它对回键（FixedPanel.index 只认几何里的编号）。
+     */
+    int keyId(Key k) {
+        if (fnKey(k)) return mac() ? Proto.FN_GLOBE_KEY : Proto.FN_KEY;
+        if (k.special) return k.id;
+        FnKey f = fnLayer.get(k.id);
+        return f == null ? k.id : Proto.fnLayerKey(k.id, f.usage);
+    }
+
+    /** Fn 层全部的项（按键在列表里的顺序）；没有 Fn 键的尺寸是空的。 */
+    List<FnKey> fnKeys() {
+        return new ArrayList<>(fnLayer.values());
+    }
+
+    /**
+     * Fn 层出的码里，底层另有键发同一个码的、或者 Fn 层里不止一个键出它的（方案定的，不是错，见 {@link FnKey}）：给 Fn 层的机制（按码计数松开）和测试用。
+     * 按码排好。
+     */
+    List<Integer> fnSharedUsages() {
+        List<Integer> out = new ArrayList<>();
+        Map<Integer, Integer> n = new LinkedHashMap<>();
+        for (FnKey f : fnLayer.values()) n.merge(f.usage, 1, Integer::sum);
+        for (Map.Entry<Integer, Integer> e : n.entrySet()) {
+            if (e.getValue() > 1 || find(e.getKey()) != null) out.add(e.getKey());
+        }
+        Collections.sort(out);
+        return out;
+    }
+
+    /** Fn 层的码写在键帽上的名字（同底层那些键的写法）；出字的键（1 左边那个键 0x35 / 0x64）返回 null，字按码查 FixedLegends。 */
+    static String fnName(int usage) {
+        if (usage >= 0x3A && usage <= 0x45) return "F" + (usage - 0x3A + 1);
+        if (usage >= 0x68 && usage <= 0x6A) return "F" + (usage - 0x68 + 13);
+        switch (usage) {
+            case 0x46:
+                return "PrtSc";
+            case 0x47:
+                return "ScrLk";
+            case 0x48:
+                return "Pause";
+            case 0x49:
+                return "Ins";
+            case 0x4A:
+                return "Home";
+            case 0x4B:
+                return "PgUp";
+            case 0x4C:
+                return "Del";
+            case 0x4D:
+                return "End";
+            case 0x4E:
+                return "PgDn";
+            case 0x65:
+                return "☰";
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Fn 层（方案 design-batch3 §3.2；没列的键按着 Fn 照旧出底层的码）：
+     * - 75%：Del → Ins（Mac 模式没有 Ins，Del 不换）；P [ ] → PrtSc ScrLk Pause（Mac 模式 → F13 F14 F15）；↑ ↓ ← → → PgUp PgDn Home End（照苹果 fn+方向）；
+     *   Windows 模式右 Ctrl → Menu（0x65）。
+     * - 65%：75% 那几条之外，1–0 - = → F1–F12；Esc → 1 左边那个键（grave：这块键盘上 1 左边那个键本来发的码，ISO 的 Mac 模式是 0x64、别的 0x35，
+     *   65% 上那个位置被 Esc 占了，所以字照它查）；PgUp → Home、PgDn → End（65% 没有 Home 键）。
+     * - 苹果紧凑（照 macOS）：fn+↑ ↓ → PgUp / PgDn、fn+← → → Home / End，fn+delete（⌫）→ 向前删除（0x4C）。
+     * 只放这一块里真有的底层键（k 里找得到的）。
+     */
+    private static Map<Integer, FnKey> fnLayer(List<Key> k, String size, boolean mac, int grave) {
+        List<int[]> pairs = new ArrayList<>();
+        int[][] arrows = {{0x52, 0x4B}, {0x51, 0x4E}, {0x50, 0x4A}, {0x4F, 0x4D}};
+        if (APPLE.equals(size)) {
+            pairs.addAll(Arrays.asList(arrows));
+            pairs.add(new int[]{0x2A, 0x4C});
+        } else {
+            if (P65.equals(size)) {
+                pairs.add(new int[]{0x29, grave});
+                for (int i = 0; i < 10; i++) pairs.add(new int[]{0x1E + i, 0x3A + i});
+                pairs.add(new int[]{0x2D, 0x44});
+                pairs.add(new int[]{0x2E, 0x45});
+                pairs.add(new int[]{0x4B, 0x4A});
+                pairs.add(new int[]{0x4E, 0x4D});
+            }
+            if (!mac) pairs.add(new int[]{0x4C, 0x49});
+            pairs.add(new int[]{0x13, mac ? 0x68 : 0x46});
+            pairs.add(new int[]{0x2F, mac ? 0x69 : 0x47});
+            pairs.add(new int[]{0x30, mac ? 0x6A : 0x48});
+            pairs.addAll(Arrays.asList(arrows));
+            if (!mac) pairs.add(new int[]{0xE4, 0x65});
+        }
+        Map<Integer, int[]> byBase = new LinkedHashMap<>();
+        for (int[] p : pairs) byBase.put(p[0], p);
+        Map<Integer, FnKey> out = new LinkedHashMap<>();
+        for (Key key : k) {
+            int[] p = key.special ? null : byBase.get(key.id);
+            if (p != null) out.put(p[0], new FnKey(p[0], p[1], fnName(p[1])));
+        }
+        return out;
     }
 
     // ═══════════ 键盘范围（每区块每行一块） ═══════════
@@ -570,15 +986,18 @@ final class FixedLayout {
      *   一个都分不到方向键（按在 ↑ / ↓ 交界附近 = 按了 Ctrl；按住方向键 0.4–1 秒松手还会把 Ctrl 锁住）。所以同一行里竖向子区间一样的键
      *   （{@link Key#y0} / {@link Key#y1}）自成一组，照同样的规则分段；组的上下沿伸到和上下相邻那组之间的中线，最上、最下的伸到这一行的上下沿
      *   （笔记本：上层 5.25–5.875、下层 5.875–6.5，横着从和右 Ctrl 共用的那条边 12.1875 到面板边）。整行高的键照旧一组（最下一排其余的键一块，
-     *   ⋯、🌐 照旧只有一段）。前提：两种键在一行里不交错（笔记本的方向键挤在右下角，挨着右 Ctrl、中间没有缝），不然两组的范围会重叠——测试查不重叠。
-     * menuKey 同 {@link #keys(boolean)}（槽里放没放 ⋯，结果一样：TKL / 全尺寸的槽在 Esc 和 F1 中间，笔记本的在左 Ctrl 右边，本来就在这一段里）。
+     *   ⋯、🌐 照旧只有一段）。两种键在一行里交错时（第 3 批苹果紧凑：↑↓ 夹在整行高的 ← 和 → 中间），整行高那一组不跨过另一组的键并成一段
+     *   （← 那段到 ↑↓ 的左边为止、→ 自成一段），不然两组的范围会重叠——测试查不重叠。
+     * menuKey 同 {@link #keys(boolean)}（槽里放没放 ⋯，结果一样）：⋯ 槽算在它那一行整行高的那一组里（TKL / 全尺寸 / 75% 的槽在 Esc 和 F1 中间，
+     * 笔记本 / 65% 的在左 Ctrl 右边，本来就在这一段里；苹果紧凑的在 F 行最右，空着时照样算在 F 行那一段里、分给 F12）。
      */
     List<Range> ranges(boolean menuKey) {
         List<Range> out = new ArrayList<>();
         List<Key> ks = keys(menuKey);
         int clusters = clusterCount();
         for (int c = 0; c < clusters; c++) {
-            float cl = clusterLeft(c), cr = clusterRight(c);
+            // 只有一个区块时右边就是这一块的右边（笔记本 15 = 主键区；75% / 65% 16、苹果紧凑 14.5）
+            float cl = clusterLeft(c), cr = clusters == 1 ? width : clusterRight(c);
             float outLeft = c == 0 ? 0 : (clusterRight(c - 1) + cl) / 2;
             float outRight = c == clusters - 1 ? width : (cr + clusterLeft(c + 1)) / 2;
             for (int r = 0; r < ROWS; r++) {
@@ -604,7 +1023,13 @@ final class FixedLayout {
                     }
                     bandSpans.get(b).add(s);
                 }
-                addSegments(out, c, r, spans, top, bottom, cl, cr, outLeft, outRight);
+                // ⋯ 槽算在它那一行整行高的那一组里：放没放 ⋯ 结果一样（TKL / 75% 的槽在 Esc 和 F1 中间、笔记本 / 65% 的在左 Ctrl 右边，本来就在一段里；
+                // 苹果紧凑的在 F 行最右，空着时照样算在 F 行那一段里，分给 F12）
+                if (menu.cluster == c && menu.span(r) != null) spans.add(menu.span(r));
+                // 别的组的键占着的地方：同一行里只占一截的键夹在整行高的键中间（苹果紧凑的 ↑↓ 在 ← 和 → 之间）时，整行高那一组不跨过它们并成一段
+                List<float[]> partial = new ArrayList<>();
+                for (List<float[]> b : bandSpans) partial.addAll(b);
+                addSegments(out, c, r, spans, top, bottom, cl, cr, outLeft, outRight, partial);
                 Integer[] order = new Integer[bands.size()];
                 for (int i = 0; i < order.length; i++) order[i] = i;
                 Arrays.sort(order, (a, b) -> Float.compare(bands.get(a)[0], bands.get(b)[0]));
@@ -612,7 +1037,7 @@ final class FixedLayout {
                     float[] band = bands.get(order[i]);
                     float bt = i == 0 ? top : (bands.get(order[i - 1])[1] + band[0]) / 2;
                     float bb = i == order.length - 1 ? bottom : (band[1] + bands.get(order[i + 1])[0]) / 2;
-                    addSegments(out, c, r, bandSpans.get(order[i]), bt, bb, cl, cr, outLeft, outRight);
+                    addSegments(out, c, r, bandSpans.get(order[i]), bt, bb, cl, cr, outLeft, outRight, spans);
                 }
             }
         }
@@ -624,12 +1049,13 @@ final class FixedLayout {
      * 每段一块 [top, bottom]；挨着区块边的伸到 outLeft / outRight。
      */
     private void addSegments(List<Range> out, int c, int r, List<float[]> spans, float top, float bottom,
-                             float cl, float cr, float outLeft, float outRight) {
+                             float cl, float cr, float outLeft, float outRight, List<float[]> others) {
         if (spans.isEmpty()) return;
         spans.sort((a, b) -> Float.compare(a[0], b[0]));
         float segL = spans.get(0)[0], segR = spans.get(0)[1];
         for (int i = 1; i <= spans.size(); i++) {
-            if (i < spans.size() && spans.get(i)[0] - segR <= SEGMENT_GAP && !blankBetween(r, segR, spans.get(i)[0])) {
+            if (i < spans.size() && spans.get(i)[0] - segR <= SEGMENT_GAP && !blankBetween(r, segR, spans.get(i)[0])
+                    && !occupied(others, segR, spans.get(i)[0])) {
                 segR = Math.max(segR, spans.get(i)[1]);
                 continue;
             }
@@ -641,6 +1067,12 @@ final class FixedLayout {
                 segR = spans.get(i)[1];
             }
         }
+    }
+
+    /** [left, right] 这条缝里有没有别的组的键（others 是同一行里另一组键占的 {左, 右}）。 */
+    private static boolean occupied(List<float[]> others, float left, float right) {
+        for (float[] o : others) if (o[0] < right - 1e-4f && o[1] > left + 1e-4f) return true;
+        return false;
     }
 
     /** 第 r 行 [left, right] 这条缝里有没有声明过的空格子。 */

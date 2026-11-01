@@ -54,9 +54,9 @@ final class FixedData {
     }
 
     /**
-     * 拼逐级缩的几级（FixedLayout.ladder：选的尺寸往下，全尺寸 → TKL → 笔记本）：每级一块，右 Alt 写不写 AltGr 看 Windows 字表有没有第三层，
+     * 拼逐级缩的几级（FixedLayout.ladder：选的尺寸往下，全尺寸 → TKL → 75% → 笔记本……）：每级一块，右 Alt 写不写 AltGr 看 Windows 字表有没有第三层，
      * 小键盘小数点、ABNT2 小键盘多的那个键、Mac 模式的 Caps 键帽（拼音写 中/英）看清单（FixedLayout.forEntry）；
-     * 字表读不出来、这个布局这种模式没有数据（拉美的 Mac 模式）返回空列表（见类注释）。
+     * 字表读不出来、这个布局这种模式没有数据（拉美的 Mac 模式）、尺寸配不上（苹果紧凑 × Windows 模式 / ABNT2）返回空列表（见类注释）。
      */
     static List<FixedLayout> ladder(Context c, Boards.Spec spec) {
         FixedLegends.Layout l = FixedLegends.find(catalog(c), spec.lang);
@@ -70,10 +70,22 @@ final class FixedData {
         return out;
     }
 
-    /** 尺寸的短名字（⋯ 菜单里"全尺寸放不下，暂用 TKL"那种）。 */
+    /** 尺寸的短名字（⋯ 菜单里"全尺寸 → TKL"那种）："75%""65%""TKL"不翻译，全尺寸、笔记本、苹果紧凑翻。 */
     static String sizeName(Context c, String size) {
-        return c.getString(FixedLayout.FULL.equals(size) ? R.string.kbd_size_short_full
-                : FixedLayout.LAPTOP.equals(size) ? R.string.kbd_size_short_laptop : R.string.kbd_size_short_tkl);
+        switch (FixedLayout.validSize(size)) {
+            case FixedLayout.FULL:
+                return c.getString(R.string.kbd_size_short_full);
+            case FixedLayout.LAPTOP:
+                return c.getString(R.string.kbd_size_short_laptop);
+            case FixedLayout.P75:
+                return c.getString(R.string.kbd_size_short_75);
+            case FixedLayout.P65:
+                return c.getString(R.string.kbd_size_short_65);
+            case FixedLayout.APPLE:
+                return c.getString(R.string.kbd_size_short_apple);
+            default:
+                return c.getString(R.string.kbd_size_short_tkl);
+        }
     }
 
     /**
@@ -87,9 +99,9 @@ final class FixedData {
         return Boards.langName(cat, l, uiLocale(c), w -> variantWord(c, w), c.getString(R.string.kbd_name_short));
     }
 
-    /** 设置页的语言列表（Boards.langChoices：按界面语言的名字排，mode 下没有数据的灰掉）。 */
-    static List<Boards.LangChoice> langChoices(Context c, String mode) {
-        return Boards.langChoices(catalog(c), mode, uiLocale(c), w -> variantWord(c, w), c.getString(R.string.kbd_name_short));
+    /** 设置页的语言列表（Boards.langChoices：按界面语言的名字排，mode 下没有数据的、size 配不上形状的灰掉）。 */
+    static List<Boards.LangChoice> langChoices(Context c, String mode, String size) {
+        return Boards.langChoices(catalog(c), mode, size, uiLocale(c), w -> variantWord(c, w), c.getString(R.string.kbd_name_short));
     }
 
     static Locale uiLocale(Context c) {

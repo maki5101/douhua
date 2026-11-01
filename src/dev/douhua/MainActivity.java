@@ -360,9 +360,9 @@ public final class MainActivity extends Activity
     private int touchButtons;
     /**
      * 修饰键的状态（MSG_MODIFIERS / 本地分流，2026-11-01 起三样）：锁住的（latchedMods：KeyScan 的 notReady 看它）、有手指按着的、
-     * "现在松手就锁"的。两块键盘面板照它画高亮、换字（KeyboardFace.setKeyState）。
+     * "现在松手就锁"的；fnMods = Fn 的同样三样（协议 21，Proto.FN_* 位，实体键盘 75% / 65% / 苹果紧凑）。两块键盘面板照它画高亮、换字（KeyboardFace.setKeyState）。
      */
-    private int latchedMods, heldMods, armedMods;
+    private int latchedMods, heldMods, armedMods, fnMods;
     /**
      * Caps 的显示（豆花这边以为主机的大写锁定开着没有）：只有 App 这一份（服务 MSG_CAPS、本地分流 LocalOutput.caps 都只报"翻一下"）。
      * 主机的大写锁定跨连接都在，服务的分流和本地分流各自 releaseAll，放进哪个都会在接管 / 断开时丢；static：Activity 换语言 / 字体重建也不丢，
@@ -530,7 +530,7 @@ public final class MainActivity extends Activity
             touchButtons = 0;
             bt.sendMouse(air.buttons(), 0, 0, 0, 0);
             bt.sendKeyboard(new byte[Hid.KEYBOARD_REPORT_SIZE]);
-            showKeyState(0, 0, 0);
+            showKeyState(0, 0, 0, 0);
         }
         grabbed = false;
         if (btAcquired) {
@@ -1510,8 +1510,11 @@ public final class MainActivity extends Activity
             if (down && gamepadOn && !menuLayer.isOpen()) main.postDelayed(gpMenuLater, GP_MENU_HOLD_MS);
             return;
         }
+        // 键盘上的特殊键（符 / Fn 层 / 🌐 / ⋯ / 快捷行的动作）。🌐 另有实体键盘 Mac 模式 fn🌐 单点时分流报的点击（Proto.GLOBE_BUTTON_ID，只有 TAP）；
+        // fn🌐 / Fn 本身是键（Proto.FN_KEY / FN_GLOBE_KEY，协议 21），按下、松开走上面键盘键那一支
         if (id == KeyboardPanel.SYMBOLS_BUTTON_ID || id == KeyboardPanel.FN_BUTTON_ID || id == KeyboardPanel.GLOBE_BUTTON_ID
-                || id == KeyboardPanel.MENU_BUTTON_ID || (id >= KeyboardPanel.ROW_ACTION_BASE_ID && id < KeyboardPanel.ROW_ACTION_BASE_ID + keyboardRow.size())) {
+                || id == KeyboardPanel.MENU_BUTTON_ID
+                || (id >= KeyboardPanel.ROW_ACTION_BASE_ID && id < KeyboardPanel.ROW_ACTION_BASE_ID + keyboardRow.size())) {
             if (down) onKeyHaptic(id, true);
             keyboardScreen.face().showPressed(id, down);
             if (action == Proto.BUTTON_TAP) onSpecialKey(id);
@@ -2020,8 +2023,10 @@ public final class MainActivity extends Activity
         else if (ladder.isEmpty() && !boards.modeAvailable()) {   // 这个布局没有这种模式的数据（拉美的 Mac 模式、意大利 QZERTY / 瑞典旧版的 Windows 模式；设置页选不出来）：照样显示豆花布局
             board.setText(getString(R.string.kbd_menu_no_mode, FixedData.langName(this, boards.lang()),
                     getString(FixedLayout.MAC.equals(boards.mode()) ? R.string.kbd_mode_mac : R.string.kbd_mode_win)));
+        } else if (ladder.isEmpty() && !boards.sizeAvailable()) {   // 苹果紧凑配不上 Windows 模式 / ABNT2（设置页选不出来）：照样显示豆花布局
+            board.setText(getString(R.string.kbd_menu_no_size, FixedData.langName(this, boards.lang())));
         } else if (ladder.isEmpty()) board.setText(R.string.kbd_menu_no_data);   // 键帽数据读不出来：照样显示豆花布局（FixedLayout.forEntry）
-        else if (level < 0) board.setText(R.string.kbd_menu_narrow);   // 连笔记本都放不下
+        else if (level < 0) board.setText(R.string.kbd_menu_narrow);   // 连最小的一级（笔记本 / 苹果紧凑）都放不下
         else if (level > 0) board.setText(getString(R.string.kbd_menu_stepped, FixedData.shortName(this, boards.spec()),
                 FixedData.sizeName(this, ladder.get(0).size), FixedData.sizeName(this, ladder.get(level).size)));
         else board.setText(getString(R.string.kbd_menu_fixed, FixedData.shortName(this, boards.spec())));
@@ -2155,25 +2160,26 @@ public final class MainActivity extends Activity
     }
 
     @Override
-    public void onModifiers(int latched, int held, int armed) {
-        showKeyState(latched, held, armed);
+    public void onModifiers(int latched, int held, int armed, int fn) {
+        showKeyState(latched, held, armed, fn);
     }
 
     /** Caps 的显示翻一下（服务 MSG_CAPS / 本地分流）：点一下（sent，发了 Caps Lock）和按住 0.4 秒（只切显示）都是翻。 */
     @Override
     public void onCaps(boolean sent) {
         capsShown = !capsShown;
-        showKeyState(latchedMods, heldMods, armedMods);
+        showKeyState(latchedMods, heldMods, armedMods, fnMods);
     }
 
-    /** 记下修饰键的状态，两块面板都画（切换键盘时锁住 / 按着的修饰键、Caps 还在，新显示的那块上有这个键就亮）。 */
-    private void showKeyState(int latched, int held, int armed) {
+    /** 记下修饰键、Fn 的状态，两块面板都画（切换键盘时锁住 / 按着的修饰键、Caps 还在，新显示的那块上有这个键就亮；Fn 只有实体键盘画）。 */
+    private void showKeyState(int latched, int held, int armed, int fn) {
         latchedMods = latched;
         heldMods = held;
         armedMods = armed;
+        fnMods = fn;
         if (keyboard == null) return;
-        keyboard.setKeyState(latched, held, armed, capsShown);
-        fixedKeyboard.setKeyState(latched, held, armed, capsShown);
+        keyboard.setKeyState(latched, held, armed, fn, capsShown);
+        fixedKeyboard.setKeyState(latched, held, armed, fn, capsShown);
     }
 
     // ═══════════ 动作 ═══════════
@@ -2444,7 +2450,7 @@ public final class MainActivity extends Activity
                 });
                 airRoundPressed = false;
                 leftHolds = 0;
-                showKeyState(0, 0, 0);   // Caps 的显示不跟着归零：主机那边的大写锁定多半还在
+                showKeyState(0, 0, 0, 0);   // Caps 的显示不跟着归零：主机那边的大写锁定多半还在
 
                 if (wasGrabbed) {   // 服务转来的键按下等不到松开了：按下的样子、放大提示收起
                     keyboard.clearPressed();
@@ -3216,8 +3222,8 @@ public final class MainActivity extends Activity
         }
 
         @Override
-        public void modifiers(int latched, int held, int armed) {
-            onModifiers(latched, held, armed);
+        public void modifiers(int latched, int held, int armed, int fn) {
+            onModifiers(latched, held, armed, fn);
         }
 
         @Override
@@ -3312,7 +3318,7 @@ public final class MainActivity extends Activity
             if (capsHost != null) capsShown = false;
             capsHost = host;
         }
-        showKeyState(latchedMods, heldMods, armedMods);   // 苹果 / 不是苹果（字母的大小写规则）、Caps 的显示都可能变了
+        showKeyState(latchedMods, heldMods, armedMods, fnMods);   // 苹果 / 不是苹果（字母的大小写规则）、Caps 的显示都可能变了
     }
 
     private String btStatusText() {

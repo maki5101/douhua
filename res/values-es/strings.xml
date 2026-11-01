@@ -503,6 +503,7 @@
     <string name="kbd_menu_stepped">Teclado: físico · %1$s (%2$s → %3$s)</string>
     <string name="kbd_menu_no_data">Teclado: físico (no se leen los datos, se muestra Douhua)</string>
     <string name="kbd_menu_no_mode">Teclado: físico · %1$s (sin datos para el modo %2$s, se muestra Douhua)</string>
+    <string name="kbd_menu_no_size">Teclado: físico · %1$s (Apple compacto solo en modo Mac con ANSI / ISO, se muestra Douhua)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
     <string name="kbd_var_intl">Internacional</string>
     <string name="kbd_var_legacy">Antiguo</string>
@@ -510,11 +511,12 @@
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
     <string name="kbd_mode_unavailable">%1$s (sin datos para esta distribución)</string>
+    <string name="kbd_apple_unavailable">%1$s (no con Apple compacto)</string>
     <string name="sec_kbd_board">Qué teclado</string>
     <string name="kbd_board">La pantalla de teclado usa</string>
     <string name="kbd_board_douhua">Diseño Douhua</string>
     <string name="kbd_board_fixed">Teclado físico</string>
-    <string name="kbd_board_note">También se cambia con «Teclado» en el menú ⋯. Los dos conservan sus ajustes: tamaño y posición del diseño Douhua, división, fila inferior y capa que estaba a la vista no cambian. Si ni siquiera cabe el tamaño portátil (tecla de letra de menos de 32 dp, p. ej. teléfono en vertical) se muestra de momento el diseño Douhua; al girarlo en horizontal vuelve el teclado físico.</string>
+    <string name="kbd_board_note">También se cambia con «Teclado» en el menú ⋯. Los dos conservan sus ajustes: tamaño y posición del diseño Douhua, división, fila inferior y capa que estaba a la vista no cambian. Si ni siquiera cabe el paso más pequeño (tecla de letra de menos de 32 dp, p. ej. teléfono en vertical) se muestra de momento el diseño Douhua; al girarlo en horizontal vuelve el teclado físico.</string>
     <string name="sec_kbd_fixed">Teclado físico</string>
     <string name="kbd_lang">Distribución (lo que muestran las teclas)</string>
     <string name="kbd_host_names">Elige la misma distribución en el ordenador o la tableta: en Mac e iPad se llama «%1$s» y en Windows «%2$s».</string>
@@ -524,6 +526,7 @@
     <string name="kbd_lang_hosts_win">Windows: %1$s</string>
     <string name="kbd_lang_hosts_mac">Mac: %1$s · no existe en Windows</string>
     <string name="kbd_lang_no_mode">Sin datos de teclas para el modo %1$s; cambia de modo para elegirla</string>
+    <string name="kbd_lang_no_apple">Solo ABNT2, que Apple compacto no tiene; cambia de tamaño para elegirla</string>
     <string name="kbd_shape">Forma</string>
     <string name="kbd_shape_ansi">ANSI (EE. UU., Intro de una fila)</string>
     <string name="kbd_shape_iso">ISO (Intro en L, tecla extra a la izquierda de la Z)</string>
@@ -532,16 +535,24 @@
     <string name="kbd_size_tkl">Sin teclado numérico (TKL, %1$d teclas)</string>
     <string name="kbd_size_full">Completo (con teclado numérico, %1$d teclas)</string>
     <string name="kbd_size_laptop">Portátil (estilo ThinkPad, flechas abajo a la derecha, %1$d teclas)</string>
+    <string name="kbd_size_75">75%% (fila F y flechas, %1$d teclas)</string>
+    <string name="kbd_size_65">65%% (sin fila F, con flechas, %1$d teclas)</string>
+    <string name="kbd_size_apple">Apple compacto (proporciones de MacBook / Magic Keyboard, solo modo Mac, %1$d teclas)</string>
+    <string name="kbd_size_apple_only">%1$s (solo modo Mac con ANSI / ISO)</string>
     <string name="kbd_size_short_full">completo</string>
     <string name="kbd_size_short_tkl">TKL</string>
     <string name="kbd_size_short_laptop">portátil</string>
-    <string name="kbd_size_note">Si el tamaño elegido no cabe en la ventana (tecla de letra de menos de 32 dp) se reduce un paso cada vez: completo → TKL → portátil; el diseño Douhua solo se muestra si tampoco cabe el portátil. Cuando la ventana se ensancha vuelve solo. Cada tamaño guarda su propio tamaño y posición.</string>
+    <string name="kbd_size_short_75" formatted="false">75%</string>
+    <string name="kbd_size_short_65" formatted="false">65%</string>
+    <string name="kbd_size_short_apple">Apple compacto</string>
+    <string name="kbd_size_note" formatted="false">Si el tamaño elegido no cabe en la ventana (tecla de letra de menos de 32 dp) se reduce un paso cada vez: completo → TKL → 75% → portátil, y 65% → portátil; el diseño Douhua solo se muestra si tampoco cabe el portátil. Apple compacto pasa directamente al diseño Douhua. Cuando la ventana se ensancha vuelve solo. Cada tamaño guarda su propio tamaño y posición.</string>
     <string name="kbd_mode">Modo</string>
     <string name="kbd_mode_hint">El modo Mac es un teclado Apple: fila inferior ⌃ ⌥ ⌘ (Opción envía Alt, Comando envía ⌘), las teclas muestran lo que escribe un Mac; úsalo también para iPad. El modo Windows es un teclado de PC: Ctrl, Super, Alt, AltGr, ☰, las teclas muestran lo que escribe Windows; úsalo también para Linux y Android.</string>
     <string name="kbd_host_note">Douhua envía la posición de las teclas; lo que se escribe depende de la distribución configurada en el ordenador o la tableta. Pon allí la misma distribución y las teclas coincidirán con lo que escribes. En modo escritorio «allí» es este teléfono: en los ajustes de teclado físico del teléfono elige la misma distribución para Douhua Keyboard.</string>
     <string name="kbd_open_hw">Abrir los ajustes de teclado físico del teléfono</string>
     <string name="kbd_no_data">No se pueden leer los datos del teclado físico</string>
     <string name="kbd_no_mode_data">%1$s no tiene datos de teclas para el modo %2$s: la pantalla de teclado muestra la distribución Douhua. Elige otro modo u otra distribución.</string>
+    <string name="kbd_no_size_data">Apple compacto solo existe en modo Mac con forma ANSI / ISO: la pantalla de teclado muestra la distribución Douhua. Elige otro tamaño, modo o distribución.</string>
     <string name="sec_kbd_douhua">Diseño Douhua</string>
     <string name="licenses">Licencias de código abierto</string>
 </resources>

@@ -10,7 +10,8 @@ import java.util.Locale;
  *
  * 修饰键（左右八个）按下马上发；按住期间用过（按了别的键、鼠标键 / 滚轮 / 缩放 / 手势）= 组合键、松手就松；单独点一下 = 点了一下；
  * 单独按住 0.4–1 秒松手才锁，锁了以后打完下一个普通键自动解开、再点一下也能解开（2026-11-01 起，以前是点一下就锁）。
- * Caps 点一下发、按住只切显示；小红点状态的合并键点一下逗号、按住句号。按着要计时的这几种键、锁定、按着的计数都在 {@link KeyHolds}，
+ * Caps 点一下发、按住只切显示；小红点状态的合并键点一下逗号、按住句号；实体键盘 75% / 65% / 苹果紧凑的 Fn（协议 21）规矩同修饰键，
+ * 带 Fn 层的键按下那一刻按 Fn 定码。按着要计时的这几种键、锁定、按着的计数、Fn 的状态都在 {@link KeyHolds}，
  * 到点用按键专用的定时器（{@link Output#scheduleKeys}，和引擎那个槽分开）。锁定期间点触控板就是 Ctrl + 点击之类。
  * "自带修饰键"的键（"@"、"复制"之类）按下时连同修饰键一起按。
  *
@@ -53,10 +54,10 @@ public final class TouchRouter implements GestureEngine.Output {
         void button(int id, int action);
 
         /**
-         * 修饰键的状态变了（同 Proto.MSG_MODIFIERS，HID 修饰键位）：latched = 锁住的，held = 有手指按着的，armed = "现在松手就锁"的。
-         * 三样都比上次报的，变了才调。
+         * 修饰键的状态变了（同 Proto.MSG_MODIFIERS，HID 修饰键位）：latched = 锁住的，held = 有手指按着的，armed = "现在松手就锁"的；
+         * fn = Fn 的同样三样（Proto.FN_LATCHED / FN_HELD / FN_ARMED 位，协议 21）。四样都比上次报的，变了才调。
          */
-        void modifiers(int latched, int held, int armed);
+        void modifiers(int latched, int held, int armed, int fn);
 
         /** Caps 的显示该翻一下了（同 Proto.MSG_CAPS）：sent = 这次给主机发了 Caps Lock（点一下），假 = 只切显示（按住 0.4 秒）。显示状态归界面管。 */
         void caps(boolean sent);
@@ -198,8 +199,8 @@ public final class TouchRouter implements GestureEngine.Output {
     private final GamepadTouch gamepad = new GamepadTouch(new PadOutput());
     /** 按着要计时的键（修饰键、Caps、合并键）、锁定的修饰键、按着的键的计数。 */
     private final KeyHolds holds = new KeyHolds(new HoldsHost());
-    /** 上次报给界面的修饰键状态（Output.modifiers，变了才报）。 */
-    private int shownLatched, shownHeld, shownArmed;
+    /** 上次报给界面的修饰键状态、Fn 的状态（Output.modifiers，变了才报）。 */
+    private int shownLatched, shownHeld, shownArmed, shownFn;
     /** 最近一次带时间的入口给的时间（引擎在 frame / onTimer 里回调 mouse / zoom 时用它；只会比真正的现在早，按它排的定时器只会晚到）。 */
     private long now = Long.MIN_VALUE;
     /** 开合缩放期间按住的 Ctrl。 */
@@ -485,7 +486,7 @@ public final class TouchRouter implements GestureEngine.Output {
         holds.onTimer(t);
     }
 
-    /** 清掉全部锁住的修饰键（Proto.CMD_UNLATCH：进空中鼠标、手柄页时）；按着的不动。 */
+    /** 清掉全部锁住的修饰键、锁住的 Fn（Proto.CMD_UNLATCH：进空中鼠标、手柄页时）；按着的不动。 */
     public void unlatch(long t) {
         tick(t);
         holds.unlatch(t);
@@ -629,7 +630,7 @@ public final class TouchRouter implements GestureEngine.Output {
     }
 
     /**
-     * 按下 / 松开一个键（key 同 Proto.REGION_KEY 的 id：HID 用法码 | 自带修饰键 << 8，或者合并键 Proto.dualKey），
+     * 按下 / 松开一个键（key 同 Proto.REGION_KEY 的 id：HID 用法码 | 自带修饰键 << 8，合并键 Proto.dualKey，Fn 键、带 Fn 层的键 Proto.fnLayerKey），
      * action = Proto.KEY_DOWN / KEY_UP / KEY_CANCEL（被取消的：修饰键松开但不锁，Caps、合并键什么都不出）。
      * 界面自己收到的键（面板自己收触摸时）、动作里的组合键走这里，和按在区域上的键走同一份规则（KeyHolds），t = 按下 / 松开的时间。
      * 按下时转着的惯性静默停（打字说明不滚了，也免得 Ctrl / Super 在转的中途接上）。
@@ -646,7 +647,7 @@ public final class TouchRouter implements GestureEngine.Output {
 
     /**
      * 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开、小红点和中键滚动杆停（节拍停）、中键不补单击、手柄回中立；
-     * 修饰键的锁定 / 按着 / 快锁了全部归零，待定的 Caps / 合并键丢掉（不发），按键定时器撤掉。之后迟到的松开计数是 0、整个不理。
+     * 修饰键和 Fn 的锁定 / 按着 / 快锁了全部归零，待定的 Caps / 合并键丢掉（不发），按键定时器撤掉。之后迟到的松开计数是 0、整个不理。
      * 触摸屏被释放、连接断开时调。
      */
     public void releaseAll() {
@@ -665,7 +666,7 @@ public final class TouchRouter implements GestureEngine.Output {
         chordKeys.clear();
         if (engine != null) engine.setCtrlHeld(false);
         if (keyboard.releaseAll()) sendKeyboard();
-        showModifiers();   // 不是全零就报一次 (0, 0, 0)
+        showModifiers();   // 不是全零就报一次 (0, 0, 0, 0)
     }
 
     /** keepKeys = 按着键的手指留着（换参数时，见 {@link #setConfig}）；releaseAll 全清。 */
@@ -766,14 +767,15 @@ public final class TouchRouter implements GestureEngine.Output {
         if (chordKeys.remove(Integer.valueOf(key))) applyModifiers();
     }
 
-    /** 修饰键的状态告诉界面（latched / held / armed 三样，比上次报的，变了才报）。 */
+    /** 修饰键的状态告诉界面（latched / held / armed 三样和 Fn 的状态，比上次报的，变了才报）。 */
     private void showModifiers() {
-        int l = holds.latched(), h = holds.held(), a = holds.armed();
-        if (l == shownLatched && h == shownHeld && a == shownArmed) return;
+        int l = holds.latched(), h = holds.held(), a = holds.armed(), f = holds.fn();
+        if (l == shownLatched && h == shownHeld && a == shownArmed && f == shownFn) return;
         shownLatched = l;
         shownHeld = h;
         shownArmed = a;
-        out.modifiers(l, h, a);
+        shownFn = f;
+        out.modifiers(l, h, a, f);
     }
 
     /** 鼠标键按着（左 / 右 / 中，含外部按住的、中键按着还没发出去的）：这时按下的修饰键是组合的一部分，绝不锁。 */
@@ -894,6 +896,12 @@ public final class TouchRouter implements GestureEngine.Output {
         @Override
         public void caps(boolean sent) {
             out.caps(sent);
+        }
+
+        /** fn🌐 单点：和 🌐 键一样报一次点击（App 照 🌐 键执行切输入法）。 */
+        @Override
+        public void globe() {
+            out.button(Proto.GLOBE_BUTTON_ID, Proto.BUTTON_TAP);
         }
 
         @Override

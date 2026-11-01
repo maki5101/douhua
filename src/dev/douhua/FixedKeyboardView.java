@@ -24,6 +24,8 @@ import java.util.List;
  * 颜色全从当前主题取（Style.theme，主次键帽同 KeyRows.functionKey）；修饰键左右八个都画高亮（锁住的、"现在松手就锁"的），Caps 开着时也亮；
  * 锁住或按着 Shift / 第三层时会出的那个字照常、别的压暗，字母跟着 Caps 换大小写（FixedPanel.upper）；
  * 死键用强调色（activeText，对键帽够 4.5:1）。被小红点切到的键沿圆弧切掉一块，直接用豆花布局那个 Style.CutCap 画（圆角矩形减去圆）。
+ * Fn（协议 21，75% / 65% / 苹果紧凑）：Fn 键锁住 / 快锁了时画高亮；Fn 锁住或按着时带 Fn 层的键帽整片换成 Fn 层的字（主次照 Fn 层那个码），
+ * 不换层、不重报区域——按下发哪个码由分流按下那一刻定（KeyHolds），这里只画。报的 id、自己收触摸时发的 id 都是 FixedPanel.keyId。
  */
 final class FixedKeyboardView extends View implements KeyboardFace {
     private final KeyboardPanel.Listener listener;
@@ -32,8 +34,8 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     private final KeyFingers fingers = new KeyFingers();
     private final int gap;
     private final float corner, pad, labelRoom;
-    /** 换层看的修饰键（latched | held：锁住或按着都换）、高亮看的（latched | armed）、豆花这边显示的大写锁定，见 {@link #setKeyState}。 */
-    private int mods, shown;
+    /** 换层看的修饰键（latched | held：锁住或按着都换）、高亮看的（latched | armed）、Fn 的状态（Proto.FN_* 位）、豆花这边显示的大写锁定，见 {@link #setKeyState}。 */
+    private int mods, shown, fnState;
     private boolean capsOn;
     /** 每个键（model.keys 的下标）按着没有。 */
     private boolean[] pressed = new boolean[0];
@@ -110,11 +112,12 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     }
 
     @Override
-    public void setKeyState(int latched, int held, int armed, boolean caps) {
+    public void setKeyState(int latched, int held, int armed, int fn, boolean caps) {
         int m = latched | held, sh = latched | armed;
-        if (m == mods && sh == shown && caps == capsOn) return;
+        if (m == mods && sh == shown && fn == fnState && caps == capsOn) return;
         mods = m;
         shown = sh;
+        fnState = fn;
         capsOn = caps;
         invalidate();
     }
@@ -159,11 +162,12 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         model.regions(loc[0], loc[1], regions);
     }
 
+    /** id = 报的那个 id（FixedPanel.keyId：Fn 键、带 Fn 层的键是协议 21 的编码，服务转来的按下就是它）。 */
     @Override
     public void showPressed(int id, boolean down) {
         List<FixedLayout.Key> keys = model.keys();
         for (int i = 0; i < keys.size() && i < pressed.length; i++) {
-            if (keys.get(i).id != id) continue;
+            if (model.keyId(i) != id) continue;
             pressed[i] = down;
             preview(i, down);
         }
@@ -261,11 +265,12 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         boolean borders = Style.keyBorders();
         String space = getContext().getString(R.string.key_space);
         List<FixedLayout.Key> keys = model.keys();
+        boolean fnLayer = FixedPanel.fnShown(fnState);
         for (int i = 0; i < keys.size() && i < paths.length; i++) {
             if (paths[i] == null) continue;
             FixedLayout.Key k = keys.get(i);
-            boolean active = FixedPanel.active(k, shown, capsOn);
-            boolean fn = model.functionKey(i) && !active;
+            boolean active = model.active(i, shown, capsOn, fnState);
+            boolean fn = model.functionKey(i, fnLayer) && !active;
             boolean down = i < pressed.length && pressed[i];
             // ⋯ 槽：强调色的底 + 反差字、不画边框（同豆花布局的 ⋯ 键，Style.menuKeyLook）。键帽的路径往里缩了半条边框，
             // 别的键描边时外沿才到键帽的边：⋯ 照样"描边"、只是描成底色，大小和旁边的键一样（按键边框关着时都不描，也一样）
@@ -291,13 +296,13 @@ final class FixedKeyboardView extends View implements KeyboardFace {
                 }
             }
             int base = menu ? t.menuKeyText : active ? t.activeText : fn ? t.fnText : t.text;
-            List<FixedPanel.Glyph> glyphs = model.glyphs(i, mods, capsOn, space);
-            for (int[] b : model.capBoxes(i)) drawGlyphs(canvas, i, b, glyphs, base, t);
+            List<FixedPanel.Glyph> glyphs = model.glyphs(i, mods, capsOn, fnLayer, space);
+            for (int[] b : model.capBoxes(i)) drawGlyphs(canvas, i, b, glyphs, base, t, model.named(i, fnLayer));
         }
     }
 
     /** 一个键帽上的字：正中 / 上下两层 / 角上小字，被切到的键整块字竖着挪（FixedPanel.shift）、角上小字放离切口最远的角。 */
-    private void drawGlyphs(Canvas canvas, int i, int[] b, List<FixedPanel.Glyph> glyphs, int base, Theme t) {
+    private void drawGlyphs(Canvas canvas, int i, int[] b, List<FixedPanel.Glyph> glyphs, int base, Theme t, boolean named) {
         float w = b[2] - b[0], h = b[3] - b[1];
         if (w <= 0 || h <= 0) return;
         float shift = model.shift(i);
@@ -308,7 +313,6 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         float pairX = hasCorner ? b[0] + w * 0.42f : cx;
         float big = Math.min(Style.sp(getContext(), 18), h * 0.46f), mid = Math.min(Style.sp(getContext(), 14), h * 0.30f),
                 small = Math.min(Style.sp(getContext(), 10), h * 0.22f), name = Math.min(Style.sp(getContext(), 13), h * 0.34f);
-        boolean named = !model.keys().get(i).charKey();
         for (FixedPanel.Glyph g : glyphs) {
             int color = g.dead ? t.activeText : base;
             if (g.dim) color = (color & 0x00FFFFFF) | ((Math.round(((color >>> 24) & 0xFF) * 0.4f)) << 24);
@@ -368,7 +372,7 @@ final class FixedKeyboardView extends View implements KeyboardFace {
             previewHost.hideKeyPreviewToken(token);
             return;
         }
-        String label = model.preview(i, mods, capsOn);
+        String label = model.preview(i, mods, capsOn, FixedPanel.fnShown(fnState));
         if (label == null) return;
         int[] b = model.box(i);
         previewHost.showKeyPreviewAt(this, b[0], b[1], b[2], b[3], label, token);
@@ -409,11 +413,12 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         return true;
     }
 
-    /** 先发键，再震动、画按下的样子（同 KeyboardPanel）。 */
+    /** 先发键（Fn 键、带 Fn 层的键发协议 21 的编码，FixedPanel.keyId），再震动、画按下的样子（同 KeyboardPanel）。 */
     private void press(int index) {
-        FixedLayout.Key k = model.keys().get(index);
-        if (!k.special) listener.onLocalKey(k.id, Proto.KEY_DOWN);
-        listener.onKeyHaptic(k.id, k.special);
+        boolean key = model.sendsKey(index);
+        int id = model.keyId(index);
+        if (key) listener.onLocalKey(id, Proto.KEY_DOWN);
+        listener.onKeyHaptic(id, !key);
         pressed[index] = true;
         preview(index, true);
         invalidate();
@@ -422,11 +427,10 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     /** tap = 手指正常抬起（特殊键这时才算点了；键发 KEY_UP）；被取消、被顶掉的发 KEY_CANCEL（修饰键不锁、Caps 什么都不出）。 */
     private void release(int index, boolean tap) {
         if (index < 0 || index >= model.keys().size()) return;
-        FixedLayout.Key k = model.keys().get(index);
-        if (!k.special) {
-            listener.onLocalKey(k.id, tap ? Proto.KEY_UP : Proto.KEY_CANCEL);
+        int id = model.keyId(index);
+        if (model.sendsKey(index)) {
+            listener.onLocalKey(id, tap ? Proto.KEY_UP : Proto.KEY_CANCEL);
         } else if (tap) {
-            int id = k.id;
             post(() -> listener.onSpecialKey(id));
         }
         if (index < pressed.length) pressed[index] = false;

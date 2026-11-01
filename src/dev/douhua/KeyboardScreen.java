@@ -47,7 +47,8 @@ import java.util.Map;
  *
  * 实体键盘（第 1B 批，2026-11-01）：设置里 / ⋯ 菜单里选了实体键盘（{@link #setFixedWanted}），就显示实体键盘那块面板（FixedKeyboardView），
  * 照 KeyboardPlan.planFixed 摆。逐级缩（2026-11-01 笔记本尺寸）：设置里选的尺寸是起点，这个窗口一格不到 32dp 就一级一级往下换
- * （全尺寸 → TKL → 笔记本，KeyboardPlan.fixedLevel），笔记本也放不下才暂时显示豆花布局（选的不变，⋯ 菜单写实际显示的是哪种），
+ * （梯子照 FixedLayout.ladder：全尺寸 → TKL → 75% → 笔记本，65% → 笔记本，苹果紧凑只有自己；KeyboardPlan.fixedLevel），
+ * 梯子最后一级也放不下才暂时显示豆花布局（选的不变，⋯ 菜单写实际显示的是哪种），
  * 横过来 / 拖宽了自动换回（{@link #isFixedShown}、Listener.onKeyboardFaceChanged）。显示哪一级、用哪份大小位置、调大小怎么存都在纯 Java 的
  * {@link FixedSizing}（大小位置按显示着的那个尺寸取、存）。两块面板都在、同一时刻只显示一块，换的时候藏起来的那块松开手指、收掉按下的样子；
  * 换级时实体键盘那块自己收的手指同样松开（FixedKeyboardView.useLevel）。豆花布局的状态（层、分裂、大小位置）不动。
@@ -401,7 +402,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
     }
 
     /**
-     * 按上次量的宽度，实体键盘在这个窗口里显示逐级缩的第几级（0 = 选的那个尺寸；-1 = 笔记本也放不下 / 没数据，暂用豆花布局）。
+     * 按上次量的宽度，实体键盘在这个窗口里显示逐级缩的第几级（0 = 选的那个尺寸；-1 = 梯子最后一级也放不下 / 没数据，暂用豆花布局）。
      * 不看选没选实体键盘：刚从菜单换成实体键盘、还没重新量的那一下，⋯ 菜单的字也写得对。
      */
     int fixedLevelNow() {
@@ -497,7 +498,7 @@ final class KeyboardScreen extends ViewGroup implements KeyboardPanel.PreviewHos
         areaTop = 0;
         areaWidth = w;
         areaHeight = h;
-        // 选了实体键盘就逐级缩挑一级（一格 ≥ 32dp 的第一级），笔记本也放不下才在这个窗口里暂时显示豆花布局
+        // 选了实体键盘就逐级缩挑一级（一格 ≥ 32dp 的第一级），梯子最后一级也放不下才在这个窗口里暂时显示豆花布局
         // （换了要藏起来的那块先松开手指、收掉按下的样子；换级时实体键盘自己收的手指由 useLevel 松开）
         boolean changed = sizing.update(fixedWanted, areaWidth, sizes);
         boolean showFixed = sizing.level() >= 0;

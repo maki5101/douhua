@@ -110,9 +110,9 @@ public final class TestClient {
                     case Proto.MSG_GESTURE:
                         Server.log("自测收到 手势 " + in.readUnsignedByte() + "/" + in.readUnsignedByte());
                         break;
-                    case Proto.MSG_MODIFIERS:   // 协议 20：锁住 / 按着 / 快锁了三个字节
+                    case Proto.MSG_MODIFIERS:   // 协议 21：锁住 / 按着 / 快锁了三个字节 + Fn（位：1 锁住、2 按着、4 快锁了）
                         Server.log("自测收到 修饰键 锁住=" + in.readUnsignedByte() + " 按着=" + in.readUnsignedByte()
-                                + " 快锁了=" + in.readUnsignedByte());
+                                + " 快锁了=" + in.readUnsignedByte() + " Fn=" + in.readUnsignedByte());
                         break;
                     case Proto.MSG_CAPS:
                         Server.log("自测收到 Caps 显示翻一下（" + (in.readUnsignedByte() == 1 ? "发了 Caps Lock" : "只切显示") + "）");

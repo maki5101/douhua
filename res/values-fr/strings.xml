@@ -503,6 +503,7 @@
     <string name="kbd_menu_stepped">Clavier : physique · %1$s (%2$s → %3$s)</string>
     <string name="kbd_menu_no_data">Clavier : physique (données illisibles, Douhua affiché)</string>
     <string name="kbd_menu_no_mode">Clavier : physique · %1$s (pas de données en mode %2$s, Douhua affiché)</string>
+    <string name="kbd_menu_no_size">Clavier : physique · %1$s (Apple compact : mode Mac en ANSI / ISO seulement, Douhua affiché)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
     <string name="kbd_var_intl">International</string>
     <string name="kbd_var_legacy">Ancien</string>
@@ -510,11 +511,12 @@
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
     <string name="kbd_mode_unavailable">%1$s (pas de données pour cette disposition)</string>
+    <string name="kbd_apple_unavailable">%1$s (pas avec Apple compact)</string>
     <string name="sec_kbd_board">Quel clavier</string>
     <string name="kbd_board">L\'écran clavier utilise</string>
     <string name="kbd_board_douhua">Disposition Douhua</string>
     <string name="kbd_board_fixed">Clavier physique</string>
-    <string name="kbd_board_note">Vous pouvez aussi changer avec « Clavier » dans le menu ⋯. Les deux gardent leurs réglages : taille et position de la disposition Douhua, clavier scindé, rangée du bas et couche affichée ne changent pas. Si même le format portable ne tient pas (touche de lettre de moins de 32 dp, par ex. téléphone tenu droit), la disposition Douhua s\'affiche en attendant ; tournez l\'appareil et le clavier physique revient.</string>
+    <string name="kbd_board_note">Vous pouvez aussi changer avec « Clavier » dans le menu ⋯. Les deux gardent leurs réglages : taille et position de la disposition Douhua, clavier scindé, rangée du bas et couche affichée ne changent pas. Si même le plus petit cran ne tient pas (touche de lettre de moins de 32 dp, par ex. téléphone tenu droit), la disposition Douhua s\'affiche en attendant ; tournez l\'appareil et le clavier physique revient.</string>
     <string name="sec_kbd_fixed">Clavier physique</string>
     <string name="kbd_lang">Disposition (ce qu\'affichent les touches)</string>
     <string name="kbd_host_names">Choisissez la même disposition sur l\'ordinateur ou la tablette : elle s\'appelle « %1$s » sur Mac et iPad, « %2$s » sous Windows.</string>
@@ -524,6 +526,7 @@
     <string name="kbd_lang_hosts_win">Windows : %1$s</string>
     <string name="kbd_lang_hosts_mac">Mac : %1$s · absente de Windows</string>
     <string name="kbd_lang_no_mode">Pas de données de touches en mode %1$s ; changez de mode pour la choisir</string>
+    <string name="kbd_lang_no_apple">ABNT2 seulement, absent du format Apple compact ; changez de taille pour la choisir</string>
     <string name="kbd_shape">Forme</string>
     <string name="kbd_shape_ansi">ANSI (US, Entrée sur une rangée)</string>
     <string name="kbd_shape_iso">ISO (Entrée en L, touche en plus à gauche de Z)</string>
@@ -532,16 +535,24 @@
     <string name="kbd_size_tkl">Sans pavé numérique (TKL, %1$d touches)</string>
     <string name="kbd_size_full">Complet (avec pavé numérique, %1$d touches)</string>
     <string name="kbd_size_laptop">Portable (façon ThinkPad, flèches en bas à droite, %1$d touches)</string>
+    <string name="kbd_size_75">75%% (rangée F et flèches, %1$d touches)</string>
+    <string name="kbd_size_65">65%% (sans rangée F, avec flèches, %1$d touches)</string>
+    <string name="kbd_size_apple">Apple compact (proportions MacBook / Magic Keyboard, mode Mac seulement, %1$d touches)</string>
+    <string name="kbd_size_apple_only">%1$s (mode Mac en ANSI / ISO seulement)</string>
     <string name="kbd_size_short_full">complet</string>
     <string name="kbd_size_short_tkl">TKL</string>
     <string name="kbd_size_short_laptop">portable</string>
-    <string name="kbd_size_note">Si la taille choisie ne tient pas dans la fenêtre (touche de lettre de moins de 32 dp), elle descend d\'un cran à la fois : complet → TKL → portable ; la disposition Douhua ne s\'affiche que si même le format portable ne tient pas. Elle remonte quand la fenêtre s\'élargit. Chaque format garde sa propre taille et position.</string>
+    <string name="kbd_size_short_75" formatted="false">75%</string>
+    <string name="kbd_size_short_65" formatted="false">65%</string>
+    <string name="kbd_size_short_apple">Apple compact</string>
+    <string name="kbd_size_note" formatted="false">Si la taille choisie ne tient pas dans la fenêtre (touche de lettre de moins de 32 dp), elle descend d\'un cran à la fois : complet → TKL → 75% → portable, et 65% → portable ; la disposition Douhua ne s\'affiche que si même le format portable ne tient pas. Apple compact passe directement à la disposition Douhua. Elle remonte quand la fenêtre s\'élargit. Chaque format garde sa propre taille et position.</string>
     <string name="kbd_mode">Mode</string>
     <string name="kbd_mode_hint">Le mode Mac imite un clavier Apple : rangée du bas ⌃ ⌥ ⌘ (Option envoie Alt, Commande envoie ⌘), les touches montrent ce que tape un Mac ; à utiliser aussi pour l\'iPad. Le mode Windows est un clavier PC : Ctrl, Super, Alt, AltGr, ☰, les touches montrent ce que tape Windows ; à utiliser aussi pour Linux et Android.</string>
     <string name="kbd_host_note">Douhua envoie la position des touches ; le caractère tapé dépend de la disposition réglée sur l\'ordinateur ou la tablette. Réglez-y la même disposition pour que les touches correspondent à ce qui s\'écrit. En mode bureau, « là-bas » c\'est ce téléphone : dans les réglages du clavier physique du téléphone, choisissez la même disposition pour Douhua Keyboard.</string>
     <string name="kbd_open_hw">Ouvrir les réglages du clavier physique du téléphone</string>
     <string name="kbd_no_data">Impossible de lire les données du clavier physique</string>
     <string name="kbd_no_mode_data">%1$s n\'a pas de données de touches en mode %2$s : l\'écran clavier affiche la disposition Douhua. Choisissez un autre mode ou une autre disposition.</string>
+    <string name="kbd_no_size_data">Le format Apple compact n\'existe qu\'en mode Mac avec la forme ANSI / ISO : l\'écran clavier affiche la disposition Douhua. Choisissez une autre taille, un autre mode ou une autre disposition.</string>
     <string name="sec_kbd_douhua">Disposition Douhua</string>
     <string name="licenses">Licences open source</string>
 </resources>

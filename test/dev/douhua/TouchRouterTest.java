@@ -44,10 +44,10 @@ public final class TouchRouterTest {
             log.add("b" + id + ":" + action);
         }
 
-        /** 修饰键状态记成 "mod锁住/按着/快锁了"（十进制）。 */
+        /** 修饰键状态记成 "mod锁住/按着/快锁了"（十进制；Fn 不是 0 时后面再跟 "/fn" + Fn 的状态，协议 21）。 */
         @Override
-        public void modifiers(int latched, int held, int armed) {
-            log.add("mod" + latched + "/" + held + "/" + armed);
+        public void modifiers(int latched, int held, int armed, int fn) {
+            log.add("mod" + latched + "/" + held + "/" + armed + (fn != 0 ? "/fn" + fn : ""));
         }
 
         @Override

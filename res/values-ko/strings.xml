@@ -503,6 +503,7 @@
     <string name="kbd_menu_stepped">키보드: 실물 · %1$s (%2$s → %3$s)</string>
     <string name="kbd_menu_no_data">키보드: 실물 (데이터를 읽을 수 없어 더우화 표시 중)</string>
     <string name="kbd_menu_no_mode">키보드: 실물 · %1$s (%2$s 모드 데이터가 없어 더우화 표시 중)</string>
+    <string name="kbd_menu_no_size">키보드: 실물 · %1$s (Apple 컴팩트는 Mac 모드의 ANSI / ISO만 되어 더우화 표시 중)</string>
     <string name="kbd_name_short">%1$s · %2$s</string>
     <string name="kbd_var_intl">국제</string>
     <string name="kbd_var_legacy">레거시</string>
@@ -510,11 +511,12 @@
     <string name="kbd_mode_win">Windows</string>
     <string name="kbd_mode_mac">Mac</string>
     <string name="kbd_mode_unavailable">%1$s (이 배열은 데이터 없음)</string>
+    <string name="kbd_apple_unavailable">%1$s (Apple 컴팩트에서는 안 됨)</string>
     <string name="sec_kbd_board">사용할 키보드</string>
     <string name="kbd_board">키보드 화면에서 사용</string>
     <string name="kbd_board_douhua">더우화 배열</string>
     <string name="kbd_board_fixed">실물 키보드</string>
-    <string name="kbd_board_note">⋯ 메뉴의 \"키보드\" 항목으로도 바꿀 수 있습니다. 바꿔도 양쪽 설정은 그대로입니다: 더우화 배열의 크기와 위치, 분할, 맨 아래 줄, 보고 있던 층은 바뀌지 않습니다. 노트북 크기도 들어가지 않을 때(문자 키가 32dp 미만, 예: 휴대폰을 세로로 들었을 때)는 우선 더우화 배열을 보여 주고, 가로로 돌리면 실물 키보드로 돌아갑니다.</string>
+    <string name="kbd_board_note">⋯ 메뉴의 \"키보드\" 항목으로도 바꿀 수 있습니다. 바꿔도 양쪽 설정은 그대로입니다: 더우화 배열의 크기와 위치, 분할, 맨 아래 줄, 보고 있던 층은 바뀌지 않습니다. 가장 작은 단계도 들어가지 않을 때(문자 키가 32dp 미만, 예: 휴대폰을 세로로 들었을 때)는 우선 더우화 배열을 보여 주고, 가로로 돌리면 실물 키보드로 돌아갑니다.</string>
     <string name="sec_kbd_fixed">실물 키보드</string>
     <string name="kbd_lang">배열 (키에 표시되는 글자)</string>
     <string name="kbd_host_names">컴퓨터 / 태블릿에서도 같은 배열을 고르세요: Mac과 iPad에서는 “%1$s”, Windows에서는 “%2$s”라고 합니다.</string>
@@ -524,6 +526,7 @@
     <string name="kbd_lang_hosts_win">Windows: %1$s</string>
     <string name="kbd_lang_hosts_mac">Mac: %1$s · Windows에는 없음</string>
     <string name="kbd_lang_no_mode">%1$s 모드 키 데이터가 없습니다. 모드를 바꾸면 고를 수 있습니다</string>
+    <string name="kbd_lang_no_apple">ABNT2만 있어 Apple 컴팩트에서는 쓸 수 없습니다. 크기를 바꾸면 고를 수 있습니다</string>
     <string name="kbd_shape">형태</string>
     <string name="kbd_shape_ansi">ANSI (미국식, 일자형 Enter)</string>
     <string name="kbd_shape_iso">ISO (L자형 Enter, Z 왼쪽에 키 하나 더)</string>
@@ -532,16 +535,24 @@
     <string name="kbd_size_tkl">텐키리스 (TKL, %1$d키)</string>
     <string name="kbd_size_full">풀사이즈 (숫자 키패드 포함, %1$d키)</string>
     <string name="kbd_size_laptop">노트북 (ThinkPad 방식, 방향키는 오른쪽 아래, %1$d키)</string>
+    <string name="kbd_size_75">75%% (F 줄과 방향키 있음, %1$d키)</string>
+    <string name="kbd_size_65">65%% (F 줄 없음, 방향키 있음, %1$d키)</string>
+    <string name="kbd_size_apple">Apple 컴팩트 (MacBook·Magic Keyboard 비율, Mac 모드 전용, %1$d키)</string>
+    <string name="kbd_size_apple_only">%1$s (Mac 모드의 ANSI / ISO만)</string>
     <string name="kbd_size_short_full">풀사이즈</string>
     <string name="kbd_size_short_tkl">TKL</string>
     <string name="kbd_size_short_laptop">노트북</string>
-    <string name="kbd_size_note">고른 크기가 창에 들어가지 않으면(문자 키가 32dp 미만) 한 단계씩 줄입니다: 풀사이즈 → TKL → 노트북. 노트북 크기도 들어가지 않을 때만 더우화 배열을 보여 줍니다. 창이 넓어지면 자동으로 돌아갑니다. 크기와 위치는 크기마다 따로 기억합니다.</string>
+    <string name="kbd_size_short_75" formatted="false">75%</string>
+    <string name="kbd_size_short_65" formatted="false">65%</string>
+    <string name="kbd_size_short_apple">Apple 컴팩트</string>
+    <string name="kbd_size_note" formatted="false">고른 크기가 창에 들어가지 않으면(문자 키가 32dp 미만) 한 단계씩 줄입니다: 풀사이즈 → TKL → 75% → 노트북, 65% → 노트북. 노트북 크기도 들어가지 않을 때만 더우화 배열을 보여 줍니다. Apple 컴팩트는 들어가지 않으면 바로 더우화 배열이 됩니다. 창이 넓어지면 자동으로 돌아갑니다. 크기와 위치는 크기마다 따로 기억합니다.</string>
     <string name="kbd_mode">모드</string>
     <string name="kbd_mode_hint">Mac 모드는 Apple 키보드입니다: 맨 아래 줄 ⌃ ⌥ ⌘ (Option은 Alt, Command는 ⌘를 보냄), 키에는 Mac에서 입력되는 글자를 표시합니다. iPad에서도 이것을 씁니다. Windows 모드는 PC 키보드입니다: Ctrl, Super, Alt, AltGr, ☰, 키에는 Windows에서 입력되는 글자를 표시합니다. Linux와 Android에서도 이것을 씁니다.</string>
     <string name="kbd_host_note">더우화는 키의 위치를 보내고, 입력되는 글자는 컴퓨터 / 태블릿 쪽 키보드 배열이 정합니다. 그쪽도 같은 배열로 맞추면 키에 표시된 글자와 입력되는 글자가 같아집니다. 데스크톱 모드에서는 \"그쪽\"이 이 휴대폰입니다: 휴대폰 설정의 실물 키보드에서 Douhua Keyboard에 같은 배열을 고르세요.</string>
     <string name="kbd_open_hw">휴대폰의 실물 키보드 설정 열기</string>
     <string name="kbd_no_data">실물 키보드 데이터를 읽을 수 없습니다</string>
     <string name="kbd_no_mode_data">%1$s에는 %2$s 모드 키 데이터가 없어 키보드 화면에 더우화 배열을 표시합니다. 다른 모드나 배열을 고르세요.</string>
+    <string name="kbd_no_size_data">Apple 컴팩트는 Mac 모드의 ANSI / ISO 형태만 있어 키보드 화면에 더우화 배열을 표시합니다. 다른 크기, 모드나 배열을 고르세요.</string>
     <string name="sec_kbd_douhua">더우화 배열</string>
     <string name="licenses">오픈소스 라이선스</string>
 </resources>

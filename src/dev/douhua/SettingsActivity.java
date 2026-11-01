@@ -488,6 +488,9 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
      * 第 2 批（2026-11-01）：语言 34 个，点开是一个按名字排的列表（每项下面一行小字写它在 Mac / Windows 里叫什么，{@link #langDialog}）；
      * 某布局在某种模式下没有键帽数据（拉美没有 Mac 的；意大利 QZERTY、瑞典旧版只有 Mac 的）：选着那种模式时列表里这个布局灰掉、写原因，选着这个布局时"模式"里那种模式灰掉
      * （Boards.langChoices / modeAvailable），不会选出一块没字的键盘；存着的组合要是正好没数据，键盘页照旧退回豆花布局，这里标红一行写原因。
+     * 第 3 批（2026-11-01）：尺寸六种（苹果紧凑 / 笔记本 / 65% / 75% / TKL / 全尺寸，从小到大，点开是列表），苹果紧凑只有 Mac 模式、只有 ANSI / ISO
+     * （Boards.sizeAvailable）：选着 Windows 模式 / ABNT2 形状时尺寸里的苹果紧凑灰掉，选着苹果紧凑时模式里的 Windows、形状里的 ABNT2、
+     * 语言列表里只有 ABNT2 的布局（巴西）灰掉，都写原因；存着的组合正好配不上时同"没数据的模式"，标红一行。
      */
     private void keyboardSection() {
         header(R.string.sec_kbd_board);
@@ -512,38 +515,52 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             list.addView(text(hosts, 13, 0xFF9AA0A6));
             List<String> shapes = lang.shapes;
             String[] shapeNames = new String[shapes.size()];
+            boolean[] shapeOn = new boolean[shapes.size()];
             int sc = 0;
             for (int i = 0; i < shapeNames.length; i++) {
                 String sh = shapes.get(i);
                 shapeNames[i] = getString(FixedLayout.ISO.equals(sh) ? R.string.kbd_shape_iso
                         : FixedLayout.ABNT2.equals(sh) ? R.string.kbd_shape_abnt2 : R.string.kbd_shape_ansi);
+                // 苹果紧凑选着时 ABNT2 灰掉（按 Mac 模式问：模式那一边另由"模式"那一行灰掉）
+                shapeOn[i] = Boards.sizeAvailable(spec.size, sh, FixedLayout.MAC);
+                if (!shapeOn[i]) shapeNames[i] = getString(R.string.kbd_apple_unavailable, shapeNames[i]);
                 if (sh.equals(spec.shape)) sc = i;
             }
-            choiceRow(getString(R.string.kbd_shape), shapeNames, sc, i -> {
+            choiceRow(getString(R.string.kbd_shape), shapeNames, allOn(shapeOn) ? null : shapeOn, sc, i -> {
                 boards.setShape(shapes.get(i));
                 rebuildLater();   // 尺寸后面写的键数跟着变
             });
         }
-        // 从小到大：笔记本（照 ThinkPad）/ TKL / 全尺寸，键数照当前的形状、模式现算。选的是逐级缩的起点（窗口放不下就往小换，见 kbd_size_note）
-        String[] sizes = {FixedLayout.LAPTOP, FixedLayout.TKL, FixedLayout.FULL};
-        int[] sizeLabels = {R.string.kbd_size_laptop, R.string.kbd_size_tkl, R.string.kbd_size_full};
+        // 从小到大：苹果紧凑 / 笔记本（照 ThinkPad）/ 65% / 75% / TKL / 全尺寸（FixedLayout.ALL_SIZES），键数照当前的形状、模式现算
+        // （灰掉的苹果紧凑照 Mac 模式、ANSI / ISO 算）。选的是逐级缩的起点（窗口放不下就往小换，见 kbd_size_note）
+        String[] sizes = FixedLayout.ALL_SIZES;
         String[] sizeNames = new String[sizes.length];
-        int sizeAt = 1;
+        boolean[] sizeOn = new boolean[sizes.length];
+        int sizeAt = 0;
         for (int i = 0; i < sizes.length; i++) {
             int keys = FixedLayout.build(spec.shape, sizes[i], spec.mode, false, ".").keys.size();
-            sizeNames[i] = getString(sizeLabels[i], keys);
+            sizeNames[i] = getString(sizeLabel(sizes[i]), keys);
+            sizeOn[i] = Boards.sizeAvailable(sizes[i], spec.shape, spec.mode);
+            if (!sizeOn[i]) sizeNames[i] = getString(R.string.kbd_size_apple_only, sizeNames[i]);
             if (sizes[i].equals(spec.size)) sizeAt = i;
         }
-        choiceRow(getString(R.string.kbd_size), sizeNames, sizeAt, i -> boards.setSize(sizes[i]));
+        choiceRow(getString(R.string.kbd_size), sizeNames, allOn(sizeOn) ? null : sizeOn, sizeAt, i -> {
+            boards.setSize(sizes[i]);
+            rebuildLater();   // 选着苹果紧凑时模式里的 Windows、形状里的 ABNT2、语言列表里的巴西跟着灰掉
+        });
         list.addView(text(getString(R.string.kbd_size_note), 13, 0xFF9AA0A6));
-        // 模式：这个布局没有数据的那种灰掉、写原因（拉美没有 Mac 的，意大利 QZERTY、瑞典旧版没有 Windows 的）
+        // 模式：这个布局没有数据的那种灰掉、写原因（拉美没有 Mac 的，意大利 QZERTY、瑞典旧版没有 Windows 的）；选着苹果紧凑时 Windows 也灰掉
         String[] modes = {FixedLayout.WIN, FixedLayout.MAC};
         int[] modeLabels = {R.string.kbd_mode_win, R.string.kbd_mode_mac};
         String[] modeNames = new String[modes.length];
         boolean[] modeOn = new boolean[modes.length];
         for (int i = 0; i < modes.length; i++) {
-            modeOn[i] = Boards.modeAvailable(catalog, spec.lang, modes[i]);
-            modeNames[i] = modeOn[i] ? getString(modeLabels[i]) : getString(R.string.kbd_mode_unavailable, getString(modeLabels[i]));
+            boolean data = Boards.modeAvailable(catalog, spec.lang, modes[i]);
+            // 按 ANSI 问：形状那一边另由"形状"那一行灰掉
+            boolean fits = Boards.sizeAvailable(spec.size, FixedLayout.ANSI, modes[i]);
+            modeOn[i] = data && fits;
+            modeNames[i] = !data ? getString(R.string.kbd_mode_unavailable, getString(modeLabels[i]))
+                    : !fits ? getString(R.string.kbd_apple_unavailable, getString(modeLabels[i])) : getString(modeLabels[i]);
         }
         choiceRow(getString(R.string.kbd_mode), modeNames, modeOn, FixedLayout.MAC.equals(spec.mode) ? 1 : 0, i -> {
             boards.setMode(modes[i]);
@@ -554,6 +571,9 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             // 存着的组合没有数据（设置页选不出来，以后清单变了之类）：键盘页退回豆花布局，这里写明原因
             list.addView(text(getString(R.string.kbd_no_mode_data, FixedData.langName(this, spec.lang),
                     getString(FixedLayout.MAC.equals(spec.mode) ? R.string.kbd_mode_mac : R.string.kbd_mode_win)), 14, 0xFFE07A5F));
+        } else if (!boards.sizeAvailable()) {
+            // 存着的组合尺寸配不上（苹果紧凑 × Windows / ABNT2；设置页选不出来，比如换成只有 ABNT2 的布局之前就选着苹果紧凑——那一项已灰掉）：同上
+            list.addView(text(getString(R.string.kbd_no_size_data), 14, 0xFFE07A5F));
         } else if (FixedData.table(this, spec.lang, spec.mode) == null) {   // 照理不会；读不出来时键盘页照样显示豆花布局（FixedLayout.forEntry）
             list.addView(text(getString(R.string.kbd_no_data), 14, 0xFFE07A5F));
         }
@@ -572,6 +592,30 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 }
             });
             list.addView(open);
+        }
+    }
+
+    /** 都能选（没有要灰掉的项时 choiceRow 照旧用系统的单选列表，样子和以前一样）。 */
+    private static boolean allOn(boolean[] on) {
+        for (boolean b : on) if (!b) return false;
+        return true;
+    }
+
+    /** 尺寸那一项的字（带 %1$d 键数）：FixedLayout.ALL_SIZES 里的每一种。 */
+    private static int sizeLabel(String size) {
+        switch (size) {
+            case FixedLayout.APPLE:
+                return R.string.kbd_size_apple;
+            case FixedLayout.LAPTOP:
+                return R.string.kbd_size_laptop;
+            case FixedLayout.P65:
+                return R.string.kbd_size_65;
+            case FixedLayout.P75:
+                return R.string.kbd_size_75;
+            case FixedLayout.FULL:
+                return R.string.kbd_size_full;
+            default:
+                return R.string.kbd_size_tkl;
         }
     }
 
@@ -595,7 +639,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
      * 打开时滚到现在选的那项。
      */
     private void langDialog(Boards.Spec spec) {
-        List<Boards.LangChoice> choices = FixedData.langChoices(this, spec.mode);
+        List<Boards.LangChoice> choices = FixedData.langChoices(this, spec.mode, spec.size);
         String modeName = getString(FixedLayout.MAC.equals(spec.mode) ? R.string.kbd_mode_mac : R.string.kbd_mode_win);
         int cur = 0;
         for (int i = 0; i < choices.size(); i++) if (choices.get(i).layout.id.equals(spec.lang)) cur = i;
@@ -640,7 +684,9 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                         : l.hasMode(FixedLayout.MAC) ? getString(R.string.kbd_lang_hosts, l.nameMac, l.nameWin)
                         : getString(R.string.kbd_lang_hosts_win, l.nameWin);
                 box.addView(text(hosts, 12, c.enabled ? 0xFF9AA0A6 : 0xFF6E7378));
-                if (!c.enabled) box.addView(text(getString(R.string.kbd_lang_no_mode, modeName), 12, 0xFFE0A33E));
+                if (!c.enabled) {
+                    box.addView(text(c.modeOk ? getString(R.string.kbd_lang_no_apple) : getString(R.string.kbd_lang_no_mode, modeName), 12, 0xFFE0A33E));
+                }
                 box.setEnabled(c.enabled);
                 return box;
             }

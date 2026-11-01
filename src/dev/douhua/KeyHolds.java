@@ -29,7 +29,16 @@ import java.util.Map;
  * 锁定被解开（打完普通键、Caps 松开、CMD_UNLATCH）不结算：锁定是给下一个键用的，被先按下的那个键用掉了
  * （锁着 Shift 快打 "I."：I 抬起解开 Shift 时合并键还按着，在那一刻结算会出 "I<"）。
  *
- * 按着的键按 id 计数（同一个用法码两根手指：⇧ 和功能行的 Shift、两个空格副本）。计数已经是 0 的松开（releaseAll 之后迟到的）整个不理。
+ * Fn（第 3 批，协议 21，实体键盘 75% / 65% / 苹果紧凑；{@link Proto#FN_KEY} / {@link Proto#FN_GLOBE_KEY}）：规矩同修饰键（用户给修饰键定的那套，
+ * 方案 design-batch3 §3.1）——按住再按别的键 = 组合（那个键出 Fn 层，松手就回底层、不锁）；单独点一下 Windows 模式什么都不做、Mac 模式 fn🌐 = 🌐
+ * （{@link Host#globe}）；单独按住 0.4–1 秒松手锁，只管下一个键（打完下一个普通键松开时解开，再点一下 Fn 也解开）；超过 1 秒高亮退回、松手不锁
+ * （fn🌐 也不切输入法）。"用过"、按下时别的键 / 鼠标键按着、被取消、CMD_UNLATCH、releaseAll 都同修饰键。Fn 不发 HID。
+ * 带 Fn 层的键（{@link Proto#fnLayerKey}）：**按下那一刻**按 Fn 按着或锁着定发 Fn 层的码还是底层的码、记下来，之后完全当那个码处理
+ * （底层是修饰键的——Windows 模式右 Ctrl——照样有修饰键的点一下 / 锁）；松开松的是按下时记下的那个（先松 Fn 再松这个键，松的照样是 Fn 层的码）。
+ * 同一个带 Fn 层的键已经有手指按着时，后来的手指跟着第一根的码（真键盘上已经按下的键不会再按下一次；面板自己收触摸那条路的 CMD_HID_KEY
+ * 只带 id、分不出哪根手指，三条路要一样就只能按 id 记），最后一根松开才忘掉。
+ *
+ * 按着的键按 id 计数（同一个用法码两根手指：⇧ 和功能行的 Shift、两个空格副本；带 Fn 层的键按定下来的码计数）。计数已经是 0 的松开（releaseAll 之后迟到的）整个不理。
  * 普通键照旧每个松开都松 HID（两根手指按两个副本时先抬起的那根就松开）。
  * 到点按"截止时刻 + 当前状态"处理（{@link #onTimer}），不认是哪一次排的：每个带时间的入口先把到了截止时刻的处理掉，
  * 所以结果只看事件的时间、不看定时器晚到多少；过期的回调什么都不会多做（比 CLAUDE.md"撤掉 / 取代了的定时器绝不再到点"多一层保险）。
@@ -62,6 +71,9 @@ final class KeyHolds {
         /** Caps 的显示该翻了；sent = 这次真的给主机发了 Caps Lock。 */
         void caps(boolean sent);
 
+        /** Mac 模式的 fn🌐 单独点了一下：切输入法（TouchRouter 报 Proto.GLOBE_BUTTON_ID 的 BUTTON_TAP，和 🌐 键一样由 App 执行）。 */
+        void globe();
+
         /** 过 delayMs 后调 {@link #onTimer}；再调取代上一次（TouchRouter.Output.scheduleKeys）。 */
         void schedule(long delayMs);
 
@@ -78,12 +90,24 @@ final class KeyHolds {
         long downAt;
     }
 
+    /** 修饰键八位之后的第 9 格是 Fn（阶段、按下时刻和修饰键放在一起算：到点、用过、排定时器同一份代码）。 */
+    private static final int FN = 8;
+
+    /** 带 Fn 层的键按下时定下来的码，和这个 id 还有几根手指按着。 */
+    private static final class FnPress {
+        int code, n;
+    }
+
     private final Host host;
-    /** 每个键 id 有几根手指（或几个来源）按着；0 的不留。 */
+    /** 每个键 id 有几根手指（或几个来源）按着；0 的不留。带 Fn 层的键按定下来的码记（{@link #fnPresses} 记 id → 码）。 */
     private final Map<Integer, Integer> counts = new HashMap<>();
-    private final int[] modPhase = new int[8];
-    private final long[] modDownAt = new long[8];
+    private final int[] modPhase = new int[FN + 1];
+    private final long[] modDownAt = new long[FN + 1];
     private int latched;
+    /** Fn 锁住了（只管下一个键）。 */
+    private boolean fnLatched;
+    /** 按着的带 Fn 层的键：id → 按下那一刻定的码。 */
+    private final Map<Integer, FnPress> fnPresses = new HashMap<>();
     /** 按着的 Caps / 合并键（按下的先后）。 */
     private final Map<Integer, Timed> timed = new LinkedHashMap<>();
     /** 点了一下 Caps：0x39 还按着，到 capsReleaseAt 松开。 */
@@ -127,6 +151,20 @@ final class KeyHolds {
         return m;
     }
 
+    /** Fn 的状态（Proto.FN_LATCHED / FN_HELD / FN_ARMED 位，同 MSG_MODIFIERS 第四个字节）。 */
+    int fn() {
+        int s = 0;
+        if (fnLatched) s |= Proto.FN_LATCHED;
+        if (fnCount() > 0) s |= Proto.FN_HELD;
+        if (modPhase[FN] == ARMED) s |= Proto.FN_ARMED;
+        return s;
+    }
+
+    /** Fn 层这时生效吗（带 Fn 层的键现在按下会发 Fn 层的码）：Fn 按着或锁着。 */
+    boolean fnActive() {
+        return fnCount() > 0 || fnLatched;
+    }
+
     /** 宿主那边挂着定时器没有（测试用）。 */
     boolean scheduled() {
         return scheduled;
@@ -142,12 +180,27 @@ final class KeyHolds {
     /** 任何键按下（触摸分流按在键上的、界面发来的 key()）。 */
     void down(int key, long t) {
         begin(t);
+        if (Proto.isFnLayerKey(key)) key = resolve(key);   // 按下那一刻定码，之后当那个码处理
         settleExcept(key, t);
         boolean busy = anyHeldExcept(key) || host.mouseBusy();
         boolean used = markUsedExcept(key);
         int n = count(key);
+        int fnBefore = fnCount();
         counts.put(key, n + 1);
-        if (isModifier(key)) {
+        if (Proto.isFnKey(key)) {
+            if (fnBefore == 0) {
+                if (fnLatched) {               // 这一下是"解开"：松手什么都不做，按多久都不再锁（按着时照样是 Fn 层）
+                    fnLatched = false;
+                    modPhase[FN] = SPENT;
+                } else if (busy) {             // 按下时已经有别的键 / 鼠标键按着：组合的一部分，绝不锁、不出 🌐
+                    modPhase[FN] = SPENT;
+                } else {
+                    modPhase[FN] = PENDING;
+                    modDownAt[FN] = t;
+                }
+            }
+            host.modsChanged();   // 报界面：Fn 按着（带 Fn 层的键帽整片换字）
+        } else if (isModifier(key)) {
             if (n == 0) {
                 int b = key - 0xE0, bit = 1 << b;
                 if ((latched & bit) != 0) {   // 这一下是"解开"：松手就松，按多久都不再锁
@@ -175,12 +228,31 @@ final class KeyHolds {
         reschedule();
     }
 
-    /** 键松开；canceled = 被取消的（手掌、丢数据、收尾补报的、面板换键时消失了的）：修饰键松开但不锁、不结算别的待定键，Caps、合并键什么都不出。 */
+    /**
+     * 键松开；canceled = 被取消的（手掌、丢数据、收尾补报的、面板换键时消失了的）：修饰键、Fn 松开但不锁（fn🌐 不出 🌐）、不结算别的待定键，
+     * Caps、合并键什么都不出。带 Fn 层的键松的是按下时定的码。
+     */
     void up(int key, long t, boolean canceled) {
+        if (Proto.isFnLayerKey(key)) {
+            FnPress p = fnPresses.get(key);
+            if (p == null) return;   // releaseAll 之后迟到的
+            if (--p.n <= 0) fnPresses.remove(key);
+            key = p.code;
+        }
         int n = count(key);
         if (n == 0) return;   // releaseAll 之后迟到的松开：整个不理（不松、不解开新的锁定、不结算）
         begin(t);
-        if (isModifier(key)) {
+        if (Proto.isFnKey(key)) {
+            // Fn 不发 HID，松开不结算待定的 Caps / 合并键（它们出的码和 Fn 无关）
+            put(key, n - 1);
+            if (fnCount() == 0) {
+                int phase = modPhase[FN];
+                if (phase == ARMED && !canceled) fnLatched = true;
+                else if (phase == PENDING && !canceled && key == Proto.FN_GLOBE_KEY) host.globe();   // 单独点一下 fn🌐 = 🌐
+                modPhase[FN] = NONE;
+                host.modsChanged();
+            }
+        } else if (isModifier(key)) {
             // HID 要变了：待定的键先当点一下发出去，还带着这个修饰键。被取消的不结算：收尾补报的抬起按 slot / 手指编号的先后来，
             // 修饰键那根排在前面时会把待定的 Caps / 合并键当点一下发出去（凭空一次 Caps Lock、一个 "<"）；留着由它们自己的抬起
             // （被取消就什么都不出）或接下来的 releaseAll（丢掉）收
@@ -206,7 +278,7 @@ final class KeyHolds {
         reschedule();
     }
 
-    /** 按着的修饰键"用过了"（鼠标键、滚轮、缩放、手势；TouchRouter 调，t 是它最近的时间）。没按着修饰键时什么都不做。 */
+    /** 按着的修饰键、Fn"用过了"（鼠标键、滚轮、缩放、手势；TouchRouter 调，t 是它最近的时间）。都没按着时什么都不做。 */
     void used(long t) {
         begin(t);
         if (markUsedExcept(-1)) host.modsChanged();
@@ -227,21 +299,27 @@ final class KeyHolds {
         reschedule();
     }
 
-    /** CMD_UNLATCH：清掉全部锁定（HID 里这些位松开，同一位还有手指按着的照旧按着）；按着的、armed、待定的不动。 */
+    /** CMD_UNLATCH：清掉全部锁定（HID 里这些位松开，同一位还有手指按着的照旧按着；锁住的 Fn 也解开）；按着的、armed、待定的不动。 */
     void unlatch(long t) {
         begin(t);
-        if (latched != 0) {
+        if (latched != 0 || fnLatched) {
             latched = 0;
+            fnLatched = false;
             host.modsChanged();
         }
         reschedule();
     }
 
-    /** 全部归零：计数、阶段、锁定、待定的 Caps / 合并键丢掉（不发）、Caps 的 60ms 松开不再等，撤掉定时器。报文由 TouchRouter 的 keyboard.releaseAll 发。 */
+    /**
+     * 全部归零：计数、阶段、锁定（连 Fn）、按着的带 Fn 层的键记的码、待定的 Caps / 合并键丢掉（不发）、Caps 的 60ms 松开不再等，撤掉定时器。
+     * 报文由 TouchRouter 的 keyboard.releaseAll 发。
+     */
     void releaseAll() {
         counts.clear();
         Arrays.fill(modPhase, NONE);
         latched = 0;
+        fnLatched = false;
+        fnPresses.clear();
         timed.clear();
         capsReleasing = false;
         scheduled = false;
@@ -253,6 +331,23 @@ final class KeyHolds {
     private int count(int key) {
         Integer n = counts.get(key);
         return n == null ? 0 : n;
+    }
+
+    /** 按着的 Fn（两种 Fn 键合起来数：一块键盘只有一个，界面发来的 key() 两种都可能有）。 */
+    private int fnCount() {
+        return count(Proto.FN_KEY) + count(Proto.FN_GLOBE_KEY);
+    }
+
+    /** 带 Fn 层的键按下：这个 id 已经有手指按着就跟着它的码，不然按 Fn 现在生不生效定（Fn 层的码 / 底层的码）、记下来。 */
+    private int resolve(int id) {
+        FnPress p = fnPresses.get(id);
+        if (p == null) {
+            p = new FnPress();
+            p.code = fnActive() ? Proto.fnCode(id) : Proto.fnBase(id);
+            fnPresses.put(id, p);
+        }
+        p.n++;
+        return p.code;
     }
 
     private void put(int key, int n) {
@@ -281,7 +376,7 @@ final class KeyHolds {
             unlatchAfterKey();   // 同打完一个普通键
         }
         boolean changed = false;
-        for (int b = 0; b < 8; b++) {
+        for (int b = 0; b <= FN; b++) {   // 修饰键八位和 Fn
             if (modPhase[b] == PENDING && t >= modDownAt[b] + HOLD_MS) {
                 if (t >= modDownAt[b] + LOCK_MAX_MS) {
                     modPhase[b] = SPENT;   // 晚到超过 1 秒（定时器卡住了）：直接当超过 1 秒，不震
@@ -322,11 +417,11 @@ final class KeyHolds {
         }
     }
 
-    /** 按着的修饰键（except 这个 id 不算）标"用过"：PENDING / ARMED → SPENT。返回 armed 变了没有（要报界面）。 */
+    /** 按着的修饰键和 Fn（except 这个 id 不算）标"用过"：PENDING / ARMED → SPENT。返回 armed 变了没有（要报界面）。 */
     private boolean markUsedExcept(int except) {
         boolean armedChanged = false;
-        for (int b = 0; b < 8; b++) {
-            if (0xE0 + b == except) continue;
+        for (int b = 0; b <= FN; b++) {
+            if (b == FN ? Proto.isFnKey(except) : 0xE0 + b == except) continue;
             if (modPhase[b] == ARMED) armedChanged = true;
             if (modPhase[b] == PENDING || modPhase[b] == ARMED) modPhase[b] = SPENT;
         }
@@ -359,9 +454,11 @@ final class KeyHolds {
         unlatchAfterKey();
     }
 
+    /** 打完一个普通键：锁住的修饰键、Fn 都解开。 */
     private void unlatchAfterKey() {
-        if (latched == 0) return;
+        if (latched == 0 && !fnLatched) return;
         latched = 0;
+        fnLatched = false;
         host.modsChanged();
     }
 
@@ -373,7 +470,7 @@ final class KeyHolds {
             has = true;
             next = capsReleaseAt;
         }
-        for (int b = 0; b < 8; b++) {
+        for (int b = 0; b <= FN; b++) {
             long at;
             if (modPhase[b] == PENDING) at = modDownAt[b] + HOLD_MS;
             else if (modPhase[b] == ARMED) at = modDownAt[b] + LOCK_MAX_MS;

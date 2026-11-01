@@ -13,8 +13,10 @@ interface KeyboardFace {
      * 修饰键和 Caps 的显示（2026-11-01 起；以前只有锁定掩码）：latched / held / armed 同 Proto.MSG_MODIFIERS（HID 修饰键位），
      * caps = 豆花这边显示的大写锁定（只有 App 一份，MainActivity.capsShown）。高亮画 latched | armed（锁住的、"现在松手就锁"的）和 Caps，
      * 键帽上的字照 latched | held 换（按住 Shift 键帽就大写）、字母再看 caps。按着的样子另外画（showPressed / 自己收的手指）。
+     * fn = Fn 的状态（协议 21，Proto.FN_LATCHED / FN_HELD / FN_ARMED 位）：只有实体键盘 75% / 65% / 苹果紧凑画（Fn 键的高亮看锁住 | 快锁了，
+     * 带 Fn 层的键帽在锁住 | 按着时整片换成 Fn 层的字），豆花布局不看。
      */
-    void setKeyState(int latched, int held, int armed, boolean caps);
+    void setKeyState(int latched, int held, int armed, int fn, boolean caps);
 
     /** 画按下的样子（id 同 Proto.REGION_KEY / REGION_BUTTON 的 id）。 */
     void showPressed(int id, boolean pressed);

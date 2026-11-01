@@ -10,6 +10,8 @@ public final class Hid {
     public static final int MOD_SHIFT = 0x02;
     public static final int MOD_ALT = 0x04;
     public static final int MOD_META = 0x08;
+    /** 右边四个修饰键是左边的 << 4（用法码 0xE4–0xE7；实体键盘上都能单独锁住，豆花布局只有左边四个）。 */
+    public static final int MOD_RCTRL = 0x10;
 
     public static final int MOUSE_REPORT_SIZE = 7;
     public static final int KEYBOARD_REPORT_SIZE = 8;
@@ -383,6 +385,21 @@ public final class Hid {
 
     public static int modifierBit(int usage) {
         return 1 << (usage - 0xE0);
+    }
+
+    /** 修饰键掩码里有没有 Ctrl（左右都算：实体键盘上锁住右 Ctrl 也是 Ctrl + 滚轮 = 缩放）。 */
+    public static boolean ctrl(int mask) {
+        return (mask & (MOD_CTRL | MOD_RCTRL)) != 0;
+    }
+
+    /** 修饰键掩码（8 位，左边四个 + 右边四个）里按着的那几个键的用法码（0xE0–0xE7，从低位到高位）。界面替服务解开锁住的修饰键时逐个点一下。 */
+    public static int[] modifierUsages(int mask) {
+        int n = Integer.bitCount(mask & 0xFF);
+        int[] out = new int[n];
+        for (int bit = 0, i = 0; bit < 8; bit++) {
+            if ((mask & (1 << bit)) != 0) out[i++] = 0xE0 + bit;
+        }
+        return out;
     }
 
     /**

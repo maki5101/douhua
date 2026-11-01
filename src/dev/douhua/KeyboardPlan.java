@@ -94,8 +94,10 @@ final class KeyboardPlan {
 
     /** 宽窗口里合并、没调过大小时，键盘占的宽度比例（靠左）。 */
     static final float WIDE_MERGED_WIDTH = 2f / 3;
-    /** 调大小时键盘（分裂时两半）至少占键盘区多高（合并、分裂一样）。 */
+    /** 调大小时键盘（分裂时两半）至少占键盘区多高（合并、分裂、实体键盘一样）。 */
     static final float MIN_HEIGHT = 0.25f;
+    /** 调大小时合并的键盘（和实体键盘）至少占键盘区多宽；实体键盘另外还要一格不窄于 minKey（{@link #fixedMinWidth}）。 */
+    static final float MIN_WIDTH = 0.4f;
     /** 分裂格子的右边：两半只隔一条缝。 */
     static final float SPLIT_MEET = 0.5f;
 
@@ -502,6 +504,127 @@ final class KeyboardPlan {
                 stickAt, stick, cut, bar, middleKey, hole, spread, menu, margin);
     }
 
+    // ═══════════ 实体键盘（第 1B 批，2026-11-01） ═══════════
+
+    /** 实体键盘没调过大小时按"行高 ≈ 键宽 × 这么多"算自然比例（方案 §5.2；实体键盘的键差不多是方的，行矮一点按不准）。 */
+    static final float FIXED_ROW_ASPECT = 1.1f;
+
+    /**
+     * 这个窗口（键盘区宽 w）放得下实体键盘吗：一格（1u，字母键连缝）≥ minKey（32dp，同分裂键盘的门槛，再窄拇指按不准）。
+     * 放不下时这个窗口里暂时显示豆花布局（用户 2026-11-01 照方案推荐定的），选的还是实体键盘，⋯ 菜单写明；窗口变宽（横过来、拖分隔条）自动回去。
+     * 只看整页宽，不看调过的键盘大小（用户自己缩窄的不算放不下）。
+     */
+    static boolean fixedFits(FixedLayout layout, int w, Sizes s) {
+        return layout != null && w > 0 && w / layout.width >= s.minKey;
+    }
+
+    /**
+     * 调大小时实体键盘至少占键盘区（宽 w）多宽：{@link #MIN_WIDTH}，而且一格不窄于 minKey（同显示它的门槛 {@link #fixedFits}，拖窄了键按不准）。
+     * KeyboardScreen 拖边时照它夹；没调过大小的默认位置（{@link #fixedDefaultRect}）也不比它窄，不然调大小时第一下就跳一截。
+     */
+    static float fixedMinWidth(FixedLayout layout, int w, Sizes s) {
+        if (layout == null || w <= 0) return MIN_WIDTH;
+        return Math.min(1, Math.max(MIN_WIDTH, layout.width * s.minKey / w));
+    }
+
+    /**
+     * 实体键盘没调过大小时的默认位置 {左, 上, 右, 下}（键盘区 w × h 的 0–1，方案 §5.2）：按自然比例（{@link #FIXED_ROW_ASPECT}）——
+     * 窗口比它宽：键盘满高、按自然宽度；触控板开着、右边剩的那块放得下它（短边够 minPad）就靠左、右边给触控板，不然居中（不留一条空着的边）。
+     * 窗口比它窄：键盘满宽、高按自然比例、贴底，上面那块给触控板（放不下就空着；小红点 / 关的时候也空着，用户可以调大小）。
+     * 都守调大小的约束（不比 {@link #fixedMinWidth} 窄、不比 {@link #MIN_HEIGHT} 矮），调大小时第一下不跳：
+     * 又宽又矮的窗口（高约 220dp 以下）按自然比例一格不到 minKey，就按一格 minKey 的宽摆、行比键宽矮（{@link #fixedFits} 只看整页宽，
+     * 页面够宽时一格就得够宽；2026-11-01 审查发现 780 × 170dp 的小窗一格只有约 25dp）；又窄又高的窗口（平板竖屏）按自然比例不到 MIN_HEIGHT 高，就按 MIN_HEIGHT。
+     */
+    static float[] fixedDefaultRect(FixedLayout layout, int w, int h, boolean padOn, Sizes s) {
+        if (layout == null || w <= 0 || h <= 0) return new float[]{0, 0, 1, 1};
+        float natural = layout.width / (FixedLayout.HEIGHT * FIXED_ROW_ASPECT);   // 自然的宽 / 高
+        if ((float) w / h > natural) {
+            float kw = Math.min(1, Math.max(natural * h / w, fixedMinWidth(layout, w, s)));
+            if (kw >= 1) return new float[]{0, 0, 1, 1};
+            if (padOn && usable(new int[]{Math.round(kw * w) + s.gap, 0, w, h}, s.minPad)) return new float[]{0, 0, kw, 1};
+            return new float[]{(1 - kw) / 2, 0, (1 + kw) / 2, 1};
+        }
+        float kh = Math.min(1, Math.max(MIN_HEIGHT, w / natural / h));
+        return new float[]{0, 1 - kh, 1, 1};
+    }
+
+    /**
+     * 实体键盘怎么摆（KeyboardScreen 在 {@link #fixedFits} 为真时调；不分裂，用户 2026-11-01："实体键盘不分裂"）。
+     * pointer / keys 同 {@link #plan}；saved = 存下的大小位置（Boards.savedRect，没存过是 null，用 {@link #fixedDefaultRect}）。
+     * - 触控板：同合并时（键盘上 / 右 / 左 / 下空得最多的那块，短边够 minPad），可以切三键条。
+     * - ⋯：触控板顶上正中放得下就放那儿（{@link Plan#menuArea}），不然是 Esc 和 F1 之间那个槽里的键（FixedLayout.menu）。
+     * - 小红点（用户 2026-11-01："指点杆的位置是不一样的……也不是那几个键了，因为电脑键盘不是对称的；三个按键要占用的主要就是空格行了，因为没有自定义行"）：
+     *   红点在真 ThinkPad 的位置（G、H 之间、B 上方，FixedPanel.stickPoint），碰到切口圆的键被切掉一块（一般是 G 的右下、H 的左下、B 的上沿正中），
+     *   多大照豆花布局的规则（{@link #placeStickAt} → {@link #stickRadius}，实体键盘只有一层，每个键按字母层的门槛算），嵌不下放键盘外面；
+     *   三个鼠标键占空格那一排的中间（FixedPanel.stickHole，空格切成左右两段），中键正对红点（{@link #holeKeys}）。
+     */
+    static Plan planFixed(int pointer, int keys, int w, int h, float[] saved, FixedLayout layout, Sizes s) {
+        pointer = validPointer(pointer);
+        if (pointer == POINTER_STICK && !s.stickReady()) pointer = POINTER_NONE;
+        boolean padOn = pointer == POINTER_PAD, stickOn = pointer == POINTER_STICK;
+        float[] r = saved != null ? saved.clone() : fixedDefaultRect(layout, w, h, padOn, s);
+        int[] kb = {Math.round(r[0] * w), Math.round(r[1] * h), Math.round(r[2] * w), Math.round(r[3] * h)};
+        int padSide = PAD_NONE;
+        int[] pad = null;
+        if (padOn) {
+            int[][] c = {
+                    {0, 0, w, kb[1] - s.gap},              // 上
+                    {kb[2] + s.gap, 0, w, h},              // 右
+                    {0, 0, kb[0] - s.gap, h},              // 左
+                    {0, kb[3] + s.gap, w, h},              // 下
+            };
+            int best = largest(c, s.minPad);
+            if (best >= 0) {
+                padSide = new int[]{PAD_TOP, PAD_RIGHT, PAD_LEFT, PAD_BOTTOM}[best];
+                pad = c[best];
+            }
+        }
+        int pw = kb[2] - kb[0], ph = kb[3] - kb[1];
+        int[] bar = null, middleKey = null, hole = null;
+        int[] p = FixedPanel.stickPoint(layout, pw, ph, s.capGap);
+        if (stickOn) {
+            hole = FixedPanel.stickHole(layout, pw, s);
+            if (hole != null) {
+                bar = new int[]{kb[0] + hole[0], kb[1] + FixedPanel.spaceRowTop(ph), kb[0] + hole[1], kb[1] + ph};
+                int[] m = holeKeys(hole, p[0], s);
+                middleKey = new int[]{kb[0] + m[0], kb[0] + m[1]};
+            }
+        }
+        int[] menu = null;
+        int margin = 0;
+        if (pad != null) {
+            int[][] cut = keys != KEYS_OFF && s.keyH > 0 ? cutBar(pad, w, h, keys == KEYS_TOP, s) : null;
+            if (cut != null) {
+                pad = cut[0];
+                bar = cut[1];
+            }
+            menu = pad;
+            if (bar != null && keys == KEYS_TOP) {
+                menu = new int[]{pad[0], bar[3], pad[2], pad[3]};
+                margin = s.gap;
+            }
+        }
+        int stickAt = STICK_NONE;
+        int[] stick = null;
+        float cut = 0;
+        if (stickOn) {
+            // 小红点时没有触控板，⋯ 一定在槽里
+            List<List<KeyRows.Placed>> placed = new ArrayList<>();
+            placed.add(FixedPanel.placed(layout, true, pw, ph, s.capGap, hole));
+            int floor = hole != null ? FixedPanel.spaceRowTop(ph) : ph;
+            int[] at = placeStickAt(kb, w, h, s, placed, floor, p);
+            if (at != null) {
+                stickAt = at[4];
+                stick = Arrays.copyOf(at, 4);
+                if (stickAt == STICK_KEYS) cut = cutRadius((stick[2] - stick[0]) / 2, s);
+            }
+        } else if (bar != null) {
+            middleKey = middleKey(bar, (bar[0] + bar[2]) / 2, s);   // 三键条：中键在正中
+        }
+        return new Plan(false, KeyRows.MIDDLE_PAD, false, kb, padSide, pad, r, null,
+                stickAt, stick, cut, bar, middleKey, hole, false, menu, margin);
+    }
+
     /**
      * 小红点状态下底行、快捷行在中间让出的空位 {左, 右}（键盘面板里的 x；pw = 面板宽，rows = 一层的全部行），让不出返回 null。
      * 空位右边最远到 . 原来的左边（. ↵ 不变窄），左边是缩短的空格的右边（空格 {@link KeyRows#STICK_SPACE} 份到 {@link KeyRows#STICK_SPACE_MIN} 份）。
@@ -623,7 +746,16 @@ final class KeyboardPlan {
         KeyRows.Row[] letters = layers[KeyRows.LAYER_LETTERS];
         int[] p = KeyRows.stickPoint(pw, ph, letters.length);
         int floor = hole != null ? KeyRows.holeTop(letters, ph) : ph;
-        int radius = stickRadius(placedLayers(layers, pw, ph, s, hole, spread), pw, floor, p, s);
+        return placeStickAt(panel, w, h, s, placedLayers(layers, pw, ph, s, hole, spread), floor, p);
+    }
+
+    /**
+     * 同 {@link #placeStick}，键已经摆好（placed：每一层的键在面板里的位置，第 0 层按字母层的门槛算）、红点那一点 p（面板坐标）、
+     * 切口不过 floor（面板 y）。豆花布局和实体键盘（{@link #planFixed}，只有一层）共用：嵌在键里多大、嵌不下放哪，规则只有这一份。
+     */
+    static int[] placeStickAt(int[] panel, int w, int h, Sizes s, List<List<KeyRows.Placed>> placed, int floor, int[] p) {
+        int pw = panel[2] - panel[0];
+        int radius = stickRadius(placed, pw, floor, p, s);
         int cx = panel[0] + p[0];
         if (radius > 0) {
             int cy = panel[1] + p[1];

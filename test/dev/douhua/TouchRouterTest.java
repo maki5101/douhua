@@ -138,6 +138,7 @@ public final class TouchRouterTest {
         spinCatchOnPadIsNotClick();
         spinStopsOnAppKeyAndStopSpin();
         spinNotWithCtrlLatched();
+        spinNotWithRightCtrlLatched();
         spinNotFromCanceledFinger();
         spinStopsOnNewConfig();
         stickFirstFingerOnly();
@@ -315,6 +316,56 @@ public final class TouchRouterTest {
         t.releaseAll();
         flick(t, 2000);
         check(r.log.contains(SPIN_START), "放手（解开 Ctrl）后照常起");
+    }
+
+    /**
+     * 实体键盘上锁住的右 Ctrl（0xE4，掩码 0x10）也是 Ctrl：不起惯性、转着的停、连续模式照旧按格（不然是停不下来的缩放 / 一小段一小段地缩放）。
+     * 以前只看左 Ctrl（2026-11-01 审查发现）。换参数（setConfig 换引擎）时也照锁着的右 Ctrl 告诉新引擎。
+     */
+    static void spinNotWithRightCtrlLatched() {
+        Rec r = new Rec();
+        TouchRouter t = router(r);
+        t.key(0xE4, true);   // 界面发来的右 Ctrl（实体键盘面板自己收触摸时）：点一下锁定
+        t.key(0xE4, false);
+        check(r.log.contains("mod16"), "右 Ctrl 锁住（掩码 0x10）");
+        flick(t, 1000);
+        check(!r.log.contains(SPIN_START) && !r.pending, "锁着右 Ctrl：边缘一拨不起惯性");
+        t.setConfig(new GestureEngine.Config(), 1);   // 换参数：新引擎也知道右 Ctrl 锁着
+        flick(t, 2000);
+        check(!r.log.contains(SPIN_START) && !r.pending, "锁着右 Ctrl 换参数后：边缘一拨照样不起惯性");
+        t.releaseAll();
+        flick(t, 3000);
+        check(r.log.contains(SPIN_START) && r.pending, "解开后照常起");
+        int at = r.log.size();
+        t.setRegions(new TouchRouter.Region[]{
+                new TouchRouter.Region(Proto.REGION_KEY, 0xE4, 1000, 200, 1100, 300),   // 实体键盘的右 Ctrl 键（按在屏幕上）
+                new TouchRouter.Region(Proto.REGION_PAD, PAD, 0, 0, 1000, 1000),
+        });
+        t.down(1, 1050, 250, 3100);
+        t.up(1, 3150);
+        check(!r.pending, "转着时按右 Ctrl：停");
+        check(r.log.subList(at, r.log.size()).contains("k16"), "右 Ctrl 照常按下（键盘报文里是 0x10）");
+        // 连续滚动开着、锁着右 Ctrl：照旧按格（Ctrl + 滚轮是缩放）
+        Rec r2 = new Rec();
+        TouchRouter t2 = router(r2);
+        GestureEngine.Config c = new GestureEngine.Config();
+        c.smoothScroll = true;
+        t2.setConfig(c, 1);
+        t2.key(0xE4, true);
+        t2.key(0xE4, false);
+        t2.down(0, 10, 300, 1000);
+        for (int i = 1; i <= 20; i++) {
+            t2.move(0, 10, 300 + i * 7);
+            t2.frame(1000 + i * 16);
+        }
+        boolean whole = true, any = false;
+        for (String s : r2.only("m")) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile(" w(-?\\d+)").matcher(s);
+            if (!m.find()) continue;
+            any = true;
+            whole &= Integer.parseInt(m.group(1)) % Hid.WHEEL_UNIT == 0;
+        }
+        check(any && whole, "连续滚动开着、锁着右 Ctrl：边缘滚动照旧整格");
     }
 
     static void spinNotFromCanceledFinger() {

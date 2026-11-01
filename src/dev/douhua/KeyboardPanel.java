@@ -40,11 +40,14 @@ import dev.douhua.KeyRows.Key;
  * 所有键帽 view 都是面板的直接子 view，建一次缓存着（三层、两种布局都是），换层、分裂 / 合拢只切显示、重新摆放。
  * 键帽分主次（主题的功能键颜色）：字母、数字、空格、标点是普通键，其余（修饰键、⌫ ↵、F 键、?123、快捷行……）是功能键，见 KeyRows.functionKey。
  *
+ * 键盘页上的两块面板之一（豆花布局；另一块是实体键盘 FixedKeyboardView，第 1B 批），对外的共同方法在 KeyboardFace，
+ * 切到实体键盘再切回来这块面板不销毁（层、键帽缓存都留着），设置一个都不写。
+ *
  * 小红点状态（KeyboardScreen 量尺寸时设，2026-11-01）：底行、快捷行在中间让出空位给三个鼠标键（{@link #setHole}，键位见 KeyRows.place），
  * 红点嵌在 g、h、v、b 交界时挨着的键帽被和红点同心的圆切掉一块（{@link #setStick}）：底色、按下、高亮、边框都沿着圆弧画（Style.keyLook 的 cut），
  * 字碰到切口的键帽把字竖着挪开（上下内边距，KeyboardPlan.labelShift）。
  */
-final class KeyboardPanel extends ViewGroup {
+final class KeyboardPanel extends ViewGroup implements KeyboardFace {
     interface Listener {
         /** 服务没接管时，键被按下 / 松开。key 同 Proto.REGION_KEY 的 id。 */
         void onLocalKey(int key, boolean down);
@@ -61,6 +64,14 @@ final class KeyboardPanel extends ViewGroup {
 
         /** 只在 key 正是当前放大的那个键时收起（同时按着几个键，显示最后按下的）。 */
         void hideKeyPreview(View key);
+
+        /**
+         * 实体键盘（FixedKeyboardView 整块自己画，键帽不是 view）：按面板 panel 里的矩形定位，token 认是哪个键（收起时比它）。
+         */
+        void showKeyPreviewAt(View panel, int left, int top, int right, int bottom, String label, Object token);
+
+        /** 只在 token 正是当前放大的那个键时收起。 */
+        void hideKeyPreviewToken(Object token);
     }
 
     static final int SYMBOLS_BUTTON_ID = KeyRows.SYMBOLS_BUTTON_ID;
@@ -71,7 +82,7 @@ final class KeyboardPanel extends ViewGroup {
     static final int ROW_ACTION_BASE_ID = 600;
 
     /** 把彩色 emoji 画成灰的：去掉饱和度，再按当前主题映射到键帽的色调（纯黑主题就是乘 0.75 的灰，见 Theme.emojiMap）。 */
-    private static ColorMatrixColorFilter grayEmoji() {
+    static ColorMatrixColorFilter grayEmoji() {
         ColorMatrix m = new ColorMatrix();
         m.setSaturation(0);
         float[] k = Style.theme().emojiMap();
@@ -146,7 +157,8 @@ final class KeyboardPanel extends ViewGroup {
         rebuildBottom();
     }
 
-    void setPreviewHost(PreviewHost host) {
+    @Override
+    public void setPreviewHost(PreviewHost host) {
         previewHost = host;
     }
 
@@ -169,7 +181,8 @@ final class KeyboardPanel extends ViewGroup {
     }
 
     /** 服务报来的锁定修饰键：高亮对应键，锁定 Shift 时显示大写和上档符号。 */
-    void setModifiers(int mask) {
+    @Override
+    public void setModifiers(int mask) {
         modifiers = mask;
         refreshLabels();
     }
@@ -208,7 +221,8 @@ final class KeyboardPanel extends ViewGroup {
      * 功能行最右边带不带 ⋯ 键（KeyboardScreen 量尺寸时定：小触控板摆出来、角上放得下 ⋯ 小方块就不带，不然带）。
      * 功能行的键都挪了位置：同 {@link #setSplit}，先松开按着的键、收掉按下的样子，在量这个面板之前调。
      */
-    void setMenuKey(boolean on) {
+    @Override
+    public void setMenuKey(boolean on) {
         if (on == menuKey) return;
         dropTouches();
         menuKey = on;
@@ -220,7 +234,8 @@ final class KeyboardPanel extends ViewGroup {
      * spread（KeyboardPlan.Plan.spread）时快捷行的键也分到两边，不然快捷行照旧铺满（KeyRows.place），空位里放三个鼠标键（KeyboardScreen 摆，叠在面板上面）。
      * 键的位置变了：同 {@link #setSplit}，先松开按着的键，在量这个面板之前调。
      */
-    void setHole(int[] hole, boolean spread) {
+    @Override
+    public void setHole(int[] hole, boolean spread) {
         boolean sp = hole != null && spread;
         if (java.util.Arrays.equals(hole, this.hole) && sp == this.spread) return;
         dropTouches();
@@ -230,7 +245,8 @@ final class KeyboardPanel extends ViewGroup {
     }
 
     /** ⋯ 键摆在哪（面板坐标 {左, 上, 右, 下}，量过尺寸之后才对）；功能行没带它时返回 null。 */
-    int[] menuKeyRect() {
+    @Override
+    public int[] menuKeyRect() {
         if (!menuKey) return null;
         for (Cap c : caps) {
             if (c.key.id == MENU_BUTTON_ID) return new int[]{c.left, c.top, c.right, c.bottom};
@@ -243,7 +259,8 @@ final class KeyboardPanel extends ViewGroup {
      * 整块时范围就是面板自己；分裂时左右两半各一块（中间的触控板不在任何一块里，缝只在各自那一半里分）。
      * 键盘外面的空白、小触控板和它角上的 ⋯ 都不在范围里。只报当前这一层（藏起来的层不在 caps 里）。
      */
-    void collectRegions(List<int[]> regions) {
+    @Override
+    public void collectRegions(List<int[]> regions) {
         int[] loc = new int[2];
         for (Cap c : caps) {
             TextView v = c.view;
@@ -274,7 +291,8 @@ final class KeyboardPanel extends ViewGroup {
     }
 
     /** 画按下的样子。id 同 Key.id（分裂时的两个空格同一个 id，服务转来的按下两个一起画）。 */
-    void showPressed(int id, boolean pressed) {
+    @Override
+    public void showPressed(int id, boolean pressed) {
         for (Cap c : caps) {
             if (c.key.id == id) {
                 look(c, pressed);
@@ -287,14 +305,16 @@ final class KeyboardPanel extends ViewGroup {
      * 服务刚接管触摸屏：系统再也收不到面板上正按着的手指的抬起了，面板自己按下的键先松开（不算点击），
      * 画回松开的样子、收起放大提示。不松的话服务的虚拟键盘一直按着，系统里不停连发。
      */
-    void releaseTouches() {
+    @Override
+    public void releaseTouches() {
         dropTouches();
     }
 
     /**
      * 换了主题 / 按键边框开关：所有键帽（含藏着的层）作废上次画的样子，当前显示的马上按新主题重画，藏着的等显示时再画；🌐 重新去色。
      */
-    void applyTheme() {
+    @Override
+    public void applyTheme() {
         for (Cap c : capOf.values()) {
             c.look = -1;
             if (c.key.id == GLOBE_BUTTON_ID) {
@@ -306,7 +326,8 @@ final class KeyboardPanel extends ViewGroup {
     }
 
     /** 所有键松开的样子、收起放大提示（服务断了，它转来的按下等不到松开）。 */
-    void clearPressed() {
+    @Override
+    public void clearPressed() {
         for (Cap c : caps) {
             look(c, false);
             preview(c, false);
@@ -386,7 +407,8 @@ final class KeyboardPanel extends ViewGroup {
      * 红点的 view 虽然叠在面板上面，嵌在键里时一根手指都不收（MainActivity），哪根手指归红点圆、哪根归被切了角的键全在这里定，
      * 规则和分流一样（分流时红点的区域排在键前面、按内切圆算）。
      */
-    void setStick(int[] hit, float cut) {
+    @Override
+    public void setStick(int[] hit, float cut) {
         int[] h = hit == null ? null : hit.clone();
         float c = h == null ? 0 : cut;
         if (java.util.Arrays.equals(h, stickHit) && c == stickCut) return;

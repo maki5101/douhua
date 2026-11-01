@@ -38,21 +38,24 @@ import java.util.function.IntConsumer;
 /**
  * 设置页。改动即时保存，回到触控板时生效。
  *
- * 分六个标签页（顶上一排标签固定，不随页面滚动）：通用、触控板、按钮与按键、空中鼠标、手柄、外观。
- * 每次 {@link #build} 六页的内容都照旧全建出来，只显示选中那一页（其它 GONE）：豆花儿服务一节（ServiceSection 的观察者、实时刷新）、
+ * 分七个标签页（顶上一排标签固定，不随页面滚动）：通用、触控板、键盘、按钮与按键、空中鼠标、手柄、外观。
+ * "键盘"页（第 1B 批，2026-11-01）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘是哪一块（语言、形状、尺寸、Windows / Mac 模式）、
+ * 豆花布局的快捷行（从"按钮与按键"挪过来）。"通用"页最下面加了"开源许可"（键帽数据和 adb 配对代码的许可全文）。
+ * 每次 {@link #build} 七页的内容都照旧全建出来，只显示选中那一页（其它 GONE）：豆花儿服务一节（ServiceSection 的观察者、实时刷新）、
  * 蓝牙设备列表、音频提醒都引用建好的 view，只建当前页会漏引用；切页只改显示，不重建，进行到一半的东西（配对引导、填了一半的分辨率）都在。
  */
 public final class SettingsActivity extends Activity implements BtHid.Listener {
     /** 标签页的 id：存进 Prefs（记住上次停在哪一页），入口用 {@link #EXTRA_TAB} 指定；顺序就是标签的顺序。 */
     static final String TAB_GENERAL = "general";
     static final String TAB_PAD = "pad";
+    static final String TAB_KEYBOARD = "keyboard";
     static final String TAB_BUTTONS = "buttons";
     static final String TAB_AIR = "air";
     static final String TAB_GAMEPAD = "gamepad";
     static final String TAB_LOOK = "look";
-    private static final String[] TABS = {TAB_GENERAL, TAB_PAD, TAB_BUTTONS, TAB_AIR, TAB_GAMEPAD, TAB_LOOK};
-    private static final int[] TAB_LABELS = {R.string.tab_general, R.string.tab_pad, R.string.tab_buttons, R.string.tab_air,
-            R.string.tab_gamepad, R.string.tab_look};
+    private static final String[] TABS = {TAB_GENERAL, TAB_PAD, TAB_KEYBOARD, TAB_BUTTONS, TAB_AIR, TAB_GAMEPAD, TAB_LOOK};
+    private static final int[] TAB_LABELS = {R.string.tab_general, R.string.tab_pad, R.string.tab_keyboard, R.string.tab_buttons,
+            R.string.tab_air, R.string.tab_gamepad, R.string.tab_look};
     /** 打开设置页时停在哪一页（值是 TAB_*）；不带就停在上次那一页。 */
     static final String EXTRA_TAB = "dev.douhua.settings_tab";
 
@@ -78,6 +81,8 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     }
 
     private Prefs prefs;
+    /** 用哪块键盘、实体键盘的设置（纯 Java 的 Boards，跑在 Prefs 上）。 */
+    private Boards boards;
     /** 正在往里加行的那一页（build 时依次指向各页；下面那些加行的小方法都往它里面加）。 */
     private LinearLayout list;
     /** 整页滚动的那块和它里面放五页的容器：只建一次，重建时只换里面的页，滚动位置因此留着（重新布局时按新内容截一下）。 */
@@ -108,6 +113,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = new Prefs(this);
+        boards = prefs.boards(FixedData.catalog(this));
         density = getResources().getDisplayMetrics().density;
         bt = BtHid.get(this);
         service = new ServiceSection(this, prefs);
@@ -331,6 +337,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 .setNegativeButton(R.string.cancel, null)
                 .show());
         list.addView(reset);
+        licenses();
         version();
 
         // 触控板：指针、轻点、滚动、三指四指手势、角上的小按钮、小红点和三键条
@@ -380,28 +387,32 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
 
         trackpoint(def);
 
-        // 按钮与按键：自定义按键（左边一列）、键盘最下面一排、音量键
+        // 键盘：用哪块键盘、实体键盘是哪一块，豆花布局的快捷行（从"按钮与按键"挪过来）
         list = pages[2];
-        header(R.string.sec_strip);
-        customKeys();
-
-        header(R.string.sec_kb_row);
+        keyboardSection();
+        header(R.string.sec_kbd_douhua);
+        list.addView(text(getString(R.string.sec_kb_row), 14, 0xFF9AA0A6));
         for (int i = 0; i < Prefs.KEYBOARD_ROW_COUNT; i++) {
             final int index = i;
             actionRow(getString(R.string.nth, i + 1), () -> prefs.keyboardRow(index), id -> prefs.setKeyboardRow(index, id));
         }
+
+        // 按钮与按键：自定义按键（左边一列）、音量键
+        list = pages[3];
+        header(R.string.sec_strip);
+        customKeys();
         hardKeysSection();
 
         // 空中鼠标
-        list = pages[3];
+        list = pages[4];
         airSection();
 
         // 手柄：预设（网格 + 自定义）、摇杆、十字键、面键的手感，Moonlight 里怎么设
-        list = pages[4];
+        list = pages[5];
         gamepadSection();
 
         // 外观：主题、按键边框……，屏幕边缘留白，触控板背景图，震动
-        list = pages[5];
+        list = pages[6];
         appearance();
         edgeMargin();
         header(R.string.sec_pad_bg);
@@ -465,6 +476,113 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         list = outer;
         list.addView(box);
         box.setVisibility(s.isChecked() ? View.VISIBLE : View.GONE);
+    }
+
+    // ═══════════ 键盘 ═══════════
+
+    /**
+     * "键盘"页上面两节：用哪块键盘（豆花布局 / 实体键盘，同 ⋯ 菜单里的"键盘"那一项），实体键盘是哪一块。
+     * 实体键盘一块 = 语言（键帽上画哪套字）× 形状（ANSI / ISO，德语只有 ISO）× 尺寸（TKL / 全尺寸）× 模式（Windows / Mac）；
+     * 模式是用户 2026-11-01 定的（"第三方键盘都可以调一个 Windows 模式、一个 Mac 模式，Mac 模式跟 iPad 就是通用的"），不按主机认、不问主机是什么系统。
+     * 改了回到键盘页才生效（MainActivity.applyBoards）。换语言、形状要重画选项（德语只有 ISO），整页重建。
+     */
+    private void keyboardSection() {
+        header(R.string.sec_kbd_board);
+        String[] boardNames = {getString(R.string.kbd_board_douhua), getString(R.string.kbd_board_fixed)};
+        choiceRow(getString(R.string.kbd_board), boardNames, boards.fixedSelected() ? 1 : 0, i -> boards.select(i == 1));
+        list.addView(text(getString(R.string.kbd_board_note), 13, 0xFF9AA0A6));
+
+        header(R.string.sec_kbd_fixed);
+        List<FixedLegends.Layout> catalog = FixedData.catalog(this);
+        if (catalog.isEmpty()) {   // 照理不会：数据是打进 APK 的
+            list.addView(text(getString(R.string.kbd_no_data), 14, 0xFFE07A5F));
+            return;
+        }
+        Boards.Spec spec = boards.spec();
+        String[] langs = new String[catalog.size()];
+        int cur = 0;
+        for (int i = 0; i < langs.length; i++) {
+            langs[i] = FixedData.langName(this, catalog.get(i).id);
+            if (catalog.get(i).id.equals(spec.lang)) cur = i;
+        }
+        choiceRow(getString(R.string.kbd_lang), langs, cur, i -> {
+            boards.setLang(catalog.get(i).id);
+            rebuildLater();   // 能选的形状、主机里的名字跟着变
+        });
+        FixedLegends.Layout lang = FixedLegends.find(catalog, spec.lang);
+        if (lang != null) {
+            TextView names = text(getString(R.string.kbd_host_names, lang.nameMac, lang.nameWin), 13, 0xFF9AA0A6);
+            list.addView(names);
+            List<String> shapes = lang.shapes;
+            String[] shapeNames = new String[shapes.size()];
+            int sc = 0;
+            for (int i = 0; i < shapeNames.length; i++) {
+                shapeNames[i] = getString(FixedLayout.ISO.equals(shapes.get(i)) ? R.string.kbd_shape_iso : R.string.kbd_shape_ansi);
+                if (shapes.get(i).equals(spec.shape)) sc = i;
+            }
+            choiceRow(getString(R.string.kbd_shape), shapeNames, sc, i -> {
+                boards.setShape(shapes.get(i));
+                rebuildLater();   // 尺寸后面写的键数跟着变
+            });
+        }
+        String[] sizes = {FixedLayout.TKL, FixedLayout.FULL};
+        String[] sizeNames = new String[2];
+        for (int i = 0; i < 2; i++) {
+            int keys = FixedLayout.build(spec.shape, sizes[i], spec.mode, false, ".").keys.size();
+            sizeNames[i] = getString(i == 0 ? R.string.kbd_size_tkl : R.string.kbd_size_full, keys);
+        }
+        choiceRow(getString(R.string.kbd_size), sizeNames, FixedLayout.FULL.equals(spec.size) ? 1 : 0, i -> boards.setSize(sizes[i]));
+        String[] modeNames = {getString(R.string.kbd_mode_win), getString(R.string.kbd_mode_mac)};
+        choiceRow(getString(R.string.kbd_mode), modeNames, FixedLayout.MAC.equals(spec.mode) ? 1 : 0, i -> {
+            boards.setMode(i == 1 ? FixedLayout.MAC : FixedLayout.WIN);
+            rebuildLater();   // 键数（Mac 没有 Ins）跟着变
+        });
+        list.addView(text(getString(R.string.kbd_mode_hint), 13, 0xFF9AA0A6));
+        if (FixedData.table(this, spec.lang, spec.mode) == null) {   // 照理不会；读不出来时键盘页照样显示豆花布局（FixedLayout.forLegends）
+            list.addView(text(getString(R.string.kbd_no_data), 14, 0xFFE07A5F));
+        }
+        TextView note = text(getString(R.string.kbd_host_note), 13, 0xFF9AA0A6);
+        note.setPadding(0, dp(8), 0, 0);
+        list.addView(note);
+        if (!prefs.btMode()) {
+            // 桌面模式：主机就是这台手机，系统设置的实体键盘里给"Douhua Keyboard"选同一种布局（公开的 ACTION_HARD_KEYBOARD_SETTINGS；三星那一页在哪没核）
+            TextView open = text(getString(R.string.kbd_open_hw), 15, 0xFF8AB4F8);
+            open.setPadding(0, dp(12), 0, dp(12));
+            open.setOnClickListener(v -> {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_HARD_KEYBOARD_SETTINGS));
+                } catch (android.content.ActivityNotFoundException e) {
+                    startActivity(new Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS));
+                }
+            });
+            list.addView(open);
+        }
+    }
+
+    // ═══════════ 开源许可 ═══════════
+
+    /**
+     * "通用"页最下面（版本号上面）一行"开源许可"：点开是 res/raw/licenses.txt 的全文（实体键盘键帽数据的三家：Unicode CLDR、AOSP、xkeyboard-config，
+     * 和 adb 配对移植的 BoringSSL）。这几家都要求随软件附上版权和许可声明（方案 §6.3），发正式包前必须有。
+     */
+    private void licenses() {
+        TextView row = text(getString(R.string.licenses), 16, 0xFF8AB4F8);
+        row.setPadding(0, dp(12), 0, dp(12));
+        row.setOnClickListener(v -> {
+            String body = FixedData.text(this, R.raw.licenses);
+            TextView t = text(body == null ? "" : body, 12, 0xFFE8E8E8);
+            t.setTypeface(android.graphics.Typeface.MONOSPACE);
+            t.setTextIsSelectable(true);
+            t.setPadding(dp(20), dp(12), dp(20), dp(12));
+            ScrollView sv = new ScrollView(this);
+            sv.addView(t);
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.licenses)
+                    .setView(sv)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
+        });
+        list.addView(row);
     }
 
     // ═══════════ 版本号（彩蛋） ═══════════

@@ -653,6 +653,73 @@ final class Prefs {
         e.apply();
     }
 
+    // ═══════════ 实体键盘（第 1B 批） ═══════════
+
+    /**
+     * 键盘页用哪块键盘、实体键盘的设置（键名和规则在纯 Java 的 Boards 里，离线测；这里只把 SharedPreferences 接给它）。
+     * catalog = 布局清单（FixedData.catalog）。Boards 只写 kbd_ / kbx_ 开头的键，豆花布局的 kb_ 那些一个都不碰。
+     */
+    Boards boards(java.util.List<FixedLegends.Layout> catalog) {
+        return new Boards(store(), catalog);
+    }
+
+    /** 给纯 Java 那边用的读写接口（同 Boards.Store），改动马上 apply。 */
+    Boards.Store store() {
+        return new Boards.Store() {
+            @Override
+            public String getString(String key, String def) {
+                try {
+                    return sp.getString(key, def);
+                } catch (ClassCastException e) {
+                    return def;
+                }
+            }
+
+            @Override
+            public int getInt(String key, int def) {
+                try {
+                    return sp.getInt(key, def);
+                } catch (ClassCastException e) {
+                    return def;
+                }
+            }
+
+            @Override
+            public float getFloat(String key, float def) {
+                try {
+                    return sp.getFloat(key, def);
+                } catch (ClassCastException e) {
+                    return def;
+                }
+            }
+
+            @Override
+            public boolean contains(String key) {
+                return sp.contains(key);
+            }
+
+            @Override
+            public void putString(String key, String value) {
+                sp.edit().putString(key, value).apply();
+            }
+
+            @Override
+            public void putInt(String key, int value) {
+                sp.edit().putInt(key, value).apply();
+            }
+
+            @Override
+            public void putFloat(String key, float value) {
+                sp.edit().putFloat(key, value).apply();
+            }
+
+            @Override
+            public void remove(String key) {
+                sp.edit().remove(key).apply();
+            }
+        };
+    }
+
     void resetAll() {
         // "自动启动服务"跟着配对走，不算界面偏好：恢复默认不关它（关了用户会以为服务坏了）
         boolean autoStart = autoStartService();

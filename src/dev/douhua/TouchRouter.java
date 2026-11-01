@@ -185,7 +185,7 @@ public final class TouchRouter implements GestureEngine.Output {
     public void setConfig(GestureEngine.Config c, float density) {
         if (engine != null) engine.cancel();   // 转着的惯性也停
         engine = new GestureEngine(this, c);
-        engine.setCtrlHeld((modifierMask() & Hid.MOD_CTRL) != 0);
+        engine.setCtrlHeld(Hid.ctrl(modifierMask()));
         stick.setConfig(c);
         this.density = density > 0 ? density : 1;
         gamepad.setDensity(this.density);
@@ -661,7 +661,7 @@ public final class TouchRouter implements GestureEngine.Output {
 
     private void applyModifiers() {
         int mask = modifierMask();
-        if (engine != null) engine.setCtrlHeld((mask & Hid.MOD_CTRL) != 0);   // Ctrl 按着：不起惯性、连续模式照旧按格（是缩放）
+        if (engine != null) engine.setCtrlHeld(Hid.ctrl(mask));   // Ctrl（左右都算）按着：不起惯性、连续模式照旧按格（是缩放）
         if (keyboard.setModifiers(mask)) sendKeyboard();
     }
 

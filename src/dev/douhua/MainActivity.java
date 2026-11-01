@@ -116,6 +116,8 @@ public final class MainActivity extends Activity
     private static final int MENU_EXIT_ID = 413;
     /** 主界面、键盘屏 ⋯ 菜单里的"手柄"（打开手柄页，只在桌面模式显示）。 */
     private static final int MENU_GAMEPAD_ID = 414;
+    /** 键盘屏 ⋯ 菜单最上面的"键盘：豆花 / 实体（…）"：点一下在豆花布局和实体键盘之间换，菜单不关（第 1B 批，2026-11-01）。 */
+    private static final int MENU_BOARD_ID = 418;
     /** 手柄页 ⋯ 菜单才有的：预设（轮换）、返回触控板。 */
     private static final int GP_PRESET_ID = 415;
     private static final int GP_BACK_ID = 416;
@@ -126,15 +128,15 @@ public final class MainActivity extends Activity
     private static final int SCREEN_MAIN = 0, SCREEN_KEYBOARD = 1, SCREEN_GAMEPAD = 2;
     /**
      * ⋯ 菜单里的项，按显示的顺序（常用的在前、退出最后）：主界面 = 键盘、手柄、设置、旋转、退出；
-     * 键盘屏 = 收起键盘、调整大小、布局、指点、手柄、设置、旋转、退出；手柄页 = 预设、返回触控板、设置、旋转、退出。
+     * 键盘屏 = 键盘（豆花 / 实体）、收起键盘、调整大小、布局（只在显示豆花布局时）、指点、手柄、设置、旋转、退出；手柄页 = 预设、返回触控板、设置、旋转、退出。
      * 不是这一屏的项打开菜单时 GONE（{@link #onMenuScreen}）；"手柄"只在桌面模式有。
      */
     private static final int[] MENU_IDS = {
-            MENU_KEYBOARD_ID, KB_CLOSE_ID, KB_ADJUST_ID, KB_LAYOUT_ID, KB_POINTER_ID, MENU_GAMEPAD_ID, GP_PRESET_ID, GP_BACK_ID,
+            MENU_KEYBOARD_ID, MENU_BOARD_ID, KB_CLOSE_ID, KB_ADJUST_ID, KB_LAYOUT_ID, KB_POINTER_ID, MENU_GAMEPAD_ID, GP_PRESET_ID, GP_BACK_ID,
             MENU_SETTINGS_ID, MENU_ROTATE_ID, MENU_EXIT_ID,
     };
     private static final int[] MENU_LABELS = {
-            R.string.act_keyboard, R.string.kb_close, R.string.kb_adjust, R.string.kb_layout_auto, R.string.kb_pointer_pad,
+            R.string.act_keyboard, R.string.kbd_menu_douhua, R.string.kb_close, R.string.kb_adjust, R.string.kb_layout_auto, R.string.kb_pointer_pad,
             R.string.act_gamepad_s, R.string.act_gamepad_s, R.string.gp_exit,
             R.string.act_settings, R.string.act_rotate, R.string.act_exit,
     };
@@ -219,6 +221,9 @@ public final class MainActivity extends Activity
     private final List<TextView> textBarButtons = new ArrayList<>();
     private LinearLayout numpad;
     private KeyboardPanel keyboard;
+    /** 实体键盘那块面板（第 1B 批）和"用哪块、实体键盘是哪一块"的设置（纯 Java 的 Boards，跑在 Prefs 上）。 */
+    private FixedKeyboardView fixedKeyboard;
+    private Boards boards;
     /** 自定义按键，下标就是区域编号（= Prefs.slot 的下标）。 */
     private final List<TextView> stripButtons = new ArrayList<>();
     private final List<TextView> numpadButtons = new ArrayList<>();
@@ -385,6 +390,7 @@ public final class MainActivity extends Activity
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = new Prefs(this);
+        boards = prefs.boards(FixedData.catalog(this));
         haptics = new Haptics(this);
         displays = getSystemService(DisplayManager.class);
         audio = getSystemService(AudioManager.class);
@@ -512,6 +518,7 @@ public final class MainActivity extends Activity
             bt.sendKeyboard(new byte[Hid.KEYBOARD_REPORT_SIZE]);
             latchedMods = 0;
             keyboard.setModifiers(0);
+            fixedKeyboard.setModifiers(0);
         }
         grabbed = false;
         if (btAcquired) {
@@ -584,6 +591,7 @@ public final class MainActivity extends Activity
         pad.setStatusSide(bottomCorners ? dp(62) : 0);
         keyboardScreen.setKeyboardLayout(prefs.keyboardLayoutMode());
         keyboardScreen.setPointer(prefs.keyboardPointer());
+        applyBoards();
         keyboardScreen.setPadKeys(prefs.padKeys());
         padStack.setKeys(prefs.padKeys());
         updateMenuLabels();
@@ -625,6 +633,7 @@ public final class MainActivity extends Activity
         airStatus.setTextColor(t.text);
         airState.setTextColor(t.focus);
         keyboard.applyTheme();
+        fixedKeyboard.applyTheme();
         keyboardScreen.applyTheme();
         pad.invalidate();
         miniPad.invalidate();
@@ -719,7 +728,10 @@ public final class MainActivity extends Activity
         // 第二根手指按在 g 被切掉的那个角上就被吞了。放在键盘外面时底下什么都没有，照旧整块吃掉（不然第一根落空，后来按在键上的手指也收不到）
         kbStick.setOnTouchListener((v, e) -> !kbStick.isEmbedded());
         kbMouseKeys = buildMouseKeys();
-        keyboardScreen = new KeyboardScreen(this, miniPad, keyboard, kbStick, kbMouseKeys, kbMenuButton, adjustBar, this);
+        // 实体键盘那块面板（自己画全部键帽；选了、放得下才显示，KeyboardScreen 管）；同豆花布局，按实体键盘排、不跟着从右往左
+        fixedKeyboard = new FixedKeyboardView(this, this);
+        fixedKeyboard.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        keyboardScreen = new KeyboardScreen(this, miniPad, keyboard, fixedKeyboard, kbStick, kbMouseKeys, kbMenuButton, adjustBar, this);
         keyboardScreen.setVisibility(View.GONE);
         root.addView(keyboardScreen, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -906,12 +918,13 @@ public final class MainActivity extends Activity
 
     /**
      * 这一项在这一屏（SCREEN_*）的菜单里有没有。"手柄"只在桌面模式（desktop）有；"布局"在小红点状态（stick）下没有
-     * （小红点固定合并，2026-11-01；选过的布局留着，换回触控板 / 关时照它）。
+     * （小红点固定合并，2026-11-01；选过的布局留着，换回触控板 / 关时照它），显示实体键盘（fixed）时也没有（实体键盘不分裂，"布局"是豆花布局的）。
      */
-    private static boolean onMenuScreen(int id, int screen, boolean desktop, boolean stick) {
+    private static boolean onMenuScreen(int id, int screen, boolean desktop, boolean stick, boolean fixed) {
         switch (id) {
             case MENU_KEYBOARD_ID: return screen == SCREEN_MAIN;
-            case KB_LAYOUT_ID: return screen == SCREEN_KEYBOARD && !stick;
+            case MENU_BOARD_ID: return screen == SCREEN_KEYBOARD;
+            case KB_LAYOUT_ID: return screen == SCREEN_KEYBOARD && !stick && !fixed;
             case KB_CLOSE_ID:
             case KB_ADJUST_ID:
             case KB_POINTER_ID: return screen == SCREEN_KEYBOARD;
@@ -1328,7 +1341,7 @@ public final class MainActivity extends Activity
             if (keyboardScreen.isMenuButtonShown()) addRegion(regions, kbMenuButton, Proto.REGION_BUTTON, KB_MENU_ID);
             if (keyboardScreen.isStickShown()) addRegion(regions, kbStick, Proto.REGION_STICK, Proto.STICK_ID);
             if (keyboardScreen.areMouseKeysShown()) addMouseKeys(regions, kbMouseKeys);
-            keyboard.collectRegions(regions);
+            keyboardScreen.face().collectRegions(regions);   // 显示着的那块（豆花布局 / 实体键盘），只报它
             if (keyboardScreen.isPadUsable()) addRegion(regions, miniPad, Proto.REGION_PAD, 0);
             return regions;
         }
@@ -1465,7 +1478,7 @@ public final class MainActivity extends Activity
         if (id >= Proto.KEY_ID_BASE) {   // 键盘键：按键本身服务已经发了，这里只管画面和震动
             int key = id - Proto.KEY_ID_BASE;
             if (down) keyHaptic();
-            keyboard.showPressed(key, down);
+            keyboardScreen.face().showPressed(key, down);
             for (int i = 0; i < numpadButtons.size(); i++) {
                 if (numpadUsages.get(i) == key) numpadLook(i, down);
             }
@@ -1484,7 +1497,7 @@ public final class MainActivity extends Activity
         if (id == KeyboardPanel.SYMBOLS_BUTTON_ID || id == KeyboardPanel.FN_BUTTON_ID || id == KeyboardPanel.GLOBE_BUTTON_ID
                 || id == KeyboardPanel.MENU_BUTTON_ID || (id >= KeyboardPanel.ROW_ACTION_BASE_ID && id < KeyboardPanel.ROW_ACTION_BASE_ID + keyboardRow.size())) {
             if (down) onKeyHaptic(id, true);
-            keyboard.showPressed(id, down);
+            keyboardScreen.face().showPressed(id, down);
             if (action == Proto.BUTTON_TAP) onSpecialKey(id);
             return;
         }
@@ -1841,13 +1854,7 @@ public final class MainActivity extends Activity
         boolean keyboardShown = keyboardScreen.getVisibility() == View.VISIBLE;
         if (on && !gamepadOn && (keyboardShown ? keyboardScreen.isAdjusting() : airOn)) return;
         if (on == menuLayer.isOpen()) return;
-        if (on) {
-            int screen = gamepadOn ? SCREEN_GAMEPAD : keyboardShown ? SCREEN_KEYBOARD : SCREEN_MAIN;
-            boolean stick = prefs.keyboardPointer() == KeyboardPlan.POINTER_STICK;
-            for (int i = 0; i < MENU_IDS.length; i++) {
-                menuItems.get(i).setVisibility(onMenuScreen(MENU_IDS[i], screen, !btMode, stick) ? View.VISIBLE : View.GONE);
-            }
-        }
+        if (on) refreshMenuItems();
         main.removeCallbacks(gpMenuLater);
         menuLayer.setOpen(on);
         keyboardScreen.setMenuOpen(on);   // 键盘屏开着菜单时不画按键放大提示
@@ -1867,7 +1874,18 @@ public final class MainActivity extends Activity
         pushLayout();
     }
 
-    /** 菜单项被点了：布局轮换时菜单不关（好连着点到想要的那种），其余关了菜单再做。 */
+    /** 菜单里显示这一屏的项（打开时、显示的那块键盘换了时）。 */
+    private void refreshMenuItems() {
+        boolean keyboardShown = keyboardScreen.getVisibility() == View.VISIBLE;
+        int screen = gamepadOn ? SCREEN_GAMEPAD : keyboardShown ? SCREEN_KEYBOARD : SCREEN_MAIN;
+        boolean stick = prefs.keyboardPointer() == KeyboardPlan.POINTER_STICK;
+        boolean fixed = keyboardScreen.isFixedShown();
+        for (int i = 0; i < MENU_IDS.length; i++) {
+            menuItems.get(i).setVisibility(onMenuScreen(MENU_IDS[i], screen, !btMode, stick, fixed) ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    /** 菜单项被点了：布局轮换、换键盘时菜单不关（好连着点到想要的那种），其余关了菜单再做。 */
     private void onMenuItem(int id) {
         switch (id) {
             case MENU_KEYBOARD_ID:
@@ -1915,14 +1933,23 @@ public final class MainActivity extends Activity
                 break;
             }
             case KB_POINTER_ID: {
-                // 触控板 → 小红点 → 关；⋯ 可能跟着换地方，关菜单
-                int pointer = KeyboardPlan.nextPointer(prefs.keyboardPointer());
-                prefs.setKeyboardPointer(pointer);
-                keyboardScreen.setPointer(pointer);
+                // 触控板 → 小红点 → 关；⋯ 可能跟着换地方，关菜单。显示的是实体键盘时换它自己那份（Boards），不碰豆花布局的 kb_pointer
+                if (keyboardScreen.isFixedShown()) {
+                    int pointer = KeyboardPlan.nextPointer(boards.pointer());
+                    boards.setPointer(pointer);
+                    keyboardScreen.setFixedPointer(pointer);
+                } else {
+                    int pointer = KeyboardPlan.nextPointer(prefs.keyboardPointer());
+                    prefs.setKeyboardPointer(pointer);
+                    keyboardScreen.setPointer(pointer);
+                }
                 loadKeyboardRects();   // 每种指点状态各有一份键盘位置（有触控板时避让它，没有时不避让）
                 setMenu(false);
                 break;
             }
+            case MENU_BOARD_ID:
+                switchBoard(!boards.fixedSelected());   // 菜单不关（好连点）；⋯ 挪了位置菜单跟着走
+                break;
             default:
                 break;
         }
@@ -1935,6 +1962,11 @@ public final class MainActivity extends Activity
             return;
         }
         boolean landscape = keyboardScreen.isLandscape();
+        if (keyboardScreen.isFixedShown()) {   // 实体键盘：只恢复它现在这个尺寸、这种指点、这个方向的那份
+            boards.resetRect(landscape);
+            keyboardScreen.setFixedRect(null);
+            return;
+        }
         int pointer = prefs.keyboardPointer();   // 只恢复眼下这种指点状态的那份（触控板 / 小红点 / 关各记各的）
         if (keyboardScreen.isSplit()) {
             prefs.resetSplitRect(landscape, pointer);
@@ -1958,19 +1990,28 @@ public final class MainActivity extends Activity
         pushLayout();
     }
 
-    /** 菜单里"布局""指点"两项写着当前选的。 */
+    /** 菜单里"键盘""布局""指点"几项写着当前选的（"指点"是显示着的那块键盘的）。 */
     private void updateMenuLabels() {
         int mode = prefs.keyboardLayoutMode();
         menuItems.get(menuIndex(KB_LAYOUT_ID)).setText(mode == KeyboardPlan.MODE_SPLIT ? R.string.kb_layout_split
                 : mode == KeyboardPlan.MODE_MERGE ? R.string.kb_layout_merge : R.string.kb_layout_auto);
-        int pointer = prefs.keyboardPointer();
+        TextView board = menuItems.get(menuIndex(MENU_BOARD_ID));
+        if (!boards.fixedSelected()) board.setText(R.string.kbd_menu_douhua);
+        else if (fixedKeyboard.layout() == null) board.setText(R.string.kbd_menu_no_data);   // 键帽数据读不出来：照样显示豆花布局（FixedLayout.forLegends）
+        else if (keyboardScreen.getVisibility() == View.VISIBLE && !keyboardScreen.fixedFitsNow()) board.setText(R.string.kbd_menu_narrow);
+        else board.setText(getString(R.string.kbd_menu_fixed, FixedData.shortName(this, boards.spec())));
+        int pointer = keyboardScreen.isFixedShown() ? boards.pointer() : prefs.keyboardPointer();
         menuItems.get(menuIndex(KB_POINTER_ID)).setText(pointer == KeyboardPlan.POINTER_STICK ? R.string.kb_pointer_stick
                 : pointer == KeyboardPlan.POINTER_NONE ? R.string.kb_pointer_off : R.string.kb_pointer_pad);
         menuItems.get(menuIndex(GP_PRESET_ID)).setText(getString(R.string.gp_preset, GamepadScreen.name(this, prefs.gamepadSpec())));
     }
 
     @Override
-    public void onKeyboardRectChanged(boolean landscape, boolean split, float[] rect) {
+    public void onKeyboardRectChanged(boolean landscape, boolean split, boolean fixed, float[] rect) {
+        if (fixed) {   // 实体键盘存它自己那份（现在这个尺寸、这种指点），不碰豆花布局的 kb_*
+            boards.setRect(landscape, rect);
+            return;
+        }
         int pointer = prefs.keyboardPointer();
         if (split) prefs.setSplitRect(landscape, pointer, rect);
         else prefs.setKeyboardRect(landscape, pointer, rect);
@@ -1982,6 +2023,49 @@ public final class MainActivity extends Activity
         int pointer = prefs.keyboardPointer();
         keyboardScreen.setRect(prefs.savedKeyboardRect(landscape, pointer));
         keyboardScreen.setSplitRect(prefs.savedSplitRect(landscape, pointer));
+        keyboardScreen.setFixedRect(boards.savedRect(landscape));   // 实体键盘自己那份（尺寸 × 指点 × 横竖屏）
+    }
+
+    @Override
+    public void onKeyboardFaceChanged() {
+        // 实体键盘放不下 / 又放得下了（转屏、拖分隔条）：菜单开着的话"布局"那一项跟着出现 / 消失，"键盘""指点"的字跟着换
+        if (menuLayer.isOpen()) refreshMenuItems();
+        updateMenuLabels();
+        pushLayout();
+    }
+
+    /**
+     * 实体键盘的设置（设置页改完回来、打开时）：是哪一块（语言、形状、尺寸、模式）、选没选它、它自己的指点。
+     * 设置没变就不重建面板（setBoard 会松开按着的键）。
+     */
+    private void applyBoards() {
+        Boards.Spec spec = boards.spec();
+        if (!spec.equals(shownSpec) || fixedKeyboard.layout() == null) {
+            shownSpec = spec;
+            fixedKeyboard.setBoard(FixedData.layout(this, spec), FixedData.table(this, spec.lang, spec.mode));
+        }
+        keyboardScreen.setFixedWanted(boards.fixedSelected());
+        keyboardScreen.setFixedPointer(boards.pointer());
+        keyboardScreen.setFixedRect(boards.savedRect(keyboardScreen.isLandscape()));
+    }
+
+    /** 面板上现在是哪一块实体键盘（applyBoards 比它，没变不重建）。 */
+    private Boards.Spec shownSpec;
+
+    /**
+     * 换键盘（⋯ 菜单"键盘"那一项）：只改"用哪块"（Boards.select 只写 kbd_board），豆花布局的设置（kb_ 开头的）一个都不写、面板不销毁，
+     * 层（字母 / ?123 / Fn）和锁住的修饰键照旧（方案 §4.3）。要藏起来的那块松开面板自己收的手指、收掉按下的样子；
+     * 服务那边按着的手指不用管（TouchRouter 按手指记着按下时的区域，抬起照旧松开原来的键；菜单开着时只报菜单，键盘上一般也没手指）。
+     */
+    private void switchBoard(boolean fixed) {
+        if (fixed == boards.fixedSelected()) return;
+        KeyboardFace hidden = keyboardScreen.face();
+        hidden.releaseTouches();
+        hidden.clearPressed();
+        boards.select(fixed);
+        keyboardScreen.setFixedWanted(fixed);
+        updateMenuLabels();
+        pushLayout();
     }
 
     @Override
@@ -2048,7 +2132,8 @@ public final class MainActivity extends Activity
     @Override
     public void onModifiers(int mask) {
         latchedMods = mask;
-        keyboard.setModifiers(mask);
+        keyboard.setModifiers(mask);   // 两块都收：切换键盘时锁住的修饰键还按着，新显示的那块上有这个键就亮
+        fixedKeyboard.setModifiers(mask);
     }
 
     // ═══════════ 动作 ═══════════
@@ -2321,8 +2406,10 @@ public final class MainActivity extends Activity
                 leftHolds = 0;
                 latchedMods = 0;
                 keyboard.setModifiers(0);
+                fixedKeyboard.setModifiers(0);
                 if (wasGrabbed) {   // 服务转来的键按下等不到松开了：按下的样子、放大提示收起
                     keyboard.clearPressed();
+                    fixedKeyboard.clearPressed();
                     for (int i = 0; i < numpadButtons.size(); i++) numpadLook(i, false);
                     clearMouseKeys();
                 }
@@ -2346,6 +2433,7 @@ public final class MainActivity extends Activity
             updateActiveButtons();
             // 键盘、数字键盘上自己按下的键同理（分屏 / 小窗回到全屏时手指可能正按在键上）：不松开的话服务的虚拟键盘一直按着、系统里连发
             keyboard.releaseTouches();
+            fixedKeyboard.releaseTouches();
             releaseNumpad();
         }
         if (!isGrabbed && air.buttons() == 0) haptics.stopHum();
@@ -2742,10 +2830,9 @@ public final class MainActivity extends Activity
     /** 服务那边锁住的修饰键：按一下就解开（服务的 TouchRouter 里修饰键是按下时切换）。只在蓝牙模式、服务接管着时。 */
     private void unlatchServiceModifiers() {
         if (!btMode || !grabbed || !link.isConnected()) return;
-        for (int bit = 0; bit < 4; bit++) {
-            if ((latchedMods & (1 << bit)) == 0) continue;
-            link.hidKey(0xE0 + bit, true);
-            link.hidKey(0xE0 + bit, false);
+        for (int usage : Hid.modifierUsages(latchedMods)) {   // 左右八个都看（实体键盘上右边四个也能锁住）
+            link.hidKey(usage, true);
+            link.hidKey(usage, false);
         }
     }
 
@@ -2848,10 +2935,9 @@ public final class MainActivity extends Activity
     /** 桌面模式下服务那边锁住的修饰键：按一下就解开（服务的 TouchRouter 里修饰键是按下时切换；服务没接管时也在服务里记着）。 */
     private void unlatchDesktopModifiers() {
         if (btMode || !link.isConnected()) return;
-        for (int bit = 0; bit < 4; bit++) {
-            if ((latchedMods & (1 << bit)) == 0) continue;
-            link.hidKey(0xE0 + bit, true);
-            link.hidKey(0xE0 + bit, false);
+        for (int usage : Hid.modifierUsages(latchedMods)) {   // 左右八个都看（实体键盘上右边四个也能锁住）
+            link.hidKey(usage, true);
+            link.hidKey(usage, false);
         }
     }
 

@@ -5,7 +5,8 @@
 - **主机实测扫描**：豆花儿逐键发给主机（每个出字的位置 × 普通 / Shift / 第三层），主机上开一个网页记下实际出了什么字，
   再和下面生成的数据逐格比。用来在你的 iPad、Linux 电脑、桌面模式上核实方案里最没把握的几条前提，结果决定第 1B 批怎么做。
 - **键帽数据生成**：从 CLDR 43（Mac、Windows）、xkeyboard-config（Linux）、AOSP KCM（安卓）生成每家主机上每个位置出什么字，
-  放 `res/raw/kbd_*.txt`。第 1B 批的实体键盘画键帽才读，现在没人读。第 1A 批只有美式（ANSI / ISO）和德语（ISO）。
+  放 `res/raw/kbd_*.txt`。第 1B 批起 App 的实体键盘读 kbd_win（Windows 模式）、kbd_mac 不对调那段（Mac 模式，照真苹果 ISO 键盘发码，见 FixedLayout）
+  和 kbd_catalog；kbd_linux / kbd_android 留着没人读。只有美式（ANSI / ISO）和德语（ISO）。
 
 ## 扫描怎么做
 
@@ -67,9 +68,9 @@ python3 tools/kbd/check_tables.py           # 核对抽查值和不变量（tool
 - 第三层：Mac 是 Option（左 Alt），Windows / Linux / 安卓是 AltGr（右 Alt）。
 - Mac 每个布局两段：`<id>` = macOS 把豆花当 ANSI 键盘（不对调），`<id>.iso` = 当 ISO 键盘（对调 0x35 / 0x64）。
 - `kbd_catalog.txt`：布局清单（默认形状、能选的形状、小键盘小数点、各家主机设置里叫什么）。
-- 读写在 `kbdtable.py`；1B 的 Java 读法照它写。
+- 读写在 `kbdtable.py`；App 的 Java 读法（`src/dev/douhua/FixedLegends.java`）照它写，FixedLegendsTest 直接读这几份文件。
 
 ## 许可
 
 数据文件头带着来源、版本和版权 / 许可声明：CLDR（Unicode 许可）、AOSP（Apache-2.0）、xkeyboard-config（MIT / HPND 类）。
-三家的许可全文还没放进 APK，留给第 1B 批的"开源许可"页；**发正式包前要补上**。
+三家的许可全文在 `res/raw/licenses.txt`（设置 → 通用 → 开源许可，第 1B 批加的）；数据源换了要跟着改那份文件。

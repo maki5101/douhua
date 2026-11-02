@@ -26,6 +26,7 @@ import java.util.Map;
  * 不拿普通的意大利 / 瑞典顶上），kbd_win 里没有那一段、modes 只写 mac。起名字用的语言、区分词也挪进了清单（原来写在这里的 LOCALE_TAGS）。
  * Mac 模式读不对调的那一段（`<id>`，不读 `<id>.iso`）：豆花在 Mac 模式下照真苹果 ISO 键盘发码（1 左边那个键发 0x64、Z 左边那个键发 0x35，
  * 见 FixedLayout），不对调那段按用法码查出来就是苹果键盘那个位置上印的字。
+ * 2026-11-02 起另读死键组合（res/raw/kbd_dead_win / kbd_dead_mac，{@link #parseDead}）：贴字面板"打出来"反查 é 这类字（TypeOut）。
  */
 final class FixedLegends {
     private FixedLegends() {
@@ -252,6 +253,83 @@ final class FixedLegends {
             out.add(new Layout(row));
         }
         return out;
+    }
+
+    /**
+     * 一份死键组合文件（kbd_dead_win.txt / kbd_dead_mac.txt，2026-11-02，贴字面板"打出来"用，TypeOut）：段名（布局 id，Mac 不分 .iso）→
+     * {死键的字 + 后面那个字（{@link #deadPair}）→ 主机拼出来的字}。数据是 CLDR transforms（主机自己的组合表，tools/kbd/gen_layouts.py 生成）。
+     */
+    static final class DeadFile {
+        final Map<String, List<String[]>> meta;
+        final Map<String, Map<String, String>> sections;
+
+        DeadFile(Map<String, List<String[]>> meta, Map<String, Map<String, String>> sections) {
+            this.meta = meta;
+            this.sections = sections;
+        }
+    }
+
+    /** 死键组合表的键：死键的字 + 后面那个字（两个都正好一个字，拼起来不会混）。 */
+    static String deadPair(String dead, String next) {
+        return dead + next;
+    }
+
+    /**
+     * 读死键组合文件（格式照 tools/kbd/kbdtable.py 的 read_dead_file）：@段名 / 别名同字表；每行三格（tab 分隔，转义同 {@link #unescape}），
+     * 死键的字、后面那个字、拼出来的字各正好一个字（BMP 以外的字是一个代理对）。格式不对抛 IllegalArgumentException（宁可读不出来也不打错字：
+     * 读不出来时"打出来"只是不用死键拼字）。
+     */
+    static DeadFile parseDead(String text) {
+        Map<String, List<String[]>> meta = new LinkedHashMap<>();
+        Map<String, Map<String, String>> sections = new LinkedHashMap<>();
+        Map<String, String> aliases = new LinkedHashMap<>();
+        Map<String, String> cur = null;
+        String[] lines = text.split("\n", -1);
+        for (int n = 0; n < lines.length; n++) {
+            String line = lines[n];
+            if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
+            if (line.startsWith("#!")) {
+                String[] parts = line.substring(2).trim().split("\\s+");
+                if (parts.length > 0 && !parts[0].isEmpty()) {
+                    meta.computeIfAbsent(parts[0], k -> new ArrayList<>()).add(Arrays.copyOfRange(parts, 1, parts.length));
+                }
+                continue;
+            }
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            if (line.startsWith("@")) {
+                String body = line.substring(1);
+                int eq = body.indexOf('=');
+                if (eq >= 0) {
+                    String a = body.substring(0, eq).trim(), b = body.substring(eq + 1).trim();
+                    if (!name(a) || !name(b)) throw new IllegalArgumentException("第 " + (n + 1) + " 行段名不对：" + line);
+                    aliases.put(a, b);
+                    cur = null;
+                } else {
+                    String id = body.trim();
+                    if (!name(id)) throw new IllegalArgumentException("第 " + (n + 1) + " 行段名不对：" + line);
+                    cur = sections.computeIfAbsent(id, k -> new LinkedHashMap<>());
+                }
+                continue;
+            }
+            if (cur == null) throw new IllegalArgumentException("第 " + (n + 1) + " 行不在任何段里");
+            String[] cols = line.split("\t", -1);
+            if (cols.length != 3) throw new IllegalArgumentException("第 " + (n + 1) + " 行要正好三格：" + line);
+            String d = unescape(cols[0]), next = unescape(cols[1]), r = unescape(cols[2]);
+            if (!oneChar(d) || !oneChar(next) || !oneChar(r)) {
+                throw new IllegalArgumentException("第 " + (n + 1) + " 行每格要正好一个字：" + line);
+            }
+            cur.putIfAbsent(deadPair(d, next), r);   // 同一对写了两次的先写的算（同生成器）
+        }
+        for (Map.Entry<String, String> a : aliases.entrySet()) {
+            Map<String, String> t = sections.get(a.getValue());
+            if (t == null) throw new IllegalArgumentException("别名 " + a.getKey() + " 指向不存在的 " + a.getValue());
+            sections.put(a.getKey(), t);
+        }
+        return new DeadFile(meta, sections);
+    }
+
+    private static boolean oneChar(String s) {
+        return !s.isEmpty() && s.codePointCount(0, s.length()) == 1;
     }
 
     /** 清单里 id 这一行；没有返回 null。 */

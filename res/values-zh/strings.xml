@@ -45,6 +45,7 @@
     <string name="key_space">空格</string>
     <string name="key_symbols">符</string>
     <string name="text_hint">用手机输入法打字，按发送贴到正在输入的地方</string>
+    <string name="text_hint_bt">用手机输入法打字，按「打出来」一个键一个键发过去</string>
     <string name="text_send">发送</string>
     <string name="text_hide">收起</string>
     <string name="settings_title">豆花儿设置</string>
@@ -249,7 +250,6 @@
     <string name="bt_state_connected">蓝牙：%1$s</string>
     <string name="bt_state_failed">蓝牙没启动成功：可能有别的应用正在当蓝牙键盘，关掉它再打开豆花儿</string>
     <string name="bt_state_stuck">系统蓝牙卡住了，一直不回应（开着豆花儿时关开过蓝牙会这样）。重启手机就好</string>
-    <string name="bt_no_phone_text">蓝牙模式下不能贴字：剪贴板在手机上，到不了对方</string>
     <string name="bt_no_such_key">蓝牙模式下没有这个键</string>
     <string name="drag_hum">拖动时持续轻震（提醒你正按着左键）</string>
     <string name="texture">移动光标时的颗粒感（极轻的震动，像摸着不太光滑的表面）</string>
@@ -651,4 +651,30 @@
     <string name="sound_haptic_delay">震动延后</string>
     <string name="sound_haptic_delay_hint">震动比声音晚多少；调到两个像一个东西为止。只在声音开着时；开始 / 结束拖动不延后。</string>
     <string name="sound_diag">诊断（给开发者看）</string>
+    <string name="typeout_button">打出来</string>
+    <string name="typeout_stop">停止</string>
+    <string name="typeout_using">按 %1$s 找键（在设置 → 键盘里改）</string>
+    <string name="typeout_skip">%1$d 个字打不出，会跳过：%2$s</string>
+    <string name="typeout_caps">大写锁定好像开着，打出来的字母大小写可能反了</string>
+    <string name="typeout_held">有修饰键按着，打的字会带上它</string>
+    <string name="typeout_no_data">%1$s 没有键帽数据，打不出来（在设置 → 键盘里换）</string>
+    <string name="typeout_no_bt">蓝牙没连着主机</string>
+    <string name="typeout_no_service">桌面模式要连着服务才能打</string>
+    <string name="typeout_need_split">桌面模式下要分屏才能打（豆花儿和接字的应用各占一半）；全屏、接着外接屏时还不行</string>
+    <string name="typeout_waiting">正在把键盘焦点交给另一半…</string>
+    <string name="typeout_progress">正在打：%1$d / %2$d</string>
+    <string name="typeout_done">打完了：%1$d 个字</string>
+    <string name="typeout_stopped">停了：打完 %1$d / %2$d 个字（%3$s）</string>
+    <string name="typeout_why_user">按了停止</string>
+    <string name="typeout_why_lost">连接断了</string>
+    <string name="typeout_why_paused">豆花儿退到了后台</string>
+    <string name="typeout_why_closed">收起了面板</string>
+    <string name="typeout_why_focus">键盘焦点交不出去：要分屏、另一半是接字的应用（小窗不行）</string>
+    <string name="typeout_why_focus_back">键盘焦点回到了豆花儿</string>
+    <string name="typeout_why_window">窗口变了（回到全屏，或者接上了外接屏）</string>
+    <string name="typeout_mid_char">最后一个字只按了死键，主机那边可能还等着拼字</string>
+    <string name="sec_typeout">打出来（贴字面板）</string>
+    <string name="typeout_rate">打出来的速度</string>
+    <string name="typeout_rate_unit">键/秒</string>
+    <string name="typeout_rate_hint">贴字面板里的「打出来」按上面实体键盘的语言和模式找每个字的键（主机要设成同一种布局），一个键一个键匀速发出去。BIOS、KVM 切换器、远程控制台丢字时调慢。一般一个字一个键；é 这类靠死键拼的字两个键，换行是回车。中文、emoji 打不出、会跳过。不会自己补回车。</string>
 </resources>

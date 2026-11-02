@@ -8,8 +8,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * 实体键盘的数据从 res/raw 读进来（布局清单、Windows / Mac 两份键帽字），进程里读一次缓存着；文件几 KB，主线程上读。
@@ -17,6 +19,7 @@ import java.util.Locale;
  * 字表是 null 时 {@link #ladder} 是空的（FixedLayout.forEntry；这个布局这种模式的字表里没有那一段也一样，比如拉美的 Mac 模式）：
  * 选了实体键盘也照样显示豆花布局（KeyboardScreen 拿不到布局就不换），⋯ 菜单写"数据读不出来"（没有这种模式的数据时写"没有 Mac 模式的数据"），
  * 设置页那一节标红一行，日志里记一行。
+ * 死键组合（kbd_dead_win / kbd_dead_mac，贴字面板"打出来"用）同样读一次缓存着（{@link #deadKeys}）。
  */
 final class FixedData {
     private FixedData() {
@@ -25,6 +28,7 @@ final class FixedData {
     private static final String TAG = "douhua";
     private static List<FixedLegends.Layout> catalog;
     private static FixedLegends.TableFile win, mac;
+    private static FixedLegends.DeadFile deadWin, deadMac;
 
     /** 布局清单（读不出来是空列表）。 */
     static synchronized List<FixedLegends.Layout> catalog(Context c) {
@@ -51,6 +55,24 @@ final class FixedData {
         }
         FixedLegends.TableFile f = m ? mac : win;
         return f == null ? null : f.sections.get(lang);
+    }
+
+    /**
+     * 这个布局在这种模式下的死键组合（贴字面板"打出来"用，TypeOut）：{死键的字 + 后面那个字 → 主机拼出来的字}，Mac 模式不分 .iso。
+     * 读不出来（照理不会）、这个布局没有死键时是空的：照样能打，只是 é 这类要靠死键拼的字算打不出、跳过。
+     */
+    static synchronized Map<String, String> deadKeys(Context c, String lang, String mode) {
+        boolean m = FixedLayout.MAC.equals(mode);
+        try {
+            if (m && deadMac == null) deadMac = FixedLegends.parseDead(raw(c, R.raw.kbd_dead_mac));
+            if (!m && deadWin == null) deadWin = FixedLegends.parseDead(raw(c, R.raw.kbd_dead_win));
+        } catch (IOException | RuntimeException e) {
+            Log.w(TAG, "死键组合读不出来：" + e);
+            return Collections.emptyMap();
+        }
+        FixedLegends.DeadFile f = m ? deadMac : deadWin;
+        Map<String, String> s = f == null ? null : f.sections.get(lang);
+        return s == null ? Collections.<String, String>emptyMap() : s;
     }
 
     /**

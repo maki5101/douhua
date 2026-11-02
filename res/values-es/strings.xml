@@ -45,6 +45,7 @@
     <string name="key_space">Espacio</string>
     <string name="key_symbols">\?123</string>
     <string name="text_hint">Escribe con el teclado del móvil y pulsa Enviar para pegar donde estás escribiendo</string>
+    <string name="text_hint_bt">Escribe con el teclado del móvil y pulsa «Teclear» para enviarlo tecla a tecla</string>
     <string name="text_send">Enviar</string>
     <string name="text_hide">Ocultar</string>
     <string name="settings_title">Ajustes de Douhua</string>
@@ -249,7 +250,6 @@
     <string name="bt_state_connected">Bluetooth: %1$s</string>
     <string name="bt_state_failed">El Bluetooth no se inició: puede que otra app ya esté haciendo de teclado Bluetooth; ciérrala y vuelve a abrir Douhua</string>
     <string name="bt_state_stuck">El Bluetooth del sistema no responde (puede pasar al apagar y encender el Bluetooth con Douhua abierto). Reinicia el teléfono para solucionarlo</string>
-    <string name="bt_no_phone_text">No se puede pegar texto por Bluetooth: el portapapeles se queda en el teléfono</string>
     <string name="bt_no_such_key">Esta tecla no está disponible por Bluetooth</string>
     <string name="drag_hum">Vibración suave continua al arrastrar (recuerda que el botón izquierdo está pulsado)</string>
     <string name="texture">Sensación granulada al mover el puntero (vibración muy suave, como una superficie algo rugosa)</string>
@@ -651,4 +651,30 @@
     <string name="sound_haptic_delay">Retraso de la vibración</string>
     <string name="sound_haptic_delay_hint">Cuánto más tarde llega la vibración que el sonido; ajústalo hasta que ambos parezcan uno solo. Solo con el sonido activado; el inicio y el final de un arrastre no se retrasan.</string>
     <string name="sound_diag">Diagnóstico (para el desarrollador)</string>
+    <string name="typeout_button">Teclear</string>
+    <string name="typeout_stop">Detener</string>
+    <string name="typeout_using">Teclas según %1$s (se cambia en Ajustes → Teclado)</string>
+    <string name="typeout_skip">%1$d caracteres no se pueden teclear y se omitirán: %2$s</string>
+    <string name="typeout_caps">Bloq Mayús parece activado: las letras podrían salir con mayúsculas y minúsculas invertidas</string>
+    <string name="typeout_held">Hay una tecla modificadora pulsada y se aplicará al teclear</string>
+    <string name="typeout_no_data">No hay datos de teclas para %1$s, no se puede teclear (se cambia en Ajustes → Teclado)</string>
+    <string name="typeout_no_bt">El Bluetooth no está conectado a ningún dispositivo</string>
+    <string name="typeout_no_service">En modo escritorio el servicio tiene que estar conectado</string>
+    <string name="typeout_need_split">En modo escritorio solo funciona con pantalla dividida (Douhua y la app que recibe una al lado de la otra); todavía no a pantalla completa ni con una pantalla externa</string>
+    <string name="typeout_waiting">Pasando el foco del teclado a la otra mitad…</string>
+    <string name="typeout_progress">Tecleando: %1$d / %2$d</string>
+    <string name="typeout_done">Listo: %1$d caracteres</string>
+    <string name="typeout_stopped">Detenido tras %1$d / %2$d caracteres (%3$s)</string>
+    <string name="typeout_why_user">pulsaste Detener</string>
+    <string name="typeout_why_lost">se cortó la conexión</string>
+    <string name="typeout_why_paused">Douhua pasó a segundo plano</string>
+    <string name="typeout_why_closed">se cerró el panel</string>
+    <string name="typeout_why_focus">no se pudo pasar el foco del teclado; hace falta pantalla dividida con la app que recibe en la otra mitad (no una ventana emergente)</string>
+    <string name="typeout_why_focus_back">el foco del teclado volvió a Douhua</string>
+    <string name="typeout_why_window">cambió la ventana (volvió a pantalla completa, o se conectó una pantalla externa)</string>
+    <string name="typeout_mid_char">Del último carácter solo se pulsó la tecla muerta; puede que el dispositivo aún espere para combinarla</string>
+    <string name="sec_typeout">Teclear (panel de texto)</string>
+    <string name="typeout_rate">Velocidad al teclear</string>
+    <string name="typeout_rate_unit">teclas/s</string>
+    <string name="typeout_rate_hint">«Teclear» en el panel de texto busca la tecla de cada carácter con el idioma y el modo del teclado físico de arriba (pon el dispositivo en la misma distribución) y envía las teclas una a una a ritmo constante. Bájala si una BIOS, un conmutador KVM o una consola remota pierde caracteres. Normalmente una tecla por carácter; las letras con tecla muerta (é y similares) llevan dos, y un salto de línea es Intro. El chino y los emoji no se pueden teclear y se omiten. Nunca añade un Intro que no hayas escrito.</string>
 </resources>

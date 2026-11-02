@@ -45,6 +45,7 @@
     <string name="key_space">Espace</string>
     <string name="key_symbols">\?123</string>
     <string name="text_hint">Tapez avec le clavier du téléphone, puis Envoyer pour coller là où vous écrivez</string>
+    <string name="text_hint_bt">Tapez avec le clavier du téléphone, puis « Taper » pour l\'envoyer touche par touche</string>
     <string name="text_send">Envoyer</string>
     <string name="text_hide">Masquer</string>
     <string name="settings_title">Réglages Douhua</string>
@@ -249,7 +250,6 @@
     <string name="bt_state_connected">Bluetooth : %1$s</string>
     <string name="bt_state_failed">Le Bluetooth n\'a pas démarré : une autre app sert peut-être déjà de clavier Bluetooth ; fermez-la et rouvrez Douhua</string>
     <string name="bt_state_stuck">Le Bluetooth du système ne répond pas (cela peut arriver si vous éteignez puis rallumez le Bluetooth pendant que Douhua est ouvert). Redémarrez le téléphone pour corriger</string>
-    <string name="bt_no_phone_text">Coller du texte n\'est pas possible en Bluetooth : le presse-papiers reste sur le téléphone</string>
     <string name="bt_no_such_key">Cette touche n\'existe pas en Bluetooth</string>
     <string name="drag_hum">Légère vibration continue pendant le glisser (rappelle que le bouton gauche est enfoncé)</string>
     <string name="texture">Sensation granuleuse en déplaçant le pointeur (vibration très légère, comme une surface un peu rugueuse)</string>
@@ -651,4 +651,30 @@
     <string name="sound_haptic_delay">Retard de la vibration</string>
     <string name="sound_haptic_delay_hint">De combien la vibration arrive après le son ; réglez jusqu\'à ce que les deux ne fassent qu\'un. Seulement avec le son activé ; le début et la fin d\'un glissement ne sont pas retardés.</string>
     <string name="sound_diag">Diagnostic (pour le développeur)</string>
+    <string name="typeout_button">Taper</string>
+    <string name="typeout_stop">Arrêter</string>
+    <string name="typeout_using">Touches cherchées avec %1$s (à changer dans Réglages → Clavier)</string>
+    <string name="typeout_skip">%1$d caractère(s) impossible(s) à taper, ignoré(s) : %2$s</string>
+    <string name="typeout_caps">Verr. Maj semble activé : les lettres risquent de sortir dans la mauvaise casse</string>
+    <string name="typeout_held">Une touche de modification est enfoncée et s\'appliquera à la frappe</string>
+    <string name="typeout_no_data">Pas de données de touches pour %1$s, rien ne peut être tapé (à changer dans Réglages → Clavier)</string>
+    <string name="typeout_no_bt">Le Bluetooth n\'est connecté à aucun appareil</string>
+    <string name="typeout_no_service">En mode bureau, le service doit être connecté</string>
+    <string name="typeout_need_split">En mode bureau, ça ne marche qu\'en écran partagé (Douhua et l\'appli qui reçoit côte à côte) ; pas encore en plein écran ni avec un écran externe</string>
+    <string name="typeout_waiting">Passage du focus clavier à l\'autre moitié…</string>
+    <string name="typeout_progress">Frappe : %1$d / %2$d</string>
+    <string name="typeout_done">Terminé : %1$d caractères</string>
+    <string name="typeout_stopped">Arrêté après %1$d / %2$d caractères (%3$s)</string>
+    <string name="typeout_why_user">vous avez appuyé sur Arrêter</string>
+    <string name="typeout_why_lost">la connexion a été coupée</string>
+    <string name="typeout_why_paused">Douhua est passé en arrière-plan</string>
+    <string name="typeout_why_closed">le panneau a été fermé</string>
+    <string name="typeout_why_focus">impossible de passer le focus clavier ; utilisez l\'écran partagé avec l\'appli qui reçoit dans l\'autre moitié (pas une fenêtre flottante)</string>
+    <string name="typeout_why_focus_back">le focus clavier est revenu à Douhua</string>
+    <string name="typeout_why_window">la fenêtre a changé (retour au plein écran, ou écran externe branché)</string>
+    <string name="typeout_mid_char">Le dernier caractère n\'a eu que sa touche morte ; l\'appareil attend peut-être encore de la combiner</string>
+    <string name="sec_typeout">Taper (panneau de texte)</string>
+    <string name="typeout_rate">Vitesse de frappe</string>
+    <string name="typeout_rate_unit">touches/s</string>
+    <string name="typeout_rate_hint">« Taper » dans le panneau de texte cherche la touche de chaque caractère avec la langue et le mode du clavier physique ci-dessus (réglez l\'appareil sur la même disposition) et envoie les touches une à une à vitesse constante. Ralentissez si un BIOS, un commutateur KVM ou une console distante perd des caractères. En général une touche par caractère ; les lettres faites avec une touche morte (é, etc.) en prennent deux, et un saut de ligne est Entrée. Le chinois et les emoji ne peuvent pas être tapés et sont ignorés. N\'ajoute jamais d\'Entrée que vous n\'avez pas écrite.</string>
 </resources>

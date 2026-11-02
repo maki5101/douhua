@@ -45,6 +45,7 @@
     <string name="key_space">Space</string>
     <string name="key_symbols">\?123</string>
     <string name="text_hint">Type with the phone keyboard, tap Send to paste where you\'re typing</string>
+    <string name="text_hint_bt">Type with the phone keyboard, tap \"Type out\" to send it key by key</string>
     <string name="text_send">Send</string>
     <string name="text_hide">Hide</string>
     <string name="settings_title">Douhua settings</string>
@@ -249,7 +250,6 @@
     <string name="bt_state_connected">Bluetooth: %1$s</string>
     <string name="bt_state_failed">Bluetooth didn\'t start: another app may be acting as a Bluetooth keyboard; close it and reopen Douhua</string>
     <string name="bt_state_stuck">System Bluetooth isn\'t responding (this can happen after turning Bluetooth off and on while Douhua is open). Restart the phone to fix it</string>
-    <string name="bt_no_phone_text">Text pasting isn\'t available over Bluetooth: the clipboard stays on the phone</string>
     <string name="bt_no_such_key">This key isn\'t available over Bluetooth</string>
     <string name="drag_hum">Gentle hum while dragging (reminds you the left button is held)</string>
     <string name="texture">Grainy feel while moving the pointer (a very faint vibration, like touching a slightly rough surface)</string>
@@ -651,4 +651,30 @@
     <string name="sound_haptic_delay">Vibration delay</string>
     <string name="sound_haptic_delay_hint">How much later the vibration comes than the sound; move it until the two feel like one. Only while sound is on; the start and end of a drag aren\'t delayed.</string>
     <string name="sound_diag">Diagnostics (for the developer)</string>
+    <string name="typeout_button">Type out</string>
+    <string name="typeout_stop">Stop</string>
+    <string name="typeout_using">Finding keys with %1$s (change it in Settings → Keyboard)</string>
+    <string name="typeout_skip">%1$d can\'t be typed and will be skipped: %2$s</string>
+    <string name="typeout_caps">Caps Lock looks on, so letters may come out in the wrong case</string>
+    <string name="typeout_held">A modifier is held down and will go along with what\'s typed</string>
+    <string name="typeout_no_data">No key data for %1$s, so nothing can be typed (change it in Settings → Keyboard)</string>
+    <string name="typeout_no_bt">Bluetooth isn\'t connected to a device</string>
+    <string name="typeout_no_service">Desktop mode needs the service connected</string>
+    <string name="typeout_need_split">In desktop mode this only works in split screen (Douhua and the receiving app side by side); not in full screen or with an external display yet</string>
+    <string name="typeout_waiting">Handing keyboard focus to the other half…</string>
+    <string name="typeout_progress">Typing: %1$d / %2$d</string>
+    <string name="typeout_done">Done: %1$d characters</string>
+    <string name="typeout_stopped">Stopped after %1$d / %2$d characters (%3$s)</string>
+    <string name="typeout_why_user">you tapped Stop</string>
+    <string name="typeout_why_lost">the connection dropped</string>
+    <string name="typeout_why_paused">Douhua went to the background</string>
+    <string name="typeout_why_closed">the panel was closed</string>
+    <string name="typeout_why_focus">keyboard focus couldn\'t be handed over; use split screen with the receiving app in the other half (not a pop-up window)</string>
+    <string name="typeout_why_focus_back">keyboard focus came back to Douhua</string>
+    <string name="typeout_why_window">the window changed (back to full screen, or an external display was connected)</string>
+    <string name="typeout_mid_char">The last character only got its dead key; the device may still be waiting to combine it</string>
+    <string name="sec_typeout">Type out (text panel)</string>
+    <string name="typeout_rate">Type-out speed</string>
+    <string name="typeout_rate_unit">keys/s</string>
+    <string name="typeout_rate_hint">\"Type out\" in the text panel finds each character\'s key using the physical keyboard\'s language and mode above (set the device to the same layout) and sends the keys one by one at a steady pace. Slow it down if a BIOS, KVM switch or remote console drops characters. Usually one key per character; letters built with a dead key (é and the like) take two, and a line break is Enter. Chinese and emoji can\'t be typed and are skipped. It never adds an Enter you didn\'t write.</string>
 </resources>

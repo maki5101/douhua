@@ -45,6 +45,7 @@
     <string name="key_space">مسافة</string>
     <string name="key_symbols">\?123</string>
     <string name="text_hint">اكتب بلوحة مفاتيح الهاتف ثم اضغط إرسال للصق حيث تكتب</string>
+    <string name="text_hint_bt">اكتب بلوحة مفاتيح الهاتف ثم اضغط «اكتب بالمفاتيح» لإرساله مفتاحًا مفتاحًا</string>
     <string name="text_send">إرسال</string>
     <string name="text_hide">إخفاء</string>
     <string name="settings_title">إعدادات دوهوا</string>
@@ -249,7 +250,6 @@
     <string name="bt_state_connected">بلوتوث: %1$s</string>
     <string name="bt_state_failed">تعذّر تشغيل البلوتوث: ربما يعمل تطبيق آخر كلوحة مفاتيح بلوتوث؛ أغلقه وأعد فتح دوهوا</string>
     <string name="bt_state_stuck">بلوتوث النظام لا يستجيب (قد يحدث هذا عند إيقاف البلوتوث وتشغيله أثناء فتح دوهوا). أعد تشغيل الهاتف لحل المشكلة</string>
-    <string name="bt_no_phone_text">لا يمكن لصق النص عبر البلوتوث: الحافظة تبقى على الهاتف</string>
     <string name="bt_no_such_key">هذا المفتاح غير متاح عبر البلوتوث</string>
     <string name="drag_hum">اهتزاز خفيف مستمر أثناء السحب (يذكّرك بأن الزر الأيسر مضغوط)</string>
     <string name="texture">إحساس حُبيبي أثناء تحريك المؤشر (اهتزاز خفيف جدًا، كأنك تلمس سطحًا خشنًا قليلًا)</string>
@@ -651,4 +651,30 @@
     <string name="sound_haptic_delay">تأخير الاهتزاز</string>
     <string name="sound_haptic_delay_hint">كم يتأخر الاهتزاز عن الصوت؛ اضبطه حتى يبدوان شيئًا واحدًا. فقط والصوت مفعّل؛ لا يتأخر بدء السحب ولا نهايته.</string>
     <string name="sound_diag">التشخيص (للمطوّر)</string>
+    <string name="typeout_button">اكتب بالمفاتيح</string>
+    <string name="typeout_stop">إيقاف</string>
+    <string name="typeout_using">البحث عن المفاتيح حسب %1$s (يُغيَّر من الإعدادات ← لوحة المفاتيح)</string>
+    <string name="typeout_skip">لا يمكن كتابة %1$d من الأحرف وسيتم تخطيها: %2$s</string>
+    <string name="typeout_caps">يبدو أن Caps Lock مفعّل، فقد تخرج الأحرف بحالة أحرف معكوسة</string>
+    <string name="typeout_held">هناك مفتاح تعديل مضغوط وسيُطبَّق على الكتابة</string>
+    <string name="typeout_no_data">لا توجد بيانات مفاتيح لـ %1$s، فلا يمكن الكتابة (يُغيَّر من الإعدادات ← لوحة المفاتيح)</string>
+    <string name="typeout_no_bt">البلوتوث غير متصل بأي جهاز</string>
+    <string name="typeout_no_service">في وضع سطح المكتب يجب أن تكون الخدمة متصلة</string>
+    <string name="typeout_need_split">في وضع سطح المكتب يعمل هذا فقط في تقسيم الشاشة (دوهوا والتطبيق المستقبِل جنبًا إلى جنب)؛ ليس بعدُ في ملء الشاشة أو مع شاشة خارجية</string>
+    <string name="typeout_waiting">جارٍ تسليم تركيز لوحة المفاتيح إلى النصف الآخر…</string>
+    <string name="typeout_progress">جارٍ الكتابة: %1$d / %2$d</string>
+    <string name="typeout_done">تم: %1$d حرفًا</string>
+    <string name="typeout_stopped">توقّف بعد %1$d / %2$d حرفًا (%3$s)</string>
+    <string name="typeout_why_user">ضغطت إيقاف</string>
+    <string name="typeout_why_lost">انقطع الاتصال</string>
+    <string name="typeout_why_paused">انتقل دوهوا إلى الخلفية</string>
+    <string name="typeout_why_closed">أُغلقت اللوحة</string>
+    <string name="typeout_why_focus">تعذّر تسليم تركيز لوحة المفاتيح؛ يلزم تقسيم الشاشة مع التطبيق المستقبِل في النصف الآخر (ليس نافذة منبثقة)</string>
+    <string name="typeout_why_focus_back">عاد تركيز لوحة المفاتيح إلى دوهوا</string>
+    <string name="typeout_why_window">تغيّرت النافذة (عادت إلى ملء الشاشة، أو وُصلت شاشة خارجية)</string>
+    <string name="typeout_mid_char">في الحرف الأخير ضُغط المفتاح الميت فقط؛ قد يكون الجهاز لا يزال ينتظر التركيب</string>
+    <string name="sec_typeout">الكتابة بالمفاتيح (لوحة النص)</string>
+    <string name="typeout_rate">سرعة الكتابة بالمفاتيح</string>
+    <string name="typeout_rate_unit">مفتاح/ث</string>
+    <string name="typeout_rate_hint">«اكتب بالمفاتيح» في لوحة النص يبحث عن مفتاح كل حرف حسب لغة لوحة المفاتيح الفعلية ووضعها أعلاه (اضبط الجهاز على التخطيط نفسه) ويرسل المفاتيح واحدًا تلو الآخر بسرعة ثابتة. أبطئها إذا كان BIOS أو مبدّل KVM أو وحدة تحكم عن بُعد يُسقط أحرفًا. عادةً مفتاح واحد لكل حرف؛ والحروف المركّبة بمفتاح ميت (مثل é) تحتاج مفتاحين، والسطر الجديد هو Enter. لا يمكن كتابة الصينية والرموز التعبيرية فتُتخطّى. لا يضيف أبدًا Enter لم تكتبه.</string>
 </resources>

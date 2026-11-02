@@ -45,6 +45,7 @@
     <string name="key_space">空白</string>
     <string name="key_symbols">\?123</string>
     <string name="text_hint">スマホのキーボードで入力し、送信で入力中の場所に貼り付け</string>
+    <string name="text_hint_bt">スマホのキーボードで入力し、「打ち込む」で 1 キーずつ送る</string>
     <string name="text_send">送信</string>
     <string name="text_hide">閉じる</string>
     <string name="settings_title">豆花の設定</string>
@@ -249,7 +250,6 @@
     <string name="bt_state_connected">Bluetooth：%1$s</string>
     <string name="bt_state_failed">Bluetooth を開始できませんでした：別のアプリが Bluetooth キーボードとして動いている可能性があります。それを閉じて豆花を開き直してください</string>
     <string name="bt_state_stuck">システムの Bluetooth が応答しません（豆花を開いたまま Bluetooth をオフ・オンするとこうなることがあります）。スマホを再起動すると直ります</string>
-    <string name="bt_no_phone_text">Bluetooth では文字の貼り付けは使えません（クリップボードはスマホ側にあります）</string>
     <string name="bt_no_such_key">このキーは Bluetooth では使えません</string>
     <string name="drag_hum">ドラッグ中の弱い連続振動（左ボタンを押したままだとわかる）</string>
     <string name="texture">カーソル移動中のざらざら感（ごく弱い振動。少し粗い面をなぞる感じ）</string>
@@ -651,4 +651,30 @@
     <string name="sound_haptic_delay">振動の遅延</string>
     <string name="sound_haptic_delay_hint">振動を音よりどれだけ遅らせるか。両方が一つに感じられるところまで動かす。サウンドがオンのときだけ。ドラッグの開始と終了は遅らせない。</string>
     <string name="sound_diag">診断（開発者向け）</string>
+    <string name="typeout_button">打ち込む</string>
+    <string name="typeout_stop">停止</string>
+    <string name="typeout_using">%1$s でキーを探します（設定 → キーボードで変更）</string>
+    <string name="typeout_skip">打てない文字 %1$d 個は飛ばします：%2$s</string>
+    <string name="typeout_caps">Caps Lock がオンのようです。英字の大文字・小文字が逆になるかもしれません</string>
+    <string name="typeout_held">修飾キーが押されたままです。打つ文字に付きます</string>
+    <string name="typeout_no_data">%1$s のキーデータがないので打てません（設定 → キーボードで変更）</string>
+    <string name="typeout_no_bt">Bluetooth でホストにつながっていません</string>
+    <string name="typeout_no_service">デスクトップモードではサービスにつながっている必要があります</string>
+    <string name="typeout_need_split">デスクトップモードでは画面分割（豆花と受け取るアプリを半分ずつ）でだけ打てます。全画面や外部ディスプレイではまだ使えません</string>
+    <string name="typeout_waiting">キーボードのフォーカスをもう半分に渡しています…</string>
+    <string name="typeout_progress">入力中：%1$d / %2$d</string>
+    <string name="typeout_done">完了：%1$d 文字</string>
+    <string name="typeout_stopped">停止：%1$d / %2$d 文字まで（%3$s）</string>
+    <string name="typeout_why_user">停止を押した</string>
+    <string name="typeout_why_lost">接続が切れた</string>
+    <string name="typeout_why_paused">豆花がバックグラウンドに移った</string>
+    <string name="typeout_why_closed">パネルを閉じた</string>
+    <string name="typeout_why_focus">キーボードのフォーカスを渡せない。画面分割で、もう半分が受け取るアプリである必要があります（ポップアップは不可）</string>
+    <string name="typeout_why_focus_back">キーボードのフォーカスが豆花に戻った</string>
+    <string name="typeout_why_window">ウィンドウが変わった（全画面に戻った、または外部ディスプレイをつないだ）</string>
+    <string name="typeout_mid_char">最後の文字はデッドキーだけ押しました。ホスト側はまだ合成を待っているかもしれません</string>
+    <string name="sec_typeout">打ち込む（テキストパネル）</string>
+    <string name="typeout_rate">打ち込む速さ</string>
+    <string name="typeout_rate_unit">キー/秒</string>
+    <string name="typeout_rate_hint">テキストパネルの「打ち込む」は、上の物理キーボードの言語とモードで各文字のキーを探し（ホストも同じ配列に設定）、一定の速さで 1 キーずつ送ります。BIOS、KVM 切替器、リモートコンソールで文字が抜けるなら遅くしてください。ふつう 1 文字 1 キー、デッドキーで作る文字（é など）は 2 キー、改行は Enter。中国語や絵文字は打てないので飛ばします。書いていない Enter を勝手に足すことはありません。</string>
 </resources>

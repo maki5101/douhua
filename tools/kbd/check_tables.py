@@ -7,8 +7,10 @@
     26 个字母键普通层都有字、普通层凑得齐 a–z；26 个字母键的普通层正好是 a–z（QWERTY / QWERTZ / AZERTY 只是换位置，例外见下）；
     没有控制字符；死键只在附加符号上；ISO / ABNT2 形状的布局 0x64 有字，ABNT2 的 0x87 也有字；
     Mac 的 <id>.iso 正好是 <id> 对调 0x35 / 0x64（锁住对调），别的键两段一样；
-  - 抽查值（方案 §6.4、调研 kbd-data.md §5 原型实际跑出来的；和微软 Learn 交互页核过的几条注明了；第 2 批另加的是凭常识写的期望值，和数据核对一致）。
-App 读 kbd_win、kbd_mac、kbd_catalog（FixedLegendsTest 另锁一遍）；这里锁住"生成器没把表弄错"。
+  - 抽查值（方案 §6.4、调研 kbd-data.md §5 原型实际跑出来的；和微软 Learn 交互页核过的几条注明了；第 2 批另加的是凭常识写的期望值，和数据核对一致）；
+  - 死键组合（kbd_dead_mac / win.txt，2026-11-02 "打出来"用）：文件头同上，每条的死键是那张表里的死键、一个字 + 一个字 → 一个字，表里每个死键都有组合，
+    抽查 DEAD_SPOTS（含主机拼不出、Unicode 分解却以为能的几种）。
+App 读 kbd_win、kbd_mac、kbd_catalog、kbd_dead_win、kbd_dead_mac（FixedLegendsTest、TypeOutTest 另锁一遍）；这里锁住"生成器没把表弄错"。
 用法：python3 tools/kbd/check_tables.py [res/raw 目录]
 """
 import json
@@ -128,6 +130,22 @@ KPDL = {'us': '.', 'us-intl': '.', 'gb': '.', 'ie': '.', 'nl': '.', 'ro': ',', '
         'cn-pinyin': '.'}
 KPDL_WIN = dict(KPDL, nl=',', **{'is': ',', 'cz': ',', 'sk': ',', 'it-qzerty': '', 'se-legacy': ''})
 KPCO = {'br': '.'}
+# 死键组合的抽查（平台, 布局, 死键, 后面那个字, 期望拼出来的字或 None = 主机拼不出, 说明）：主机自己的组合表和"Unicode 分解"不一样的那几种也锁住，
+# "打出来"（TypeOut）照这份数据反查、不猜
+DEAD_SPOTS = [
+    ('win', 'de', '´', 'e', 'é', '德语 Windows：´ 然后 e = é'),
+    ('win', 'de', '´', ' ', '´', '德语 Windows：´ 然后空格 = ´ 本身'),
+    ('win', 'de', '´', 'c', None, '德语 Windows：´ 然后 c 拼不出 ć（Unicode 分解会以为能）'),
+    ('win', 'de', '^', 'e', 'ê', '德语 Windows：^ 然后 e = ê'),
+    ('win', 'us-intl', "'", 'c', 'ç', "US-International：' 然后 c = ç（不是 ć）"),
+    ('win', 'us-intl', "'", 'e', 'é', "US-International：' 然后 e = é"),
+    ('win', 'us-intl', '"', ' ', '"', 'US-International：" 然后空格 = "'),
+    ('win', 'pl', '~', 'a', 'ą', '波兰程序员：~ 然后 a = ą（不是 ã）'),
+    ('win', 'fr', '^', 'e', 'ê', '法语 Windows：^ 然后 e = ê'),
+    ('mac', 'de', '´', 'e', 'é', '德语 Mac：´ 然后 e = é'),
+    ('mac', 'us', '´', 'e', 'é', '美式 Mac：⌥E 然后 e = é'),
+    ('mac', 'us', '´', 'c', None, '美式 Mac：⌥E 然后 c 拼不出 ć'),
+]
 # 完全一样的（别名）：同一份数据在主机里叫两个名字
 SAME = [('win', 'at', 'de'), ('win', 'cn-pinyin', 'us'), ('mac', 'cn-pinyin', 'us'), ('win', 'si', 'hr')]
 # 只有 Mac 有的那一套（Windows 没有，Windows 模式下灰掉；不拿普通的意大利 / 瑞典顶上）
@@ -174,6 +192,43 @@ def main():
             want = spec if isinstance(spec, str) else (spec or {}).get('sha256')
             check(sha == want, '%s：%s/%s 的 sha256 和 sources.json 不一致' % (p, src_id, rel))
         check(bool(meta.get('source')), '%s：文件头没记数据源' % p)
+
+    # 死键组合（kbd_dead_mac / win.txt，"打出来"反查用）：文件头同上；每个有数据的布局一段，每条的死键是那张表里标了死键的字、
+    # 后面那个字和拼出来的字各一个、同一对不写两次；表里的每个死键至少有一条（parse_cldr 认死键就是看有没有 transform 以它开头）
+    deads = {}
+    for p in kt.DEAD_PLATFORMS:
+        meta, sections = kt.read_dead_file(kt.dead_path(p, raw))
+        deads[p] = sections
+        check(meta.get('platform') == [(p,)], 'dead_%s：文件头的平台' % p)
+        for src_id, version in meta.get('source', []):
+            check(version == sources[src_id]['version'], 'dead_%s：数据源 %s 的版本 %s 不对' % (p, src_id, version))
+        for src_id, rel, sha in meta.get('file', []):
+            spec = sources[src_id]['files'].get(rel)
+            want = spec if isinstance(spec, str) else (spec or {}).get('sha256')
+            check(sha == want, 'dead_%s：%s/%s 的 sha256 和 sources.json 不一致' % (p, src_id, rel))
+        check(meta.get('source') == [('cldr', sources['cldr']['version'])], 'dead_%s：文件头没记数据源' % p)
+        for lay in catalog:
+            lid = lay['id']
+            rowsd = sections.get(lid)
+            if not lay.get(p):
+                check(rowsd is None, 'dead_%s 里不该有 %s（那家没有数据）' % (p, lid))
+                continue
+            check(rowsd is not None, 'dead_%s 缺 %s' % (p, lid))
+            t = tables[p].get(lid)
+            if rowsd is None or t is None:
+                continue
+            dead_texts = {c[0] for cells in t.values() for c in cells if c and c[1]}
+            pairs = set()
+            for d, n, r in rowsd:
+                check(d in dead_texts, 'dead_%s:%s 的 %r 不是表里的死键' % (p, lid, d))
+                check(len(n) == 1 and len(r) == 1, 'dead_%s:%s 的 %r + %r → %r 不是一个字' % (p, lid, d, n, r))
+                check((d, n) not in pairs, 'dead_%s:%s 的 %r + %r 写了两次' % (p, lid, d, n))
+                pairs.add((d, n))
+            for d in dead_texts:
+                check(any(x[0] == d for x in rowsd), 'dead_%s:%s 的死键 %r 一条组合都没有' % (p, lid, d))
+    for p, lid, d, n, r, what in DEAD_SPOTS:
+        got = {(a, b): c for a, b, c in deads[p].get(lid, [])}.get((d, n))
+        check(got == r, '%s（dead_%s:%s 的 %r + %r：期望 %r，实际 %r）' % (what, p, lid, d, n, r, got))
 
     rows = {r['id']: r for r in kt.read_catalog(raw)}
     check([l['id'] for l in catalog] == list(rows), '清单的布局和 catalog.json 一致')

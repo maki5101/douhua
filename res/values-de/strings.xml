@@ -45,6 +45,7 @@
     <string name="key_space">Leertaste</string>
     <string name="key_symbols">\?123</string>
     <string name="text_hint">Mit der Handy-Tastatur tippen, Senden fügt dort ein, wo du gerade schreibst</string>
+    <string name="text_hint_bt">Mit der Handy-Tastatur tippen, „Eintippen“ sendet es Taste für Taste</string>
     <string name="text_send">Senden</string>
     <string name="text_hide">Ausblenden</string>
     <string name="settings_title">Douhua-Einstellungen</string>
@@ -249,7 +250,6 @@
     <string name="bt_state_connected">Bluetooth: %1$s</string>
     <string name="bt_state_failed">Bluetooth konnte nicht starten: Vielleicht dient schon eine andere App als Bluetooth-Tastatur; schließe sie und öffne Douhua erneut</string>
     <string name="bt_state_stuck">Das System-Bluetooth reagiert nicht (passiert, wenn Bluetooth aus- und wieder eingeschaltet wird, während Douhua offen ist). Starte das Telefon neu, dann geht es wieder</string>
-    <string name="bt_no_phone_text">Text einfügen geht über Bluetooth nicht: Die Zwischenablage bleibt auf dem Handy</string>
     <string name="bt_no_such_key">Diese Taste gibt es über Bluetooth nicht</string>
     <string name="drag_hum">Leichtes Dauervibrieren beim Ziehen (erinnert daran, dass die linke Taste gedrückt ist)</string>
     <string name="texture">Körniges Gefühl beim Bewegen des Zeigers (sehr schwache Vibration, wie eine leicht raue Oberfläche)</string>
@@ -651,4 +651,30 @@
     <string name="sound_haptic_delay">Vibration verzögern</string>
     <string name="sound_haptic_delay_hint">Wie viel später die Vibration kommt als der Ton; so einstellen, bis beides wie eins wirkt. Nur bei eingeschaltetem Ton; Anfang und Ende des Ziehens werden nicht verzögert.</string>
     <string name="sound_diag">Diagnose (für den Entwickler)</string>
+    <string name="typeout_button">Eintippen</string>
+    <string name="typeout_stop">Stopp</string>
+    <string name="typeout_using">Tasten nach %1$s (änderbar unter Einstellungen → Tastatur)</string>
+    <string name="typeout_skip">%1$d Zeichen lassen sich nicht tippen und werden übersprungen: %2$s</string>
+    <string name="typeout_caps">Die Feststelltaste scheint an zu sein – Buchstaben kommen evtl. in falscher Groß-/Kleinschreibung</string>
+    <string name="typeout_held">Eine Sondertaste ist gedrückt und wirkt beim Tippen mit</string>
+    <string name="typeout_no_data">Keine Tastendaten für %1$s, Tippen nicht möglich (änderbar unter Einstellungen → Tastatur)</string>
+    <string name="typeout_no_bt">Bluetooth ist mit keinem Gerät verbunden</string>
+    <string name="typeout_no_service">Im Desktop-Modus muss der Dienst verbunden sein</string>
+    <string name="typeout_need_split">Im Desktop-Modus geht das nur im geteilten Bildschirm (Douhua und die empfangende App nebeneinander); im Vollbild oder mit externem Bildschirm noch nicht</string>
+    <string name="typeout_waiting">Tastaturfokus wird an die andere Hälfte übergeben …</string>
+    <string name="typeout_progress">Tippe: %1$d / %2$d</string>
+    <string name="typeout_done">Fertig: %1$d Zeichen</string>
+    <string name="typeout_stopped">Gestoppt nach %1$d / %2$d Zeichen (%3$s)</string>
+    <string name="typeout_why_user">Stopp gedrückt</string>
+    <string name="typeout_why_lost">Verbindung getrennt</string>
+    <string name="typeout_why_paused">Douhua ging in den Hintergrund</string>
+    <string name="typeout_why_closed">Bereich geschlossen</string>
+    <string name="typeout_why_focus">Tastaturfokus ließ sich nicht übergeben; nötig ist der geteilte Bildschirm mit der empfangenden App in der anderen Hälfte (kein Pop-up-Fenster)</string>
+    <string name="typeout_why_focus_back">Tastaturfokus ist zu Douhua zurückgekehrt</string>
+    <string name="typeout_why_window">Fenster hat sich geändert (zurück im Vollbild oder externer Bildschirm angeschlossen)</string>
+    <string name="typeout_mid_char">Beim letzten Zeichen wurde nur die Tottaste gedrückt; das Gerät wartet evtl. noch aufs Zusammensetzen</string>
+    <string name="sec_typeout">Eintippen (Textbereich)</string>
+    <string name="typeout_rate">Tippgeschwindigkeit</string>
+    <string name="typeout_rate_unit">Tasten/s</string>
+    <string name="typeout_rate_hint">„Eintippen\" im Textbereich sucht die Taste jedes Zeichens nach Sprache und Modus der physischen Tastatur oben (das Gerät auf dasselbe Layout stellen) und sendet die Tasten einzeln in gleichmäßigem Tempo. Langsamer stellen, wenn ein BIOS, KVM-Switch oder eine Fernkonsole Zeichen verliert. Meist eine Taste pro Zeichen; Buchstaben mit Tottaste (é usw.) brauchen zwei, ein Zeilenumbruch ist Enter. Chinesisch und Emoji lassen sich nicht tippen und werden übersprungen. Es wird nie ein Enter angehängt, das nicht im Text steht.</string>
 </resources>

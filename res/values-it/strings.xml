@@ -45,6 +45,7 @@
     <string name="key_space">Spazio</string>
     <string name="key_symbols">\?123</string>
     <string name="text_hint">Scrivi con la tastiera del telefono, Invia incolla dove stai scrivendo</string>
+    <string name="text_hint_bt">Scrivi con la tastiera del telefono, «Digita» lo invia un tasto alla volta</string>
     <string name="text_send">Invia</string>
     <string name="text_hide">Nascondi</string>
     <string name="settings_title">Impostazioni Douhua</string>
@@ -249,7 +250,6 @@
     <string name="bt_state_connected">Bluetooth: %1$s</string>
     <string name="bt_state_failed">Il Bluetooth non si è avviato: forse un\'altra app fa già da tastiera Bluetooth; chiudila e riapri Douhua</string>
     <string name="bt_state_stuck">Il Bluetooth di sistema non risponde (può succedere spegnendo e riaccendendo il Bluetooth con Douhua aperto). Riavvia il telefono per risolvere</string>
-    <string name="bt_no_phone_text">Incollare testo non è possibile via Bluetooth: gli appunti restano sul telefono</string>
     <string name="bt_no_such_key">Questo tasto non è disponibile via Bluetooth</string>
     <string name="drag_hum">Leggera vibrazione continua durante il trascinamento (ricorda che il tasto sinistro è premuto)</string>
     <string name="texture">Sensazione granulosa muovendo il puntatore (vibrazione leggerissima, come una superficie un po\' ruvida)</string>
@@ -651,4 +651,30 @@
     <string name="sound_haptic_delay">Ritardo della vibrazione</string>
     <string name="sound_haptic_delay_hint">Quanto la vibrazione arriva dopo il suono; regola finché i due sembrano una cosa sola. Solo con il suono attivo; inizio e fine di un trascinamento non vengono ritardati.</string>
     <string name="sound_diag">Diagnostica (per lo sviluppatore)</string>
+    <string name="typeout_button">Digita</string>
+    <string name="typeout_stop">Ferma</string>
+    <string name="typeout_using">Tasti cercati con %1$s (si cambia in Impostazioni → Tastiera)</string>
+    <string name="typeout_skip">%1$d caratteri non digitabili verranno saltati: %2$s</string>
+    <string name="typeout_caps">Il Bloc Maiusc sembra attivo: le lettere potrebbero uscire con maiuscole e minuscole invertite</string>
+    <string name="typeout_held">Un tasto modificatore è premuto e si applicherà alla digitazione</string>
+    <string name="typeout_no_data">Nessun dato dei tasti per %1$s, impossibile digitare (si cambia in Impostazioni → Tastiera)</string>
+    <string name="typeout_no_bt">Il Bluetooth non è collegato a un dispositivo</string>
+    <string name="typeout_no_service">In modalità desktop il servizio deve essere collegato</string>
+    <string name="typeout_need_split">In modalità desktop funziona solo a schermo diviso (Douhua e l\'app che riceve affiancate); non ancora a schermo intero o con uno schermo esterno</string>
+    <string name="typeout_waiting">Passaggio del focus della tastiera all\'altra metà…</string>
+    <string name="typeout_progress">Digitazione: %1$d / %2$d</string>
+    <string name="typeout_done">Fatto: %1$d caratteri</string>
+    <string name="typeout_stopped">Fermato dopo %1$d / %2$d caratteri (%3$s)</string>
+    <string name="typeout_why_user">hai premuto Ferma</string>
+    <string name="typeout_why_lost">la connessione è caduta</string>
+    <string name="typeout_why_paused">Douhua è andato in background</string>
+    <string name="typeout_why_closed">il pannello è stato chiuso</string>
+    <string name="typeout_why_focus">impossibile passare il focus della tastiera; serve lo schermo diviso con l\'app che riceve nell\'altra metà (non una finestra pop-up)</string>
+    <string name="typeout_why_focus_back">il focus della tastiera è tornato a Douhua</string>
+    <string name="typeout_why_window">la finestra è cambiata (tornata a schermo intero, o schermo esterno collegato)</string>
+    <string name="typeout_mid_char">Dell\'ultimo carattere è stato premuto solo il tasto morto; il dispositivo potrebbe ancora aspettare di comporlo</string>
+    <string name="sec_typeout">Digita (pannello di testo)</string>
+    <string name="typeout_rate">Velocità di digitazione</string>
+    <string name="typeout_rate_unit">tasti/s</string>
+    <string name="typeout_rate_hint">«Digita» nel pannello di testo cerca il tasto di ogni carattere con la lingua e la modalità della tastiera fisica qui sopra (imposta il dispositivo sullo stesso layout) e invia i tasti uno alla volta a velocità costante. Rallenta se un BIOS, uno switch KVM o una console remota perde caratteri. Di solito un tasto per carattere; le lettere composte con un tasto morto (é e simili) ne richiedono due, e un a capo è Invio. Cinese ed emoji non si possono digitare e vengono saltati. Non aggiunge mai un Invio che non hai scritto.</string>
 </resources>

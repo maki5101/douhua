@@ -196,6 +196,29 @@ def parse_cldr(path, platform):
     return name, cells
 
 
+def cldr_dead_keys(path, cells):
+    """CLDR 的 transforms（主机自己的死键组合表）→ [(死键的字, 后面那个字, 拼出来的字)]，照文件里的先后（同一对写了两次的，先写的算）。
+    cells 是同一个文件 parse_cldr 出来的那一份：只收"这张表里标了死键的那个字 + 一个字 → 一个字"的（死键的字照 make_cell 规范成带间距的写法，
+    同键帽字）。多个字的死键（Mac 克罗地亚 / 斯洛文尼亚的"不换行空格 + 组合附加符号"，parse_cldr 不把它标成死键）、拼出来不止一个字的不收。
+    App 的"打出来"（贴字面板，TypeOut）照它反查 é 这类字：主机怎么组合以它为准，不拿 Unicode 分解去猜
+    （猜的话德语 Windows 的 ´ + c 当成 ć，主机其实打出"´c"；波兰程序员的 ~ + a 是 ą 不是 ã）。"""
+    root = ET.parse(path).getroot()
+    dead = {c[0] for row in cells.values() for c in row if c and c[1]}
+    out = []
+    seen = set()
+    for t in root.iter('transform'):
+        f = cldr_decode(t.get('from') or '')
+        to = cldr_decode(t.get('to') or '')
+        if len(f) != 2 or len(to) != 1:
+            continue
+        d = make_cell(f[0], True)
+        if d is None or d[0] not in dead or (d[0], f[1]) in seen:
+            continue
+        seen.add((d[0], f[1]))
+        out.append((d[0], f[1], to))
+    return out
+
+
 def to_hid(cells, rename):
     t = {}
     for iso, row in cells.items():
@@ -587,19 +610,24 @@ def generate(out_dir, offline):
     kl_path = src('aosp', 'data/keyboards/Generic.kl')
 
     mac, win, linux, android, rows = {}, {}, {}, {}, []
+    dead = {'mac': {}, 'win': {}}   # 死键组合（kbd_dead_<平台>.txt）：{布局: [(死键的字, 后面那个字, 拼出来的字)]}
     aosp_files = [kl_path]
     for lay in catalog['layouts']:
         lid = lay['id']
         modes = []
         win_name = ''
         if lay.get('win'):
-            win_name, cells = parse_cldr(src('cldr', lay['win']), 'windows')
+            path = src('cldr', lay['win'])
+            win_name, cells = parse_cldr(path, 'windows')
             win[lid] = win_table(cells)
+            dead['win'][lid] = cldr_dead_keys(path, cells)
             modes.append('win')
         mac_cldr = mac_now = ''
         if lay.get('mac'):
-            mac_cldr, cells = parse_cldr(src('cldr', lay['mac']), 'osx')
+            path = src('cldr', lay['mac'])
+            mac_cldr, cells = parse_cldr(path, 'osx')
             mac[lid], mac[lid + '.iso'] = mac_tables(cells)
+            dead['mac'][lid] = cldr_dead_keys(path, cells)
             mac_now = lay.get('name_mac') or mac_name_now(mac_names, mac_cldr)
             modes.append('mac')
         km = xkb.keymap(lay['linux']['layout'], lay['linux']['variant'])
@@ -642,6 +670,16 @@ def generate(out_dir, offline):
         + cldr_notice) + [
         '!source cldr ' + S['cldr']['version']] + file_lines('cldr', 'windows/'), win, dedupe(win))
 
+    for p, cldr_dir, desc in (('mac', 'osx/', ' macOS / iPadOS'), ('win', 'windows/', ' Windows')):
+        kt.write_dead_file(kt.dead_path(p, out_dir), [
+            'kbd_dead_%s.txt：豆花儿"打出来"（贴字面板）用的死键组合，主机是%s（CLDR transforms）。自动生成，勿手改。' % (p, desc),
+            '生成：python3 tools/kbd/gen_layouts.py（数据源、版本、校验见 tools/kbd/sources.json；格式见 tools/kbd/README.md「数据格式」）。',
+            '每个布局一段（Mac 不分 .iso），每行：死键的字（同 kbd_%s.txt 里标 \\* 的那一格）、后面那个字、主机拼出来的字；'
+            '只收"一个死键 + 一个字 → 一个字"的，\\u0020 = 空格。' % p,
+            '没写的组合主机拼不出来（多半是把死键的字和后面那个字一起打出来），"打出来"不用它们。',
+        ] + cldr_notice + ['', '!platform ' + p, '!source cldr ' + S['cldr']['version']] + file_lines('cldr', cldr_dir),
+            dead[p], dedupe(dead[p]))
+
     kt.write_table_file(os.path.join(out_dir, 'kbd_linux.txt'), header('linux', ' Linux（xkb，model pc105）', [
         '数据：%s %s（%s），用本机 libxkbcommon 编译取字。' % (S['xkb']['name'], S['xkb']['version'], S['xkb']['url']),
         S['xkb']['copyright'], '许可：' + S['xkb']['license']]) + [
@@ -664,7 +702,7 @@ def generate(out_dir, offline):
         f.write('#!columns ' + ' '.join(kt.CATALOG_COLUMNS) + '\n')
         for r in rows:
             f.write('\t'.join(kt.escape_field(c) for c in r) + '\n')
-    return {'mac': mac, 'win': win, 'linux': linux, 'android': android, 'catalog': rows}
+    return {'mac': mac, 'win': win, 'linux': linux, 'android': android, 'catalog': rows, 'dead': dead}
 
 
 # ═══════════ 自测（不联网、不读原始数据） ═══════════
@@ -702,6 +740,9 @@ def selftest():
     check(ansi[0x14] == [('q', False), ('Q', False), ('«', False), ('»', False)], '⌥ 层取先写的、⌥⇧ 层完整匹配：%r' % ansi.get(0x14))
     check(ansi[0x2E] == [('^', False), None, None, None], 'transform="no" 不算死键')
     check(0x2C not in ansi, '空格不进表')
+    check(cldr_dead_keys(os.path.join(td, 'mini-osx.xml'), cells) == [('^', ' ', '^'), ('^', 'e', 'ê')],
+          '死键组合：照先后、空格那条也收：%r' % cldr_dead_keys(os.path.join(td, 'mini-osx.xml'), cells))
+    check(cldr_dead_keys(os.path.join(td, 'mini-osx.xml'), {}) == [], '死键组合：表里没有那个死键就不收')
 
     # CLDR windows
     name, cells = parse_cldr(os.path.join(td, 'mini-windows.xml'), 'windows')
@@ -710,6 +751,7 @@ def selftest():
     check(w[0x14] == [('q', False), ('Q', False), ('@', False), None], 'windows AltGr 层、只按 Caps 不算：%r' % w.get(0x14))
     check(w[0x64] == [('<', False), None, ('|', False), None], 'windows B00 → 0x64')
     check(w[0x35] == [('^', True), None, None, None], 'windows 死键')
+    check(cldr_dead_keys(os.path.join(td, 'mini-windows.xml'), cells) == [('^', 'a', 'â')], 'windows 死键组合')
 
     # AOSP KCM
     a = android_table(os.path.join(td, 'mini.kcm'), os.path.join(td, 'mini.kl'))
@@ -766,6 +808,23 @@ def selftest():
         check('@yy = xx' in text, '完全一样的表写成别名')
         check('\\u00A0' in text and '\\uF8FF' in text and '\\uDB40\\uDC01' in text and '\\*´' in text, '看不见的字转义、死键标记')
         check('\\\\' in text and '\t\n' not in text, '反斜杠转义、行尾不留空格')
+        # 死键组合的文件：三格、空格写  、别名
+        dsec = {'xx': [('´', ' ', '´'), ('´', 'e', 'é'), ('¨', '\\', 'x')], 'yy': [('´', ' ', '´'), ('´', 'e', 'é'), ('¨', '\\', 'x')],
+                'zz': [('~', 'a', 'ą')]}
+        dpath = os.path.join(d, 'kbd_dead_test.txt')
+        kt.write_dead_file(dpath, ['测试', '!platform test'], dsec, dedupe(dsec))
+        dmeta, dback = kt.read_dead_file(dpath)
+        check(dback == dsec and dmeta.get('platform') == [('test',)], '死键组合的格式往返：%r' % dback)
+        with open(dpath, encoding='utf-8') as f:
+            dtext = f.read()
+        check('´\t\\u0020\t´' in dtext and '@yy = xx' in dtext and '\\\\' in dtext, '死键组合：空格转义、别名、反斜杠')
+        with open(dpath, 'a', encoding='utf-8') as f:
+            f.write('´\te\n')
+        try:
+            kt.read_dead_file(dpath)
+            check(False, '死键组合少一格应该失败')
+        except ValueError:
+            check(True, '死键组合少一格')
         # 清单：按 #!columns 认栏；没有这一行、缺栏、栏数不对都失败
         cols = list(kt.CATALOG_COLUMNS)
         row = {c: '' for c in cols}
@@ -828,7 +887,9 @@ def main():
         sys.exit('生成失败：%s' % e)
     for p in ('mac', 'win', 'linux', 'android'):
         print('%s：%s' % (p, '、'.join('%s（%d 键）' % (k, len(v)) for k, v in r[p].items())))
-    print('已写到 %s（kbd_mac / win / linux / android / catalog.txt）。改完跑 python3 tools/kbd/check_tables.py 核对抽查值。' % out)
+    for p in ('mac', 'win'):
+        print('%s 死键组合：%d 条' % (p, sum(len(v) for v in r['dead'][p].values())))
+    print('已写到 %s（kbd_mac / win / linux / android / catalog.txt、kbd_dead_mac / win.txt）。改完跑 python3 tools/kbd/check_tables.py 核对抽查值。' % out)
 
 
 if __name__ == '__main__':

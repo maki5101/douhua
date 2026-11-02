@@ -55,7 +55,11 @@ trap 'rm -rf "$OUT"' EXIT
 # 声音的事件层（SoundEventsTest，协议 25：声音关着时什么都不放、震动和以前一样；方案 2.3 的表一条条、四个开关、"滚轮出声不震"；
 # 真 TouchRouter 跑轻点 / 双指轻点 / 双击 / 长按拖动 / 滚动 / 惯性 / 键 / 按住到点 / 合并键 / 三个鼠标键 / 被取消 / releaseAll / 手柄页）、
 # 设置 → 外观 → 声音的试听台和调试版候选区（SoundBenchTest：试听台的键、候选区点一下 / 连打放的落在哪个槽、真混音器上试听 = 选了以后放的、
-# 不出声的候选、打乱顺序、点一项套装放的那一小段、试听台那一小块触控板认轻点 / 划）
+# 不出声的候选、打乱顺序、点一项套装放的那一小段、试听台那一小块触控板认轻点 / 划）、
+# 贴字面板的"打出来"（TypeOutTest：死键组合文件的读法；34 个布局 × 有数据的模式里每个能打的字反查出的键正着打一遍就是它、
+# 先后（普通 > Shift > 第三层 > 第三层 + Shift、0x64 / 0x87 放后面）、死键照主机的组合表不照 Unicode 分解；一段字的换行 / Tab / \r、打不出的数法；
+# 发送节拍（假时钟：速度、配对、随时停、等焦点、不续发、只卡一次不补发、给宿主的通知约定、随机序列）；接真 TouchRouter / KeyHolds 看主机收到的报文；
+# 照 MainActivity.java 源码核对接线：蓝牙模式下贴字面板打得开、藏"发送"、换提示字、和空中鼠标页互斥）
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \
     src/dev/douhua/Proto.java src/dev/douhua/GestureEngine.java \
     src/dev/douhua/ScrollInertia.java src/dev/douhua/ConfigCodec.java \
@@ -109,7 +113,8 @@ trap 'rm -rf "$OUT"' EXIT
     src/dev/douhua/SoundSynth.java src/dev/douhua/SoundBank.java src/dev/douhua/SoundVary.java \
     src/dev/douhua/SoundQueue.java src/dev/douhua/SoundMixer.java test/dev/douhua/SoundTest.java \
     src/dev/douhua/SoundEvents.java test/dev/douhua/SoundEventsTest.java \
-    src/dev/douhua/SoundBench.java test/dev/douhua/SoundBenchTest.java
+    src/dev/douhua/SoundBench.java test/dev/douhua/SoundBenchTest.java \
+    src/dev/douhua/TypeOut.java src/dev/douhua/TypeOutSender.java test/dev/douhua/TypeOutTest.java
 "$JDK/bin/java" -cp "$OUT" dev.douhua.GestureEngineTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.HidTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.server.ServerPartsTest
@@ -146,6 +151,7 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/java" -cp "$OUT" dev.douhua.SoundTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.SoundEventsTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.SoundBenchTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.TypeOutTest
 # 打字测试的分析（tools/typelog/analyze.py）：造一份小日志测对齐和分类，再用真正的 TouchRouter 重放它导出的触点
 python3 tools/typelog/analyze.py --selftest "$OUT/typelog"
 "$JDK/bin/java" -cp "$OUT" KeyReplay "$OUT/typelog/replay.txt" check

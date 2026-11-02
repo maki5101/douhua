@@ -413,6 +413,16 @@ final class Prefs {
     }
 
     /**
+     * 贴字面板"打出来"的速度（2026-11-02，设置 → 键盘最下面那一节的滑块）：键 / 秒，范围、步长、默认值在 TypeOutSender
+     * （RATE_MIN–RATE_MAX、RATE_STEP、默认 RATE_DEFAULT）；存坏了截到范围里。
+     */
+    static final String TYPEOUT_RATE = "typeout_rate";
+
+    int typeOutRate() {
+        return TypeOutSender.clampRate(getInt(TYPEOUT_RATE, TypeOutSender.RATE_DEFAULT));
+    }
+
+    /**
      * 主界面触控板四个角上的小按钮（下标：左上、右上、右下、左下），一直显示（设成"无"的不显示）。
      * 以前左下是固定的 ☰（按钮条收起后回到按钮条的入口），只有按钮条收起时才有角上的按钮；2026-11-01 起四个角都能设，
      * 左下默认数字键盘，另外三个的默认值不变（以前改过的照旧）。

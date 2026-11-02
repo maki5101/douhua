@@ -61,10 +61,12 @@
 - `src/dev/douhua/SoundMixer.java`：混音：声部上限、同组淡出、软限幅、晚放的"哒"
 - `src/dev/douhua/SoundEvents.java`：声音的事件层
 - `src/dev/douhua/SoundBench.java`：设置 → 外观 → 声音那一节的纯 Java 部分（试听台、候选区）
-- `src/dev/douhua/MainActivity.java`：界面、按钮事件、贴字面板、数字键盘、旋转、动作执行
+- `src/dev/douhua/TypeOut.java`：贴字面板"打出来"的反查：字 → 键（按实体键盘的语言 + 模式的字表和死键组合）
+- `src/dev/douhua/TypeOutSender.java`：贴字面板"打出来"的发送节拍：匀速、随时能停、等焦点交出去
+- `src/dev/douhua/MainActivity.java`：界面、按钮事件、贴字面板（发送——只桌面模式 / 打出来——两种模式）、数字键盘、旋转、动作执行
 - `src/dev/douhua/FixedSizing.java`：实体键盘逐级缩的状态
 - `src/dev/douhua/KeyboardFace.java`：键盘页上两块面板对外的共同方法
-- `src/dev/douhua/FixedLegends.java`：实体键盘的键帽字和布局清单的读法
+- `src/dev/douhua/FixedLegends.java`：实体键盘的键帽字、布局清单、死键组合的读法
 - `src/dev/douhua/FixedLayout.java`：实体键盘的几何
 - `src/dev/douhua/FixedPanel.java`：实体键盘摆到像素以后：键段、范围、区域、键帽上的字、小红点空位
 - `src/dev/douhua/Boards.java`：键盘页用哪块和实体键盘自己的设置
@@ -118,7 +120,7 @@
 - `tools/type-analyze.sh` + `tools/typelog/`：分析一次打字测试，analyze.py 对齐、误按率、每个键的落点偏移、电脑丢键核对
 - `tools/air-analyze.sh` + `tools/airlog/`：分析一次空中鼠标双日志：送达节奏、重放 AirPointer
 - `tools/kbd-scan.sh` + `tools/kbd/`：实体键盘布局：主机实测扫描 + 键帽数据生成（见 tools/kbd/README.md）
-- `res/raw/kbd_*.txt`：生成的键帽数据，kbd_mac / win / linux / android 每家一份
+- `res/raw/kbd_*.txt`：生成的键帽数据，kbd_mac / win / linux / android 每家一份；kbd_dead_mac / win 是死键组合（打出来用）
 - `res/raw/licenses.txt`：开源许可页的全文，Unicode CLDR、AOSP、xkeyboard-config、BoringSSL、Apache-2.0 全文
 - `tools/adb-device.sh`：选哪台手机，start/stop-server、selftest、build --install 共用
 - `src/dev/douhua/KeyboardSnap.java`：调整键盘时的轻微吸附
@@ -238,6 +240,21 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **主机实测扫描（DEBUG_KEYSCAN）只在可调试包、只由 adb 广播（DUMP 权限）触发**；一次广播最多 12 个键，只许出字的位置和 Shift / Alt，
   Ctrl / GUI / Enter / Esc / Backspace 绝不发（KeyScan.allowed，KeyScanTest 锁住）；停下（叫停、新的一段、界面销毁）时正按着的键补松开；
   电脑那边页面收完一段才发下一段、页面失焦就叫停——主机上的页面没拿到焦点时，最多多出一段字落进别的应用。
+- **贴字面板的"打出来"只发真键盘按得出的键，停了不留按着的键、不续发、不补回车**（2026-11-02，TypeOut / TypeOutSender）：每个字反查成字表里的一个键
+  （自带修饰键：Shift、第三层——Mac 左 Option、Windows 有第三层的布局才用右 Alt）或"死键 + 一个键"；死键组合只照 res/raw/kbd_dead_*（CLDR transforms = 主机自己的组合表），
+  不拿 Unicode 分解去猜（会打错字：德语 Windows ´ + c 不是 ć）；反查出的键照字表 + 组合表正着打一遍就是原来的字（TypeOutTest 34 个布局 × 有数据的模式全扫）。
+  只经 MainActivity.onLocalKey 发（本地分流 / CMD_HID_KEY），不改协议、服务、描述符。停（停止、收起面板、退后台、连接断了、焦点不对、窗口变了）时正按着的那个键配一个松开，
+  之后迟到的回调什么都不发；不从停的地方接着打（要人再点一次，从头打）；内容不以换行结尾就不按回车；匀速、不做随机节奏（不模仿人手）；开始前解开锁住的修饰键。
+  加新的停止条件、新的连接方式照这条：停走 TypeOutSender.stop，宿主不自己发松开。
+  **"打出来"在蓝牙模式、桌面模式下都能用**：贴字面板两种模式都开（蓝牙模式只是没有经剪贴板的"发送"，审查后改的——原来蓝牙模式下面板打不开，"打出来"够不着）；
+  面板只开在主界面上、**停止按钮必须看得见**：打开面板前先退出手柄页、空中鼠标页、键盘屏（openTextBar），换到别的页（键盘屏、数字键盘、手柄页、空中鼠标页）前先收起面板
+  （closeTextBar → 停）。加新的页、新的入口照这条，不然面板压在底下、键却接着发。
+  这几处接线在 MainActivity（离线编不到），TypeOutTest.wiring 照源码文本锁住（PHONE_TEXT 不看 btMode、openTextBar 不提前 return、setAirMode 先收面板）；改了写法连那段检查一起改。
+- **"打出来"的字不存、不记**：输入框不进系统保存的界面状态（setSaveEnabled(false)）、请输入法别学（IME_FLAG_NO_PERSONALIZED_LEARNING），不写日志；
+  onLocalKey 这一路不进键盘触点日志。以后要加历史 / 宏（存下来的字），先问用户（可能是密码）。
+- **桌面模式"打出来"只在焦点交给了别的窗口以后发键**：键经服务的虚拟键盘发给拿着焦点的窗口，点按钮那一下焦点在豆花（贴字面板开着）。先请服务交给分屏的另一半
+  （CMD_FOCUS_OTHER），豆花丢了焦点才开始（TypeOutSender 的 gated），1.5 秒没交出去就停、一个键都不发；打的时候窗口不拿焦点（MainActivity.typingOut），
+  焦点回到豆花、自己虚拟键盘的键落进豆花就停（并吞掉，不进贴字面板的输入框）。全屏、接着外接屏时不让打（交不出去：键会落到豆花自己 / 手机屏）。
 - **独占实体键的条件**：和触摸屏同一个 Session.wanted（active、参数到了、心跳 < 3 秒），再加 App 发过 CMD_HARD_KEYS 且至少截一个键、
   按键注入可用（不可用绝不独占，不然同设备上没配的音量键补发不出去；截着时补发失败一次也算不可用，等配置变了或 App 回前台再试）、
   没在来电响铃 / 通话中（服务问 Telecom，CallState；查不到不拦）；不依赖触摸屏接管成功。不满足 100ms 内放开，断开立刻放开
@@ -517,6 +534,11 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - 各组离线测试测了什么、真机怎么测：`docs/testing.md`。
 
 ## 已知技术债 / 没验证的
+
+- 贴字面板的"打出来"（2026-11-02）：① 桌面模式接着外接屏、全屏时不能打（焦点挪不到外接屏 / 只有豆花，见决策记录，要支持得改做法或加命令）；
+  ② 桌面模式等焦点交出去那 1.5 秒里，下拉通知栏、系统弹窗拿走了焦点也会被当成"交出去了"，键打进那里（打的过程中焦点被系统浮层拿走同理——豆花看到的只是"丢了焦点"）；
+  ③ 死键组合照 CLDR 的 Windows 10 / macOS 10.9 数据，新系统、iPad、Linux（Windows 模式也拿去连）拼法不一样的没核；主机设的布局和豆花设置里的不一样时照样打错，豆花看不出来；
+  ④ 豆花记的大写锁定不一定对，开着时只提示、字母大小写会反。
 
 - F 行翻转的同步（协议 24）：App 照分流报的 FROW_FLIP 和设置不一样就当"那边 Fn+Esc 翻了"、存设置。设置页改的不受影响（去设置页时 onStop 断开连接，回来重连时先发 CMD_CONFIG）；
   只剩一个几毫秒的窗口：本地分流里刚 Fn+Esc 翻了、发给服务的 CMD_CONFIG 还在路上时，服务正好报了一次状态（比如刚放开触摸屏时 releaseAll 那一次）带着旧的翻转，

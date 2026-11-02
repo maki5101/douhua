@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """实体键盘键帽数据的共用部分（只用标准库）：
   - HID 用法码 ↔ ISO 9995 位置名 / Linux evdev 键码 / 网页 KeyboardEvent.code 的对照表；
-  - res/raw/kbd_*.txt 的读写（格式见 tools/kbd/README.md「数据格式」）；
+  - res/raw/kbd_*.txt 的读写（格式见 tools/kbd/README.md「数据格式」；死键组合 kbd_dead_<平台>.txt 另一种格式，见 write_dead_file）；
   - 主机实测扫描的计划（豆花按什么顺序发哪些键）。
 gen_layouts.py（生成）、check_tables.py（离线核对）、scan_server.py（扫描）、compare.py（对照）都用它。
 
@@ -257,6 +257,73 @@ def load_tables(raw_dir=None):
         if os.path.exists(path):
             out[p] = read_table_file(path)[1]
     return out
+
+
+# ═══════════ 死键组合（res/raw/kbd_dead_<平台>.txt，只有 CLDR 的两家：mac、win） ═══════════
+# 一个布局一段（@<id>，Mac 不分 .iso：组合规则和键的位置无关），每行"死键的字、后面那个字、拼出来的字"三格（tab 分隔，转义同键帽字：
+# 空格写  ），照 CLDR transforms 的先后；完全一样的写成别名。App 的"打出来"（贴字面板，TypeOut）拿它反查 é 这类字要先按哪个死键再按哪个键。
+
+DEAD_PLATFORMS = ('mac', 'win')
+
+
+def dead_path(platform, raw_dir=None):
+    return os.path.join(raw_dir or RAW_DIR, 'kbd_dead_%s.txt' % platform)
+
+
+def write_dead_file(path, header, sections, aliases=None):
+    """header 同 write_table_file；sections：{名字: [(死键的字, 后面那个字, 拼出来的字)]}，按给的顺序写。"""
+    lines = []
+    for h in header:
+        lines.append('#' + h if h.startswith('!') else ('# ' + h if h else '#'))
+    for name, rows in sections.items():
+        lines.append('')
+        if aliases and name in aliases:
+            lines.append('@%s = %s' % (name, aliases[name]))
+            continue
+        lines.append('@' + name)
+        for row in rows:
+            lines.append('\t'.join(escape_text(x) for x in row))
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('\n'.join(lines) + '\n')
+
+
+def read_dead_file(path):
+    """返回 (meta, {名字: [(死键的字, 后面那个字, 拼出来的字)]})，别名已经展开成同一个列表。每行必须正好三格、每格不空。"""
+    meta = {}
+    sections = {}
+    aliases = {}
+    cur = None
+    with open(path, encoding='utf-8') as f:
+        for n, line in enumerate(f, 1):
+            line = line.rstrip('\n')
+            if line.startswith('#!'):
+                parts = line[2:].split()
+                if parts:
+                    meta.setdefault(parts[0], []).append(tuple(parts[1:]))
+                continue
+            if not line or line.startswith('#'):
+                continue
+            if line.startswith('@'):
+                m = re.match(r'@([\w.-]+)(?:\s*=\s*([\w.-]+))?$', line)
+                if not m:
+                    raise ValueError('%s:%d 段名不对：%s' % (path, n, line))
+                if m.group(2):
+                    aliases[m.group(1)] = m.group(2)
+                    cur = None
+                else:
+                    cur = sections.setdefault(m.group(1), [])
+                continue
+            if cur is None:
+                raise ValueError('%s:%d 组合不在任何段里' % (path, n))
+            cols = line.split('\t')
+            if len(cols) != 3 or any(c == '' for c in cols):
+                raise ValueError('%s:%d 一行要正好三格、都不空：%r' % (path, n, line))
+            cur.append(tuple(unescape_text(c) for c in cols))
+    for a, b in aliases.items():
+        if b not in sections:
+            raise ValueError('%s：别名 %s 指向不存在的 %s' % (path, a, b))
+        sections[a] = sections[b]
+    return meta, sections
 
 
 # kbd_catalog.txt 的栏（顺序 = 生成时写的顺序；文件头 '#!columns' 一行照写，读的时候按它认，以后加栏不用动读法）：

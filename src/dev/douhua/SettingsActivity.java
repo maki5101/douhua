@@ -459,6 +459,11 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             final int index = i;
             actionRow(getString(R.string.nth, i + 1), () -> prefs.keyboardRow(index), id -> prefs.setKeyboardRow(index, id));
         }
+        // 贴字面板的"打出来"（2026-11-02）：速度固定、可调（键 / 秒），说明里写按哪个布局找键、为什么匀速；回到主界面下次点"打出来"时用
+        header(R.string.sec_typeout);
+        sliderInt(R.string.typeout_rate, Prefs.TYPEOUT_RATE, TypeOutSender.RATE_DEFAULT, TypeOutSender.RATE_MIN, TypeOutSender.RATE_MAX,
+                TypeOutSender.RATE_STEP, " " + getString(R.string.typeout_rate_unit));
+        list.addView(text(getString(R.string.typeout_rate_hint), 14, 0xFF9AA0A6));
 
         // 按钮与按键：自定义按键（左边一列）、音量键
         list = pages[3];

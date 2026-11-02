@@ -20,8 +20,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PersistableBundle;
 import android.os.SystemClock;
+import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Display;
@@ -52,6 +54,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 主界面有两屏：
@@ -217,8 +220,58 @@ public final class MainActivity extends Activity
      */
     private Drawable inputCursor, inputHandleLeft, inputHandle, inputHandleRight;
     private int inputHighlight;
-    /** 贴字面板上的按钮（发送、⌫、↵、Tab、收起），换主题时重新上色。 */
+    /** 贴字面板上的按钮（发送、打出来、⌫、↵、Tab、收起、停止），换主题时重新上色。 */
     private final List<TextView> textBarButtons = new ArrayList<>();
+
+    /**
+     * 贴字面板的"打出来"（2026-11-02，方案 design-typeout）：编辑好的字按设置 → 键盘里实体键盘的语言 + 模式的字表反查成键（TypeOut），
+     * 经 onLocalKey 一个键一个键发（TypeOutSender：匀速、随时能停、停时没有按着的键、不续发）。规则在两个纯 Java 类里，这里只接线：
+     * - 能不能打（{@link #typeOutBlock}）：这个布局这种模式有字表；蓝牙模式连着主机；桌面模式连着服务、豆花在分屏里（全屏、接着外接屏时键会落到手机屏上）。
+     * - 开始（{@link #startTypeOut}）：锁住的修饰键先解开（本地分流 unlatch / CMD_UNLATCH），收起输入法、输入框灰掉；
+     *   桌面模式下键经服务的虚拟键盘发给拿着焦点的窗口，点按钮那一下焦点在豆花自己，先请服务交给分屏的另一半（CMD_FOCUS_OTHER），
+     *   豆花丢了焦点再开始，之后窗口不拿焦点（typingOut），点豆花这半边也抢不走；1.5 秒没交出去就停、一个键都不发。
+     * - 停：停止按钮、收起面板（进空中鼠标页、键盘屏、数字键盘、手柄页都先收起面板）、退后台、连接断了（蓝牙 / 服务）、焦点回到豆花、
+     *   窗口变了（全屏 / 接上外接屏），见各处的 typeOut.stop。
+     * - 蓝牙模式下面板照样开（{@link #openTextBar}），只是没有"发送"（剪贴板到不了对方）；⌫ ↵ Tab 发真键盘的键（{@link #textBarKey}）。
+     * - 不存：输入框不进系统保存的状态、请输入法别学这里的字（可能是密码）；不写日志，onLocalKey 这一路也不进打字测试的触点日志。
+     * 开始那一下的震动是按钮自己的，结束（打完、断了、焦点不对）再震一下；打的过程中不震、不出声（不是用户在按键）。
+     */
+    private final TypeOutSender typeOut = new TypeOutSender(new TypeOutSender.Host() {
+        @Override
+        public void key(int key, int action) {
+            onLocalKey(key, action);
+        }
+
+        @Override
+        public void schedule(long delayMs) {
+            main.removeCallbacks(typeOutTimer);
+            main.postDelayed(typeOutTimer, delayMs);
+        }
+
+        @Override
+        public void cancelSchedule() {
+            main.removeCallbacks(typeOutTimer);
+        }
+
+        @Override
+        public void changed() {
+            onTypeOutChanged();
+        }
+    });
+    private final Runnable typeOutTimer = () -> typeOut.onTimer(SystemClock.uptimeMillis());
+    /** 反查表（按哪个布局 / 模式建的，换了重建）、输入框里现在这段字查出来的结果（预览：打得出几个、跳过哪些）。 */
+    private TypeOut.Keys typeKeys;
+    private String typeKeysFor;
+    private TypeOut.Plan typePlan;
+    /** 桌面模式正在打：窗口不拿焦点（{@link #updateFocusable}），焦点留在接字的那一半。 */
+    private boolean typingOut;
+    /** 上一次 changed 时在不在打（结束的那一下收尾）；上一次的结果要不要写（改了字就不写）。 */
+    private boolean typeWasBusy, typeEndShown;
+    private TextView typeOutButton, typeStopButton, typeStatus;
+    /** 贴字面板的"发送"（经手机剪贴板 + Ctrl+V）：蓝牙模式下藏起来（剪贴板在手机上，到不了对方），只剩"打出来"。 */
+    private TextView textSendButton;
+    /** 打的时候灰掉的按钮（发送、⌫、↵、Tab：它们也往主机发东西，和打出来的键交错）。 */
+    private final List<TextView> typeLocked = new ArrayList<>();
     private LinearLayout numpad;
     private KeyboardPanel keyboard;
     /** 实体键盘那块面板（第 1B 批）和"用哪块、实体键盘是哪一块"的设置（纯 Java 的 Boards，跑在 Prefs 上）。 */
@@ -505,6 +558,7 @@ public final class MainActivity extends Activity
 
     @Override
     protected void onPause() {
+        typeOut.stop(TypeOutSender.END_PAUSED);   // "打出来"退后台就停（正按着的键先松开，再收别的）
         // 先让服务释放触摸屏：别的界面（设置页、来电）需要触摸
         resumed = false;
         tiltListener.disable();
@@ -628,6 +682,7 @@ public final class MainActivity extends Activity
         link.config(engineConfig(), density);
         link.gamepadConfig(prefs.gamepadConfig());
         updateFocusable();
+        refreshTypePlan();   // 设置里可能换了实体键盘的语言 / 模式、连接方式
     }
 
     /**
@@ -684,6 +739,7 @@ public final class MainActivity extends Activity
         input.setHintTextColor(t.hint);
         input.setBackground(Style.border(this, t.border, 0));
         tintInput(t);
+        typeStatus.setTextColor(t.hint);
         airStatus.setTextColor(t.text);
         airState.setTextColor(t.focus);
         keyboard.applyTheme();
@@ -1022,7 +1078,10 @@ public final class MainActivity extends Activity
         }
     }
 
-    /** "贴字"面板：用手机自己的输入法（语音、中文）打一句，经剪贴板贴到正在输入的地方。 */
+    /**
+     * "贴字"面板：用手机自己的输入法（语音、中文）打一句，经剪贴板贴到正在输入的地方（"发送"，只在桌面模式），
+     * 或者按实体键盘的布局一个键一个键打出去（"打出来"，两种模式都能用）。蓝牙模式下的不同在 {@link #openTextBar} 里设。
+     */
     private LinearLayout buildTextBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.VERTICAL);
@@ -1031,7 +1090,7 @@ public final class MainActivity extends Activity
         input = new EditText(this);
         input.setTextColor(Style.theme().strong);
         input.setHintTextColor(Style.theme().hint);
-        input.setHint(R.string.text_hint);
+        input.setHint(R.string.text_hint);   // 打开时照模式再设一次（openTextBar：蓝牙模式写 text_hint_bt）
         input.setBackground(Style.border(this, Style.theme().border, 0));
         inputCursor = input.getTextCursorDrawable();
         inputHandleLeft = input.getTextSelectHandleLeft();
@@ -1041,23 +1100,65 @@ public final class MainActivity extends Activity
         tintInput(Style.theme());
         input.setPadding(dp(10), dp(8), dp(10), dp(8));
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        input.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        // 请输入法别学这里打的字（"打出来"常用来打密码）；输入框也不进系统保存的界面状态（Activity 重建时不留）
+        input.setImeOptions(EditorInfo.IME_ACTION_SEND | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
+        input.setSaveEnabled(false);
         input.setRawInputType(InputType.TYPE_CLASS_TEXT);   // 单行回车 = 发送
         input.setOnEditorActionListener((v, actionId, event) -> {
+            // 蓝牙模式输入法上是"完成"（openTextBar 设的）：照系统默认收起输入法，不发东西（"打出来"要人自己点）
+            if (btMode) return false;
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_NULL) {
                 sendText();
                 return true;
             }
             return false;
         });
-        row1.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        row1.addView(smallButton(getString(R.string.text_send), v -> sendText()), smallParams());
+        input.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                typeEndShown = false;   // 改了字：上一次的结果不再写
+                refreshTypePlan();
+            }
+        });
+        row1.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2));
+        textSendButton = smallButton(getString(R.string.text_send), v -> sendText());
+        typeLocked.add(textSendButton);
+        row1.addView(textSendButton, smallParams());
+        typeOutButton = smallButton(getString(R.string.typeout_button), v -> startTypeOut());
+        row1.addView(typeOutButton, smallParams());
         bar.addView(row1);
 
+        // "打出来"的状态行：按哪个布局找键、打不出的、进度、上一次的结果、提示；打的时候右边一个"停止"
+        LinearLayout row3 = new LinearLayout(this);
+        typeStatus = new TextView(this);
+        typeStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        typeStatus.setTextColor(Style.theme().hint);
+        typeStatus.setPadding(dp(2), 0, dp(2), 0);
+        typeStatus.setGravity(Gravity.CENTER_VERTICAL);
+        row3.addView(typeStatus, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 3));
+        typeStopButton = smallButton(getString(R.string.typeout_stop), v -> typeOut.stop(TypeOutSender.END_USER));
+        typeStopButton.setVisibility(View.GONE);
+        row3.addView(typeStopButton, smallParams());
+        LinearLayout.LayoutParams r3 = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        r3.topMargin = dp(6);
+        bar.addView(row3, r3);
+
         LinearLayout row2 = new LinearLayout(this);
-        row2.addView(smallButton("⌫", v -> key(KeyEvent.KEYCODE_DEL, 0)), smallParams());
-        row2.addView(smallButton("↵", v -> key(KeyEvent.KEYCODE_ENTER, 0)), smallParams());
-        row2.addView(smallButton("Tab", v -> key(KeyEvent.KEYCODE_TAB, 0)), smallParams());
+        for (TextView b : new TextView[]{smallButton("⌫", v -> textBarKey(KeyEvent.KEYCODE_DEL, 0x2A)),
+                smallButton("↵", v -> textBarKey(KeyEvent.KEYCODE_ENTER, TypeOut.ENTER)),
+                smallButton("Tab", v -> textBarKey(KeyEvent.KEYCODE_TAB, TypeOut.TAB))}) {
+            typeLocked.add(b);
+            row2.addView(b, smallParams());
+        }
         row2.addView(smallButton(getString(R.string.text_hide), v -> closeTextBar()), smallParams());
         LinearLayout.LayoutParams r2 = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1188,6 +1289,9 @@ public final class MainActivity extends Activity
         boolean yield = yieldFocus && !btMode && !windowFull;
         boolean focusable = textBar.getVisibility() == View.VISIBLE || (targetDisplay == Display.INVALID_DISPLAY && !yield)
                 || hardKeysActive();
+        // 桌面模式"打出来"正在打（焦点已经交给分屏的另一半）：不拿焦点，点豆花这半边（停止按钮）也抢不走，键一直进另一半。
+        // 还在等焦点交出去的时候照旧能拿：服务挑谁接焦点要豆花正拿着焦点（server.FocusPick），先不拿的话焦点落空、键没处去
+        if (typingOut && typeOut.state() == TypeOutSender.RUNNING) focusable = false;
         if (focusable) {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
         } else {
@@ -1216,6 +1320,15 @@ public final class MainActivity extends Activity
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        // 桌面模式"打出来"：焦点交出去了就开始（之后窗口不拿焦点）；焦点回到豆花就停（再打的键会落进豆花自己）
+        if (!btMode && typeOut.busy()) {
+            if (!hasFocus) {
+                typeOut.gateOpen(SystemClock.uptimeMillis());
+                updateFocusable();
+            } else {
+                typeOut.stop(TypeOutSender.END_FOCUS_BACK);
+            }
+        }
         if (!hasFocus && !btMode && !windowFull && resumed && textBar.getVisibility() != View.VISIBLE && !yieldFocus) {
             yieldFocus = true;
             updateFocusable();
@@ -1259,6 +1372,12 @@ public final class MainActivity extends Activity
         if (onHardKey(e)) return true;   // 音量键设了动作：归豆花（音量不变）
         InputDevice dev = e.getDevice();
         if (ownGamepad(dev)) return true;
+        // 桌面模式"打出来"的键落进了豆花自己（焦点没交出去 / 又回来了）：吞掉（不然打进贴字面板的输入框）、停
+        if (typeOut.busy() && !btMode && dev != null && dev.getVendorId() == Proto.HID_VENDOR
+                && dev.getProductId() != Proto.HID_CONTROLS_PRODUCT) {
+            typeOut.stop(TypeOutSender.END_FOCUS_BACK);
+            return true;
+        }
         if (textBar.getVisibility() != View.VISIBLE && dev != null && dev.getVendorId() == Proto.HID_VENDOR
                 && dev.getProductId() != Proto.HID_CONTROLS_PRODUCT) return true;
         return super.dispatchKeyEvent(e);
@@ -1303,6 +1422,10 @@ public final class MainActivity extends Activity
             updateFocusable();
         }
         if (wasFull != windowFull) maybeHandFocus();   // 拿着焦点进了分屏 / 小窗：交给另一半（回到全屏时撤掉排着的）
+        if (wasFull != windowFull) {
+            if (windowFull && !btMode) typeOut.stop(TypeOutSender.END_WINDOW);   // 桌面模式"打出来"：回到全屏，另一半不在了
+            refreshTypeOut();
+        }
         // 分屏 / 小窗时没让服务锁方向（锁的是整块屏），回到全屏补上选过的方向。同一个方向重复锁一次无害
         if (!wasFull && windowFull && link.isConnected() && prefs.rotation() >= 0) {
             Display d = getDisplay();
@@ -2343,6 +2466,7 @@ public final class MainActivity extends Activity
         if (keyboard == null) return;
         keyboard.setKeyState(latched, held, armed, fn, capsShown);
         fixedKeyboard.setKeyState(latched, held, armed, fn, capsShown);
+        refreshTypeOut();   // 大写锁定、按着的修饰键：状态行的提示
     }
 
     // ═══════════ 动作 ═══════════
@@ -2373,10 +2497,8 @@ public final class MainActivity extends Activity
                 if (keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);
                 showPanel(numpad.getVisibility() == View.VISIBLE ? null : numpad);
                 break;
-            case PHONE_TEXT:
-                if (btMode) {   // 打的字经手机剪贴板贴过去，剪贴板到不了蓝牙那头
-                    toast(R.string.bt_no_phone_text);
-                } else if (textBar.getVisibility() == View.VISIBLE) {
+            case PHONE_TEXT:   // 蓝牙模式也开：面板上没有"发送"（剪贴板到不了蓝牙那头），"打出来"能用
+                if (textBar.getVisibility() == View.VISIBLE) {
                     closeTextBar();
                 } else {
                     openTextBar();
@@ -2496,10 +2618,18 @@ public final class MainActivity extends Activity
 
     private void openTextBar() {
         if (gamepadOn) setGamepadMode(false);   // 贴字面板在主界面上：先退出手柄页
+        // 蓝牙模式从空中鼠标页（格子、音量键）打开：先退出空中鼠标页，不然面板压在页面底下、看不见停止按钮（进空中鼠标页时也先收起面板）
+        if (airOn) setAirMode(false);
         setMenu(false);
         showPanel(null);
         if (keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);
+        // 连接方式只在设置页改（去设置页时 onStop 收起了面板），所以打开时照现在的模式设一次就够：
+        // 蓝牙模式没有"发送"，输入法上的键是"完成"（收起输入法），不是"发送"；提示字也不提"发送"、改说"打出来"
+        textSendButton.setVisibility(btMode ? View.GONE : View.VISIBLE);
+        input.setHint(btMode ? R.string.text_hint_bt : R.string.text_hint);
+        input.setImeOptions((btMode ? EditorInfo.IME_ACTION_DONE : EditorInfo.IME_ACTION_SEND) | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
         textBar.setVisibility(View.VISIBLE);
+        refreshTypePlan();   // 设置里可能换了实体键盘的语言 / 模式
         updateActiveButtons();
         pushLayout();   // 先让服务释放触摸屏，输入法要靠触摸
         updateFocusable();   // 输入法要求窗口能获得焦点；收起时再改回去
@@ -2511,6 +2641,7 @@ public final class MainActivity extends Activity
     }
 
     private void closeTextBar() {
+        typeOut.stop(TypeOutSender.END_CLOSED);   // 收起面板就停"打出来"
         if (textBar.getVisibility() != View.VISIBLE) return;
         WindowInsetsController c = getWindow().getInsetsController();
         if (c != null) c.hide(WindowInsets.Type.ime());
@@ -2527,6 +2658,7 @@ public final class MainActivity extends Activity
      * 代价是会覆盖剪贴板原来的内容。
      */
     private void sendText() {
+        if (btMode) return;   // 蓝牙模式没有这个按钮（剪贴板到不了对方），防御一下
         String text = input.getText().toString();
         if (text.isEmpty()) {
             key(KeyEvent.KEYCODE_ENTER, 0);   // 空着按发送 = 回车，方便连续操作
@@ -2539,6 +2671,160 @@ public final class MainActivity extends Activity
         getSystemService(ClipboardManager.class).setPrimaryClip(clip);
         key(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON);
         input.setText("");
+    }
+
+    /**
+     * 贴字面板上的 ⌫ ↵ Tab：桌面模式照旧注入安卓按键（{@link #key}，发给外接屏 / 拿着焦点的窗口）；
+     * 蓝牙模式发真键盘的这个键（经本地分流按下 + 松开，同动作里的组合键）——蓝牙的媒体键里没有它们。
+     */
+    private void textBarKey(int keyCode, int usage) {
+        if (!btMode) {
+            key(keyCode, 0);
+            return;
+        }
+        onLocalKey(usage, Proto.KEY_DOWN);
+        onLocalKey(usage, Proto.KEY_UP);
+    }
+
+    // ═══════════ 打出来（贴字面板，2026-11-02） ═══════════
+
+    /** 反查表：照设置里实体键盘的语言 + 模式（不管屏幕上显示的是哪块键盘），换了重建（几百个格子，主线程上建）。 */
+    private TypeOut.Keys typeKeys() {
+        Boards.Spec spec = boards.spec();
+        String id = spec.lang + "/" + spec.mode;
+        if (typeKeys == null || !id.equals(typeKeysFor)) {
+            typeKeys = TypeOut.build(FixedData.table(this, spec.lang, spec.mode), FixedData.deadKeys(this, spec.lang, spec.mode), spec.mode);
+            typeKeysFor = id;
+        }
+        return typeKeys;
+    }
+
+    /** 输入框里的字照现在的设置重查一遍（预览）。打的时候不查：字改不了（输入框灰着），查的结果就是正在打的那份。 */
+    private void refreshTypePlan() {
+        if (typeOut.busy() || input == null) return;
+        typePlan = TypeOut.plan(input.getText(), typeKeys());
+        refreshTypeOut();
+    }
+
+    /** 现在不能打的原因（按钮灰掉、状态行写它）；能打返回 null。 */
+    private String typeOutBlock() {
+        Boards.Spec spec = boards.spec();
+        if (FixedData.table(this, spec.lang, spec.mode) == null) return getString(R.string.typeout_no_data, FixedData.shortName(this, spec));
+        if (btMode) return bt.isConnected() ? null : getString(R.string.typeout_no_bt);
+        if (!link.isConnected()) return getString(R.string.typeout_no_service);
+        // 桌面模式：键经服务的虚拟键盘发给拿着焦点的窗口。全屏时这块屏上只有豆花；接着外接屏时焦点在手机屏上（点按钮那一下挪过来的），
+        // 现有的办法挪不过去（服务只在接管触摸屏时把焦点切到外接屏，贴字面板开着时不接管）
+        if (windowFull || targetDisplay != Display.INVALID_DISPLAY) return getString(R.string.typeout_need_split);
+        return null;
+    }
+
+    /** 点"打出来"。 */
+    private void startTypeOut() {
+        if (typeOut.busy()) return;
+        refreshTypePlan();   // 照现在的设置（可能刚在设置页改过布局）再查一遍
+        TypeOut.Plan p = typePlan;
+        if (typeOutBlock() != null || p == null || p.total() == 0) return;
+        long now = SystemClock.uptimeMillis();
+        // 锁住的修饰键先解开，不然第一个字带着 Ctrl（同进空中鼠标 / 手柄页）；手指按着的不动（状态行提示过）
+        if (btMode) local.unlatch(now);
+        else link.unlatch();
+        WindowInsetsController c = getWindow().getInsetsController();
+        if (c != null) c.hide(WindowInsets.Type.ime());
+        input.setEnabled(false);   // 先灰掉再清焦点：灰着的输入框拿不到焦点，输入法不会再弹
+        input.clearFocus();
+        typeEndShown = false;
+        // 桌面模式：豆花窗口拿着焦点时先请服务交给分屏的另一半，丢了焦点（onWindowFocusChanged）再开始
+        boolean gated = !btMode && hasWindowFocus();
+        typingOut = !btMode;
+        typeOut.start(p, prefs.typeOutRate(), gated, now);
+        if (gated) {
+            Display d = getDisplay();
+            if (d != null) link.focusOther(d.getDisplayId());
+        }
+    }
+
+    /** TypeOutSender 报状态 / 进度变了：开始、焦点交出去了、每打完一个键、结束。 */
+    private void onTypeOutChanged() {
+        boolean busy = typeOut.busy();
+        if (!busy && typeWasBusy) {   // 刚结束：窗口照旧能拿焦点（贴字面板开着），输入框能改，写结果
+            typingOut = false;
+            typeEndShown = true;
+            input.setEnabled(true);
+            int e = typeOut.end();
+            // 结束再震一下；按了停止、收起面板是按钮自己震过的，退后台不震
+            if (e == TypeOutSender.END_DONE || e == TypeOutSender.END_LOST || e == TypeOutSender.END_FOCUS
+                    || e == TypeOutSender.END_FOCUS_BACK || e == TypeOutSender.END_WINDOW) {
+                haptics.play(GestureEngine.HAPTIC_CLICK);
+            }
+        }
+        typeWasBusy = busy;
+        updateFocusable();   // 等焦点 → 正在打：不再拿焦点；结束：照旧
+        refreshTypeOut();
+    }
+
+    /** 状态行和几个按钮（打出来能不能点、停止显不显示、打的时候发送 / ⌫ / ↵ / Tab 灰掉）。面板收着时不画，打开时（openTextBar）再画。 */
+    private void refreshTypeOut() {
+        if (typeStatus == null || textBar.getVisibility() != View.VISIBLE) return;
+        boolean busy = typeOut.busy();
+        String block = busy ? null : typeOutBlock();
+        List<String> lines = new ArrayList<>();
+        if (typeOut.state() == TypeOutSender.WAITING) {
+            lines.add(getString(R.string.typeout_waiting));
+        } else if (busy) {
+            lines.add(getString(R.string.typeout_progress, typeOut.done(), typeOut.total()));
+        } else {
+            lines.add(block != null ? block : getString(R.string.typeout_using, FixedData.shortName(this, boards.spec())));
+            if (typeEndShown && typeOut.end() != TypeOutSender.END_NONE) lines.add(typeOutEndText());
+        }
+        TypeOut.Plan p = typePlan;
+        if (p != null && p.skipped > 0) lines.add(getString(R.string.typeout_skip, p.skipped, skippedText(p)));
+        if (!busy && capsShown) lines.add(getString(R.string.typeout_caps));
+        if (!busy && heldMods != 0) lines.add(getString(R.string.typeout_held));
+        typeStatus.setText(TextUtils.join("\n", lines));
+        typeUsable(typeOutButton, !busy && block == null && p != null && p.total() > 0);
+        typeStopButton.setVisibility(busy ? View.VISIBLE : View.GONE);
+        for (TextView b : typeLocked) typeUsable(b, !busy);
+    }
+
+    /** 按钮能不能点：不能点的半透明。 */
+    private static void typeUsable(View b, boolean on) {
+        if (b.isEnabled() == on) return;
+        b.setEnabled(on);
+        b.setAlpha(on ? 1f : 0.4f);
+    }
+
+    /** 上一次的结果：打完了 N 个字 / 停了（打完 N / M，原因），停在死键后面另写一句。 */
+    private String typeOutEndText() {
+        int e = typeOut.end();
+        if (e == TypeOutSender.END_DONE) return getString(R.string.typeout_done, typeOut.done());
+        int why;
+        switch (e) {
+            case TypeOutSender.END_USER: why = R.string.typeout_why_user; break;
+            case TypeOutSender.END_LOST: why = R.string.typeout_why_lost; break;
+            case TypeOutSender.END_PAUSED: why = R.string.typeout_why_paused; break;
+            case TypeOutSender.END_CLOSED: why = R.string.typeout_why_closed; break;
+            case TypeOutSender.END_FOCUS: why = R.string.typeout_why_focus; break;
+            case TypeOutSender.END_FOCUS_BACK: why = R.string.typeout_why_focus_back; break;
+            default: why = R.string.typeout_why_window; break;
+        }
+        String s = getString(R.string.typeout_stopped, typeOut.done(), typeOut.total(), getString(why));
+        return typeOut.midChar() ? s + "\n" + getString(R.string.typeout_mid_char) : s;
+    }
+
+    /** 打不出的字写前 8 个（看不见的写 U+XXXX），多的写"…"。 */
+    private static String skippedText(TypeOut.Plan p) {
+        StringBuilder b = new StringBuilder();
+        int n = 0;
+        for (String c : p.skippedChars) {
+            if (n == 8) {
+                b.append(" …");
+                break;
+            }
+            if (n++ > 0) b.append(' ');
+            String shown = FixedLegends.printable(c);
+            b.append(shown != null ? shown : String.format(Locale.ROOT, "U+%04X", c.codePointAt(0)));
+        }
+        return b.toString();
     }
 
     // ═══════════ 服务回调 ═══════════
@@ -2598,6 +2884,7 @@ public final class MainActivity extends Activity
             // 蓝牙模式下这次一直没连上服务：没有服务，自己请求方向。连上过又断的不请求，免得服务重启时被塞进横框
             if (btAcquired && !linkSeen && prefs.rotation() >= 0) requestOrientationSelf(prefs.rotation());
             grabbed = false;
+            if (!btMode) typeOut.stop(TypeOutSender.END_LOST);   // 桌面模式"打出来"的键经服务发：断了就停，重连不续发
             if (wasConnected) {   // 服务那一路的实体键按住等不到结束了；服务那边的左键随会话结束松开
                 endServerHolds();
                 serverLeftSources.clear();
@@ -2643,6 +2930,7 @@ public final class MainActivity extends Activity
         // 从设置页回来时窗口多半先拿到焦点、后连上服务：连上这一刻再问一次（断开时撤掉排着的再问）
         maybeHandFocus();
         updateStatus();
+        refreshTypeOut();   // 桌面模式连没连着服务："打出来"能不能点
     }
 
     @Override
@@ -2806,8 +3094,10 @@ public final class MainActivity extends Activity
         Display d = DexDisplay.find(displays, own != null ? own.getDisplayId() : Display.DEFAULT_DISPLAY);
         targetDisplay = d != null ? d.getDisplayId() : Display.INVALID_DISPLAY;
         targetName = d != null ? d.getName() : "";
+        if (targetDisplay != Display.INVALID_DISPLAY && !btMode) typeOut.stop(TypeOutSender.END_WINDOW);   // 桌面模式"打出来"时接上了外接屏：焦点会跟着变
         updateFocusable();
         maybeHandFocus();   // 外接屏拔掉了、豆花又在分屏里拿着焦点：交给另一半
+        refreshTypeOut();
         if (btMode && !topResumed) pushLayout();   // 外接屏接上 / 拔掉会改变"顶层"这个条件算不算（ownsScreen），重新报
         updateStatus();
     }
@@ -3013,6 +3303,8 @@ public final class MainActivity extends Activity
         if (on && gamepadOn) setGamepadMode(false);   // 两页互斥（模式不同，本来碰不到一起，兜底）
         setMenu(false);   // 空中鼠标页上没有 ⋯（从键盘屏进来的话 setKeyboardScreen 也会关）
         if (on && keyboardScreen.getVisibility() == View.VISIBLE) setKeyboardScreen(false);   // airOn 还是假：普通的收起
+        // 贴字面板在主界面上，页面会盖住它和停止按钮：先收起（"打出来"跟着停，正按着的键在下面的 releaseAll 之前配上松开）
+        if (on) closeTextBar();
         airOn = on;
         updateAirAbs();
         local.releaseAll();
@@ -3497,6 +3789,7 @@ public final class MainActivity extends Activity
         btState = state;
         btDevice = deviceName;
         if (lost) {
+            typeOut.stop(TypeOutSender.END_LOST);   // 蓝牙模式"打出来"断了就停，重连不续发（先停：正按着的键在 releaseAll 之前配上松开）
             local.releaseAll();   // 别让对方那头留着按住的键
             touchButtons = 0;
         }
@@ -3505,6 +3798,7 @@ public final class MainActivity extends Activity
         if (lost) releaseAir();   // 停跟随、松开按着的键
         updateAirOverlay();
         updateStatus();
+        refreshTypeOut();   // 蓝牙连没连着："打出来"能不能点
     }
 
     /**

@@ -80,6 +80,9 @@ python3 tools/kbd/check_tables.py           # 核对抽查值和不变量（tool
   kpdl_win（Windows 模式的小键盘小数点：catalog.json 手写的照微软布局表，荷兰、冰岛、捷克、斯洛伐克是逗号、xkb 是句点；没写的同 kpdl）、caps_mac（Mac 模式 Caps 键帽写什么，拼音写 中/英）、
   name_mac（macOS 现名）/ name_mac_cldr（CLDR 旧名）/ name_win / name_linux / name_android（没有那家数据的空着）。
 - ABNT2（巴西）：字表里多 0x87（右 Shift 左边那个 / ? 键）一行；小键盘多的 0x85 不在字表里（CLDR 不含小键盘），在清单的 kpco 一栏。
+- `kbd_dead_mac.txt` / `kbd_dead_win.txt`（2026-11-02，贴字面板"打出来"用）：CLDR transforms 里主机自己的死键组合，一个布局一段（Mac 不分 `.iso`），
+  每行三格 `死键的字 ⇥ 后面那个字 ⇥ 拼出来的字`（转义同上，空格写 ` `），只收"一个死键 + 一个字 → 一个字"的；完全一样的写成别名。
+  没写的组合主机拼不出来，App 就不用它（不拿 Unicode 分解去猜：德语 Windows 的 ´ + c 拼不出 ć，波兰程序员的 ~ + a 是 ą）。
 - 读写在 `kbdtable.py`；App 的 Java 读法（`src/dev/douhua/FixedLegends.java`）照它写，FixedLegendsTest 直接读这几份文件。
 
 ## 许可

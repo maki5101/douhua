@@ -57,13 +57,14 @@ final class FixedData {
      * 拼逐级缩的几级（FixedLayout.ladder：选的尺寸往下，全尺寸 → TKL → 75% → 笔记本……）：每级一块，右 Alt 写不写 AltGr 看 Windows 字表有没有第三层，
      * 小键盘小数点、ABNT2 小键盘多的那个键、Mac 模式的 Caps 键帽（拼音写 中/英）看清单（FixedLayout.forEntry）；
      * 字表读不出来、这个布局这种模式没有数据（拉美的 Mac 模式）、尺寸配不上（苹果紧凑 × Windows 模式 / ABNT2）返回空列表（见类注释）。
+     * 协议 24 起每一级都照 spec.fkeys（这种模式下 F1–F12 配的第二功能）拼 F 键报的 id（65% 不上第二功能）。
      */
     static List<FixedLayout> ladder(Context c, Boards.Spec spec) {
         FixedLegends.Layout l = FixedLegends.find(catalog(c), spec.lang);
         FixedLegends.Table t = table(c, spec.lang, spec.mode);
         List<FixedLayout> out = new ArrayList<>();
         for (String size : FixedLayout.ladder(spec.size)) {
-            FixedLayout f = FixedLayout.forEntry(spec.shape, size, spec.mode, t, l);
+            FixedLayout f = FixedLayout.forEntry(spec.shape, size, spec.mode, t, l, spec.fkeys);
             if (f == null) return new ArrayList<>();
             out.add(f);
         }

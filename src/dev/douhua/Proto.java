@@ -17,7 +17,13 @@ public final class Proto {
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
     /**
-     * 协议版本。23（2026-11-01 晚）：CMD_CONFIG 末尾加了小红点推光标的加速、最快速度（stickAccel:f32、stickMaxSpeed:f32）。
+     * 协议版本。24（2026-11-02）：实体键盘 F1–F12 的第二功能（音量、亮度、媒体、睡眠……）和"F 行翻转"（FnLock）：
+     * F 行键的区域 id 带两面（{@link #frowKey}），Esc 在 Fn 层是 F 行翻转开关（{@link #FN_LOCK_KEY}）；CMD_CONFIG 末尾加 frowFlip:u8；
+     * MSG_MODIFIERS 第四个字节多一位 {@link #FROW_FLIP}；新消息 {@link #MSG_CONSUMER}（蓝牙模式下服务接管时把多媒体 / 系统键转回 App 由蓝牙发）。
+     * 桌面模式另有第四个 uhid 设备 "Douhua Keyboard Controls"（{@link #HID_CONTROLS_PRODUCT}，多媒体 + 系统键）。旧服务会把 F 行键的 id 当普通键、
+     * 按出乱码，所以升号；版本不一致时同 23 那条：Link 读 hello 就断开、报"版本不一致"，靠"连不上 → 自动启动"（SelfStart.autoStart）重启服务，
+     * 或者 tools/start-server.sh / 设置页"启动服务"手动重起。
+     * 23（2026-11-01 晚）：CMD_CONFIG 末尾加了小红点推光标的加速、最快速度（stickAccel:f32、stickMaxSpeed:f32）。
      * 22 那一版已经打过包、用户可能装着，CMD_CONFIG 变长后新旧混着跑会读错，所以单独升一号。版本不一致时 App 的 Link 在读 hello 里的 APK 路径之前就断开、
      * 报"版本不一致"（按 APK 路径重启那条路走不到）；开着"自动启动服务"、配对过、密钥没被拒、不在退避中时 SelfStart.autoStart 探到旧版本会自己重启它，
      * 不然要手动重起服务（tools/start-server.sh，或设置页"启动服务"）。
@@ -25,7 +31,7 @@ public final class Proto {
      * 同一批 CMD_CONFIG 末尾加了中键滑动速度（leverSpeed:f32）、MSG_MODIFIERS 第四个字节多了 {@link #FN_LOCKED}、Fn 换了规矩
      * （点一下单次锁、按住 0.4 秒永久锁，KeyHolds），都算在 22 里。
      */
-    public static final int VERSION = 23;
+    public static final int VERSION = 24;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
     /**
@@ -33,6 +39,12 @@ public final class Proto {
      * App 靠厂商号 + 它认出自己的手柄：落到豆花自己窗口上的手柄键、摇杆一律吞掉（不吞的话 B = 返回、Home = 回桌面）。
      */
     public static final int HID_GAMEPAD_PRODUCT = 0xD0A2;
+    /**
+     * 多媒体键 + 系统键（"Douhua Keyboard Controls"，服务第四个 uhid 设备，协议 24 起；和虚拟键盘同建同关）的产品号。
+     * 照真 USB 键盘"一个打字接口 + 一个带报告编号的接口放多媒体 / 系统键"（QMK 就这么分）：描述符是蓝牙那两段（多媒体报告 3、系统键报告 6，
+     * Hid.controlsDescriptor），现有的虚拟键盘一个字节都不动。App 不吞它的键（MainActivity.dispatchKeyEvent）：音量、媒体这些归主机（这台手机）处理。
+     */
+    public static final int HID_CONTROLS_PRODUCT = 0xD0A3;
 
     // ═══════════ 客户端 → 服务 ═══════════
 
@@ -47,7 +59,8 @@ public final class Proto {
      * inertia:u8（惯性滚动）, inertiaTauMs:i32（阻尼）, inertiaMinSpeed:f32（多快算拨，dp/ms）, smoothScroll:u8（连续滚动），
      * stickSpeed:f32（小红点灵敏度）, stickTap:u8（轻点红点 = 左键）, stickInertia:u8（小红点负惯性）, leverSpeed:f32（中键滑动的滚动速度倍数），
      * stickAccel:f32（小红点推光标的加速，0–1）, stickMaxSpeed:f32（加速 100% 时小红点推满的速度，计数 / 秒）。
-     * inertia 到 stickInertia 七项是协议 18 加的，leverSpeed 是协议 22 加的，stickAccel、stickMaxSpeed 是协议 23 加的。
+     * frowFlip:u8（实体键盘 F 行平时出第二功能 = 1，"F 行翻转"，KeyHolds；不是手势参数，跟着 CMD_CONFIG 走）。
+     * inertia 到 stickInertia 七项是协议 18 加的，leverSpeed 是协议 22 加的，stickAccel、stickMaxSpeed 是协议 23 加的，frowFlip 是协议 24 加的。
      * 编解码只在 {@link ConfigCodec} 一处（App、服务、自测共用）。
      */
     public static final int CMD_CONFIG = 4;
@@ -147,7 +160,8 @@ public final class Proto {
      * 报给 App 的按钮编号是 KEY_ID_BASE + id。
      * 另有合并键（协议 20 起，小红点状态的逗号句号）：id = {@link #dualKey}(点一下的键, 按住 0.4 秒的键)，两个都是上面那种 16 位的键 id。
      * 协议 21 起还有实体键盘 75% / 65% / 苹果紧凑的 Fn 键（{@link #FN_KEY} / {@link #FN_GLOBE_KEY}）和带 Fn 层的键（{@link #fnLayerKey}）。
-     * 三种 id 的范围互不重叠（ServerPartsTest 锁住）：普通键 0–0xFFFF；合并键 0x10000–0x3FFFFFFF；Fn 那一段 0x40000000–0x40FFFFFF。
+     * 协议 24 起还有 F 行键（{@link #frowKey}：F1–F12 带第二功能、Esc 带 F 行翻转开关）。
+     * 几种 id 的范围互不重叠（ServerPartsTest 锁住）：普通键 0–0xFFFF；合并键 0x10000–0x3FFFFFFF；Fn 那一段 0x40000000–0x40FFFFFF；F 行键 0x41000000–0x44FFFFFF。
      * KEY_ID_BASE + id 都还是正数（App 只看 ≥ KEY_ID_BASE）。
      */
     public static final int REGION_KEY = 3;
@@ -181,7 +195,7 @@ public final class Proto {
     public static final int FN_FLAG = 0x40000000;
     /**
      * 实体键盘 75% / 65% 的 Fn 键（Windows 模式），协议 22 起的规矩（KeyHolds）：按住 Fn 再按别的键 = 那几下出 Fn 层（组合，松手回来、不锁）；
-     * 单独点一下 = 单次锁（下一个普通键出 Fn 层、那个键松开时解开，修饰键不消耗它）；单独按住 0.4 秒 = 永久锁（Fn Lock，没有修饰键那种 1 秒上限，
+     * 单独点一下 = 单次锁（下一个普通键出 Fn 层、那个键松开时解开，修饰键不消耗它）；单独按住 0.4 秒 = 永久锁（Fn Sticky，照 ThinkPad BIOS 的叫法；协议 24 起 FnLock 指 F 行翻转，见 FN_LOCK_KEY；没有修饰键那种 1 秒上限，
      * 之后按多少个键都出 Fn 层）；锁着（单次或永久）时单独再按一下 Fn = 松手解开、这一下不再锁；锁着时把 Fn 当组合用（按住 Fn 打别的键），永久锁照旧，单次锁被那个键用掉。
      * 不发 HID（真键盘的 Fn 也不发），只改带 Fn 层的键按下时发哪个码。（协议 21 时同修饰键：单独按住 0.4–1 秒锁一个键、单点什么都不做。）
      */
@@ -218,6 +232,45 @@ public final class Proto {
     public static int fnCode(int id) {
         return (id >>> 16) & 0xFF;
     }
+
+    /**
+     * F 行键（协议 24 起，实体键盘 F1–F12 带第二功能、Esc 带 F 行翻转开关）的类型，放在 Fn 那一段的第 24–29 位（{@link #fnLayerKey} 那几位是 0）：
+     * FROW_KEY = 第二功能是键盘键 / 组合键（第二功能 = 用法码 | 自带修饰键 << 8，同 REGION_KEY 的 id）、FROW_CONSUMER = 多媒体页的码、
+     * FROW_SYSTEM = 系统键那一组（Generic Desktop 的 System Control）的码、FROW_FN_LOCK = Esc 的 F 行翻转开关（第二功能填 0）。
+     * 别往大里用：类型到 0x3F 时 id 到 0x7FFFFFFF，加上 KEY_ID_BASE 会溢出成负数（ServerPartsTest 锁住"KEY_ID_BASE + id 是正数"）。
+     */
+    public static final int FROW_KEY = 1, FROW_CONSUMER = 2, FROW_SYSTEM = 3, FROW_FN_LOCK = 4;
+
+    /**
+     * F 行键的 id：FN_FLAG | type << 24 | second << 8 | base。base = 底层的用法码（F1–F12 是 0x3A–0x45、Esc 0x29，8 位），second = 第二功能（16 位，
+     * 见 {@link #FROW_KEY}）。哪一面在按下那一刻定（KeyHolds：类型 1–3 按"Fn 起没起作用 ^ F 行翻转"，类型 4 按"Fn 起没起作用"），记下来，
+     * 松开松的是按下时定的那个。翻转状态在 KeyHolds 里、不进 id：面板自己收触摸那条路松开时会重新算 id，按着时翻了的话 id 对不上就卡键。
+     * 第二功能是"无"的 F 键不用它，报普通的用法码（FKeyFunctions.regionId）。
+     */
+    public static int frowKey(int type, int base, int second) {
+        return FN_FLAG | (type & 0x3F) << 24 | (second & 0xFFFF) << 8 | (base & 0xFF);
+    }
+
+    /** F 行键（类型 1–4）。和合并键、Fn 键自己、带 Fn 层的键都不重叠（ServerPartsTest 锁住）。 */
+    public static boolean isFrowKey(int id) {
+        int type = (id >>> 24) & 0x3F;
+        return (id & 0xC0000000) == FN_FLAG && type >= FROW_KEY && type <= FROW_FN_LOCK;
+    }
+
+    public static int frowType(int id) {
+        return (id >>> 24) & 0x3F;
+    }
+
+    public static int frowBase(int id) {
+        return id & 0xFF;
+    }
+
+    public static int frowSecond(int id) {
+        return (id >>> 8) & 0xFFFF;
+    }
+
+    /** Esc 的 F 行翻转开关（FnLock）：Fn 起作用时按它 = 翻转 F 行平时出哪一面（不发 HID、震一下），不起作用时就是 Esc。 */
+    public static final int FN_LOCK_KEY = frowKey(FROW_FN_LOCK, 0x29, 0);
     /**
      * 键盘面板的整块范围（不是键，id 不用、填 0），排在它的键后面。按在这里却没落在任何键上（键间的缝、
      * 第二行两头的空位、外圈边距）时，分给范围里最近的键（TouchRouter.nearestKey）。旧服务不认识它，
@@ -343,14 +396,20 @@ public final class Proto {
      * App 照 latched | armed 画高亮、照 latched | held 换键帽上的字。协议 20 起三个字节（以前只有 latched 一个）；
      * 协议 21 起第四个字节是 Fn 的状态（实体键盘 75% / 65% / 苹果紧凑）：App 照单次锁画 Fn 键的高亮、照永久锁 | 快永久锁了画强调色实底，
      * 照单次锁 | 永久锁 | 按着把带 Fn 层的键帽整片换成 Fn 层的字。协议 22 起多了 {@link #FN_LOCKED}，FN_LATCHED / FN_ARMED 的意思跟着 Fn 的新规矩变了（KeyHolds）。
+     * 协议 24 起多了 {@link #FROW_FLIP}：App 照它画 F 行亮哪一面、存进设置（和设置页"平时按出"是同一份状态）。
      */
     public static final int MSG_MODIFIERS = 0x85;
     /**
      * MSG_MODIFIERS 第四个字节的位（协议 22 起）：FN_LATCHED = 单次锁（Windows 模式单点 Fn，只管下一个普通键）、FN_HELD = 有手指按着、
-     * FN_ARMED = 单独按住到了 0.4 秒、"现在松手就永久锁"、FN_LOCKED = 永久锁（Fn Lock，再单独按一下 Fn 才解开）。
+     * FN_ARMED = 单独按住到了 0.4 秒、"现在松手就永久锁"、FN_LOCKED = 永久锁（Fn Sticky，再单独按一下 Fn 才解开；不是 F 行翻转 FnLock，那个是 FROW_FLIP）。
      * 协议 21 时 1 是"锁住、只管下一个键"、4 是"0.4–1 秒、现在松手就锁"，没有 8。
      */
     public static final int FN_LATCHED = 1, FN_HELD = 2, FN_ARMED = 4, FN_LOCKED = 8;
+    /**
+     * MSG_MODIFIERS 第四个字节的位（协议 24 起）：F 行翻转着（"平时按出第二功能"，Fn 起作用时出 F1–F12）。只翻 F 行，Fn 层别的键只看 Fn 起没起作用。
+     * Fn+Esc 翻它（KeyHolds），设置页也能改（经 CMD_CONFIG 的 frowFlip）；它是设置、不是锁：releaseAll、CMD_UNLATCH 都不清。
+     */
+    public static final int FROW_FLIP = 16;
     /**
      * 转发的鼠标报文（relay 模式）：buttons:u8, dx:i16, dy:i16, wheel:i16, pan:i16。wheel / pan 是 1/120 格（Hid.WHEEL_UNIT），
      * App 按蓝牙主机设的倍率换算成计数（Hid.WheelOut）。协议 18 以前是 i8 的格数。
@@ -399,6 +458,13 @@ public final class Proto {
      * 显示状态只有 App 一份（主机的大写锁定跨连接都在，服务的分流和 App 的本地分流各自 releaseAll，放进哪个都会丢），服务只报"翻一下"。
      */
     public static final int MSG_CAPS = 0x8B;
+    /**
+     * 转发的多媒体 / 系统键（relay 模式，协议 24 起）：page:u8（{@link #PAGE_CONSUMER} / {@link #PAGE_GENERIC_DESKTOP}）, usage:u16（0 = 全松开）。
+     * 照真键盘的报告：每一页一次只报一个码（按着的码变了才发）；App 交给 BtHid 的报告 3（多媒体）/ 报告 6（系统键）。
+     */
+    public static final int MSG_CONSUMER = 0x8C;
+    /** HID 的用法页：多媒体（Consumer）、Generic Desktop（系统键那一组 System Control 在这一页）。 */
+    public static final int PAGE_CONSUMER = 0x0C, PAGE_GENERIC_DESKTOP = 0x01;
 
     public static final int BUTTON_DOWN = 0;
     /** 松开但不算点击（手指滑出了按钮，或被取消）。 */

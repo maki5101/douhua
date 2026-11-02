@@ -29,6 +29,8 @@ import java.util.List;
  * Fn（协议 21，75% / 65% / 苹果紧凑）：Fn 键单次锁时画修饰键那种高亮，永久锁 / 快永久锁了画强调色实底（协议 22，FixedPanel.fnLockLook）；
  * Fn 锁着（单次或永久）或按着时带 Fn 层的键帽整片换成 Fn 层的字（主次照 Fn 层那个码），
  * 不换层、不重报区域——按下发哪个码由分流按下那一刻定（KeyHolds），这里只画。报的 id、自己收触摸时发的 id 都是 FixedPanel.keyId。
+ * F1–F12 的第二功能（协议 24）：画什么照 FixedPanel.glyphsAt（fnState 带 F 行翻转那一位，MainActivity 照设置填）：两面都印时上面第二功能、下面小字 F1，
+ * 不会出的那面压暗；图标是 FKeyFaces 的笔画，按键帽大小缩放、颜色同字（跟主题，不用彩色 emoji）。
  */
 final class FixedKeyboardView extends View implements KeyboardFace {
     private final KeyboardPanel.Listener listener;
@@ -48,6 +50,18 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** 量行高用的字号（像素；FontMetrics 在很小的字号下按像素取整，量大一点再除）。 */
+    private static final float REF_TEXT = 100;
+    /** 行高 ÷ 字号（键帽字的画笔，第一次 fit 时量）。 */
+    private float lineFactor;
+    /** 拿画键帽字的那支笔量字宽（FixedPanel.fitText 用；会改它的字号，量完由 fit 设成最后定的那个）。 */
+    private final FixedPanel.TextWidth measure = (s, size) -> {
+        text.setTextSize(size);
+        return text.measureText(s);
+    };
+    /** 第二功能的图标（FKeyFaces 的笔画）：描边的圆头圆角、填充的。 */
+    private final Paint iconStroke = new Paint(Paint.ANTI_ALIAS_FLAG), iconFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path iconPath = new Path(), iconCut = new Path();
     private ColorFilter emoji;
     private final RectF tmp = new RectF();
 
@@ -60,6 +74,10 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         labelRoom = Style.sp(context, KeyboardScreen.LABEL_ROOM_SP);
         stroke.setStyle(Paint.Style.STROKE);
         text.setTextAlign(Paint.Align.CENTER);
+        iconStroke.setStyle(Paint.Style.STROKE);
+        iconStroke.setStrokeCap(Paint.Cap.ROUND);
+        iconStroke.setStrokeJoin(Paint.Join.ROUND);
+        iconFill.setStyle(Paint.Style.FILL);
         applyTheme();
     }
 
@@ -301,7 +319,7 @@ final class FixedKeyboardView extends View implements KeyboardFace {
                 }
             }
             int base = menu ? t.menuKeyText : active ? t.activeText : fn ? t.fnText : t.text;
-            List<FixedPanel.Glyph> glyphs = model.glyphs(i, mods, capsOn, fnLayer, space);
+            List<FixedPanel.Glyph> glyphs = model.glyphsAt(i, mods, capsOn, fnState, space);
             for (int[] b : model.capBoxes(i)) drawGlyphs(canvas, i, b, glyphs, base, t, model.named(i, fnLayer), lockLook);
         }
     }
@@ -313,6 +331,9 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     private void drawGlyphs(Canvas canvas, int i, int[] b, List<FixedPanel.Glyph> glyphs, int base, Theme t, boolean named, boolean solid) {
         float w = b[2] - b[0], h = b[3] - b[1];
         if (w <= 0 || h <= 0) return;
+        // 字和图标都裁在这个键帽里：放不下的字 fit 已经末尾省略了，这里再兜一层，绝不画到隔壁的键上
+        canvas.save();
+        canvas.clipRect(b[0], b[1], b[2], b[3]);
         float shift = model.shift(i);
         boolean hasCorner = false;
         for (FixedPanel.Glyph g : glyphs) hasCorner |= g.slot == FixedPanel.Glyph.CORNER;
@@ -326,24 +347,43 @@ final class FixedKeyboardView extends View implements KeyboardFace {
             if (g.dim) color = (color & 0x00FFFFFF) | ((Math.round(((color >>> 24) & 0xFF) * 0.4f)) << 24);
             text.setColor(color);
             text.setColorFilter(!g.text.equals("🌐") ? null : solid ? new PorterDuffColorFilter(base, PorterDuff.Mode.SRC_IN) : emoji);
+            if (g.icon != 0) {
+                // 第二功能的图标（协议 24）：正中（只画会出的那一面）或上半（两面都印）
+                boolean upper = g.slot == FixedPanel.Glyph.UPPER;
+                float size = upper ? Math.min(h * 0.42f, w * 0.6f) : Math.min(h * 0.55f, w * 0.62f);
+                drawIcon(canvas, g.icon, cx, (upper ? b[1] + h * 0.38f : (b[1] + b[3]) / 2f) + shift, size, color);
+                continue;
+            }
             switch (g.slot) {
+                case FixedPanel.Glyph.UPPER: {   // 第二功能的短字（组合键、F13……），两面都印时在上半（长组合键可能折成两三行）
+                    String[] s = fit(g.text, mid, g.slot, w, h, hasCorner);
+                    text.setTextAlign(Paint.Align.CENTER);
+                    drawCentered(canvas, s, cx, b[1] + h * 0.38f + shift);
+                    break;
+                }
+                case FixedPanel.Glyph.LOWER: {   // 两面都印时下面的小字 F1
+                    String[] s = fit(g.text, small, g.slot, w, h, hasCorner);
+                    text.setTextAlign(Paint.Align.CENTER);
+                    drawCentered(canvas, s, cx, b[1] + h * 0.80f + shift);
+                    break;
+                }
                 case FixedPanel.Glyph.CENTER: {
                     float size = named && g.text.codePointCount(0, g.text.length()) > 1 ? name : big;
-                    fit(g.text, size, w - 2 * pad);
+                    String[] s = fit(g.text, size, g.slot, w, h, hasCorner);
                     text.setTextAlign(Paint.Align.CENTER);
-                    drawCentered(canvas, g.text, cx, (b[1] + b[3]) / 2f + shift);
+                    drawCentered(canvas, s, cx, (b[1] + b[3]) / 2f + shift);
                     break;
                 }
                 case FixedPanel.Glyph.TOP:
                 case FixedPanel.Glyph.BOTTOM: {
-                    fit(g.text, mid, (hasCorner ? w * 0.6f : w) - 2 * pad);
+                    String[] s = fit(g.text, mid, g.slot, w, h, hasCorner);
                     text.setTextAlign(Paint.Align.CENTER);
                     float y = b[1] + h * (g.slot == FixedPanel.Glyph.TOP ? 0.30f : 0.70f) + shift;
-                    drawCentered(canvas, g.text, pairX, y);
+                    drawCentered(canvas, s, pairX, y);
                     break;
                 }
                 default: {
-                    fit(g.text, small, w * 0.45f);
+                    String s = fit(g.text, small, FixedPanel.Glyph.CORNER, w, h, hasCorner)[0];   // 角上小字只许一行（textRooms 给的 vroom 是 0）
                     int c = model.corner(i);
                     boolean right = c == FixedPanel.CORNER_BR || c == FixedPanel.CORNER_TR;
                     boolean bottom = c == FixedPanel.CORNER_BR || c == FixedPanel.CORNER_BL;
@@ -351,25 +391,105 @@ final class FixedKeyboardView extends View implements KeyboardFace {
                     Paint.FontMetrics fm = text.getFontMetrics();
                     float x = right ? b[2] - pad - Style.dp(getContext(), 1) : b[0] + pad + Style.dp(getContext(), 1);
                     float y = bottom ? b[3] - pad - fm.descent : b[1] + pad - fm.ascent;
-                    canvas.drawText(g.text, x, y, text);
+                    canvas.drawText(s, x, y, text);
                     break;
                 }
             }
         }
         text.setColorFilter(null);
+        canvas.restore();
     }
 
-    /** 字号从 size 起，放不下 room 宽就缩（最小 7sp）。 */
-    private void fit(String s, float size, float room) {
-        float min = Style.sp(getContext(), 7);
-        text.setTextSize(size);
-        float tw = text.measureText(s);
-        if (tw > room && room > 0) text.setTextSize(Math.max(min, size * room / tw));
+    /**
+     * 画第二功能的图标（FKeyFaces.icon 的笔画，24 × 24 的方格缩放成 size × size、中心在 (cx, cy)），颜色 color（同字的颜色，压暗的照样带透明度）。
+     * 认不出的笔画跳过（照理不会，FixedFKeysTest 锁住每个图标的笔画都认得、坐标在方格里）。
+     */
+    private void drawIcon(Canvas canvas, int icon, float cx, float cy, float size, int color) {
+        float k = size / FKeyFaces.BOX, x0 = cx - size / 2, y0 = cy - size / 2;
+        iconStroke.setColor(color);
+        iconStroke.setStrokeWidth(FKeyFaces.STROKE * k);
+        iconFill.setColor(color);
+        for (float[] op : FKeyFaces.icon(icon)) {
+            switch ((int) op[0]) {
+                case FKeyFaces.LINE:
+                    canvas.drawLine(x0 + op[1] * k, y0 + op[2] * k, x0 + op[3] * k, y0 + op[4] * k, iconStroke);
+                    break;
+                case FKeyFaces.POLYLINE:
+                case FKeyFaces.POLYGON: {
+                    iconPath.reset();
+                    for (int j = 1; j + 1 < op.length; j += 2) {
+                        float x = x0 + op[j] * k, y = y0 + op[j + 1] * k;
+                        if (j == 1) iconPath.moveTo(x, y);
+                        else iconPath.lineTo(x, y);
+                    }
+                    boolean polygon = (int) op[0] == FKeyFaces.POLYGON;
+                    if (polygon) iconPath.close();
+                    canvas.drawPath(iconPath, polygon ? iconFill : iconStroke);
+                    break;
+                }
+                case FKeyFaces.RECT:
+                    tmp.set(x0 + op[1] * k, y0 + op[2] * k, x0 + op[3] * k, y0 + op[4] * k);
+                    canvas.drawRoundRect(tmp, op[5] * k, op[5] * k, op[6] != 0 ? iconFill : iconStroke);
+                    break;
+                case FKeyFaces.CIRCLE:
+                    canvas.drawCircle(x0 + op[1] * k, y0 + op[2] * k, op[3] * k, op[4] != 0 ? iconFill : iconStroke);
+                    break;
+                case FKeyFaces.OVAL:
+                    tmp.set(x0 + op[1] * k, y0 + op[2] * k, x0 + op[3] * k, y0 + op[4] * k);
+                    canvas.drawOval(tmp, iconStroke);
+                    break;
+                case FKeyFaces.ARC: {
+                    float ax = x0 + op[1] * k, ay = y0 + op[2] * k, r = op[3] * k;
+                    tmp.set(ax - r, ay - r, ax + r, ay + r);
+                    canvas.drawArc(tmp, op[4], op[5], false, iconStroke);
+                    break;
+                }
+                case FKeyFaces.CRESCENT:
+                    iconPath.reset();
+                    iconPath.addCircle(x0 + op[1] * k, y0 + op[2] * k, op[3] * k, Path.Direction.CW);
+                    iconCut.reset();
+                    iconCut.addCircle(x0 + op[4] * k, y0 + op[5] * k, op[6] * k, Path.Direction.CW);
+                    iconPath.op(iconCut, Path.Op.DIFFERENCE);
+                    canvas.drawPath(iconPath, iconFill);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    /**
+     * 把字 s 放进宽 w、高 h 的键帽的这个位置（slot = FixedPanel.Glyph 的位置；corner = 这个键有角上小字）：字号从 size 起，放不下就缩（最小 7sp），
+     * 到 7sp 一行还放不下，组合键折成两三行，再放不下末尾省略"…"（规则在 FixedPanel.textRooms / fitText，离线测）。设好画笔的字号，返回要画的那几行。
+     */
+    private String[] fit(String s, float size, int slot, float w, float h, boolean corner) {
+        float[] rooms = FixedPanel.textRooms(slot, w, h, pad, Style.dp(getContext(), 1), corner);
+        if (lineFactor <= 0) {   // 行高 ÷ 字号（同 drawCentered 几行之间隔的那个）；字体不换，量一次
+            text.setTextSize(REF_TEXT);
+            Paint.FontMetrics fm = text.getFontMetrics();
+            lineFactor = (fm.descent - fm.ascent) / REF_TEXT;
+        }
+        FixedPanel.FittedText f = FixedPanel.fitText(s, size, Style.sp(getContext(), 7), rooms, lineFactor, measure);
+        text.setTextSize(f.size);
+        return f.lines;
     }
 
     private void drawCentered(Canvas canvas, String s, float x, float cy) {
         Paint.FontMetrics fm = text.getFontMetrics();
         canvas.drawText(s, x, cy - (fm.ascent + fm.descent) / 2, text);
+    }
+
+    /** 几行字整块的中心在 (x, cy)，行高 = 这个字号的 descent − ascent（和 fit 里算 lineFactor 的一样）。 */
+    private void drawCentered(Canvas canvas, String[] lines, float x, float cy) {
+        if (lines.length == 1) {
+            drawCentered(canvas, lines[0], x, cy);
+            return;
+        }
+        Paint.FontMetrics fm = text.getFontMetrics();
+        float lh = fm.descent - fm.ascent;
+        for (int j = 0; j < lines.length; j++) {
+            drawCentered(canvas, lines[j], x, cy + (j - (lines.length - 1) / 2f) * lh);
+        }
     }
 
     /** 按下时放大提示（照锁着的修饰键会出的那个字；功能键、修饰键、F 键、方向键、小键盘不放大）。 */

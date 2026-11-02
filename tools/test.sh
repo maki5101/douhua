@@ -33,13 +33,20 @@ trap 'rm -rf "$OUT"' EXIT
 # 小红点（TrackPoint：速度曲线、负惯性、积分、轻点、颗粒、中键滚动；协议 23 的加速 / 最快速度——默认值时和改之前逐点一样、滑块每一格单调、设置页说明里现算的数）、
 # 修饰键 / Caps / 合并键的点一下、按住、锁定，实体键盘的 Fn 层（KeyHolds：真 TouchRouter 跑报文序列，加随机序列查不变量；协议 21 的编码在 ServerPartsTest；
 # 协议 22 起 Fn 点一下单次锁、按住永久锁，随机序列旁边跑一份照新规矩写的模型）、
+# 实体键盘 F1–F12 的第二功能和 F 行翻转（协议 24，FKeysTest：真 TouchRouter / KeyHolds 跑定码、Fn+Esc 翻转、多媒体 / 系统键两个槽一次报一个码、
+# 收尾归零、随机序列；FKeyFunctions 的功能表 / 预设 / 拼区域 id、Boards 里的存储；描述符、槽在 HidTest，id 和消息编号在 ServerPartsTest）、
 # 触控板背景图怎么摆（PadFit：五种显示方式、焦点、吸附、平铺相位、按形状挑设置、解码多大）、
 # 主机实测扫描许发哪些键、一段怎么拆成拍（KeyScan）、
 # 实体键盘第 1B 批（FixedLegends：读 res/raw 的键帽数据、抽查值；FixedLayout / FixedPanel：几何、每区块每行的范围、分流、小红点在真 ThinkPad 的位置、
 # 空格那一排的三个鼠标键、键帽齐全；KeyboardPlan.planFixed：默认位置、触控板、窄窗口退回豆花布局；Boards：切换键盘不动豆花布局的 kb_ 设置；
 # 笔记本尺寸（照 ThinkPad，方向键两层）和逐级缩（KeyboardPlan.fixedLevel / fitFixedRect、FixedSizing：显示哪一级、用哪份位置、拖动怎么换回）；
 # 第 2 批：巴西 ABNT2 的几何、拼音的 中/英、土耳其的 i / İ，设置页语言列表的名字 / 排序 / 没数据的模式灰掉（Boards）；
-# 第 3 批（FixedCompactTest）：75% / 65% / 苹果紧凑的几何、哪些组合拼得出、逐级缩的梯子、Fn 键和 Fn 层的数据、Fn 层三条触摸路径同一个 id 同样的报文，借 FixedLayoutTest 的扫描再跑一遍）、
+# 第 3 批（FixedCompactTest）：75% / 65% / 苹果紧凑的几何、哪些组合拼得出、逐级缩的梯子、Fn 键和 Fn 层的数据、Fn 层三条触摸路径同一个 id 同样的报文，借 FixedLayoutTest 的扫描再跑一遍；
+# 协议 24 的几何和键帽那一半（FixedFKeysTest）：TKL / 全尺寸 / 笔记本加的 Fn、笔记本 ⋯ 槽挪到 F 行 Ins 那格，F 键报的 id 两面都取得回来、Esc 的翻转开关、
+# 配不配第二功能几何不变，键帽两面都印 / 只画一面、哪面亮，FKeyFaces 的图标和组合键的写法，每行字放不放得进键帽（放不下末尾省略，FixedPanel.fitText），
+# F 行三条触摸路径同一个 id 同样的报文，小红点照旧；
+# 设置页那一节（FKeyChoicesTest）：选择列表的分组 / 去重 / Mac 模式不列的三个、存的 id 认回哪一项、自定义组合键存成什么、预设那一行、
+# 设置页选的每一项写进 Boards 再经真 TouchRouter / KeyHolds 按下去发的就是列表上写的码，九个 strings.xml 的名字齐全）、
 # 手柄页（GamepadTouch：单键 / 面键簇 / 十字键 / 摇杆 / N64 的 C 键的触摸模型、收尾回中立；GamepadPlan：15 个预设和自定义的自动排；
 # GamepadSpec：字样、轮换、自定义存成一行再读回来；GamepadConfig 编解码、手柄描述符和两路合并（HidTest、ServerPartsTest 的 GamepadMux））
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \
@@ -66,8 +73,11 @@ trap 'rm -rf "$OUT"' EXIT
     src/dev/douhua/KeyRows.java test/dev/douhua/KeyRowsTest.java \
     src/dev/douhua/KeyboardPlan.java test/dev/douhua/KeyboardPlanTest.java \
     src/dev/douhua/FixedLegends.java src/dev/douhua/FixedLayout.java src/dev/douhua/FixedPanel.java src/dev/douhua/Boards.java \
+    src/dev/douhua/FKeyFunctions.java src/dev/douhua/FKeyFaces.java test/dev/douhua/FKeysTest.java \
+    src/dev/douhua/FKeyChoices.java test/dev/douhua/FKeyChoicesTest.java \
     src/dev/douhua/FixedSizing.java \
     test/dev/douhua/FixedLegendsTest.java test/dev/douhua/FixedLayoutTest.java test/dev/douhua/FixedCompactTest.java test/dev/douhua/BoardsTest.java \
+    test/dev/douhua/FixedFKeysTest.java \
     src/dev/douhua/EdgeMargin.java test/dev/douhua/EdgeMarginTest.java \
     src/dev/douhua/HardKeys.java src/dev/douhua/AirPointer.java \
     test/dev/douhua/AirMouseTest.java \
@@ -99,6 +109,7 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyboardSnapTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.TouchRouterTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyHoldsTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.FKeysTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.TrackPointTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyFingersTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.KeyRowsTest
@@ -106,7 +117,9 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/java" -cp "$OUT" dev.douhua.FixedLegendsTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.FixedLayoutTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.FixedCompactTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.FixedFKeysTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.BoardsTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.FKeyChoicesTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.EdgeMarginTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.AirMouseTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.adb.AdbCryptoTest

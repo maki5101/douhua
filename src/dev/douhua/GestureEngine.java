@@ -162,6 +162,11 @@ public final class GestureEngine {
          * 设置里 500–3000、步长 100，默认 TrackPoint.TOP_SPEED_DEFAULT（= MOVE_MAX 1200，= 以前）；协议 23。
          */
         public float stickMaxSpeed = TrackPoint.TOP_SPEED_DEFAULT;
+        /**
+         * 实体键盘 F 行平时按出第二功能（"F 行翻转"，协议 24）。不是手势参数，手势引擎不看：跟着 CMD_CONFIG 走，TouchRouter.setConfig 交给 KeyHolds
+         * （Fn+Esc 翻的也是它）。App 按当前模式的设置填（Boards.frowFlip，Windows 模式默认假、Mac 模式默认真）。
+         */
+        public boolean frowFlip = false;
     }
 
     private static final int MAX_POINTERS = 16;

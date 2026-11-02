@@ -2,6 +2,7 @@ package dev.douhua;
 
 import java.text.Collator;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +36,9 @@ import java.util.function.Function;
  * 某布局在某种模式下没有键帽数据（拉美没有 Mac 的）时灰掉。灰掉只管设置页能不能选；存着的组合要是正好没数据（以后清单变了之类），
  * 键盘页照 1B 的规则退回豆花布局（FixedData.ladder 是空的），存的值不动。
  *
+ * 协议 24（2026-11-02）：F1–F12 的第二功能、F 行翻转，Windows / Mac 两种模式各一套：
+ *   kbx_fkey_<win|mac>_<1..12>  第 n 个 F 键配的功能 id（FKeyFunctions；没存过照这种模式的默认预设）
+ *   kbx_frow_flip_<win|mac>     F 行平时按出第二功能（1 / 0；没存过 Windows 0、Mac 1）
  * 第 3 批（2026-11-01）：苹果紧凑只有 Mac 模式、只有 ANSI / ISO（FixedLayout.available）。同"没数据的模式"那条：设置页把不可用的那一边灰掉
  * （{@link #sizeAvailable}：选 Windows 模式 / ABNT2 形状时尺寸里的苹果紧凑、选着苹果紧凑时模式里的 Windows、形状里的 ABNT2、语言列表里只有 ABNT2 的布局），
  * 存着的组合正好不可用时键盘页退回豆花布局（FixedData.ladder 是空的），⋯ 菜单、设置页写原因，存的值不动。
@@ -66,27 +70,37 @@ final class Boards {
     /** 没选过布局（或者选的布局清单里没有了）时用它。 */
     static final String DEFAULT_LANG = "us";
 
-    /** 实体键盘是哪一块：布局 id、形状、尺寸、模式（都已经按清单核过，能直接拿去拼）。 */
+    /**
+     * 实体键盘是哪一块：布局 id、形状、尺寸、模式（都已经按清单核过，能直接拿去拼）；协议 24 起另带这种模式下 F1–F12 配的第二功能
+     * （{@link #fkeys(String)}，下标 0 = F1，拼进 F 键报的 id：FixedLayout.forEntry），设置页改了第二功能 MainActivity.applyBoards 比得出来、重拼。
+     * toString 只写前四样（"us/ansi/tkl/win"）。
+     */
     static final class Spec {
         final String lang, shape, size, mode;
+        final String[] fkeys;
 
         Spec(String lang, String shape, String size, String mode) {
+            this(lang, shape, size, mode, null);
+        }
+
+        Spec(String lang, String shape, String size, String mode, String[] fkeys) {
             this.lang = lang;
             this.shape = shape;
             this.size = size;
             this.mode = mode;
+            this.fkeys = fkeys == null ? null : fkeys.clone();
         }
 
         @Override
         public boolean equals(Object o) {
             if (!(o instanceof Spec)) return false;
             Spec s = (Spec) o;
-            return lang.equals(s.lang) && shape.equals(s.shape) && size.equals(s.size) && mode.equals(s.mode);
+            return lang.equals(s.lang) && shape.equals(s.shape) && size.equals(s.size) && mode.equals(s.mode) && Arrays.equals(fkeys, s.fkeys);
         }
 
         @Override
         public int hashCode() {
-            return (lang + "/" + shape + "/" + size + "/" + mode).hashCode();
+            return (lang + "/" + shape + "/" + size + "/" + mode).hashCode() * 31 + Arrays.hashCode(fkeys);
         }
 
         @Override
@@ -160,7 +174,69 @@ final class Boards {
     }
 
     Spec spec() {
-        return new Spec(lang(), shape(), size(), mode());
+        String mode = mode();
+        return new Spec(lang(), shape(), size(), mode, fkeys(mode));
+    }
+
+    // ═══════════ F1–F12 的第二功能、F 行翻转（协议 24，Windows / Mac 两种模式各一套） ═══════════
+
+    /** F 行翻转（"平时按出第二功能"）的键名：kbx_frow_flip_<win|mac>；存 1 / 0。 */
+    static String frowFlipKey(String mode) {
+        return "kbx_frow_flip_" + FixedLayout.validMode(mode);
+    }
+
+    /** 第 n 个 F 键（1–12）的第二功能的键名：kbx_fkey_<win|mac>_<n>；存功能的 id（FKeyFunctions）。 */
+    static String fkeyKey(String mode, int n) {
+        return "kbx_fkey_" + FixedLayout.validMode(mode) + "_" + n;
+    }
+
+    /**
+     * 这种模式下 F 行平时按出第二功能吗（设置页"平时按出"和键盘上 Fn+Esc 是同一份；Fn+Esc 翻了由 App 照服务 / 本地分流报的 Proto.FROW_FLIP 存回来）。
+     * 没存过照 FKeyFunctions.defaultFrowFlip：Windows 模式平时 F1–F12，Mac 模式平时第二功能（用户 2026-11-02 定的，照 Keychron）。
+     */
+    boolean frowFlip(String mode) {
+        return store.getInt(frowFlipKey(mode), FKeyFunctions.defaultFrowFlip(FixedLayout.validMode(mode)) ? 1 : 0) == 1;
+    }
+
+    /** 现在这种模式的 F 行翻转（CMD_CONFIG 发的就是它）。 */
+    boolean frowFlip() {
+        return frowFlip(mode());
+    }
+
+    void setFrowFlip(String mode, boolean flip) {
+        store.putInt(frowFlipKey(mode), flip ? 1 : 0);
+    }
+
+    /** 第 n 个 F 键（1–12）在这种模式下配的功能 id；没存过照这种模式的默认预设（Windows ThinkPad 那套、Mac 苹果那套）。 */
+    String fkey(String mode, int n) {
+        String m = FixedLayout.validMode(mode);
+        String def = FKeyFunctions.preset(FKeyFunctions.defaultPreset(m))[n - 1];
+        return store.getString(fkeyKey(m, n), def);
+    }
+
+    /** 这种模式下 12 个 F 键配的功能 id（下标 0 = F1）。 */
+    String[] fkeys(String mode) {
+        String[] ids = new String[12];
+        for (int n = 1; n <= 12; n++) ids[n - 1] = fkey(mode, n);
+        return ids;
+    }
+
+    void setFkey(String mode, int n, String id) {
+        store.putString(fkeyKey(mode, n), id);
+    }
+
+    /** 整套换成一个预设（FKeyFunctions.PRESET_*）：12 个都写。 */
+    void applyFkeyPreset(String mode, String preset) {
+        String[] ids = FKeyFunctions.preset(preset);
+        for (int n = 1; n <= 12; n++) setFkey(mode, n, ids[n - 1]);
+    }
+
+    /**
+     * 这种模式现在的 12 个对得上哪个预设（FKeyFunctions.PRESET_*；逐个改过、哪个都对不上是 PRESET_CUSTOM）：设置页"预设"那一行照它写。
+     * 不另存（方案写的 kbx_fkey_preset_<模式> 没要）：按 12 个现算，存两份会对不上。
+     */
+    String fkeyPreset(String mode) {
+        return FKeyFunctions.presetOf(fkeys(mode));
     }
 
     // ═══════════ 指点、大小位置（实体键盘自己的一份） ═══════════

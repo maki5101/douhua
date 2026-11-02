@@ -176,6 +176,8 @@ public class KeyReplay {
     static final class Quiet implements TouchRouter.Output {
         @Override public void mouse(int buttons, int dx, int dy, int wheel, int pan) { }
         @Override public void keyboard(byte[] report) { }
+        @Override public void consumer(int usage) { }
+        @Override public void system(int usage) { }
         @Override public void haptic(int kind) { }
         @Override public void gesture(int fingers, int kind) { }
         @Override public void button(int id, int action) { }

@@ -78,6 +78,7 @@ public final class ServerPartsTest {
         protocol21();
         protocol22();
         protocol23();
+        protocol24();
         staleKeyTimerDoesNothing();
 
         System.err.println("服务端部件：" + checks + " 项检查，" + failures + " 项失败");
@@ -587,7 +588,52 @@ public final class ServerPartsTest {
      * 所以单独升一号；字段往返、长度在 HidTest.configCodec。
      */
     static void protocol23() {
-        check(Proto.VERSION == 23, "协议 23");
+        check(Proto.VERSION >= 23, "协议 23 起");
+    }
+
+    /**
+     * 协议 24（实体键盘 F1–F12 的第二功能、F 行翻转，2026-11-02）：版本号；MSG_CONSUMER = 0x8C、不和别的消息撞；MSG_MODIFIERS 第四个字节的 FROW_FLIP 和 Fn 的四位不重叠；
+     * F 行键的 id（类型 1–4 × 底层 8 位 × 第二功能 16 位抽样）都认得出、取得回来、各不相同，和普通键、合并键、Fn 键自己、带 Fn 层的键都不重叠，
+     * KEY_ID_BASE + id 是正数（最大的类型 4 到 0x44FFFFFF）；Esc 的翻转开关 id。
+     */
+    static void protocol24() {
+        check(Proto.VERSION == 24, "协议 24");
+        check(Proto.MSG_CONSUMER == 0x8C && Proto.PAGE_CONSUMER == 0x0C && Proto.PAGE_GENERIC_DESKTOP == 0x01, "MSG_CONSUMER = 0x8C，页 0x0C / 0x01");
+        int[] msgs = {Proto.MSG_HELLO, Proto.MSG_HAPTIC, Proto.MSG_GESTURE, Proto.MSG_BUTTON, Proto.MSG_GRAB, Proto.MSG_MODIFIERS,
+                Proto.MSG_MOUSE, Proto.MSG_KEYBOARD, Proto.MSG_HARD_KEY, Proto.MSG_HARD_GRAB, Proto.MSG_GAMEPAD, Proto.MSG_CAPS, Proto.MSG_CONSUMER};
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        boolean unique = true;
+        for (int v : msgs) unique &= seen.add(v) && v >= Proto.MSG_HELLO && v <= 0xFF;
+        check(unique, "消息编号不重复、都在 0x80–0xFF");
+        check(Proto.FROW_FLIP == 16 && (Proto.FROW_FLIP & (Proto.FN_LATCHED | Proto.FN_HELD | Proto.FN_ARMED | Proto.FN_LOCKED)) == 0,
+                "FROW_FLIP = 16，和 Fn 的四位不重叠、一个字节放得下");
+        check(Proto.FROW_KEY == 1 && Proto.FROW_CONSUMER == 2 && Proto.FROW_SYSTEM == 3 && Proto.FROW_FN_LOCK == 4, "F 行键的类型 1–4");
+        boolean ok = true;
+        java.util.Set<Integer> ids = new java.util.HashSet<>();
+        int[] seconds = {1, 0x29D, 0x2A2, 0x3FF, 0xB7, 0x0A16, 0x0A72, 0xFFFF};
+        for (int type = Proto.FROW_KEY; type <= Proto.FROW_FN_LOCK; type++) {
+            for (int base = 0; base <= 0xFF; base++) {
+                for (int sec : seconds) {
+                    int id = Proto.frowKey(type, base, sec);
+                    ok &= Proto.isFrowKey(id) && Proto.frowType(id) == type && Proto.frowBase(id) == base && Proto.frowSecond(id) == sec
+                            && !Proto.isFnLayerKey(id) && !Proto.isFnKey(id) && !Proto.isDualKey(id) && id > 0xFFFF
+                            && Proto.KEY_ID_BASE + id >= Proto.KEY_ID_BASE && id >= 0x41000000 && id <= 0x44FFFFFF && ids.add(id)
+                            && !Proto.isGamepadId(id);
+                }
+            }
+        }
+        check(ok, "F 行键的 id：认得出、类型 / 底层 / 第二功能取得回来、各不相同，不是带 Fn 层的键 / Fn 键 / 合并键，KEY_ID_BASE + id 是正数");
+        boolean others = true;
+        for (int k = 0; k <= 0xFFFF; k++) others &= !Proto.isFrowKey(k);
+        for (int hold = 1; hold <= 0x3FFF; hold += 7) others &= !Proto.isFrowKey(Proto.dualKey(0x36, hold));
+        for (int code = 1; code <= 0xFF; code++) others &= !Proto.isFrowKey(Proto.fnLayerKey(0x52, code));
+        others &= !Proto.isFrowKey(Proto.FN_KEY) && !Proto.isFrowKey(Proto.FN_GLOBE_KEY);
+        others &= !Proto.isFrowKey(Proto.FN_FLAG | 5 << 24) && !Proto.isFrowKey(Proto.FN_FLAG | 0x3F << 24) && !Proto.isFrowKey(0x80000000 | Proto.FN_FLAG | 1 << 24);
+        check(others, "普通键、合并键、带 Fn 层的键、Fn 键、类型 0 / 5 以上 / 第 31 位：都不是 F 行键");
+        check(Proto.FN_LOCK_KEY == Proto.frowKey(Proto.FROW_FN_LOCK, 0x29, 0) && Proto.frowBase(Proto.FN_LOCK_KEY) == 0x29,
+                "Esc 的 F 行翻转开关：类型 4、底层 Esc");
+        check(Proto.frowKey(Proto.FROW_FN_LOCK, 0xFF, 0xFFFF) + Proto.KEY_ID_BASE > 0, "最大的 F 行键 id 加 KEY_ID_BASE 不溢出");
+        // KeyHolds 的内部码（多媒体 / 系统键 / 翻转）是负数、撞不上区域 id：KeyHolds 不对外，在 FKeysTest.ids 里查
     }
 
     /**
@@ -1581,6 +1627,12 @@ public final class ServerPartsTest {
             public void keyboard(byte[] report) {}
 
             @Override
+            public void consumer(int usage) {}
+
+            @Override
+            public void system(int usage) {}
+
+            @Override
             public void haptic(int kind) {
                 log.add("h" + kind);
             }
@@ -1674,6 +1726,12 @@ public final class ServerPartsTest {
             public void keyboard(byte[] report) {
                 log.add("k" + report[0]);
             }
+
+            @Override
+            public void consumer(int usage) {}
+
+            @Override
+            public void system(int usage) {}
 
             @Override
             public void haptic(int kind) {

@@ -43,6 +43,8 @@ public final class ConfigCodec {
         // 协议 23 起：小红点推光标的加速、最快速度
         out.writeFloat(c.stickAccel);
         out.writeFloat(c.stickMaxSpeed);
+        // 协议 24 起：实体键盘 F 行平时按出第二功能（F 行翻转）
+        out.writeByte(c.frowFlip ? 1 : 0);
     }
 
     /** 读进 c（覆盖 c 里的每一项），返回 density。 */
@@ -73,6 +75,7 @@ public final class ConfigCodec {
         c.leverSpeed = in.readFloat();
         c.stickAccel = in.readFloat();
         c.stickMaxSpeed = in.readFloat();
+        c.frowFlip = in.readUnsignedByte() == 1;
         return density;
     }
 }

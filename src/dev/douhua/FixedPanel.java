@@ -16,6 +16,8 @@ import java.util.Locale;
  * 红点嵌在 G、H、B 中间时碰到切口圆的键帽沿圆弧画、字竖着挪开（{@link #setStick}，规则同豆花布局：KeyboardPlan.cuts / labelShift）。
  * Fn（第 3 批，协议 21）：报的区域、面板自己收触摸发给分流的都是 {@link #keyId}（Fn 键、带 Fn 层的键是协议的编码）；Fn 锁住或按着时画什么（字、主次、高亮）
  * 也在这里（{@link #glyphs(int, int, boolean, boolean, String)}、{@link #active(int, int, boolean, int)}），按下发哪个码在 KeyHolds。
+ * F1–F12 的第二功能（协议 24）：报的 id 照 FixedLayout.keyId（配了的 F 键是 Proto.frowKey、Esc 是 F 行翻转开关）；键帽两面都印 / 只画会出的那一面、
+ * 哪面亮（Fn 起作用 ^ F 行翻转）在 {@link #glyphsAt}（fnState 带 Proto.FROW_FLIP 那一位），图标和短字在 FKeyFaces。
  */
 final class FixedPanel {
     /** 键的一段（面板像素，已经扣掉四周的缝）：key = 当前显示的键（{@link #keys}）的下标。 */
@@ -32,28 +34,188 @@ final class FixedPanel {
         }
     }
 
-    /** 键帽上的一个字：放在哪（正中 / 上半 / 下半 / 角上的小字）、是不是死键、要不要压暗（锁着修饰键时不会出的那几个）。 */
+    /**
+     * 键帽上的一个字：放在哪（正中 / 上半 / 下半 / 角上的小字；协议 24 起 F 键两面都印时的上面那面 UPPER、下面的小字 LOWER）、是不是死键、
+     * 要不要压暗（锁着修饰键时不会出的那几个；F 键这时不会出的那一面）。icon ≠ 0 时画矢量图标（FKeyFaces.icon，text 只当说明）。
+     */
     static final class Glyph {
-        static final int CENTER = 0, TOP = 1, BOTTOM = 2, CORNER = 3;
+        static final int CENTER = 0, TOP = 1, BOTTOM = 2, CORNER = 3, UPPER = 4, LOWER = 5;
         final String text;
         final int slot;
         final boolean dead, dim;
+        final int icon;
 
         Glyph(String text, int slot, boolean dead, boolean dim) {
+            this(text, slot, dead, dim, 0);
+        }
+
+        Glyph(String text, int slot, boolean dead, boolean dim, int icon) {
             this.text = text;
             this.slot = slot;
             this.dead = dead;
             this.dim = dim;
+            this.icon = icon;
         }
 
         @Override
         public String toString() {
-            return text + "@" + slot + (dead ? "（死键）" : "") + (dim ? "（暗）" : "");
+            return (icon != 0 ? "图标" + icon + "(" + text + ")" : text) + "@" + slot + (dead ? "（死键）" : "") + (dim ? "（暗）" : "");
         }
     }
 
     /** 角上小字放哪个角。 */
     static final int CORNER_BR = 0, CORNER_TR = 1, CORNER_BL = 2, CORNER_TL = 3;
+
+    // ═══════════ 键帽上的字怎么放 ═══════════
+
+    /** 量一行字多宽（像素）：字号 size 时 s 的宽。FixedKeyboardView 拿 Paint 量，离线测试拿估的字宽。 */
+    interface TextWidth {
+        float width(String s, float size);
+    }
+
+    /** 放进键帽以后的字：一行或几行（组合键折行；放不下末尾省略成"…"）、多大字号。 */
+    static final class FittedText {
+        final String[] lines;
+        final float size;
+
+        FittedText(String[] lines, float size) {
+            this.lines = lines;
+            this.size = size;
+        }
+
+        /** 几行用 "\n" 接起来（测试、日志用）。 */
+        String text() {
+            return String.join("\n", lines);
+        }
+    }
+
+    static final String ELLIPSIS = "…";
+    /** 量"一个 em 多宽"时用的字号（Paint 在 1 号字下量不准，拿 100 号量了再除）。 */
+    private static final float REF_SIZE = 100;
+    /** 两面都印时上半那面折行能占键帽高的几成（见 {@link #textRooms}）。 */
+    static final float UPPER_VROOM = 0.56f;
+    /** 一个位置最多折几行。 */
+    private static final int MAX_LINES = 3;
+
+    /**
+     * 键帽宽 w、高 h 时这个位置（Glyph 的 slot）的字能占多大：{room, hard, vroom}。
+     * room = 好看的宽度（缩字号照它：减去内边距 pad，两层字带角上小字时只占六成、角上小字只占 0.45）；
+     * hard = 真放得下的宽度（字离键帽边至少留 edge；两层字带角上小字时居中在 0.42 处、角上小字从离边 pad + edge 处起，算到对面那条边），room 不比它宽；
+     * vroom = 折行时几行加起来能占多高：正中的字是键帽高减内边距，两面都印时上半那面是 0.56h（几行的中心在 0.38h，上沿到 0.10h、下沿到 0.66h，
+     * 碰不到下面那行小字 F1——它的中心在 0.80h、字号不过 0.22h，字框半高约 0.6 个字号，上沿不高于 0.668h），别的位置 0（只许一行）。
+     * FixedKeyboardView.drawGlyphs 照它放字（位置的算法在那里，这几个数和它一一对应）。
+     */
+    static float[] textRooms(int slot, float w, float h, float pad, float edge, boolean corner) {
+        float room, hard, vroom = 0;
+        switch (slot) {
+            case Glyph.TOP:
+            case Glyph.BOTTOM:
+                room = (corner ? w * 0.6f : w) - 2 * pad;
+                hard = (corner ? 2 * 0.42f * w : w) - 2 * edge;
+                break;
+            case Glyph.CORNER:
+                room = w * 0.45f;
+                hard = w - pad - 2 * edge;
+                break;
+            case Glyph.LOWER:
+                room = w - 2 * pad;
+                hard = w - 2 * edge;
+                break;
+            case Glyph.UPPER:
+                room = w - 2 * pad;
+                hard = w - 2 * edge;
+                vroom = UPPER_VROOM * h;
+                break;
+            default:   // CENTER：在键帽正中
+                room = w - 2 * pad;
+                hard = w - 2 * edge;
+                vroom = h - 2 * pad;
+                break;
+        }
+        hard = Math.max(0, hard);
+        return new float[]{Math.min(room, hard), hard, Math.max(0, vroom)};
+    }
+
+    /**
+     * 字放进键帽（rooms = {@link #textRooms} 的 {room, hard, vroom}；lineFactor = 行高 ÷ 字号）：
+     * ① 字号从 size 起，比 room 宽就按比例缩，最小 min（起始字号本来就比 min 小的不放大）；这样一行放得进 hard 就是一行（以前就是这么画的，键帽上原有的字都走这条，不变）。
+     * ② 缩到 min 一行还比 hard 宽：组合键在 "+" 后面（Mac 的写法在 ⌃⌥⇧⌘ 后面）折成两行，两行不够才三行；同样几行挑字号最大的折法
+     *    （字号照最紧的那个：每行不比 room 宽、几行的行高加起来不超过 vroom；到 min 时每行不比 hard 宽），"Super+Shift+S" → "Super+" / "Shift+S"。
+     *    方案要的是"组合键写组合本身"，能折行就不省略。
+     * ③ 还放不下：一行、min 号，末尾省略成"…"（同 Style.keyButton 的规矩），省到放得下为止，连"…"都放不下就只写"…"。
+     *    只有一个字（一个码点：🌐、单个字母）的不省略（换成"…"什么都看不出；键帽 clip 兜着）。
+     * 以前到 7sp 就不再缩、也不裁，F 行第二功能的长组合键（默认 ThinkPad 预设 F11 的 "Super+Shift+S"）在一格 32dp 时每边伸出键帽 6–12dp、
+     * 压到隔壁的键上（2026-11-02 审查发现）。设置页的列表照样写全名，键帽上折行 / 省略的只是样子。
+     */
+    static FittedText fitText(String s, float size, float min, float[] rooms, float lineFactor, TextWidth m) {
+        float room = rooms[0], hard = rooms[1], vroom = rooms[2];
+        float floor = Math.min(min, size);
+        float one = size, tw = m.width(s, size);
+        if (tw > room && room > 0 && tw > 0) one = Math.max(floor, size * room / tw);
+        if (m.width(s, one) <= hard || s.codePointCount(0, s.length()) <= 1) return new FittedText(new String[]{s}, one);
+        // ② 折行：行数少的优先（两行放得下就不折三行），同样几行挑字号最大的折法
+        List<String> tokens = breakTokens(s);
+        for (int k = 2; k <= Math.min(MAX_LINES, tokens.size()); k++) {
+            FittedText best = null;
+            for (String[] lines : splits(tokens, k)) {
+                float em = 0;
+                for (String l : lines) em = Math.max(em, m.width(l, REF_SIZE) / REF_SIZE);
+                if (em <= 0) continue;
+                float sz = Math.min(size, Math.min(room / em, vroom / (k * lineFactor)));   // 每行放得进 room、几行叠起来放得进 vroom
+                if (sz < floor) {
+                    sz = floor;
+                    if (em * sz > hard || k * lineFactor * sz > vroom) continue;
+                }
+                if (best == null || sz > best.size) best = new FittedText(lines, sz);
+            }
+            if (best != null) return best;
+        }
+        // ③ 末尾省略
+        for (int n = s.codePointCount(0, s.length()) - 1; n >= 1; n--) {
+            String c = s.substring(0, s.offsetByCodePoints(0, n)).trim() + ELLIPSIS;
+            if (m.width(c, one) <= hard) return new FittedText(new String[]{c}, one);
+        }
+        return new FittedText(new String[]{ELLIPSIS}, one);
+    }
+
+    /** 组合键能在哪儿折行：每个 "+" 后面、每个 ⌃⌥⇧⌘ 后面（最后一段不空）。没有这些的字是一整段（不折）。 */
+    static List<String> breakTokens(String s) {
+        List<String> out = new ArrayList<>();
+        int from = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if ((c == '+' || c == '⌃' || c == '⌥' || c == '⇧' || c == '⌘') && i + 1 < s.length()) {
+                out.add(s.substring(from, i + 1));
+                from = i + 1;
+            }
+        }
+        out.add(s.substring(from));
+        return out;
+    }
+
+    /** 把几段按先后分成 k 行（每行至少一段）的所有分法。 */
+    private static List<String[]> splits(List<String> tokens, int k) {
+        List<String[]> out = new ArrayList<>();
+        splitInto(tokens, 0, k, new String[k], 0, out);
+        return out;
+    }
+
+    private static void splitInto(List<String> tokens, int from, int k, String[] acc, int line, List<String[]> out) {
+        int left = k - line;
+        if (left == 1) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = from; i < tokens.size(); i++) sb.append(tokens.get(i));
+            acc[line] = sb.toString();
+            out.add(acc.clone());
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int end = from; end <= tokens.size() - left; end++) {
+            sb.append(tokens.get(end));
+            acc[line] = sb.toString();
+            splitInto(tokens, end + 1, k, acc, line + 1, out);
+        }
+    }
 
     private FixedLayout layout;
     private FixedLegends.Table legends;
@@ -108,8 +270,8 @@ final class FixedPanel {
     }
 
     /**
-     * ⋯ 放在槽里（小触控板上没摆出 ⋯ 时；TKL / 全尺寸的槽在 Esc 和 F1 之间，笔记本的在左下角 Ctrl 右边、左 Ctrl 跟着变窄）。
-     * 键会换（多一个）：调用方先松开按着的。
+     * ⋯ 放在槽里（小触控板上没摆出 ⋯ 时；TKL / 全尺寸的槽在 Esc 和 F1 之间，笔记本的在 F 行 Ins 那格（协议 24 起：Windows 模式顶替 Ins）、65% 的在左下角 Ctrl 右边）。
+     * 键会换（多一个，或者笔记本 Windows 模式 Ins 换成 ⋯）：调用方先松开按着的。
      */
     void setMenuKey(boolean on) {
         if (on == menuKey) return;
@@ -483,6 +645,11 @@ final class FixedPanel {
      * 死键（dead）用强调色。画不出来的字（苹果标这种私用区字）不画。
      */
     List<Glyph> glyphs(int i, int mods, boolean caps, String spaceName) {
+        return glyphsAt(i, mods, caps, 0, spaceName);
+    }
+
+    /** 不看 Fn 层、F 行（第 i 个键自己的字），规则见 {@link #glyphs(int, int, boolean, String)}。 */
+    private List<Glyph> baseGlyphs(int i, int mods, boolean caps, String spaceName) {
         List<Glyph> out = new ArrayList<>();
         FixedLayout.Key k = keys.get(i);
         if (k.id == FixedLayout.FN_ID && layout != null && layout.mac()) {
@@ -504,14 +671,83 @@ final class FixedPanel {
 
     /**
      * 同 {@link #glyphs(int, int, boolean, String)}，fn = Fn 层这时显示着（Fn 锁住或按着，MSG_MODIFIERS 第四个字节的 FN_LATCHED | FN_HELD）：
-     * 带 Fn 层的键帽整片换成 Fn 层的字（{@link #fnGlyphs}），别的键照旧。FixedKeyboardView 只调这一个。
+     * 带 Fn 层的键帽整片换成 Fn 层的字（{@link #fnGlyphs}），别的键照旧。F 行不翻转（同 {@link #glyphsAt} 的 fnState = FN_HELD / 0）。
      */
     List<Glyph> glyphs(int i, int mods, boolean caps, boolean fn, String spaceName) {
-        if (fn) {
-            List<Glyph> g = fnGlyphs(i, mods, caps);
+        return glyphsAt(i, mods, caps, fn ? Proto.FN_HELD : 0, spaceName);
+    }
+
+    /**
+     * 第 i 个键这时键帽上画什么（FixedKeyboardView 只调这一个）：fnState = MSG_MODIFIERS 第四个字节（Proto.FN_LATCHED / FN_HELD / FN_LOCKED / FROW_FLIP 位，
+     * 按位看，别拿 ≠ 0 当"Fn 起作用"）。
+     * - 配了第二功能的 F 键（协议 24，{@link #frowGlyphs}）：这时会出的那一面 = (单次锁 | 按着 | 永久锁) ^ F 行翻转。两面都印的尺寸上面是第二功能
+     *   （图标或短字，FKeyFaces）、下面小字 F1，会出的那面照常、不会出的压暗；放不下两层的（FixedLayout.frowTwoFaces）只画会出的那一面。
+     * - Esc 是 F 行翻转开关时（FixedLayout.escFnLock）：正中 Esc、角上小字 FnLock，Fn 起作用时 FnLock 亮、Esc 压暗，不起作用时反过来；放不下两层的只画会出的那个。
+     * - Fn 层显示着时带 Fn 层的键帽整片换成 Fn 层的字（{@link #fnGlyphs}）；别的照 {@link #glyphs(int, int, boolean, String)}。
+     */
+    List<Glyph> glyphsAt(int i, int mods, boolean caps, int fnState, String spaceName) {
+        List<Glyph> g = frowGlyphs(i, fnState);
+        if (g != null) return g;
+        if (fnShown(fnState)) {
+            g = fnGlyphs(i, mods, caps);
             if (g != null) return g;
         }
-        return glyphs(i, mods, caps, spaceName);
+        return baseGlyphs(i, mods, caps, spaceName);
+    }
+
+    /** F 行配了第二功能的 F 键这时出第二功能吗（Fn 起作用 ^ F 行翻转，同 KeyHolds 按下那一刻定码的规则）。 */
+    static boolean secondShown(int fnState) {
+        return fnShown(fnState) ^ ((fnState & Proto.FROW_FLIP) != 0);
+    }
+
+    /** 第 i 个键是配了第二功能的 F 键：第几个（1–12），不是返回 0。 */
+    int frowIndex(int i) {
+        if (layout == null) return 0;
+        int n = layout.frowIndex(keys.get(i));
+        return n > 0 && layout.frow(n) != null ? n : 0;
+    }
+
+    /** 第 i 个键是 F 行翻转开关的 Esc（FixedLayout.escFnLock）。 */
+    boolean escFnLock(int i) {
+        FixedLayout.Key k = keys.get(i);
+        return layout != null && !k.special && k.id == FKeyFunctions.ESC && layout.frowCapable() && layout.escFnLock();
+    }
+
+    /** 键帽上 Esc 的 F 行翻转写的字（ThinkPad 新款的 Esc 上印的就是它；键名不翻译）。 */
+    static final String FN_LOCK_NAME = "FnLock";
+
+    /** F 行的两种键（配了第二功能的 F 键、Esc 的翻转开关）画什么（见 {@link #glyphsAt}）；别的键返回 null。 */
+    List<Glyph> frowGlyphs(int i, int fnState) {
+        if (layout == null) return null;
+        boolean two = layout.frowTwoFaces();
+        List<Glyph> out = new ArrayList<>();
+        int n = frowIndex(i);
+        if (n > 0) {
+            FKeyFaces.Face face = FKeyFaces.face(layout.frow(n), layout.mode);
+            String fName = "F" + n;
+            boolean second = secondShown(fnState);
+            if (two) {
+                out.add(new Glyph(face.text, Glyph.UPPER, false, !second, face.icon));
+                out.add(new Glyph(fName, Glyph.LOWER, false, second));
+            } else if (second) {
+                out.add(new Glyph(face.text, Glyph.CENTER, false, false, face.icon));
+            } else {
+                out.add(new Glyph(fName, Glyph.CENTER, false, false));
+            }
+            return out;
+        }
+        if (escFnLock(i)) {
+            boolean lock = fnShown(fnState);
+            String esc = keys.get(i).name;
+            if (two) {
+                out.add(new Glyph(esc, Glyph.CENTER, false, lock));
+                out.add(new Glyph(FN_LOCK_NAME, Glyph.CORNER, false, !lock));
+            } else {
+                out.add(new Glyph(lock ? FN_LOCK_NAME : esc, Glyph.CENTER, false, false));
+            }
+            return out;
+        }
+        return null;
     }
 
     /** 第 i 个键的 Fn 层那一项（FixedLayout.fn）；没有 Fn 层（特殊键、Fn 自己、没列的键）返回 null。 */
@@ -520,7 +756,10 @@ final class FixedPanel {
         return k.special || layout == null ? null : layout.fn(k.id);
     }
 
-    /** 这时第 i 个键帽上写的是名字（功能键那种，字号按名字取）而不是字：Fn 层显示着、这个键有 Fn 层时看 Fn 层那一项。 */
+    /**
+     * 这时第 i 个键帽上写的是名字（功能键那种，字号按名字取）而不是字：Fn 层显示着、这个键有 Fn 层时看 Fn 层那一项。
+     * F 行配了第二功能的 F 键、Esc 的翻转开关一律是名字（第二功能的短字、组合键、F1、FnLock）。
+     */
     boolean named(int i, boolean fn) {
         FixedLayout.FnKey f = fn ? fnKey(i) : null;
         return f != null ? !f.charKey() : !keys.get(i).charKey();

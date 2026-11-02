@@ -35,6 +35,10 @@ import java.util.Set;
  * 连续滚动：描述符跟着设置里的"连续滚动"开关（开着才带滚轮的分辨率倍率，Hid.MOUSE_DESC_HIRES），开关一变就注销、重新注册
  * （{@link #descriptorChanged}），对方要删掉这台手机重新配对才认新描述符。主机来设倍率就照办（它可能缓存着以前配对时的描述符），
  * 每次连上先当 ×1、等主机重新设（规范里复位后默认 ×1；Linux 每次连接都重设）。滚轮量的单位是 1/120 格，按倍率换算（Hid.WheelOut）。
+ *
+ * 系统键（协议 24，实体键盘 F 行第二功能里的睡眠、勿扰、麦克风静音）：描述符最末尾一直带一组系统键（报告 6，Hid.SYSTEM_DESC），不跟着设置变；
+ * 前面报告 1–4 一个字节不动。对方要删掉这台手机重新配对一次才认报告 6（多媒体键在报告 3 里本来就有，不用重配）。
+ * 多媒体键、系统键照真键盘按下发码、松开发 0（{@link #sendConsumer} / {@link #sendSystem}，按着的码由 TouchRouter 的两个槽记）。
  */
 final class BtHid {
     interface Listener {
@@ -257,7 +261,7 @@ final class BtHid {
         boolean hires = prefs.smoothScroll();
         BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
                 "Douhua", "Douhua touchpad & keyboard", "Douhua",
-                BluetoothHidDevice.SUBCLASS1_COMBO, Hid.combinedDescriptor(true, hires));
+                BluetoothHidDevice.SUBCLASS1_COMBO, Hid.combinedDescriptor(true, hires, true));   // 末尾一直带系统键（报告 6，协议 24）
         absRegistered = true;
         regHires = hires;
         registering = true;
@@ -427,6 +431,7 @@ final class BtHid {
             int size = id == Hid.REPORT_KEYBOARD ? Hid.KEYBOARD_REPORT_SIZE
                     : id == Hid.REPORT_MOUSE ? Hid.MOUSE_REPORT_SIZE
                     : id == Hid.REPORT_CONSUMER ? Hid.CONSUMER_REPORT_SIZE
+                    : id == Hid.REPORT_SYSTEM && absRegistered ? Hid.SYSTEM_REPORT_SIZE   // 注册了才有（描述符一直带，同绝对坐标）
                     : id == Hid.REPORT_ABS && absRegistered ? Hid.ABS_REPORT_SIZE : 0;
             try {
                 if (size == 0) {
@@ -635,11 +640,23 @@ final class BtHid {
         if (isConnected()) send(Hid.REPORT_KEYBOARD, report);
     }
 
-    /** 按一下媒体键（Consumer 用法码）：按下、松开。 */
+    /** 按一下媒体键（Consumer 用法码）：按下、松开（按钮条 / 角上按钮的媒体动作，协议 24 起和 F 行的第二功能共用报告 3）。 */
     void pressConsumer(int usage) {
-        if (!isConnected()) return;
-        send(Hid.REPORT_CONSUMER, new byte[]{(byte) usage, (byte) (usage >> 8)});
-        send(Hid.REPORT_CONSUMER, new byte[]{0, 0});
+        sendConsumer(usage);
+        sendConsumer(0);
+    }
+
+    /**
+     * 多媒体页现在按着的码（报告 3；0 = 松开）。F 行的第二功能按下发码、松开发 0（TouchRouter 的槽一次报一个码）。
+     * 和按钮动作的"按一下"共用这一个报告：按着 F 行的音量时点一下角上的"播放"，音量会被提前松开（不会卡键，只是提前松）。
+     */
+    void sendConsumer(int usage) {
+        if (isConnected()) send(Hid.REPORT_CONSUMER, Hid.usageReport(usage));
+    }
+
+    /** 系统键那一组现在按着的码（报告 6，协议 24；0 = 松开）。对方没重新配对过就不认报告 6，丢掉不管。 */
+    void sendSystem(int usage) {
+        if (isConnected()) send(Hid.REPORT_SYSTEM, Hid.usageReport(usage));
     }
 
     private void send(int id, byte[] report) {

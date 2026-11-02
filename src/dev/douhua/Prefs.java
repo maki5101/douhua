@@ -193,6 +193,7 @@ final class Prefs {
         c.leverSpeed = leverSpeedPct() / 100f;
         c.stickAccel = TrackPoint.accelFraction(stickAccelPct());
         c.stickMaxSpeed = stickMaxSpeed();
+        c.frowFlip = new Boards(store(), null).frowFlip();   // 协议 24：实体键盘现在这种模式的 F 行翻转（只看模式，用不着布局清单）
         return c;
     }
 

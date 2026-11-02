@@ -593,6 +593,265 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             });
             list.addView(open);
         }
+        fkeySection(spec);
+    }
+
+    // ═══════════ F1–F12 的第二功能（协议 24） ═══════════
+
+    /**
+     * 实体键盘那一节下面的"F1–F12 的第二功能"（2026-11-02，方案 design-fkeys §2.1，用户照推荐定的）。显示现在这种模式（Windows / Mac）的那一套
+     * （两种模式各存一套，Boards.fkey* / frowFlip，键名都是 kbx_ 开头，不碰豆花布局的 kb_）：
+     * - 预设：ThinkPad 风格 / 苹果风格 / 不用（只出 F1–F12），逐个改过、哪个都对不上时多一项灰着的"自定义"（Boards.fkeyPreset 按 12 个现算）；
+     * - 平时按出：F1–F12 / 第二功能——和键盘上的 Fn+Esc 是同一份状态（Boards.frowFlip，Fn+Esc 翻了 App 照分流报的存回来）；
+     * - F1–F12 各一行，点开是分组的列表（FKeyChoices：真键盘能发的功能、动作清单里的键盘快捷键、自定义组合键）。
+     * 选"不用"时后两样藏起来（FKeyChoices.keysShown）。65% 没有 F 行那句一直写；蓝牙模式下写系统键要重新配对一次（同"连续滚动"那条）。
+     * 改了回到键盘页才生效：MainActivity.applyPrefs 把翻转发给服务和本地分流，applyBoards 比得出 Spec 里的 12 个功能变了、F 键的 id 重拼。
+     */
+    private void fkeySection(Boards.Spec spec) {
+        String mode = spec.mode;
+        boolean mac = FixedLayout.MAC.equals(mode);
+        header(R.string.sec_kbd_fkeys);
+        list.addView(text(getString(R.string.kbd_fkeys_mode, getString(mac ? R.string.kbd_mode_mac : R.string.kbd_mode_win)), 13, 0xFF9AA0A6));
+        String preset = boards.fkeyPreset(mode);
+        String[] presets = FKeyChoices.presetChoices(preset);
+        String[] presetNames = new String[presets.length];
+        boolean[] presetOn = new boolean[presets.length];
+        int presetAt = 0;
+        for (int i = 0; i < presets.length; i++) {
+            presetNames[i] = getString(presetName(presets[i]));
+            presetOn[i] = !FKeyFunctions.PRESET_CUSTOM.equals(presets[i]);   // "自定义"只是写现在的样子，点不了
+            if (presets[i].equals(preset)) presetAt = i;
+        }
+        choiceRow(getString(R.string.kbd_fkeys_preset), presetNames, allOn(presetOn) ? null : presetOn, presetAt, i -> {
+            if (!presetOn[i]) return;
+            boards.applyFkeyPreset(mode, presets[i]);
+            rebuildLater();   // 12 行、"平时按出"显示不显示跟着变
+        });
+        if (FKeyChoices.keysShown(preset)) {
+            String[] faces = {getString(R.string.kbd_fkeys_normal_f), getString(R.string.kbd_fkeys_normal_second)};
+            choiceRow(getString(R.string.kbd_fkeys_normal), faces, boards.frowFlip(mode) ? 1 : 0, i -> boards.setFrowFlip(mode, i == 1));
+            list.addView(text(getString(R.string.kbd_fkeys_hint), 13, 0xFF9AA0A6));
+            List<FKeyChoices.Item> items = FKeyChoices.items(mode, fkeyShortcuts(mac));
+            for (int n = 1; n <= 12; n++) fkeyRow(n, mode, items);
+        }
+        list.addView(text(getString(R.string.kbd_fkeys_65), 13, 0xFF9AA0A6));
+        if (prefs.btMode()) {
+            TextView bt = text(getString(R.string.kbd_fkeys_bt), 13, 0xFFE0A33E);
+            bt.setPadding(0, dp(6), 0, 0);
+            list.addView(bt);
+        }
+    }
+
+    /** 预设的名字（FKeyFunctions.PRESET_*）。 */
+    private static int presetName(String preset) {
+        switch (preset) {
+            case FKeyFunctions.PRESET_THINKPAD:
+                return R.string.kbd_fkeys_preset_thinkpad;
+            case FKeyFunctions.PRESET_APPLE:
+                return R.string.kbd_fkeys_preset_apple;
+            case FKeyFunctions.PRESET_NONE:
+                return R.string.kbd_fkeys_preset_none;
+            default:
+                return R.string.kbd_fkeys_preset_custom;
+        }
+    }
+
+    /**
+     * 动作清单里的键盘快捷键（Actions 里发 HID 的那些：复制、Alt+Tab、浏览器后退……），按清单的顺序，码是这种模式下按的那个
+     * （Mac 模式照动作清单连苹果设备时的发法：⌘C 而不是 Ctrl+C）。豆花自己的动作、鼠标、靠注入安卓按键的不是键盘发的，不取。
+     */
+    private static List<FKeyChoices.Shortcut> fkeyShortcuts(boolean mac) {
+        List<FKeyChoices.Shortcut> out = new java.util.ArrayList<>();
+        for (Actions.Action a : Actions.all()) {
+            if (a.kind == Actions.Kind.HID) out.add(new FKeyChoices.Shortcut(a.id, a.hidCode(mac)));
+        }
+        return out;
+    }
+
+    /** "F1"……那一行：现在配的写在右边（同 {@link #choiceRow} 的样子），点一下弹 {@link #fkeyDialog}。 */
+    private void fkeyRow(int n, String mode, List<FKeyChoices.Item> items) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(12), 0, dp(12));
+        String label = "F" + n;
+        TextView name = text(label, 16, 0xFFE8E8E8);
+        TextView value = text(fkeyLabel(FKeyChoices.describe(items, boards.fkey(mode, n), mode), mode), 15, 0xFF8AB4F8);
+        value.setGravity(Gravity.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.addView(value, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 3f));
+        row.setOnClickListener(v -> fkeyDialog(label, n, mode, items));
+        list.addView(row);
+    }
+
+    /**
+     * 一个 F 键的选择列表（八十来项，分组）：分组标题灰字、点不了；现在配的那项蓝字加粗，打开时滚到它附近（同 {@link #langDialog} 的样子）。
+     * 选了就存（Boards.setFkey）、整页重建（"预设"那一行可能变成自定义 / 认回某个预设）；"自定义组合键…"另弹 {@link #fkeyCombo}。
+     */
+    private void fkeyDialog(String label, int n, String mode, List<FKeyChoices.Item> items) {
+        int cur = FKeyChoices.selected(items, boards.fkey(mode, n), mode);
+        android.widget.BaseAdapter adapter = new android.widget.BaseAdapter() {
+            @Override
+            public int getCount() {
+                return items.size();
+            }
+
+            @Override
+            public Object getItem(int position) {
+                return items.get(position);
+            }
+
+            @Override
+            public long getItemId(int position) {
+                return position;
+            }
+
+            @Override
+            public boolean areAllItemsEnabled() {
+                return false;
+            }
+
+            @Override
+            public boolean isEnabled(int position) {
+                return items.get(position).selectable();
+            }
+
+            @Override
+            public View getView(int position, View convert, ViewGroup parent) {
+                FKeyChoices.Item it = items.get(position);
+                TextView t;
+                if (!it.selectable()) {
+                    t = text(fkeyLabel(it, mode), 13, 0xFF9AA0A6);
+                    t.setPadding(dp(24), dp(16), dp(24), dp(4));
+                } else {
+                    boolean current = position == cur;
+                    t = text(fkeyLabel(it, mode), 16, current ? 0xFF8AB4F8 : 0xFFE8E8E8);
+                    if (current) t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                    t.setPadding(dp(24), dp(10), dp(24), dp(10));
+                }
+                t.setEnabled(it.selectable());
+                return t;
+            }
+        };
+        AlertDialog d = new AlertDialog.Builder(this)
+                .setTitle(label)
+                .setAdapter(adapter, (dlg, which) -> {
+                    FKeyChoices.Item it = items.get(which);
+                    if (!it.selectable()) return;   // ListView 本来就不派分组标题，保险
+                    if (it.type == FKeyChoices.CUSTOM) {
+                        fkeyCombo(label, n, mode, items);
+                        return;
+                    }
+                    boards.setFkey(mode, n, it.id);
+                    rebuildLater();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .create();
+        d.show();
+        if (cur >= 0) d.getListView().setSelection(Math.max(0, cur - 2));
+    }
+
+    /**
+     * F 键的"自定义组合键…"：同动作清单的那个对话框（勾修饰键、挑一个键），不要按钮名字（键帽上写组合本身）；Mac 模式修饰键写 ⌃ ⇧ ⌥ ⌘。
+     * 现在配的是自定义组合键 / 快捷键时照它预先勾好。拼出来的码正好是某个有名字功能的就存那个名字（FKeyChoices.canonical）。
+     */
+    private void fkeyCombo(String label, int n, String mode, List<FKeyChoices.Item> items) {
+        boolean mac = FixedLayout.MAC.equals(mode);
+        String[] mods = mac ? new String[]{"⌃ Ctrl", "⇧ Shift", "⌥ Opt", "⌘ Cmd"} : new String[]{"Ctrl", "Shift", "Alt", "Super"};
+        FKeyChoices.Item now = FKeyChoices.describe(items, boards.fkey(mode, n), mode);
+        comboDialog(getString(R.string.custom_combo_title, label), mods, false, now.code, (key, text) -> {
+            boards.setFkey(mode, n, FKeyChoices.canonical(items, key));
+            rebuildLater();
+        });
+    }
+
+    /** 列表的一项 / 行上的那一项写什么：分组标题、功能名字（键盘键那一类后面接"· 组合"）、快捷键"名字 · 组合"、自定义组合键写组合本身。 */
+    private String fkeyLabel(FKeyChoices.Item it, String mode) {
+        switch (it.type) {
+            case FKeyChoices.HEADER:
+                return getString(fkeyGroupName(it.group));
+            case FKeyChoices.SHORTCUT: {
+                String name = Actions.get(it.actionId).label(this);
+                String combo = FKeyFaces.comboLabel(it.code, mode);
+                return name.equals(combo) ? name : name + " · " + combo;
+            }
+            case FKeyChoices.CUSTOM:
+                return it.id == null ? getString(R.string.custom_combo) : FKeyFaces.comboLabel(it.code, mode);
+            default: {
+                FKeyFunctions.Function f = it.function;
+                String name = fkeyName(f.id);
+                if (f.kind != FKeyFunctions.KEY || f.group == FKeyFunctions.GROUP_FKEYS) return name;
+                return name + " · " + FKeyFaces.comboLabel(f.code(mode) & 0xFFFF, mode);
+            }
+        }
+    }
+
+    /** 分组标题（FKeyFunctions.GROUP_* 和 FKeyChoices.GROUP_SHORTCUTS）。 */
+    private static int fkeyGroupName(int group) {
+        switch (group) {
+            case FKeyFunctions.GROUP_SOUND:
+                return R.string.fkg_sound;
+            case FKeyFunctions.GROUP_MEDIA:
+                return R.string.fkg_media;
+            case FKeyFunctions.GROUP_SCREEN:
+                return R.string.fkg_screen;
+            case FKeyFunctions.GROUP_DESKTOP:
+                return R.string.fkg_desktop;
+            case FKeyFunctions.GROUP_OPEN:
+                return R.string.fkg_open;
+            case FKeyFunctions.GROUP_INPUT:
+                return R.string.fkg_input;
+            case FKeyFunctions.GROUP_SYSTEM:
+                return R.string.fkg_system;
+            case FKeyFunctions.GROUP_FKEYS:
+                return R.string.fkg_fkeys;
+            case FKeyFunctions.GROUP_COMBO:
+                return R.string.fkg_combo;
+            default:
+                return R.string.fkg_shortcuts;
+        }
+    }
+
+    /**
+     * 有名字功能的名字（九种语言，strings.xml 的 fkf_<id>）；F13–F24 写键名（不翻译），"无"同动作清单的"无"。
+     * FKeyChoicesTest 照源码核对：FKeyFunctions 里每个有名字的功能这里都有一个 R.string.fkf_<id>、九个 strings.xml 都有那一条。
+     */
+    private String fkeyName(String id) {
+        if (id.matches("f\\d+")) return "F" + id.substring(1);
+        switch (id) {
+            case "none": return getString(R.string.act_none);
+            case "mute": return getString(R.string.fkf_mute);
+            case "vol_down": return getString(R.string.fkf_vol_down);
+            case "vol_up": return getString(R.string.fkf_vol_up);
+            case "mic_mute": return getString(R.string.fkf_mic_mute);
+            case "play_pause": return getString(R.string.fkf_play_pause);
+            case "prev_track": return getString(R.string.fkf_prev_track);
+            case "next_track": return getString(R.string.fkf_next_track);
+            case "stop": return getString(R.string.fkf_stop);
+            case "rewind": return getString(R.string.fkf_rewind);
+            case "fast_forward": return getString(R.string.fkf_fast_forward);
+            case "bright_down": return getString(R.string.fkf_bright_down);
+            case "bright_up": return getString(R.string.fkf_bright_up);
+            case "show_windows": return getString(R.string.fkf_show_windows);
+            case "show_apps": return getString(R.string.fkf_show_apps);
+            case "lock": return getString(R.string.fkf_lock);
+            case "search": return getString(R.string.fkf_search);
+            case "calculator": return getString(R.string.fkf_calculator);
+            case "mail": return getString(R.string.fkf_mail);
+            case "browser_home": return getString(R.string.fkf_browser_home);
+            case "my_computer": return getString(R.string.fkf_my_computer);
+            case "settings": return getString(R.string.fkf_settings);
+            case "next_layout": return getString(R.string.fkf_next_layout);
+            case "dictation": return getString(R.string.fkf_dictation);
+            case "emoji": return getString(R.string.fkf_emoji);
+            case "sleep": return getString(R.string.fkf_sleep);
+            case "dnd": return getString(R.string.fkf_dnd);
+            case "prtsc": return getString(R.string.fkf_prtsc);
+            case "display": return getString(R.string.fkf_display);
+            case "notifications": return getString(R.string.fkf_notifications);
+            case "snip": return getString(R.string.fkf_snip);
+            case "copilot": return getString(R.string.fkf_copilot);
+            default: return id;   // 照理不会（FKeyChoicesTest 锁住）；写 id 不闪退
+        }
     }
 
     /** 都能选（没有要灰掉的项时 choiceRow 照旧用系统的单选列表，样子和以前一样）。 */
@@ -1957,32 +2216,53 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
 
     /** 自己勾修饰键、挑一个键；按钮上显示的字不填就用 "Ctrl+Shift+T" 这样的名字。 */
     private void customCombo(String title, Setter save) {
+        comboDialog(getString(R.string.custom_combo_title, title), new String[]{"Ctrl", "Shift", "Alt", "Super"}, true, 0,
+                (key, text) -> save.set(Actions.combo(key, text.isEmpty() ? Combos.describe(key) : text)));
+    }
+
+    /** 组合键对话框点了"确定"：key = 用法码 | 修饰键 << 8（Combos 的位），text = 填的名字（没有名字框时是 ""）。 */
+    interface ComboPicked {
+        void on(int key, String text);
+    }
+
+    /**
+     * 组合键对话框：四个修饰键（Combos 的位顺序 Ctrl / Shift / Alt / Super，modNames 是它们写什么）、挑一个键（Combos.KEY_LABELS），
+     * withName 时多一个"按钮上写什么"的框。initial ≠ 0 时照它预先勾好、选好键（键不在 Combos 的清单里就停在第一个）。
+     */
+    private void comboDialog(String title, String[] modNames, boolean withName, int initial, ComboPicked onOk) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(24), dp(8), dp(24), 0);
         LinearLayout mods = new LinearLayout(this);
-        String[] modNames = {"Ctrl", "Shift", "Alt", "Super"};
         CheckBox[] checks = new CheckBox[4];
+        int initialMods = (initial >> 8) & 0xFF;
         for (int i = 0; i < 4; i++) {
             checks[i] = new CheckBox(this);
             checks[i].setText(modNames[i]);
+            checks[i].setChecked((initialMods & (1 << i)) != 0);   // Combos.CTRL / SHIFT / ALT / WIN = 1 / 2 / 4 / 8
             mods.addView(checks[i], new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         }
         box.addView(mods);
         Spinner keys = new Spinner(this);
         keys.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, Combos.KEY_LABELS));
+        for (int i = 0; i < Combos.KEY_USAGES.length; i++) {
+            if (initial != 0 && Combos.KEY_USAGES[i] == (initial & 0xFF)) keys.setSelection(i);
+        }
         box.addView(keys);
-        EditText name = new EditText(this);
-        name.setHint(R.string.custom_combo_hint);
-        box.addView(name);
+        EditText name = null;
+        if (withName) {
+            name = new EditText(this);
+            name.setHint(R.string.custom_combo_hint);
+            box.addView(name);
+        }
+        EditText nameBox = name;
         new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.custom_combo_title, title))
+                .setTitle(title)
                 .setView(box)
                 .setPositiveButton(R.string.ok, (d, w) -> {
                     int key = Combos.combine(Combos.KEY_USAGES[keys.getSelectedItemPosition()],
                             checks[0].isChecked(), checks[1].isChecked(), checks[2].isChecked(), checks[3].isChecked());
-                    String text = name.getText().toString().trim();
-                    save.set(Actions.combo(key, text.isEmpty() ? Combos.describe(key) : text));
+                    onOk.on(key, nameBox == null ? "" : nameBox.getText().toString().trim());
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();

@@ -425,10 +425,11 @@ public final class FixedCompactTest {
                 check(none, n + " 65% 第 0 行没有范围");
             }
         });
-        // 原来的尺寸：⋯ 槽算进范围后结果和以前一样（放没放 ⋯ 一样）
+        // 原来的尺寸：⋯ 槽算进范围后结果和以前一样（放没放 ⋯ 一样）；协议 24 起 Mac 模式笔记本的 ⋯ 槽是 F 行 Ins 那个空格子，例外（FixedLayoutTest.laptopRanges）
         for (String sz : FixedLayout.SIZES_DESC) for (String sh : SHAPES) for (String m : MODES) {
             FixedLayout l = layout(sh, sz, m);
-            check(sameRanges(l.ranges(false), l.ranges(true)), name(l) + " 放没放 ⋯ 范围一样（1B / 笔记本）");
+            boolean same = sameRanges(l.ranges(false), l.ranges(true));
+            check(same != (l.laptop() && l.mac()), name(l) + (l.laptop() && l.mac() ? " 放没放 ⋯ 范围不一样（⋯ 占着 F 行 Ins 那个空格子）" : " 放没放 ⋯ 范围一样（1B / 笔记本）"));
         }
     }
 
@@ -469,9 +470,13 @@ public final class FixedCompactTest {
         }
         check(asc, "ALL_SIZES 的宽一个不比一个窄");
         check(Arrays.asList(FixedLayout.SIZES_DESC).equals(Arrays.asList(FixedLayout.FULL, FixedLayout.TKL, FixedLayout.LAPTOP)), "SIZES_DESC 照旧是 1B / 笔记本那三种");
-        for (String sz : FixedLayout.SIZES_DESC) {
-            FixedLayout l = layout(FixedLayout.ANSI, sz, FixedLayout.WIN);
-            check(!l.hasFn() && l.fnKeys().isEmpty() && l.find(FixedLayout.FN_ID) == null && l.fn(0x52) == null, name(l) + " 没有 Fn 键、Fn 层（笔记本也不加）");
+        // 协议 24 起 TKL / 全尺寸 / 笔记本也有 Fn 键；Fn 层（fnKeys，不含 F 行的第二功能）只有笔记本 Windows 模式的 Del → Ins
+        for (String sz : FixedLayout.SIZES_DESC) for (String m : MODES) {
+            FixedLayout l = layout(FixedLayout.ANSI, sz, m);
+            boolean insLayer = l.laptop() && !l.mac();
+            check(l.hasFn() && l.find(FixedLayout.FN_ID) != null && l.fn(0x52) == null && l.fnKeys().size() == (insLayer ? 1 : 0)
+                    && (!insLayer || l.fn(0x4C).usage == 0x49 && "Ins".equals(l.fn(0x4C).name)),
+                    name(l) + " 有 Fn 键；Fn 层" + (insLayer ? "只有 Del → Ins" : "是空的（只有 F 行的第二功能）"));
         }
     }
 
@@ -714,10 +719,10 @@ public final class FixedCompactTest {
         }
         check(bad[0] == 0, "Fn 层三条触摸路径：" + tally[0] + " 块面板" + (first[0] == null ? "" : "，比如 " + first[0]));
         check(tally[2] > 0 && tally[3] > 0, "真按过走分流的键、真出过 Fn 层的码");
-        // TKL Mac 模式的 🌐 键（按钮）点一下：和 fn🌐 单点报的是同一个按钮编号的点击
-        FixedLayout tkl = layout(FixedLayout.ANSI, FixedLayout.TKL, FixedLayout.MAC);
+        // 笔记本 Mac 模式 PrtSc 那格的 🌐 键（按钮）点一下：和 fn🌐 单点报的是同一个按钮编号的点击（协议 24 起 TKL / 全尺寸的 🌐 换成了 fn🌐，只剩这一个 🌐）
+        FixedLayout lap = layout(FixedLayout.ANSI, FixedLayout.LAPTOP, FixedLayout.MAC);
         FixedPanel p = new FixedPanel();
-        p.setBoard(tkl, FixedLayoutTest.geoTable(FixedLayout.ANSI, FixedLayout.MAC));
+        p.setBoard(lap, FixedLayoutTest.geoTable(FixedLayout.ANSI, FixedLayout.MAC));
         p.place(933, 352, GAP, 10);
         KeyHoldsTest.H h = new KeyHoldsTest.H(realRegions(p));
         int[] c = center(p, p.index(FixedLayout.GLOBE_ID));
@@ -725,8 +730,8 @@ public final class FixedCompactTest {
         h.t.down(0, c[0], c[1], 1000);
         h.to(1100);
         h.t.up(0, 1100);
-        check(h.r.globes == 1 && FixedLayout.regionType(tkl.find(FixedLayout.GLOBE_ID)) == Proto.REGION_BUTTON,
-                "TKL Mac 模式的 🌐 键（按钮）点一下：报的也是 Proto.GLOBE_BUTTON_ID 的点击");
+        check(h.r.globes == 1 && FixedLayout.regionType(lap.find(FixedLayout.GLOBE_ID)) == Proto.REGION_BUTTON,
+                "笔记本 Mac 模式的 🌐 键（按钮）点一下：报的也是 Proto.GLOBE_BUTTON_ID 的点击");
         System.err.println("  Fn 层三条触摸路径" + LABEL + "：" + tally[0] + " 块面板，逐点 " + tally[1] + " 个、走分流的键 " + tally[2] + " 个（出 Fn 层的码 " + tally[3] + " 次）");
     }
 

@@ -40,7 +40,8 @@ final class Link {
         /**
          * 修饰键的状态（Proto.MSG_MODIFIERS，协议 20 起三样，HID 修饰键位）：latched = 锁住的，held = 有手指按着的，
          * armed = 单独按住到了 0.4 秒、"现在松手就锁"的。界面照 latched | armed 画高亮、照 latched | held 换键帽上的字。
-         * fn = Fn 的状态（协议 21 起，Proto.FN_LATCHED 单次锁 / FN_HELD / FN_ARMED 快永久锁了 / FN_LOCKED 永久锁 位，协议 22 改了意思）。
+         * fn = Fn 的状态（协议 21 起，Proto.FN_LATCHED 单次锁 / FN_HELD / FN_ARMED 快永久锁了 / FN_LOCKED 永久锁 位，协议 22 改了意思；
+         * 协议 24 起还有 Proto.FROW_FLIP：F 行翻转着，App 存进设置）。
          */
         void onModifiers(int latched, int held, int armed, int fn);
 
@@ -52,6 +53,12 @@ final class Link {
 
         /** 同上，键盘报文（8 字节）。 */
         void onRelayKeyboard(byte[] report);
+
+        /**
+         * 同上，多媒体 / 系统键（Proto.MSG_CONSUMER，协议 24）：page = Proto.PAGE_CONSUMER（蓝牙报告 3）/ PAGE_GENERIC_DESKTOP（系统键，报告 6），
+         * usage = 现在按着的码（0 = 松开）。走同一个异步 Handler，和键盘报文的先后照服务发的（组合键 + 多媒体键这类不乱）。
+         */
+        void onRelayConsumer(int page, int usage);
 
         /** 服务截住的实体键（已判断好）：key = Proto.HARD_VOL_UP / VOL_DOWN，event = Proto.HARD_TAP / HOLD_START / HOLD_END。 */
         void onHardKey(int key, int event);
@@ -371,6 +378,12 @@ final class Link {
                             byte[] report = new byte[Hid.KEYBOARD_REPORT_SIZE];
                             in.readFully(report);
                             main.post(() -> listener.onRelayKeyboard(report));
+                            break;
+                        }
+                        case Proto.MSG_CONSUMER: {   // 协议 24
+                            int page = in.readUnsignedByte();
+                            int usage = in.readUnsignedShort();
+                            main.post(() -> listener.onRelayConsumer(page, usage));
                             break;
                         }
                         case Proto.MSG_GRAB: {

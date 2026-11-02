@@ -15,6 +15,8 @@ interface KeyboardFace {
      * 键帽上的字照 latched | held 换（按住 Shift 键帽就大写）、字母再看 caps。按着的样子另外画（showPressed / 自己收的手指）。
      * fn = Fn 的状态（协议 21 起，Proto.FN_LATCHED / FN_HELD / FN_ARMED / FN_LOCKED 位）：只有实体键盘 75% / 65% / 苹果紧凑画（Fn 键单次锁时画高亮、
      * 永久锁 / 快永久锁了画强调色实底，带 Fn 层的键帽在单次锁 | 永久锁 | 按着时整片换成 Fn 层的字，FixedPanel.active / fnLockLook / fnShown），豆花布局不看。
+     * 协议 24 起 fn 里还有 Proto.FROW_FLIP（F 行翻转着，"平时按出第二功能"；MainActivity 照设置填，收尾归零时也留着）：F1–F12 这时会出的那一面
+     * = (单次锁 | 永久锁 | 按着) ^ FROW_FLIP，键帽照它亮哪一面（键帽那一步画）。看 fn 的地方都要按位看，别拿 fn != 0 当"Fn 起作用"。
      */
     void setKeyState(int latched, int held, int armed, int fn, boolean caps);
 

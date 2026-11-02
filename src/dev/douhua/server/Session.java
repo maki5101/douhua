@@ -31,7 +31,7 @@ import dev.douhua.TouchRouter;
 /**
  * 一次 App 连接。把这些串起来：App 发来的布局 / 参数 / 心跳 → 何时独占触摸屏；
  * 触摸 → {@link TouchRouter} 分流（触控板 → 手势引擎、键盘键 → 虚拟键盘、按钮 → 报告给 App）；
- * 分流结果 → 虚拟 USB 鼠标 / 键盘、发给 App 的震动、三指四指手势、按钮事件。
+ * 分流结果 → 虚拟 USB 鼠标 / 键盘（协议 24 起键盘多一个多媒体 / 系统键接口 {@link UhidControls}）、发给 App 的震动、三指四指手势、按钮事件。
  *
  * 独占的条件：App 说 active、参数已到、心跳没超时（{@link Proto#HEARTBEAT_TIMEOUT_MS}）。
  * 任何一条不满足，100ms 内释放。连接断开时一切释放、虚拟鼠标移除。
@@ -118,6 +118,11 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
     /** 在 run() 里建；新会话可能替收不了尾的旧会话关掉它们（{@link #closeDevices}）。 */
     private volatile UhidMouse mouse;
     private volatile UhidKeyboard keyboard;
+    /**
+     * 虚拟键盘的多媒体 / 系统键接口（协议 24，"Douhua Keyboard Controls"）：和键盘同建同关。建失败了只记日志、会话照常
+     * （F 行的第二功能在桌面模式下没反应，打字、鼠标不受影响），这时它是 null。
+     */
+    private volatile UhidControls controls;
     /** 虚拟手柄：第一次用到才建（只在命令线程里建），会话结束才关；建失败了这个会话不再试。 */
     private volatile UhidGamepad gamepad;
     private boolean gamepadFailed;
@@ -259,6 +264,12 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                 Server.hello(out, Proto.HELLO_FAILED, "创建" + what + "失败：" + e.getMessage());
                 return;
             }
+            try {
+                controls = new UhidControls("Douhua Keyboard Controls");
+                if (devicesClosed) controls.close();   // 刚建好就被新会话替着关了设备：自己关掉，别漏一个
+            } catch (IOException e) {
+                Server.log("创建虚拟键盘的多媒体键接口失败（F 行的第二功能没反应，打字照常）：" + e.getMessage());
+            }
             String inject = injector.status();
             Server.hello(out, Proto.HELLO_OK, inject == null ? "" : "按键注入不可用：" + inject);
             connected = true;
@@ -361,13 +372,18 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         }
     }
 
-    /** 关掉虚拟鼠标、键盘和手柄（设备随之消失，按着的键由内核补发松开；手柄先写一帧全零）。幂等，别的线程也能调。 */
+    /**
+     * 关掉虚拟鼠标、键盘（连多媒体 / 系统键那个接口）和手柄（设备随之消失，按着的键由内核补发松开；手柄、多媒体 / 系统键先写全零）。
+     * 幂等，别的线程也能调。
+     */
     void closeDevices() {
         devicesClosed = true;
         UhidKeyboard k = keyboard;
+        UhidControls c = controls;
         UhidMouse m = mouse;
         UhidGamepad g = gamepad;
         if (k != null) k.close();
+        if (c != null) c.close();
         if (m != null) m.close();
         if (g != null) g.close();
     }
@@ -1174,6 +1190,36 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
             keyboard.send(report);
         } catch (IOException e) {
             Server.log("写虚拟键盘失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 多媒体页现在按着的码（协议 24，F 行的第二功能；调用方持有 lock）：桌面模式写 "Douhua Keyboard Controls" 的报告 3，
+     * 蓝牙模式转回 App（MSG_CONSUMER）由蓝牙发。去哪一路同键盘：按最近一次接管时的布局，收尾的 0 也走同一路。
+     */
+    @Override
+    public void consumer(int usage) {
+        controlsOut(Proto.PAGE_CONSUMER, usage);
+    }
+
+    /** 系统键那一组现在按着的码（睡眠、勿扰、麦克风静音），同 {@link #consumer}（报告 6）。 */
+    @Override
+    public void system(int usage) {
+        controlsOut(Proto.PAGE_GENERIC_DESKTOP, usage);
+    }
+
+    private void controlsOut(int page, int usage) {
+        if (grabLayout.relay) {
+            send(new byte[]{(byte) Proto.MSG_CONSUMER, (byte) page, (byte) (usage >> 8), (byte) usage});
+            return;
+        }
+        UhidControls c = controls;
+        if (c == null) return;   // 没建成（会话开头记过日志）
+        try {
+            if (page == Proto.PAGE_CONSUMER) c.sendConsumer(usage);
+            else c.sendSystem(usage);
+        } catch (IOException e) {
+            Server.log("写虚拟键盘的多媒体键接口失败：" + e.getMessage());
         }
     }
 

@@ -1,7 +1,7 @@
 package dev.douhua;
 
 /**
- * 虚拟鼠标、键盘和手柄的 HID 报文：描述符、报文格式、键盘按键状态、手柄状态和两路合并。
+ * 虚拟鼠标、键盘和手柄的 HID 报文：描述符、报文格式、键盘按键状态、手柄状态和两路合并；协议 24 起还有多媒体 / 系统键（F 行的第二功能，{@link UsageSlot}）。
  * 桌面模式下服务经 /dev/uhid 造 USB 设备，蓝牙模式下 App 经 BluetoothHidDevice 当蓝牙设备，两边发出去的字节完全一样，
  * 蓝牙只是把几个设备合进一个描述符、每帧前面多一个报文编号。纯 Java（离线测试）。
  */
@@ -30,6 +30,14 @@ public final class Hid {
     public static final int REPORT_ABS = 4;
     public static final int ABS_REPORT_SIZE = 5;
     public static final int ABS_MAX = 32767, ABS_CENTER = 16384;
+    /**
+     * 系统键那一组（{@link #SYSTEM_DESC}，协议 24 起）：一次一个 16 位的码，0 = 松开。蓝牙描述符末尾的报告 6（5 留给手柄），
+     * 桌面模式 "Douhua Keyboard Controls" 里也是报告 6（同蓝牙那段，字节一模一样）。
+     */
+    public static final int REPORT_SYSTEM = 6;
+    public static final int SYSTEM_REPORT_SIZE = 2;
+    /** "Douhua Keyboard Controls"（桌面模式第四个 uhid 设备）一帧：报告编号 + 2 字节的码（多媒体报告 3、系统键报告 6 一样长）。 */
+    public static final int CONTROLS_REPORT_SIZE = 3;
 
     /**
      * 滚轮量的单位：一格 = 120（和 Windows、Linux 的高精度滚轮、Android、Moonlight 一个单位）。手势引擎 → 分流 → 服务 / 蓝牙这一路的
@@ -269,7 +277,10 @@ public final class Hid {
             (byte) 0xC0,                   // End Collection
     };
 
-    /** 媒体键（只蓝牙用）：一次一个 16 位的 Consumer 用法码，0 = 松开。返回、主屏、播放、音量这类键盘上没有的键。 */
+    /**
+     * 媒体键：一次一个 16 位的 Consumer 用法码，0 = 松开。返回、主屏、播放、音量这类键盘上没有的键。蓝牙的报告 3；
+     * 协议 24 起桌面模式 "Douhua Keyboard Controls" 里也是它（报告 3，{@link #controlsDescriptor}）。
+     */
     public static final byte[] CONSUMER_DESC = {
             0x05, 0x0C,                    // Usage Page (Consumer)
             0x09, 0x01,                    // Usage (Consumer Control)
@@ -278,6 +289,26 @@ public final class Hid {
             0x26, (byte) 0xFF, 0x03,       //   Logical Maximum (0x3FF)
             0x19, 0x00,                    //   Usage Minimum (0)
             0x2A, (byte) 0xFF, 0x03,       //   Usage Maximum (0x3FF)
+            0x75, 0x10,                    //   Report Size (16)
+            (byte) 0x95, 0x01,             //   Report Count (1)
+            (byte) 0x81, 0x00,             //   Input (Data,Array,Abs)
+            (byte) 0xC0,                   // End Collection
+    };
+
+    /**
+     * 系统键那一组（协议 24 起，F 行第二功能的睡眠、麦克风静音、勿扰）：Generic Desktop 页的 System Control（顶层集合 0x80），一次一个 16 位的码，
+     * 码的范围 0x01–0xB7（睡眠 0x82、勿扰 0x9B、麦克风静音 0xA9 都在里面），逻辑最小 1：报 0 = 越界 = 没有键按着。写法照 QMK 的 SystemControl
+     * （tmk_core/protocol/usb_descriptor.c），字节对过 HUT 1.7 第 4.5 节。只用 1、2 字节数据的项（蓝牙栈认不了 4 字节项，HidTest 锁住）。
+     * 按下发这个码、松开发 0；按住期间不重复发（连发是主机的事）。
+     */
+    public static final byte[] SYSTEM_DESC = {
+            0x05, 0x01,                    // Usage Page (Generic Desktop)
+            0x09, (byte) 0x80,             // Usage (System Control)
+            (byte) 0xA1, 0x01,             // Collection (Application)
+            0x19, 0x01,                    //   Usage Minimum (1)
+            0x2A, (byte) 0xB7, 0x00,       //   Usage Maximum (0xB7)
+            0x15, 0x01,                    //   Logical Minimum (1)：0 越界 = 没按
+            0x26, (byte) 0xB7, 0x00,       //   Logical Maximum (0xB7)
             0x75, 0x10,                    //   Report Size (16)
             (byte) 0x95, 0x01,             //   Report Count (1)
             (byte) 0x81, 0x00,             //   Input (Data,Array,Abs)
@@ -408,17 +439,53 @@ public final class Hid {
     /**
      * absolute = 末尾再加绝对坐标指针（报告 ID 4）。前面 1/2/3 的字节一个都不变，没重新配对的主机照旧能用。
      * hiresWheel = 鼠标用带分辨率倍率的描述符（{@link #MOUSE_DESC_HIRES}；Feature 报告也是 ID 2，和输入报告同号不同类型）。
+     * 不带系统键那一组（蓝牙注册用的是带的那个，{@link #combinedDescriptor(boolean, boolean, boolean)}）。
      */
     public static byte[] combinedDescriptor(boolean absolute, boolean hiresWheel) {
-        byte[] m = withReportId(hiresWheel ? MOUSE_DESC_HIRES : MOUSE_DESC, REPORT_MOUSE);
-        byte[] k = withReportId(KEYBOARD_DESC, REPORT_KEYBOARD);
-        byte[] c = withReportId(CONSUMER_DESC, REPORT_CONSUMER);
-        byte[] a = absolute ? withReportId(ABS_POINTER_DESC, REPORT_ABS) : new byte[0];
-        byte[] all = new byte[m.length + k.length + c.length + a.length];
-        System.arraycopy(m, 0, all, 0, m.length);
-        System.arraycopy(k, 0, all, m.length, k.length);
-        System.arraycopy(c, 0, all, m.length + k.length, c.length);
-        System.arraycopy(a, 0, all, m.length + k.length + c.length, a.length);
+        return combinedDescriptor(absolute, hiresWheel, false);
+    }
+
+    /**
+     * system = 最末尾再加系统键那一组（报告 6，{@link #SYSTEM_DESC}；协议 24 起 BtHid 一直带，不跟着设置变：不然每改一次设置对方都要重新配对）。
+     * 前面报告 1–4 的字节一个都不动（已有报告的排布不能动）：没重新配对的主机照旧，只是不认得报告 6（睡眠、麦克风静音、勿扰没反应）。
+     */
+    public static byte[] combinedDescriptor(boolean absolute, boolean hiresWheel, boolean system) {
+        return concat(withReportId(hiresWheel ? MOUSE_DESC_HIRES : MOUSE_DESC, REPORT_MOUSE),
+                withReportId(KEYBOARD_DESC, REPORT_KEYBOARD),
+                withReportId(CONSUMER_DESC, REPORT_CONSUMER),
+                absolute ? withReportId(ABS_POINTER_DESC, REPORT_ABS) : new byte[0],
+                system ? withReportId(SYSTEM_DESC, REPORT_SYSTEM) : new byte[0]);
+    }
+
+    /**
+     * 桌面模式 "Douhua Keyboard Controls"（Proto.HID_CONTROLS_PRODUCT）的描述符：蓝牙那两段原样拼起来——多媒体（报告 3）+ 系统键（报告 6）。
+     * 每帧 3 字节：[报告编号, 码低字节, 码高字节]（{@link #controlsReport}）。没有 Feature 报告，不用读线程。
+     */
+    public static byte[] controlsDescriptor() {
+        return concat(withReportId(CONSUMER_DESC, REPORT_CONSUMER), withReportId(SYSTEM_DESC, REPORT_SYSTEM));
+    }
+
+    /** "Douhua Keyboard Controls" 一帧：报告编号（REPORT_CONSUMER / REPORT_SYSTEM）+ 码（小端 16 位，0 = 松开）。 */
+    public static void controlsReport(byte[] out, int reportId, int usage) {
+        out[0] = (byte) reportId;
+        out[1] = (byte) usage;
+        out[2] = (byte) (usage >> 8);
+    }
+
+    /** 多媒体 / 系统键一帧（蓝牙的报告 3 / 6，报告编号由 sendReport 另给）：码小端 16 位，0 = 松开。 */
+    public static byte[] usageReport(int usage) {
+        return new byte[]{(byte) usage, (byte) (usage >> 8)};
+    }
+
+    private static byte[] concat(byte[]... parts) {
+        int n = 0;
+        for (byte[] p : parts) n += p.length;
+        byte[] all = new byte[n];
+        int at = 0;
+        for (byte[] p : parts) {
+            System.arraycopy(p, 0, all, at, p.length);
+            at += p.length;
+        }
         return all;
     }
 
@@ -700,6 +767,46 @@ public final class Hid {
 
         private static int get16(byte[] r, int at) {
             return (short) ((r[at] & 0xFF) | (r[at + 1] & 0xFF) << 8);
+        }
+    }
+
+    /**
+     * 多媒体页 / 系统键那一组的一个"槽"（协议 24 起，F 行的第二功能）：照真键盘的报告，一次只报一个码。记着按着的码（按按下的先后），
+     * 报最后按下的那个；后按的松开了、先按的还按着就报回先按的；全松开报 0。按着的码变了才要发（press / release 返回 true）。
+     * 同一个码再按一次（两个 F 键配了同一个功能）挪到最后、不重复记；松开一次就整个松掉（同 {@link Keyboard}：两根手指按两个副本时先抬起的那根就松开）。
+     */
+    public static final class UsageSlot {
+        private final java.util.ArrayList<Integer> held = new java.util.ArrayList<>();
+        private int reported;
+
+        public boolean press(int usage) {
+            if (usage == 0) return false;
+            held.remove(Integer.valueOf(usage));
+            held.add(usage);
+            return update();
+        }
+
+        public boolean release(int usage) {
+            held.remove(Integer.valueOf(usage));
+            return update();
+        }
+
+        /** 全部松开：之前报的不是 0 就返回 true（要发一帧 0）。 */
+        public boolean releaseAll() {
+            held.clear();
+            return update();
+        }
+
+        /** 现在该报的码（0 = 没按着）。 */
+        public int current() {
+            return reported;
+        }
+
+        private boolean update() {
+            int now = held.isEmpty() ? 0 : held.get(held.size() - 1);
+            if (now == reported) return false;
+            reported = now;
+            return true;
         }
     }
 

@@ -16,7 +16,9 @@ import java.util.Map;
  * 连续滚动、惯性滚动里不依赖 Android 的部分（tools/test.sh 直接跑）：
  * 带分辨率倍率的鼠标描述符（用一个小 HID 项解析器逐个字段比：输入报文和旧描述符一模一样、Feature 报告的样子对；
  * 桌面模式 uhid 那份只有一个竖向倍率字段）、
- * 倍率字节的编解码、滚轮单位 → 计数的换算和拆帧（Hid.WheelOut）、CMD_CONFIG 编解码往返（ConfigCodec）、惯性的物理（ScrollInertia）。
+ * 倍率字节的编解码、滚轮单位 → 计数的换算和拆帧（Hid.WheelOut）、CMD_CONFIG 编解码往返（ConfigCodec）、惯性的物理（ScrollInertia）；
+ * 协议 24 的多媒体 / 系统键：系统键描述符（报告 6）、已有的描述符冻结在 f6b905d 的长度 + CRC32、蓝牙描述符末尾加报告 6 而前面是冻结的那串、桌面模式 Controls 描述符、
+ * 一次报一个码的槽（Hid.UsageSlot）。
  * 这些只证明代码照设计跑，证明不了主机认不认、手感对不对。
  */
 public final class HidTest {
@@ -45,7 +47,12 @@ public final class HidTest {
         gamepadHatIsLinuxHat();
         gamepadMerge();
         modifierHelpers();
-        System.err.println("滚轮倍率 / 惯性物理：" + checks + " 项检查，" + failures + " 项失败");
+        systemDescriptor();
+        frozenDescriptors();
+        combinedWithSystem();
+        controlsDescriptor();
+        usageSlot();
+        System.err.println("滚轮倍率 / 惯性物理 / 描述符：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
 
@@ -57,6 +64,177 @@ public final class HidTest {
         check(Hid.ctrl(Hid.MOD_CTRL) && Hid.ctrl(Hid.MOD_RCTRL) && Hid.ctrl(0xFF), "Ctrl：左 0x01、右 0x10 都算");
         check(!Hid.ctrl(0) && !Hid.ctrl(0x02 | 0x04 | 0x08 | 0x20 | 0x40 | 0x80), "别的修饰键不算 Ctrl");
         check(Hid.MOD_RCTRL == Hid.modifierBit(0xE4), "右 Ctrl 的掩码 = 0xE4 的那一位");
+    }
+
+    // ═══════════ 多媒体 / 系统键（协议 24，F 行的第二功能） ═══════════
+
+    static final int CONSUMER_PAGE = 0x0C << 16, GD_PAGE = 0x01 << 16;
+
+    /** 系统键那一组：顶层 Generic Desktop / System Control，一次一个 16 位的码，逻辑 1..0xB7（0 越界 = 没按），只有输入、没有 4 字节项。 */
+    static void systemDescriptor() {
+        Parsed p = parse(Hid.SYSTEM_DESC);
+        eq(p.openCollections, 0, "系统键：集合都闭合了");
+        check(!p.sizeCode3, "系统键：没有 4 字节数据的项（蓝牙栈认不了）");
+        check(Hid.SYSTEM_DESC[0] == 0x05 && Hid.SYSTEM_DESC[1] == 0x01 && Hid.SYSTEM_DESC[2] == 0x09 && (Hid.SYSTEM_DESC[3] & 0xFF) == 0x80
+                && (Hid.SYSTEM_DESC[4] & 0xFF) == 0xA1 && Hid.SYSTEM_DESC[5] == 0x01, "系统键：顶层是 Generic Desktop 的 System Control（0x80）Application 集合");
+        eq(p.bits.get("I0"), Hid.SYSTEM_REPORT_SIZE * 8, "系统键：输入报文 2 字节");
+        eq(fieldsOf(p, 'O').size() + fieldsOf(p, 'F').size(), 0, "系统键：没有输出、Feature 报告");
+        List<Field> in = fieldsOf(p, 'I');
+        eq(in.size(), 1, "系统键：一个数组字段（一次一个码）");
+        Field f = in.get(0);
+        check(f.usage == (GD_PAGE | 1) && f.bits == 16 && f.logMin == 1 && f.logMax == 0xB7, "系统键：用法从 0x01 起、16 位、逻辑 1..0xB7：" + f.input());
+        // 用法最大值（解析器只记了最小值）：Usage Maximum (0xB7) 两字节的项
+        boolean umax = false;
+        for (int i = 0; i + 2 < Hid.SYSTEM_DESC.length; i++) {
+            if ((Hid.SYSTEM_DESC[i] & 0xFF) == 0x2A && (Hid.SYSTEM_DESC[i + 1] & 0xFF) == 0xB7 && Hid.SYSTEM_DESC[i + 2] == 0) umax = true;
+        }
+        check(umax, "系统键：Usage Maximum 0xB7（睡眠 0x82、勿扰 0x9B、麦克风静音 0xA9 都在里面）");
+        check((Hid.SYSTEM_DESC[Hid.SYSTEM_DESC.length - 3] & 0xFF) == 0x81 && Hid.SYSTEM_DESC[Hid.SYSTEM_DESC.length - 2] == 0x00,
+                "系统键：Input (Data,Array,Abs)");
+        // 方案附录照 QMK 写的那串（带报告 6）：插了报告编号后逐字节一样
+        int[] qmk = {0x05, 0x01, 0x09, 0x80, 0xA1, 0x01, 0x85, 0x06, 0x19, 0x01, 0x2A, 0xB7, 0x00, 0x15, 0x01, 0x26, 0xB7, 0x00,
+                0x75, 0x10, 0x95, 0x01, 0x81, 0x00, 0xC0};
+        byte[] withId = Hid.withReportId(Hid.SYSTEM_DESC, Hid.REPORT_SYSTEM);
+        boolean same = withId.length == qmk.length;
+        for (int i = 0; same && i < qmk.length; i++) same = (withId[i] & 0xFF) == qmk[i];
+        check(same, "系统键带报告 6：和方案附录照 QMK 写的那串逐字节一样");
+    }
+
+    /**
+     * 已有报告的字节冻结在这里（长度 + CRC32，取自 f6b905d——协议 23、加系统键之前那一版——的 Hid.java 编出来的字节）：
+     * 蓝牙注册的描述符（四种：带不带绝对坐标 × 带不带倍率）、桌面模式 uhid 的键盘 / 鼠标 / 手柄、多媒体那一段。
+     * 已配对的蓝牙主机按配对时的描述符读报文，桌面模式 uhid 设备的描述符也一样不能悄悄变（不变量"已有报告的字节排布不能动"）。
+     * 下面 combinedWithSystem 比的"三参数版本的前缀 = 两参数版本"有这一条垫底才有意义：两参数版本现在就是调三参数版本。
+     * 真要改这些字节（要所有主机重新配对），连这里的值一起改、在 CLAUDE.md 写明。
+     */
+    static void frozenDescriptors() {
+        frozen(Hid.combinedDescriptor(false, false), "173/3ccf1c22", "蓝牙描述符（不带绝对坐标、按格）");
+        frozen(Hid.combinedDescriptor(false, true), "225/c9ce02d6", "蓝牙描述符（不带绝对坐标、带倍率）");
+        frozen(Hid.combinedDescriptor(true, false), "210/695e5c21", "蓝牙描述符（带绝对坐标、按格）");
+        frozen(Hid.combinedDescriptor(true, true), "262/7a3ed31e", "蓝牙描述符（带绝对坐标、带倍率）");
+        for (boolean abs : new boolean[]{false, true}) for (boolean hires : new boolean[]{false, true}) {
+            byte[] old = Hid.combinedDescriptor(abs, hires), now = Hid.combinedDescriptor(abs, hires, true);
+            check(Arrays.equals(Arrays.copyOf(now, old.length), old), "蓝牙描述符（绝对坐标 " + abs + "、倍率 " + hires + "）带系统键：前面是冻结的那串");
+        }
+        frozen(Hid.KEYBOARD_DESC, "65/41ad83be", "键盘描述符（蓝牙报告 1、桌面模式 uhid 键盘）");
+        frozen(Hid.CONSUMER_DESC, "23/f5c4269b", "多媒体描述符（蓝牙报告 3）");
+        frozen(Hid.MOUSE_DESC, "79/2cb5ec72", "鼠标描述符（按格）");
+        frozen(Hid.MOUSE_DESC_HIRES, "131/e14fdaaf", "鼠标描述符（蓝牙带倍率）");
+        frozen(Hid.MOUSE_DESC_HIRES_V, "111/916b4584", "鼠标描述符（桌面模式 uhid，只有竖向倍率）");
+        frozen(Hid.ABS_POINTER_DESC, "35/dfc0b245", "绝对坐标指针描述符（蓝牙报告 4）");
+        frozen(Hid.GAMEPAD_DESC, "100/a130036d", "手柄描述符（桌面模式 uhid）");
+    }
+
+    static void frozen(byte[] b, String want, String what) {
+        java.util.zip.CRC32 c = new java.util.zip.CRC32();
+        c.update(b);
+        eq(b.length + "/" + Long.toHexString(c.getValue()), want, what + "：长度 / CRC32 和 f6b905d 一样（已有报告的字节不能动）");
+    }
+
+    /**
+     * 蓝牙描述符末尾加报告 6：前面报告 1–4 一个字节不动，只多了系统键那一段；没有 4 字节项；报告编号 1 2 3 4 6。
+     * "前面不动"比的是两参数的 combinedDescriptor——它现在就是调三参数的，所以要有 {@link #frozenDescriptors} 把两参数那串冻结住才算数。
+     */
+    static void combinedWithSystem() {
+        for (boolean hires : new boolean[]{false, true}) {
+            byte[] old = Hid.combinedDescriptor(true, hires), now = Hid.combinedDescriptor(true, hires, true);
+            check(Arrays.equals(Arrays.copyOf(now, old.length), old), "蓝牙描述符（倍率 " + hires + "）：前面报告 1–4 逐字节不变");
+            check(Arrays.equals(Arrays.copyOfRange(now, old.length, now.length), Hid.withReportId(Hid.SYSTEM_DESC, Hid.REPORT_SYSTEM)),
+                    "蓝牙描述符（倍率 " + hires + "）：末尾正好多一段系统键（报告 6）");
+            Parsed p = parse(now), q = parse(old);
+            check(!p.sizeCode3 && p.openCollections == 0, "蓝牙描述符（带系统键）：没有 4 字节项、集合都闭合");
+            List<String> oldIn = inputs(q), newIn = new ArrayList<>();
+            for (Field f : p.fields) if (f.kind == 'I' && f.reportId != Hid.REPORT_SYSTEM) newIn.add(f.input());
+            eq(newIn, oldIn, "蓝牙描述符（倍率 " + hires + "）：报告 1–4 的每个输入字段一样");
+            eq(p.bits.get("I" + Hid.REPORT_SYSTEM), Hid.SYSTEM_REPORT_SIZE * 8, "报告 6 是 2 字节");
+            java.util.Set<Integer> ids = new java.util.TreeSet<>();
+            for (Field f : p.fields) ids.add(f.reportId);
+            eq(ids.toString(), "[1, 2, 3, 4, 6]", "报告编号 1 2 3 4 6（5 留给手柄）");
+        }
+        check(Arrays.equals(Hid.combinedDescriptor(true, true, false), Hid.combinedDescriptor(true, true)), "不带系统键的三参数版本 = 两参数版本");
+        check(Hid.REPORT_SYSTEM == 6 && Hid.REPORT_CONSUMER == 3, "报告编号：多媒体 3、系统键 6");
+    }
+
+    /** 桌面模式 "Douhua Keyboard Controls"：多媒体（报告 3）+ 系统键（报告 6），字节就是蓝牙那两段；报文 [编号, 低, 高]。 */
+    static void controlsDescriptor() {
+        byte[] d = Hid.controlsDescriptor();
+        byte[] c = Hid.withReportId(Hid.CONSUMER_DESC, Hid.REPORT_CONSUMER), y = Hid.withReportId(Hid.SYSTEM_DESC, Hid.REPORT_SYSTEM);
+        check(d.length == c.length + y.length && Arrays.equals(Arrays.copyOf(d, c.length), c) && Arrays.equals(Arrays.copyOfRange(d, c.length, d.length), y),
+                "Controls 描述符 = 蓝牙的多媒体段 + 系统键段，逐字节一样");
+        byte[] bt = Hid.combinedDescriptor(true, true, true);
+        check(indexOf(bt, c) >= 0 && indexOf(bt, y) >= 0, "这两段在蓝牙描述符里原样都有");
+        Parsed p = parse(d);
+        check(!p.sizeCode3 && p.openCollections == 0, "Controls：没有 4 字节项、集合都闭合");
+        eq(fieldsOf(p, 'O').size() + fieldsOf(p, 'F').size(), 0, "Controls：没有输出、Feature 报告（不用读线程）");
+        eq(p.bits.get("I3") + "/" + p.bits.get("I6"), "16/16", "Controls：两个报告各 2 字节（加编号 3 字节 = CONTROLS_REPORT_SIZE）");
+        eq(Hid.CONTROLS_REPORT_SIZE, 3, "Controls 一帧 3 字节");
+        Field cf = fieldsOf(p, 'I').get(0);
+        check(cf.reportId == 3 && cf.usage == CONSUMER_PAGE && cf.logMin == 0 && cf.logMax == 0x3FF, "多媒体：用法 0..0x3FF、逻辑 0..0x3FF：" + cf.input());
+        byte[] r = new byte[Hid.CONTROLS_REPORT_SIZE];
+        Hid.controlsReport(r, Hid.REPORT_CONSUMER, 0x2A2);
+        check(r[0] == 3 && (r[1] & 0xFF) == 0xA2 && r[2] == 0x02, "多媒体报文：[3, A2, 02]（小端）");
+        Hid.controlsReport(r, Hid.REPORT_SYSTEM, 0);
+        check(r[0] == 6 && r[1] == 0 && r[2] == 0, "系统键松开：[6, 0, 0]");
+        byte[] u = Hid.usageReport(0x19E);
+        check(u.length == 2 && (u[0] & 0xFF) == 0x9E && u[1] == 0x01, "蓝牙的多媒体 / 系统键报文 2 字节小端");
+        check(Proto.HID_CONTROLS_PRODUCT == 0xD0A3 && Proto.HID_CONTROLS_PRODUCT != Proto.HID_GAMEPAD_PRODUCT, "产品号 0xD0A3（鼠标 A0、键盘 A1、手柄 A2）");
+    }
+
+    static int indexOf(byte[] hay, byte[] needle) {
+        outer:
+        for (int i = 0; i + needle.length <= hay.length; i++) {
+            for (int k = 0; k < needle.length; k++) if (hay[i + k] != needle[k]) continue outer;
+            return i;
+        }
+        return -1;
+    }
+
+    /** 一个槽一次报一个码：报最后按下的；后按的松开报回先按的；全松开报 0；变了才返回 true。随机序列对照模型。 */
+    static void usageSlot() {
+        Hid.UsageSlot s = new Hid.UsageSlot();
+        check(!s.press(0) && s.current() == 0, "按 0 什么都不变");
+        check(s.press(0xE9) && s.current() == 0xE9, "按下音量+：报它");
+        check(s.press(0xCD) && s.current() == 0xCD, "再按播放：报后按的");
+        check(!s.release(0xE9) && s.current() == 0xCD, "先按的松开：照报播放、不用发");
+        check(s.press(0xE9) && s.current() == 0xE9, "又按音量+");
+        check(s.release(0xE9) && s.current() == 0xCD, "后按的松开：报回先按的");
+        check(s.release(0xCD) && s.current() == 0, "全松开：报 0");
+        check(!s.releaseAll(), "已经是 0：releaseAll 不用发");
+        s.press(0xE2);
+        check(!s.press(0xE2) && s.current() == 0xE2, "同一个码再按一次：照报它、不用发");
+        check(s.release(0xE2) && s.current() == 0, "松开一次就整个松掉");
+        s.press(0x70);
+        s.press(0x6F);
+        check(s.releaseAll() && s.current() == 0, "按着的时候 releaseAll：报 0");
+        java.util.Random rnd = new java.util.Random(7);
+        boolean ok = true;
+        int sent = 0;
+        for (int round = 0; round < 200 && ok; round++) {
+            Hid.UsageSlot t = new Hid.UsageSlot();
+            List<Integer> model = new ArrayList<>();
+            int reported = 0;
+            for (int step = 0; step < 60 && ok; step++) {
+                int u = 1 + rnd.nextInt(5);
+                boolean changed;
+                int op = rnd.nextInt(10);
+                if (op < 5) {
+                    model.remove(Integer.valueOf(u));
+                    model.add(u);
+                    changed = t.press(u);
+                } else if (op < 9) {
+                    model.remove(Integer.valueOf(u));
+                    changed = t.release(u);
+                } else {
+                    model.clear();
+                    changed = t.releaseAll();
+                }
+                int want = model.isEmpty() ? 0 : model.get(model.size() - 1);
+                ok = t.current() == want && changed == (want != reported);
+                if (changed) sent++;
+                reported = want;
+            }
+        }
+        check(ok && sent > 1000, "随机序列：报的总是最后按下、还按着的那个，变了才发（发了 " + sent + " 帧）");
     }
 
     // ═══════════ 小 HID 解析器 ═══════════
@@ -597,11 +775,12 @@ public final class HidTest {
         c.leverSpeed = 0.35f;
         c.stickAccel = 0.45f;
         c.stickMaxSpeed = 2300f;
+        c.frowFlip = true;
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         ConfigCodec.write(new DataOutputStream(bytes), c, 2.75f);
         byte[] data = bytes.toByteArray();
-        eq(data.length, 68, "CMD_CONFIG 负载 68 字节（协议 17 是 40，加了惯性 / 连续滚动 10 字节、小红点 6 字节；协议 22 加中键滑动速度 4 字节；"
-                + "协议 23 加小红点的加速、最快速度 8 字节）");
+        eq(data.length, 69, "CMD_CONFIG 负载 69 字节（协议 17 是 40，加了惯性 / 连续滚动 10 字节、小红点 6 字节；协议 22 加中键滑动速度 4 字节；"
+                + "协议 23 加小红点的加速、最快速度 8 字节；协议 24 加 F 行翻转 1 字节）");
         GestureEngine.Config d = new GestureEngine.Config();
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(data));
         float density = ConfigCodec.read(in, d);
@@ -610,11 +789,11 @@ public final class HidTest {
         eq(Arrays.asList(d.pointerSpeed, d.acceleration, d.scrollStepDp, d.naturalScroll, d.pinchZoom, d.edgeScroll,
                         d.edgeScrollHorizontal, d.edgeWidthDp, d.scrollTicks, d.longPressDrag, d.longPressMs, d.tapToDrag,
                         d.dragWindowMs, d.slowFactor, d.texture, d.inertia, d.inertiaTauMs, d.inertiaMinSpeed, d.smoothScroll,
-                        d.stickSpeed, d.stickTap, d.stickInertia, d.leverSpeed, d.stickAccel, d.stickMaxSpeed),
+                        d.stickSpeed, d.stickTap, d.stickInertia, d.leverSpeed, d.stickAccel, d.stickMaxSpeed, d.frowFlip),
                 Arrays.asList(c.pointerSpeed, c.acceleration, c.scrollStepDp, c.naturalScroll, c.pinchZoom, c.edgeScroll,
                         c.edgeScrollHorizontal, c.edgeWidthDp, c.scrollTicks, c.longPressDrag, c.longPressMs, c.tapToDrag,
                         c.dragWindowMs, c.slowFactor, c.texture, c.inertia, c.inertiaTauMs, c.inertiaMinSpeed, c.smoothScroll,
-                        c.stickSpeed, c.stickTap, c.stickInertia, c.leverSpeed, c.stickAccel, c.stickMaxSpeed),
+                        c.stickSpeed, c.stickTap, c.stickInertia, c.leverSpeed, c.stickAccel, c.stickMaxSpeed, c.frowFlip),
                 "每一项往返不变");
         GestureEngine.Config def = new GestureEngine.Config();
         check(def.inertia && !def.smoothScroll && def.inertiaMinSpeed == 0.6f
@@ -631,7 +810,20 @@ public final class HidTest {
         eq(Long.toHexString(crc.getValue()), "9403cd35", "前 60 个字节和协议 22 的编码逐字节一样（CRC32）");
         java.nio.ByteBuffer tail = java.nio.ByteBuffer.wrap(data, 56, 12);
         check(tail.getFloat() == 0.35f && tail.getFloat() == 0.45f && tail.getFloat() == 2300f,
-                "最后 12 个字节依次是 leverSpeed、stickAccel、stickMaxSpeed（大端 f32）");
+                "第 56–67 个字节依次是 leverSpeed、stickAccel、stickMaxSpeed（大端 f32）");
+        // 协议 24 的 frowFlip 在最后：前 68 个字节和协议 23 的编码逐字节一样。校验和是拿 f6b905d（协议 23）的 ConfigCodec 编同一组值算的（一次性脚本，不进仓库）
+        java.util.zip.CRC32 crc23 = new java.util.zip.CRC32();
+        crc23.update(data, 0, 68);
+        eq(Long.toHexString(crc23.getValue()), "f3530bf1", "前 68 个字节和协议 23 的编码逐字节一样（CRC32）");
+        eq(data[68], (byte) 1, "最后一个字节是 frowFlip（1 = F 行平时出第二功能）");
+        check(!def.frowFlip, "默认：F 行不翻转（App 按模式的设置填，Windows 假、Mac 真）");
+        c.frowFlip = false;
+        bytes.reset();
+        ConfigCodec.write(new DataOutputStream(bytes), c, 2.75f);
+        GestureEngine.Config e = new GestureEngine.Config();
+        e.frowFlip = true;
+        ConfigCodec.read(new DataInputStream(new ByteArrayInputStream(bytes.toByteArray())), e);
+        check(!e.frowFlip && bytes.toByteArray()[68] == 0, "frowFlip 假也往返（读的一方覆盖掉原来的真）");
     }
 
     // ═══════════ 惯性的物理 ═══════════

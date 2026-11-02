@@ -145,10 +145,13 @@ public final class FixedLayoutTest {
                     check(ids.contains(0x31), name(l) + " 有 0x31");
                     check(ids.contains(0x49) != l.mac(), name(l) + " Ins 只在 Windows 模式");
                     check(ids.contains(0x46) != l.mac() && ids.contains(0x68) == l.mac(), name(l) + " PrtSc（Windows）/ F13（Mac）");
-                    check(ids.contains(0x65) != l.mac() && ids.contains(FixedLayout.GLOBE_ID) == l.mac(), name(l) + " Menu（Windows）/ 🌐（Mac）");
+                    // 协议 24：Windows 模式右 Super 换成 Fn、Mac 模式 🌐 换成 fn🌐（键数不变）
+                    check(ids.contains(0x65) != l.mac() && !ids.contains(FixedLayout.GLOBE_ID) && ids.contains(FixedLayout.FN_ID) && l.hasFn(),
+                            name(l) + " Menu 只在 Windows 模式；两种模式都有 Fn 键（Mac 是 fn🌐），没有单独的 🌐");
+                    check(ids.contains(0xE7) == l.mac(), name(l) + " 右 GUI 只在 Mac 模式（右 ⌘）；Windows 模式那格是 Fn");
                     check(ids.contains(0x53) == l.full(), name(l) + " 小键盘只在全尺寸");
                     for (FixedLayout.Key k : l.keys(true)) {
-                        check(k.special ? (k.id == FixedLayout.MENU_ID || k.id == FixedLayout.GLOBE_ID) : (k.id >= 0x04 && k.id <= 0xE7),
+                        check(k.special ? (k.id == FixedLayout.MENU_ID || k.id == FixedLayout.FN_ID) : (k.id >= 0x04 && k.id <= 0xE7),
                                 name(l) + " " + k + " 的编号在范围里");
                     }
                 }
@@ -226,12 +229,18 @@ public final class FixedLayoutTest {
 
     // ── 最下一排的顺序 ──
     static void bottomRows() {
-        int[] pc = {0xE0, 0xE3, 0xE2, 0x2C, 0xE6, 0xE7, 0x65, 0xE4};
-        int[] macRow = {0xE0, 0xE2, 0xE3, 0x2C, 0xE7, 0xE6, FixedLayout.GLOBE_ID, 0xE4};
+        // 协议 24：Windows 模式右 Super 换成 Fn（紧跟 AltGr，同 75%）、Mac 模式 🌐 换成 fn🌐，别的位置不变
+        int[] pc = {0xE0, 0xE3, 0xE2, 0x2C, 0xE6, FixedLayout.FN_ID, 0x65, 0xE4};
+        int[] macRow = {0xE0, 0xE2, 0xE3, 0x2C, 0xE7, 0xE6, FixedLayout.FN_ID, 0xE4};
         for (String sh : SHAPES) {
             FixedLayout w = layout(sh, FixedLayout.TKL, FixedLayout.WIN), m = layout(sh, FixedLayout.TKL, FixedLayout.MAC);
-            check(Arrays.equals(rowIds(w, 5), pc), name(w) + " 底行 Ctrl Super Alt 空格 AltGr Super ☰ Ctrl：" + Arrays.toString(rowIds(w, 5)));
-            check(Arrays.equals(rowIds(m, 5), macRow), name(m) + " 底行 ⌃ ⌥ ⌘ 空格 ⌘ ⌥ 🌐 ⌃（Option 发 Alt、Command 发 GUI）");
+            check(Arrays.equals(rowIds(w, 5), pc), name(w) + " 底行 Ctrl Super Alt 空格 AltGr Fn ☰ Ctrl：" + Arrays.toString(rowIds(w, 5)));
+            check(Arrays.equals(rowIds(m, 5), macRow), name(m) + " 底行 ⌃ ⌥ ⌘ 空格 ⌘ ⌥ fn🌐 ⌃（Option 发 Alt、Command 发 GUI）");
+            FixedLayout.Key wf = w.find(FixedLayout.FN_ID), mf = m.find(FixedLayout.FN_ID);
+            check(wf.special && FixedLayout.FN_NAME.equals(wf.name) && near(wf.x, 11.25f) && near(wf.w, 1.25f) && wf.row == 5,
+                    name(w) + " Fn 在原来右 Super 那格（11.25–12.5）");
+            check(mf.special && FixedLayout.FN_NAME_MAC.equals(mf.name) && near(mf.x, 12.5f) && near(mf.w, 1.25f) && mf.row == 5,
+                    name(m) + " fn🌐 在原来 🌐 那格（12.5–13.75）");
             check("⌘".equals(m.find(0xE3).name) && "⌥".equals(m.find(0xE2).name) && "⌃".equals(m.find(0xE0).name), name(m) + " Mac 的键名");
             check("Super".equals(w.find(0xE3).name) && "AltGr".equals(w.find(0xE6).name), name(w) + " PC 的键名（GUI 叫 Super）");
         }
@@ -722,8 +731,8 @@ public final class FixedLayoutTest {
         for (int u : new int[]{0x29, 0x3A, 0x2A, 0x28, 0xE1, 0xE6, 0x53, 0x57, 0x58, 0x52, 0x65}) {
             check(p.functionKey(p.index(u)), "功能键帽：" + Integer.toHexString(u));
         }
-        FixedPanel mp = panel("us", FixedLayout.ANSI, FixedLayout.TKL, FixedLayout.MAC);
-        check(mp.functionKey(mp.index(FixedLayout.GLOBE_ID)), "🌐 是功能键");
+        FixedPanel mp = panel("us", FixedLayout.ANSI, FixedLayout.LAPTOP, FixedLayout.MAC);
+        check(mp.functionKey(mp.index(FixedLayout.GLOBE_ID)) && mp.functionKey(mp.index(FixedLayout.FN_ID)), "🌐、fn🌐 是功能键（笔记本 Mac 模式两个都有）");
         // ⋯ 槽（2026-11-01：强调色的底 + 反差字，和豆花布局的 ⋯ 键同一条 KeyRows.menuKey）：槽里放了 ⋯ 时正好一个键是它，没放时一个都没有
         for (String mode : new String[]{FixedLayout.WIN, FixedLayout.MAC}) {
             FixedLayout l = layout(FixedLayout.ISO, FixedLayout.FULL, mode);
@@ -1113,11 +1122,15 @@ public final class FixedLayoutTest {
 
     // ── 键数、用法码各一次、有哪些没有哪些 ──
     static void laptopCounts() {
-        int[][] want = {{83, 84}, {82, 83}};   // [模式][形状]：Windows 83 / 84（ANSI / ISO）、Mac 82 / 83（没有 Ins）
+        // 协议 24 起多一个 Fn（左下第二格）：Windows 84 / 85（ANSI / ISO）、Mac 83 / 84（没有 Ins）
+        int[][] want = {{84, 85}, {83, 84}};   // [模式][形状]
         for (int m = 0; m < 2; m++) for (int sh = 0; sh < 2; sh++) {
             FixedLayout l = laptop(SHAPES[sh], MODES[m]);
             check(l.keys.size() == want[m][sh], name(l) + " 键数 " + l.keys.size() + "（应为 " + want[m][sh] + "）");
-            check(l.keys(true).size() == l.keys.size() + 1, name(l) + " 槽里放 ⋯ 时多一个键");
+            check(l.keys(true).size() == l.keys.size() + (l.mac() ? 1 : 0), name(l) + " 槽里放 ⋯ 时：Windows 模式 Ins 换成 ⋯（键数不变）、Mac 模式多一个 ⋯");
+            check(l.hasFn() && l.find(FixedLayout.FN_ID).special && (l.mac() ? FixedLayout.FN_NAME_MAC : FixedLayout.FN_NAME).equals(l.find(FixedLayout.FN_ID).name),
+                    name(l) + " 有 Fn 键（Mac 模式 fn🌐）");
+            check(l.find(0x49) != null != l.mac() && l.keys(true).stream().noneMatch(k -> k.id == 0x49), name(l) + " Ins：Windows 模式 ⋯ 不在槽里时有、⋯ 在槽里时没有（Fn+Del 出）");
             Set<Integer> ids = new HashSet<>();
             boolean dup = false;
             for (FixedLayout.Key k : l.keys(true)) dup |= !ids.add(k.id);
@@ -1133,9 +1146,9 @@ public final class FixedLayoutTest {
             }
             if (l.mac()) {
                 for (int u : new int[]{0x46, 0x49, 0x68, 0x69, 0x6A, 0xE6, 0x47, 0x48, 0x65}) check(!ids.contains(u), name(l) + " 没有 " + Integer.toHexString(u));
-                check(ids.contains(FixedLayout.GLOBE_ID) && ids.contains(0xE7), name(l) + " 有 🌐、右 ⌘");
+                check(ids.contains(FixedLayout.GLOBE_ID) && ids.contains(0xE7) && ids.contains(FixedLayout.FN_ID), name(l) + " 有 🌐、右 ⌘、fn🌐");
             } else {
-                check(ids.contains(0x46) && ids.contains(0x49) && ids.contains(0xE6), name(l) + " 有 PrtSc、Ins、右 Alt");
+                check(ids.contains(0x46) && ids.contains(0xE6) && ids.contains(FixedLayout.FN_ID), name(l) + " 有 PrtSc、右 Alt、Fn");
                 for (int u : new int[]{0x47, 0x48, 0x65, 0xE7, FixedLayout.GLOBE_ID}) check(!ids.contains(u), name(l) + " 没有 " + Integer.toHexString(u));
             }
         }
@@ -1181,9 +1194,12 @@ public final class FixedLayoutTest {
                     check(ok, name(l) + (menu ? "（带 ⋯）" : "") + " 最下一排" + (layer == 1 ? "上" : "下") + "层从 0 铺到 15u、首尾相接");
                 }
             }
-            FixedLayout.Key ctrlWide = l.keys(false).get(indexOfId(l.keys(false), 0xE0)), ctrlNarrow = l.keys(true).get(indexOfId(l.keys(true), 0xE0));
-            check(near(ctrlWide.x, 0) && near(ctrlWide.w, 2.25f) && near(ctrlNarrow.w, 1.25f) && ctrlWide != ctrlNarrow, name(l) + " 左 Ctrl：⋯ 不在槽里 2.25u、在槽里 1.25u");
-            check(l.menu.row == 5 && near(l.menu.x, 1.25f) && near(l.menu.w, 1) && Float.isNaN(l.menu.y0), name(l) + " ⋯ 槽在左下角 Ctrl 右边（1.25–2.25、整行高）");
+            // 协议 24：左 Ctrl 固定 1.25u、第二格是 Fn；⋯ 槽挪到 F 行 Ins 那格（13.0625–13.875）
+            FixedLayout.Key ctrl0 = l.keys(false).get(indexOfId(l.keys(false), 0xE0)), ctrl1 = l.keys(true).get(indexOfId(l.keys(true), 0xE0));
+            FixedLayout.Key fnKey = l.find(FixedLayout.FN_ID);
+            check(near(ctrl0.x, 0) && near(ctrl0.w, 1.25f) && ctrl0 == ctrl1, name(l) + " 左 Ctrl 1.25u，放没放 ⋯ 一样");
+            check(fnKey.row == 5 && near(fnKey.x, 1.25f) && near(fnKey.w, 1) && Float.isNaN(fnKey.y0), name(l) + " Fn 在左下角 Ctrl 右边（1.25–2.25、整行高；真 ThinkPad 的位置）");
+            check(l.menu.row == 0 && near(l.menu.x, 13.0625f) && near(l.menu.w, 0.8125f) && Float.isNaN(l.menu.y0), name(l) + " ⋯ 槽在 F 行 Ins 那格（13.0625–13.875）");
             FixedLayout.Key sp = l.find(0x2C);
             check(near(sp.x, 4.25f) && near(sp.w, 5) && near(l.stickU(), 6.75f) && near(sp.x + sp.w / 2, l.stickU()), name(l) + " 空格 4.25–9.25、正好以红点（6.75）为中线");
             check(near(l.rowTop(5), 5.25f) && near(l.rowBottom(5), 6.5f) && near(l.rowBottom(4), 5.25f) && near(l.rowBottom(0), 1)
@@ -1222,19 +1238,21 @@ public final class FixedLayoutTest {
 
     // ── 最下一排的顺序、键名、⋯ 紧跟左 Ctrl、列表顺序 ──
     static void laptopBottom() {
-        int[] pc = {0xE0, 0xE3, 0xE2, 0x2C, 0xE6, 0x46, 0xE4};
-        int[] macRow = {0xE0, 0xE2, 0xE3, 0x2C, 0xE7, FixedLayout.GLOBE_ID, 0xE4};
+        // 协议 24：左下第二格是 Fn（Mac 模式 fn🌐），⋯ 不再在最下一排
+        int[] pc = {0xE0, FixedLayout.FN_ID, 0xE3, 0xE2, 0x2C, 0xE6, 0x46, 0xE4};
+        int[] macRow = {0xE0, FixedLayout.FN_ID, 0xE2, 0xE3, 0x2C, 0xE7, FixedLayout.GLOBE_ID, 0xE4};
         int[] up = {0x4B, 0x52, 0x4E}, down = {0x50, 0x51, 0x4F};
         for (String sh : SHAPES) {
             FixedLayout w = laptop(sh, FixedLayout.WIN), m = laptop(sh, FixedLayout.MAC);
-            check(Arrays.equals(bottomIds(w.keys, 0), pc), name(w) + " 底行 Ctrl Super Alt 空格 AltGr PrtSc Ctrl：" + Arrays.toString(bottomIds(w.keys, 0)));
-            check(Arrays.equals(bottomIds(m.keys, 0), macRow), name(m) + " 底行 ⌃ ⌥ ⌘ 空格 ⌘ 🌐 ⌃：" + Arrays.toString(bottomIds(m.keys, 0)));
+            check(Arrays.equals(bottomIds(w.keys, 0), pc), name(w) + " 底行 Ctrl Fn Super Alt 空格 AltGr PrtSc Ctrl：" + Arrays.toString(bottomIds(w.keys, 0)));
+            check(Arrays.equals(bottomIds(m.keys, 0), macRow), name(m) + " 底行 ⌃ fn🌐 ⌥ ⌘ 空格 ⌘ 🌐 ⌃：" + Arrays.toString(bottomIds(m.keys, 0)));
             for (FixedLayout l : new FixedLayout[]{w, m}) {
                 check(Arrays.equals(bottomIds(l.keys, 1), up) && Arrays.equals(bottomIds(l.keys, 2), down), name(l) + " 方向键：上层 PgUp ↑ PgDn、下层 ← ↓ →");
-                int[] withMenu = bottomIds(l.keys(true), 0);
-                check(withMenu.length == 8 && withMenu[0] == 0xE0 && withMenu[1] == FixedLayout.MENU_ID, name(l) + " 带 ⋯ 时 ⋯ 紧跟在左 Ctrl 后面");
-                int i0 = indexOfId(l.keys(true), 0xE0);
-                check(l.keys(true).get(i0 + 1).id == FixedLayout.MENU_ID, name(l) + " 列表里 ⋯ 也紧跟左 Ctrl");
+                check(Arrays.equals(bottomIds(l.keys(true), 0), bottomIds(l.keys, 0)), name(l) + " 放没放 ⋯ 最下一排一样");
+                // ⋯ 在 F 行 Ins 那格：Windows 模式顶替 Ins（列表里同一个位置），Mac 模式跟在 End 后面
+                int iMenu = indexOfId(l.keys(true), FixedLayout.MENU_ID);
+                check(iMenu >= 0 && (l.mac() ? l.keys(true).get(iMenu - 1).id == 0x4D : iMenu == indexOfId(l.keys, 0x49)),
+                        name(l) + " ⋯ 在列表里的位置：" + (l.mac() ? "紧跟 End" : "顶替 Ins"));
                 // 列表顺序：底行从左到右，接着 PgUp ↑ PgDn、← ↓ →（报区域、nearestKey 一样近时的先后）
                 List<FixedLayout.Key> ks = l.keys;
                 int[] tail = new int[6];
@@ -1246,7 +1264,8 @@ public final class FixedLayoutTest {
             check("Ctrl".equals(w.find(0xE0).name) && "Super".equals(w.find(0xE3).name) && "Alt".equals(w.find(0xE2).name)
                     && "AltGr".equals(w.find(0xE6).name) && "PrtSc".equals(w.find(0x46).name) && "Ctrl".equals(w.find(0xE4).name), name(w) + " PC 的键名");
             check("⌃".equals(m.find(0xE0).name) && "⌥".equals(m.find(0xE2).name) && "⌘".equals(m.find(0xE3).name) && "⌘".equals(m.find(0xE7).name)
-                    && "🌐".equals(m.find(FixedLayout.GLOBE_ID).name) && "⌃".equals(m.find(0xE4).name), name(m) + " Mac 的键名");
+                    && "🌐".equals(m.find(FixedLayout.GLOBE_ID).name) && "⌃".equals(m.find(0xE4).name) && FixedLayout.FN_NAME_MAC.equals(m.find(FixedLayout.FN_ID).name),
+                    name(m) + " Mac 的键名");
             check(m.find(FixedLayout.GLOBE_ID).special && near(m.find(FixedLayout.GLOBE_ID).x, 10.25f), name(m) + " 🌐 在 PrtSc 那格");
         }
         FixedLayout us = FixedLayout.build(FixedLayout.ANSI, FixedLayout.LAPTOP, FixedLayout.WIN, false, ".");
@@ -1285,13 +1304,14 @@ public final class FixedLayoutTest {
         }
     }
 
-    // ── 键盘范围：Windows 8 块、Mac 9 块（F 行 Ins 那格挖掉；最下一排三块：方向键以外一块、方向键上下两层各一块），不重叠，每段恰好在一块同行的范围里 ──
+    // ── 键盘范围：Windows 8 块、Mac 9 块（F 行 Ins 那格挖掉；最下一排三块：方向键以外一块、方向键上下两层各一块），不重叠，每段恰好在一块同行的范围里。
+    //    协议 24 起 ⋯ 槽在 F 行 Ins 那格：Mac 模式 ⋯ 放在槽里时占着那格，F 行并成一块（8 块）──
     static void laptopRanges(String[] shapes) {
         for (String sh : shapes) for (String m : MODES) for (boolean menu : new boolean[]{false, true}) {
             FixedLayout l = laptop(sh, m);
             String what = name(l) + (menu ? "（带 ⋯）" : "");
             List<FixedLayout.Range> rs = l.ranges(menu);
-            check(rs.size() == (l.mac() ? 9 : 8), what + " 范围 " + rs.size() + " 块（Windows 8、Mac 9）");
+            check(rs.size() == (l.mac() && !menu ? 9 : 8), what + " 范围 " + rs.size() + " 块（Windows 8、Mac 不放 ⋯ 9 / 放 ⋯ 8）");
             boolean ok = true;
             for (int i = 0; i < rs.size(); i++) for (int j = i + 1; j < rs.size(); j++) ok &= !overlap(rs.get(i), rs.get(j));
             check(ok, what + " 范围之间不重叠");
@@ -1310,7 +1330,7 @@ public final class FixedLayoutTest {
                     check(in == 1 && sameRow, what + " " + k + " 第 " + r + " 行那段恰好在一块同行的范围里（" + in + "）");
                 }
             }
-            check(inAny(rs, 13.47f, 0.5f) != l.mac(), what + " F 行 Ins 那格：Windows 是 Ins、在范围里；Mac 空着、不在任何范围里");
+            check(inAny(rs, 13.47f, 0.5f) == (!l.mac() || menu), what + " F 行 Ins 那格：Windows 是 Ins / ⋯、在范围里；Mac 空着时不在任何范围里、放了 ⋯ 时在");
             check(inAny(rs, 0.01f, 6.49f) && inAny(rs, 14.99f, 6.49f) && inAny(rs, 6.75f, 6.49f), what + " 最下一排（到 6.5）在范围里、伸到面板边");
             // 方向键两层各一块：两层之间那条缝在 5.875 一分为二，上半归上层那块、下半归下层那块（分给谁另由 laptopArrowSeam 用真 TouchRouter 扫）
             boolean main = false, upper = false, lower = false;
@@ -1334,12 +1354,13 @@ public final class FixedLayoutTest {
             }
             check(keysOnlyUpper && keysOnlyLower, what + " 上层那块里只有 PgUp ↑ PgDn、下层那块里只有 ← ↓ →（右 Ctrl、空格这些整行高的键不在里面）");
             if (l.mac()) {
-                boolean left = false, right = false;
+                boolean left = false, right = false, whole = false;
                 for (FixedLayout.Range g : rs) if (g.row == 0) {
                     left |= near(g.left, 0) && near(g.right, 13.0625f);
                     right |= near(g.left, 13.875f) && near(g.right, 15);
+                    whole |= near(g.left, 0) && near(g.right, 15);
                 }
-                check(left && right, what + " Mac F 行两块：Esc–End、Del");
+                check(menu ? whole && !left && !right : left && right && !whole, what + (menu ? " Mac F 行放了 ⋯：一块 Esc–Del" : " Mac F 行两块：Esc–End、Del"));
                 check(l.blanks.size() == 1 && near(l.blanks.get(0)[1], 13.0625f) && near(l.blanks.get(0)[2], 13.875f), what + " 声明了 Ins 那格空格子");
             } else {
                 check(l.blanks.isEmpty(), what + " Windows 没有空格子");
@@ -1431,7 +1452,7 @@ public final class FixedLayoutTest {
                 TouchRouter router = new TouchRouter(new KeyRowsTest.Quiet());
                 router.setRegions(regions(p));
                 float[][] pts = {{13.59375f, 5.5625f, 0x52}, {13.59375f, 6.1875f, 0x51}, {12.65625f, 5.5625f, 0x4B}, {12.65625f, 6.1875f, 0x50},
-                        {14.53125f, 5.5625f, 0x4E}, {14.53125f, 6.1875f, 0x4F}, {0.1f, 6.4f, 0xE0}, {1.5f, 5.8f, menu ? FixedLayout.MENU_ID : 0xE0}};
+                        {14.53125f, 5.5625f, 0x4E}, {14.53125f, 6.1875f, 0x4F}, {0.1f, 6.4f, 0xE0}, {1.5f, 5.8f, FixedLayout.FN_ID}};
                 for (float[] q : pts) {
                     int x = ux(l, q[0], w), y = uy(l, q[1], h);
                     int a = id(p, route(router, x, y)), b = id(p, p.keyAt(x, y));
@@ -1445,7 +1466,9 @@ public final class FixedLayoutTest {
                 }
                 check(space, what + (menu ? "（带 ⋯）" : "") + " 空格正中竖着的每一点都是空格（没有横穿空格的缝）");
                 int x = ux(l, 13.46875f, w), y = uy(l, 0.5f, h);
-                if (l.mac()) {
+                if (menu) {   // 协议 24：⋯ 槽在 F 行 Ins 那格
+                    check(id(p, route(router, x, y)) == FixedLayout.MENU_ID && id(p, p.keyAt(x, y)) == FixedLayout.MENU_ID, what + "（带 ⋯） F 行 Ins 那格是 ⋯");
+                } else if (l.mac()) {
                     check(router.hit(x, y) == null && p.keyAt(x, y) == -1, what + " Mac F 行 Ins 那格正中：两条路都是什么都没有");
                 } else {
                     check(id(p, route(router, x, y)) == 0x49 && id(p, p.keyAt(x, y)) == 0x49, what + " Windows F 行 Ins 那格是 Ins");
@@ -1459,7 +1482,7 @@ public final class FixedLayoutTest {
         specialOneSegment(FixedLayout.SIZES_DESC, shapes, label);
     }
 
-    /** 同上，尺寸带参数（第 3 批的三种另跑一次）。特殊键：⋯（放在槽里时）、🌐（Mac 模式，没有 Fn 键的尺寸）、Fn / fn🌐（有 Fn 键的尺寸）。 */
+    /** 同上，尺寸带参数（第 3 批的三种另跑一次）。特殊键：⋯（放在槽里时）、Fn / fn🌐（协议 24 起每种尺寸都有）、🌐（只剩笔记本 Mac 模式 PrtSc 那格）。 */
     static void specialOneSegment(String[] sizes, String[] shapes, String label) {
         int combos = 0;
         for (String sz : sizes) for (String sh : shapes) for (String m : MODES) for (boolean menu : new boolean[]{false, true})
@@ -1481,7 +1504,8 @@ public final class FixedLayoutTest {
                     for (FixedPanel.Seg s : p.segs()) if (s.key == i) n++;
                     ok &= n == 1;
                 }
-                check(ok && specials == (menu ? 1 : 0) + (l.hasFn() ? 1 : l.mac() ? 1 : 0), name(l) + (menu ? " ⋯" : "") + (holed ? " 让位" : "") + " " + wh[0] + "×" + wh[1]
+                int wantSpecials = (menu ? 1 : 0) + (l.find(FixedLayout.FN_ID) != null ? 1 : 0) + (l.find(FixedLayout.GLOBE_ID) != null ? 1 : 0);
+                check(ok && specials == wantSpecials && l.hasFn(), name(l) + (menu ? " ⋯" : "") + (holed ? " 让位" : "") + " " + wh[0] + "×" + wh[1]
                         + " 每个特殊键恰好一段（" + specials + " 个）");
             }
         System.err.println("  特殊键只有一段" + label + "：" + combos + " 种（尺寸 × 形状 × 模式 × ⋯ × 让位 × 窗口）");
@@ -1898,7 +1922,8 @@ public final class FixedLayoutTest {
     // ── ABNT2 的几何：键数、第 4 行（/ ? 键、右 Shift 1.75）、两种模式都不对调、第 1–3 行同 ISO、小键盘右列拆成 + 和 0x85 ──
     static void abnt2Geometry() {
         String[] sizes = {FixedLayout.LAPTOP, FixedLayout.TKL, FixedLayout.FULL};
-        int[][] want = {{85, 89, 107}, {84, 88, 106}};   // [模式][笔记本、TKL、全尺寸]：Windows 笔记本 85、TKL 89、全尺寸 107（ABNT2 107 键），Mac 各少一个（没有 Ins）
+        // [模式][笔记本、TKL、全尺寸]：Windows 笔记本 86（协议 24 起多一个 Fn；以前 85）、TKL 89、全尺寸 107（ABNT2 107 键），Mac 各少一个（没有 Ins）
+        int[][] want = {{86, 89, 107}, {85, 88, 106}};
         for (int m = 0; m < 2; m++) for (int z = 0; z < 3; z++) {
             FixedLayout l = layout(FixedLayout.ABNT2, sizes[z], MODES[m]), iso = layout(FixedLayout.ISO, sizes[z], MODES[m]);
             String n = name(l);

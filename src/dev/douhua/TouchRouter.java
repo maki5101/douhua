@@ -11,7 +11,9 @@ import java.util.Locale;
  * 修饰键（左右八个）按下马上发；按住期间用过（按了别的键、鼠标键 / 滚轮 / 缩放 / 手势）= 组合键、松手就松；单独点一下 = 点了一下；
  * 单独按住 0.4–1 秒松手才锁，锁了以后打完下一个普通键自动解开、再点一下也能解开（2026-11-01 起，以前是点一下就锁）。
  * Caps 点一下发、按住只切显示；小红点状态的合并键点一下逗号、按住句号；实体键盘 75% / 65% / 苹果紧凑的 Fn（协议 21；协议 22 起点一下单次锁、
- * 按住 0.4 秒永久锁、锁着时单独按一下解开，Mac 模式 fn🌐 点一下照旧 🌐），带 Fn 层的键按下那一刻按 Fn 定码。按着要计时的这几种键、锁定、按着的计数、Fn 的状态都在 {@link KeyHolds}，
+ * 按住 0.4 秒永久锁、锁着时单独按一下解开，Mac 模式 fn🌐 点一下照旧 🌐），带 Fn 层的键按下那一刻按 Fn 定码；实体键盘 F1–F12 的第二功能（协议 24）
+ * 按下那一刻按"Fn 起作用 ^ F 行翻转"定码，第二功能是多媒体 / 系统键的照真键盘的报告各留一个槽（{@link Hid.UsageSlot}：一次报一个码，
+ * 经 {@link Output#consumer} / {@link Output#system} 出，所有收尾归零）。按着要计时的这几种键、锁定、按着的计数、Fn 的状态、F 行翻转都在 {@link KeyHolds}，
  * 到点用按键专用的定时器（{@link Output#scheduleKeys}，和引擎那个槽分开）。锁定期间点触控板就是 Ctrl + 点击之类。
  * "自带修饰键"的键（"@"、"复制"之类）按下时连同修饰键一起按。
  *
@@ -51,6 +53,16 @@ public final class TouchRouter implements GestureEngine.Output {
         /** 虚拟键盘状态变了：8 字节键盘报文（只在回调期间有效）。 */
         void keyboard(byte[] report);
 
+        /**
+         * 多媒体页（Consumer）该报的码变了（协议 24，F 行的第二功能）：usage = 现在按着的那个（一次只报一个，同真键盘；0 = 全松开）。
+         * 桌面模式写 "Douhua Keyboard Controls" 的报告 3，蓝牙模式发报告 3（服务接管时经 MSG_CONSUMER 转回 App）。
+         * 不做成 default：忘了实现就静默丢掉松开、主机那头一直按着，宁可编译报错（同 startTicks）。
+         */
+        void consumer(int usage);
+
+        /** 系统键那一组（Generic Desktop 的 System Control：睡眠、勿扰、麦克风静音）该报的码变了，同 {@link #consumer}（报告 6）。 */
+        void system(int usage);
+
         void haptic(int kind);
 
         void gesture(int fingers, int kind);
@@ -60,7 +72,8 @@ public final class TouchRouter implements GestureEngine.Output {
 
         /**
          * 修饰键的状态变了（同 Proto.MSG_MODIFIERS，HID 修饰键位）：latched = 锁住的，held = 有手指按着的，armed = "现在松手就锁"的；
-         * fn = Fn 的状态（Proto.FN_LATCHED 单次锁 / FN_HELD / FN_ARMED 快永久锁了 / FN_LOCKED 永久锁 位，协议 21 起、22 改了意思）。四样都比上次报的，变了才调。
+         * fn = Fn 的状态（Proto.FN_LATCHED 单次锁 / FN_HELD / FN_ARMED 快永久锁了 / FN_LOCKED 永久锁 位，协议 21 起、22 改了意思；
+         * 协议 24 起还有 Proto.FROW_FLIP：F 行翻转着）。四样都比上次报的，变了才调。
          */
         void modifiers(int latched, int held, int armed, int fn);
 
@@ -172,6 +185,8 @@ public final class TouchRouter implements GestureEngine.Output {
     private final Output out;
     private final Hid.Keyboard keyboard = new Hid.Keyboard();
     private final byte[] keyboardReport = new byte[Hid.KEYBOARD_REPORT_SIZE];
+    /** 多媒体页、系统键那一组按着的码（协议 24，F 行的第二功能）：一次报一个，变了才发。 */
+    private final Hid.UsageSlot consumerSlot = new Hid.UsageSlot(), systemSlot = new Hid.UsageSlot();
 
     private GestureEngine engine;
     private float density = 1;
@@ -234,8 +249,10 @@ public final class TouchRouter implements GestureEngine.Output {
      * 新的手势参数：换一个引擎，进行中的手势作废。density = 每 dp 多少像素。
      * 按着键的手指留着（键不依赖引擎，抬起照常松开、照常判点一下 / 锁定）：以前一起清掉、不松 HID，按着的键（现在包括按着的修饰键）
      * 会一直按在主机上，直到 releaseAll。
+     * 顺带设 F 行翻转（c.frowFlip，协议 24；不报界面，见 {@link #setFrowFlip}）：按着的 F 行键松开照旧松按下时定的码。
      */
     public void setConfig(GestureEngine.Config c, float density) {
+        holds.setFrowFlip(c.frowFlip);
         if (engine != null) engine.cancel();   // 转着的惯性也停
         engine = new GestureEngine(this, c);
         engine.setCtrlHeld(Hid.ctrl(modifierMask()));
@@ -255,6 +272,19 @@ public final class TouchRouter implements GestureEngine.Output {
             slotRegion[s] = null;
         }
         gamepad.setConfig(c);
+    }
+
+    /**
+     * 只设 F 行翻转（App 照设置同步本地分流：服务那边 Fn+Esc 翻了，或者别处改了设置），不换引擎、不动进行中的手势。
+     * 不报界面：设置是 App 定的，它自己画；下一次报状态时 Proto.FROW_FLIP 照常带着。
+     */
+    public void setFrowFlip(boolean v) {
+        holds.setFrowFlip(v);
+    }
+
+    /** F 行翻转着吗（"平时按出第二功能"）。 */
+    public boolean frowFlip() {
+        return holds.frowFlip();
     }
 
     /** 参数到了才能工作。 */
@@ -691,7 +721,8 @@ public final class TouchRouter implements GestureEngine.Output {
     }
 
     /**
-     * 按下 / 松开一个键（key 同 Proto.REGION_KEY 的 id：HID 用法码 | 自带修饰键 << 8，合并键 Proto.dualKey，Fn 键、带 Fn 层的键 Proto.fnLayerKey），
+     * 按下 / 松开一个键（key 同 Proto.REGION_KEY 的 id：HID 用法码 | 自带修饰键 << 8，合并键 Proto.dualKey，Fn 键、带 Fn 层的键 Proto.fnLayerKey，
+     * 协议 24 起 F 行键 Proto.frowKey），
      * action = Proto.KEY_DOWN / KEY_UP / KEY_CANCEL（被取消的：修饰键松开但不锁，Caps、合并键什么都不出）。
      * 界面自己收到的键（面板自己收触摸时）、动作里的组合键走这里，和按在区域上的键走同一份规则（KeyHolds），t = 按下 / 松开的时间。
      * 按下时转着的惯性静默停（打字说明不滚了，也免得 Ctrl / Super 在转的中途接上）。
@@ -709,6 +740,7 @@ public final class TouchRouter implements GestureEngine.Output {
     /**
      * 放手：手势作废、按住的鼠标键和键盘键松开、按着的按钮报告松开、小红点和两根杆（中键滚动杆、左键杆）停（节拍停）、中键不补单击、手柄回中立；
      * 修饰键和 Fn 的锁定 / 按着 / 快锁了全部归零，待定的 Caps / 合并键丢掉（不发），按键定时器撤掉。之后迟到的松开计数是 0、整个不理。
+     * 多媒体 / 系统键的两个槽（协议 24）不是 0 就各发一帧 0（注入过的每个按下都配松开）。F 行翻转是设置，不清。
      * 触摸屏被释放、连接断开时调。
      */
     public void releaseAll() {
@@ -727,7 +759,9 @@ public final class TouchRouter implements GestureEngine.Output {
         chordKeys.clear();
         if (engine != null) engine.setCtrlHeld(false);
         if (keyboard.releaseAll()) sendKeyboard();
-        showModifiers();   // 不是全零就报一次 (0, 0, 0, 0)
+        if (consumerSlot.releaseAll()) out.consumer(0);
+        if (systemSlot.releaseAll()) out.system(0);
+        showModifiers();   // 不是全零就报一次 (0, 0, 0, 0)（F 行翻转着的话第四个字节留着 Proto.FROW_FLIP）
     }
 
     /** keepKeys = 按着键的手指留着（换参数时，见 {@link #setConfig}）；releaseAll 全清。 */
@@ -814,8 +848,19 @@ public final class TouchRouter implements GestureEngine.Output {
 
     // ═══════════ 虚拟键盘 ═══════════
 
-    /** 普通键按下（原语，KeyHolds 调）：自带修饰键的先按下修饰键、再按键。 */
+    /**
+     * 普通键按下（原语，KeyHolds 调）：自带修饰键的先按下修饰键、再按键。多媒体 / 系统键的内部码（协议 24，KeyHolds.CODE_CONSUMER / CODE_SYSTEM）
+     * 交给那个槽：报最后按下的那个，变了才发。
+     */
     private void pressKey(int key) {
+        if (KeyHolds.isConsumerCode(key)) {
+            if (consumerSlot.press(KeyHolds.usageOf(key))) out.consumer(consumerSlot.current());
+            return;
+        }
+        if (KeyHolds.isSystemCode(key)) {
+            if (systemSlot.press(KeyHolds.usageOf(key))) out.system(systemSlot.current());
+            return;
+        }
         int usage = key & 0xFF;
         int chord = (key >> 8) & 0xFF;
         if (chord != 0) {
@@ -825,8 +870,19 @@ public final class TouchRouter implements GestureEngine.Output {
         if (keyboard.press(usage)) sendKeyboard();
     }
 
-    /** 普通键松开（原语，KeyHolds 调）：先松开键，再松开它自带的修饰键。"打完一个键锁定的修饰键自动解开"在 KeyHolds 里。 */
+    /**
+     * 普通键松开（原语，KeyHolds 调）：先松开键，再松开它自带的修饰键。"打完一个键锁定的修饰键自动解开"在 KeyHolds 里。
+     * 多媒体 / 系统键的内部码：那个槽松开这个码（先按的还按着就报回先按的，全松开报 0）。
+     */
     private void releaseKey(int key) {
+        if (KeyHolds.isConsumerCode(key)) {
+            if (consumerSlot.release(KeyHolds.usageOf(key))) out.consumer(consumerSlot.current());
+            return;
+        }
+        if (KeyHolds.isSystemCode(key)) {
+            if (systemSlot.release(KeyHolds.usageOf(key))) out.system(systemSlot.current());
+            return;
+        }
         int usage = key & 0xFF;
         if (keyboard.release(usage)) sendKeyboard();
         if (chordKeys.remove(Integer.valueOf(key))) applyModifiers();
@@ -954,6 +1010,7 @@ public final class TouchRouter implements GestureEngine.Output {
             return TouchRouter.this.mouseBusy();
         }
 
+        /** 按住到点、Fn+Esc 翻转 F 行：震一下（同锁修饰键那一下）。 */
         @Override
         public void holdReached() {
             out.haptic(GestureEngine.HAPTIC_CLICK);

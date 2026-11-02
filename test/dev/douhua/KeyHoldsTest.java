@@ -69,6 +69,24 @@ public final class KeyHoldsTest {
             lastMods = r[0] & 0xFF;
         }
 
+        /** 多媒体 / 系统键（协议 24，F 行的第二功能）：每次报的码依次记下（"c" / "s" + 十六进制），最后报的另记着。 */
+        final List<String> controls = new ArrayList<>();
+        int lastConsumer, lastSystem;
+
+        @Override
+        public void consumer(int usage) {
+            lastConsumer = usage;
+            controls.add("c" + Integer.toHexString(usage));
+            all.add("c" + Integer.toHexString(usage));
+        }
+
+        @Override
+        public void system(int usage) {
+            lastSystem = usage;
+            controls.add("s" + Integer.toHexString(usage));
+            all.add("s" + Integer.toHexString(usage));
+        }
+
         @Override
         public void haptic(int kind) {
             if (kind == CLICK) clicks++;
@@ -1245,7 +1263,7 @@ public final class KeyHoldsTest {
         check(b.r.globes == 0, "区域那一路被取消的抬起（手掌 / 收尾补报的）：不出 🌐");
     }
 
-    /** 单独按住 Fn 0.4 秒起松手：永久锁（Fn Lock）——之后每个带 Fn 层的键都出 Fn 层、打多少个键都不解开，再单独点一下 Fn 才解开。 */
+    /** 单独按住 Fn 0.4 秒起松手：永久锁（Fn Sticky）——之后每个带 Fn 层的键都出 Fn 层、打多少个键都不解开，再单独点一下 Fn 才解开。 */
     static void fnLock() {
         H h = new H(FN_REGIONS);
         h.kd(FN, 1000);

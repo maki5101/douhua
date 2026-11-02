@@ -36,7 +36,7 @@ import java.util.Map;
  * - Windows 模式的 Fn 单独点一下（不到 {@link #HOLD_MS}）= **单次锁**（{@link Proto#FN_LATCHED}）：下一个普通键出 Fn 层、它松开时解开
  *   （同锁住的修饰键"打完下一个普通键解开"；修饰键按下 / 松开不消耗它：单次锁 → Shift → 1 = Shift+F1）；
  *   Mac 模式的 fn🌐 单独点一下照旧 = 🌐（{@link Host#globe}；它有单独的用途，没有单次锁）；
- * - 单独按住到 0.4 秒 = **永久锁**（Fn Lock，{@link Proto#FN_LOCKED}）：到点震一下 + {@link Proto#FN_ARMED}（"松手就永久锁"），按多久都算（修饰键那条
+ * - 单独按住到 0.4 秒 = **永久锁**（Fn Sticky，{@link Proto#FN_LOCKED}；协议 24 起 FnLock 是 F 行翻转，见下）：到点震一下 + {@link Proto#FN_ARMED}（"松手就永久锁"），按多久都算（修饰键那条
  *   "超过 1 秒不锁"对 Fn 不适用）；之后按多少个键都出 Fn 层，直到再单独按一下 Fn；
  * - 锁着（单次或永久）时单独再按一下 Fn（点或按住都算）：松手解开，这一下不再锁、fn🌐 也不出 🌐；锁着时把 Fn 当组合用（按住它按了别的键、
  *   动了鼠标，或者按下那一刻已经有别的键按着）：照旧出 Fn 层，Fn 松手后锁照旧（单次锁照样被那个键用掉：它松开时解开）。
@@ -46,7 +46,16 @@ import java.util.Map;
  * 同一个带 Fn 层的键已经有手指按着时，后来的手指跟着第一根的码（真键盘上已经按下的键不会再按下一次；面板自己收触摸那条路的 CMD_HID_KEY
  * 只带 id、分不出哪根手指，三条路要一样就只能按 id 记），最后一根松开才忘掉。
  *
- * 按着的键按 id 计数（同一个用法码两根手指：⇧ 和功能行的 Shift、两个空格副本；带 Fn 层的键按定下来的码计数）。计数已经是 0 的松开（releaseAll 之后迟到的）整个不理。
+ * F 行键（协议 24，{@link Proto#frowKey}：F1–F12 带第二功能、Esc 带 F 行翻转开关）照带 Fn 层的键那一套：按下那一刻定码、记下来，松开松记下的那个。
+ * F1–F12 发第二功能 = "Fn 起作用"（按着、单次锁、永久锁）和"F 行翻转"（{@link #frowFlip}，"平时按出第二功能"）正好一个成立；别的 Fn 层键只看 Fn 起没起作用
+ * （ThinkPad 的 FnLock 只翻 F1–F12）。第二功能是组合键时就是一个自带修饰键的键（走 Host.pressKey 那条路）；是多媒体 / 系统键时出一个内部码
+ * （{@link #CODE_CONSUMER} / {@link #CODE_SYSTEM}，负数，和区域 id 撞不上），宿主照标记分派到那两个槽。第二功能也是一个"普通键"：
+ * 锁住的修饰键照旧带着它、它松开时解开，按着修饰键时按了它修饰键算用过，Fn 单次锁也被它用掉——和别的键一个规矩，不另起一套。
+ * Esc 在 Fn 起作用时按下 = 翻转 F 行（不发 HID、报界面、{@link #FLIP_BUZZ_MS} 后震一下），定下来的是 {@link #CODE_FN_LOCK_TOGGLE}；松开时用掉 Fn 单次锁（它是 Fn 层的键），
+ * 锁住的修饰键不解开（没有键发给主机）。F 行翻转是设置（存在 App 的设置里、经 CMD_CONFIG 来），不是锁：releaseAll、CMD_UNLATCH 都不清；
+ * 翻转状态不进区域 id（面板自己收触摸那条路松开时会重新算 id，按着时翻了的话 id 对不上就卡键）。
+ *
+ * 按着的键按 id 计数（同一个用法码两根手指：⇧ 和功能行的 Shift、两个空格副本；带 Fn 层的键、F 行键按定下来的码计数）。计数已经是 0 的松开（releaseAll 之后迟到的）整个不理。
  * 普通键照旧每个松开都松 HID（两根手指按两个副本时先抬起的那根就松开）。
  * 到点按"截止时刻 + 当前状态"处理（{@link #onTimer}），不认是哪一次排的：每个带时间的入口先把到了截止时刻的处理掉，
  * 所以结果只看事件的时间、不看定时器晚到多少；过期的回调什么都不会多做（比 CLAUDE.md"撤掉 / 取代了的定时器绝不再到点"多一层保险）。
@@ -58,10 +67,38 @@ final class KeyHolds {
     static final long LOCK_MAX_MS = 1000;
     /** 点一下 Caps：按下 0x39 后按着多久再松（零长度的按下有被主机吞掉的风险，同"双击要隔开发"那条）。 */
     static final long CAPS_TAP_MS = 60;
+    /**
+     * Fn+Esc 翻转 F 行的那一下震动晚这么久（审查发现）：Esc 按下时 App 照常"嗒"一下（Haptics.playKey 先停掉还在震的再震），
+     * 翻转的那一下要是同一刻发，波形又一样，就被盖掉、和按一下普通 Esc 摸不出差别；锁修饰键那一下靠 0.4 秒的时间差和按键分得开，这里没有时间差，
+     * 就自己隔开一点——"嗒、嗒"两下。走按键定时器（和 0.4 秒那些同一套截止时刻），releaseAll 撤掉。
+     */
+    static final long FLIP_BUZZ_MS = 100;
     static final int CAPS = 0x39;
+    /**
+     * 内部码（协议 24，F 行的第二功能定下来以后）：多媒体页的码 = CODE_CONSUMER | 用法码，系统键那一组 = CODE_SYSTEM | 用法码，Esc 的 F 行翻转 = CODE_FN_LOCK_TOGGLE。
+     * 都是负数（第 31 位），和所有区域 id（正数）撞不上；{@link #isModifier} / {@link #isTimed} 对它们都是假，自动走普通键那条路。
+     * Host 的 pressKey / releaseKey 照标记分派（TouchRouter：键盘报文 / 多媒体槽 / 系统键槽）；翻转那个码不交给 Host。
+     */
+    static final int CODE_CONSUMER = 0x81000000, CODE_SYSTEM = 0x82000000, CODE_FN_LOCK_TOGGLE = 0x83000000;
+
+    static boolean isConsumerCode(int code) {
+        return (code & 0xFF000000) == CODE_CONSUMER;
+    }
+
+    static boolean isSystemCode(int code) {
+        return (code & 0xFF000000) == CODE_SYSTEM;
+    }
+
+    /** 多媒体 / 系统键内部码里的用法码。 */
+    static int usageOf(int code) {
+        return code & 0xFFFF;
+    }
 
     interface Host {
-        /** 原语：普通键按下（自带修饰键的先按、发报文）。不回调 KeyHolds。 */
+        /**
+         * 原语：普通键按下（自带修饰键的先按、发报文）。不回调 KeyHolds。协议 24 起 key 也可能是多媒体 / 系统键的内部码
+         * （{@link #isConsumerCode} / {@link #isSystemCode}），宿主照标记交给那个槽。
+         */
         void pressKey(int key);
 
         /** 原语：普通键松开（先松键、再松它自带的修饰键，发报文）。"打完一个键解开锁定"由 KeyHolds 自己做。 */
@@ -73,7 +110,7 @@ final class KeyHolds {
         /** 鼠标键按着（左 / 右 / 中，含中键按着还没发出去的）。 */
         boolean mouseBusy();
 
-        /** 按住到点（修饰键 armed、Caps 只切显示、合并键出 hold 键）：震一下。 */
+        /** 按住到点（修饰键 armed、Caps 只切显示、合并键出 hold 键），和 Fn+Esc 翻转 F 行（晚 {@link #FLIP_BUZZ_MS}）：震一下（同锁修饰键那一下）。 */
         void holdReached();
 
         /** Caps 的显示该翻了；sent = 这次真的给主机发了 Caps Lock。 */
@@ -119,6 +156,8 @@ final class KeyHolds {
     private boolean fnOnce;
     /** Fn 永久锁（单独按住 Fn / fn🌐 到 0.4 秒；再单独按一下才解开）。 */
     private boolean fnLock;
+    /** F 行翻转（协议 24，"平时按出第二功能"）：Fn+Esc 翻、CMD_CONFIG 设；是设置不是锁，releaseAll / unlatch 不清。 */
+    private boolean frowFlip;
     /** 这次按下的 Fn 是 Mac 模式的 fn🌐（单点出 🌐，不是单次锁）。 */
     private boolean fnGlobe;
     /** 按着的带 Fn 层的键：id → 按下那一刻定的码。 */
@@ -128,6 +167,9 @@ final class KeyHolds {
     /** 点了一下 Caps：0x39 还按着，到 capsReleaseAt 松开。 */
     private boolean capsReleasing;
     private long capsReleaseAt;
+    /** Fn+Esc 翻转过、确认的那一下还没震（到 flipBuzzAt 震，见 {@link #FLIP_BUZZ_MS}）；再翻一次就从那一刻重新算，只震一下。 */
+    private boolean flipBuzz;
+    private long flipBuzzAt;
     /** 宿主那边排着一次（在 scheduledAt 到点）。 */
     private boolean scheduled;
     private long scheduledAt;
@@ -166,14 +208,28 @@ final class KeyHolds {
         return m;
     }
 
-    /** Fn 的状态（Proto.FN_LATCHED / FN_HELD / FN_ARMED / FN_LOCKED 位，同 MSG_MODIFIERS 第四个字节）。 */
+    /** Fn 的状态（Proto.FN_LATCHED / FN_HELD / FN_ARMED / FN_LOCKED 位，协议 24 起还有 FROW_FLIP；同 MSG_MODIFIERS 第四个字节）。 */
     int fn() {
         int s = 0;
         if (fnOnce) s |= Proto.FN_LATCHED;
         if (fnCount() > 0) s |= Proto.FN_HELD;
         if (modPhase[FN] == ARMED) s |= Proto.FN_ARMED;
         if (fnLock) s |= Proto.FN_LOCKED;
+        if (frowFlip) s |= Proto.FROW_FLIP;
         return s;
+    }
+
+    /** F 行翻转着吗（"平时按出第二功能"）。 */
+    boolean frowFlip() {
+        return frowFlip;
+    }
+
+    /**
+     * 设 F 行翻转（CMD_CONFIG 的 frowFlip、App 照设置同步本地分流）：按着的 F 行键不受影响（松开照旧松按下时定的码）。
+     * 不报界面（设置是 App 定的，它自己知道）：报的话服务闲着时会把 App 正显示的本地分流的修饰键状态盖成零；下一次报状态时照常带着这一位。
+     */
+    void setFrowFlip(boolean v) {
+        frowFlip = v;
     }
 
     /** Fn 层这时生效吗（带 Fn 层的键现在按下会发 Fn 层的码）：Fn 按着、单次锁或永久锁着。 */
@@ -196,7 +252,7 @@ final class KeyHolds {
     /** 任何键按下（触摸分流按在键上的、界面发来的 key()）。 */
     void down(int key, long t) {
         begin(t);
-        if (Proto.isFnLayerKey(key)) key = resolve(key);   // 按下那一刻定码，之后当那个码处理
+        if (Proto.isFnLayerKey(key) || Proto.isFrowKey(key)) key = resolve(key);   // 按下那一刻定码，之后当那个码处理
         settleExcept(key, t);
         boolean busy = anyHeldExcept(key) || host.mouseBusy();
         boolean used = markUsedExcept(key);
@@ -237,6 +293,15 @@ final class KeyHolds {
                 timed.put(key, d);
             }
             if (used) host.modsChanged();
+        } else if (key == CODE_FN_LOCK_TOGGLE) {
+            // Fn+Esc：翻转 F 行（只在第一根手指按下时翻；同一个键的第二根手指跟着第一根的码，不再翻），不发 HID、报界面，
+            // 确认的那一下晚 FLIP_BUZZ_MS 再震（当场震会被 Esc 按下的"嗒"盖掉）
+            if (n == 0) {
+                frowFlip = !frowFlip;
+                flipBuzz = true;
+                flipBuzzAt = t + FLIP_BUZZ_MS;
+            }
+            host.modsChanged();
         } else {
             host.pressKey(key);
             if (used) host.modsChanged();
@@ -249,7 +314,7 @@ final class KeyHolds {
      * Caps、合并键什么都不出。带 Fn 层的键松的是按下时定的码。
      */
     void up(int key, long t, boolean canceled) {
-        if (Proto.isFnLayerKey(key)) {
+        if (Proto.isFnLayerKey(key) || Proto.isFrowKey(key)) {
             FnPress p = fnPresses.get(key);
             if (p == null) return;   // releaseAll 之后迟到的
             if (--p.n <= 0) fnPresses.remove(key);
@@ -294,6 +359,13 @@ final class KeyHolds {
             if (n == 1) {
                 Timed d = timed.remove(key);
                 if (d != null && d.phase == PENDING && !canceled) tap(key, t);
+            }
+        } else if (key == CODE_FN_LOCK_TOGGLE) {
+            // 没有键发给主机：不松 HID、锁住的修饰键不解开；它是 Fn 层的键，用掉 Fn 单次锁（同"那个键松开时解开"）
+            put(key, n - 1);
+            if (fnOnce) {
+                fnOnce = false;
+                host.modsChanged();
             }
         } else {
             put(key, n - 1);
@@ -340,8 +412,8 @@ final class KeyHolds {
     }
 
     /**
-     * 全部归零：计数、阶段、锁定（连 Fn 的单次锁、永久锁）、按着的带 Fn 层的键记的码、待定的 Caps / 合并键丢掉（不发）、Caps 的 60ms 松开不再等，撤掉定时器。
-     * 报文由 TouchRouter 的 keyboard.releaseAll 发。
+     * 全部归零：计数、阶段、锁定（连 Fn 的单次锁、永久锁）、按着的带 Fn 层的键 / F 行键记的码、待定的 Caps / 合并键丢掉（不发）、Caps 的 60ms 松开不再等，撤掉定时器。
+     * 报文由 TouchRouter 的 keyboard.releaseAll 和多媒体 / 系统键两个槽的 releaseAll 发。F 行翻转是设置，不清。
      */
     void releaseAll() {
         counts.clear();
@@ -352,6 +424,7 @@ final class KeyHolds {
         fnPresses.clear();
         timed.clear();
         capsReleasing = false;
+        flipBuzz = false;   // 翻转本身是设置、不清；确认的那一下没震就不震了（收尾不再出东西）
         scheduled = false;
         host.cancel();
     }
@@ -368,16 +441,31 @@ final class KeyHolds {
         return count(Proto.FN_KEY) + count(Proto.FN_GLOBE_KEY);
     }
 
-    /** 带 Fn 层的键按下：这个 id 已经有手指按着就跟着它的码，不然按 Fn 现在生不生效定（Fn 层的码 / 底层的码）、记下来。 */
+    /**
+     * 带 Fn 层的键、F 行键按下：这个 id 已经有手指按着就跟着它的码，不然现在定、记下来——带 Fn 层的键按 Fn 生不生效（Fn 层的码 / 底层的码）；
+     * F1–F12 按"Fn 起作用 ^ F 行翻转"（第二功能 / F 键本身）；Esc 按 Fn 起没起作用（翻转开关 / Esc）。
+     */
     private int resolve(int id) {
         FnPress p = fnPresses.get(id);
         if (p == null) {
             p = new FnPress();
-            p.code = fnActive() ? Proto.fnCode(id) : Proto.fnBase(id);
+            p.code = Proto.isFrowKey(id) ? frowCode(id) : fnActive() ? Proto.fnCode(id) : Proto.fnBase(id);
             fnPresses.put(id, p);
         }
         p.n++;
         return p.code;
+    }
+
+    /** F 行键这时按下出哪个码（见 {@link #resolve}）。第二功能是 0（照理不会：没配的 F 键报普通用法码）时出底层的键。 */
+    private int frowCode(int id) {
+        int type = Proto.frowType(id), base = Proto.frowBase(id), second = Proto.frowSecond(id);
+        if (type == Proto.FROW_FN_LOCK) return fnActive() ? CODE_FN_LOCK_TOGGLE : base;
+        if (!(fnActive() ^ frowFlip) || second == 0) return base;
+        switch (type) {
+            case Proto.FROW_CONSUMER: return CODE_CONSUMER | second;
+            case Proto.FROW_SYSTEM: return CODE_SYSTEM | second;
+            default: return second;   // 键盘键 / 组合键（用法码 | 自带修饰键 << 8）
+        }
     }
 
     private void put(int key, int n) {
@@ -398,8 +486,12 @@ final class KeyHolds {
         advance(t);
     }
 
-    /** 截止时刻 ≤ t 的都处理掉：Caps 的 60ms 松开、修饰键 armed / 退回、Caps 只切显示、合并键出 hold 键。 */
+    /** 截止时刻 ≤ t 的都处理掉：Fn+Esc 翻转的确认震动、Caps 的 60ms 松开、修饰键 armed / 退回、Caps 只切显示、合并键出 hold 键。 */
     private void advance(long t) {
+        if (flipBuzz && t >= flipBuzzAt) {
+            flipBuzz = false;
+            host.holdReached();
+        }
         if (capsReleasing && t >= capsReleaseAt) {
             capsReleasing = false;
             host.releaseKey(CAPS);
@@ -510,6 +602,10 @@ final class KeyHolds {
         if (capsReleasing) {
             has = true;
             next = capsReleaseAt;
+        }
+        if (flipBuzz && (!has || flipBuzzAt < next)) {
+            has = true;
+            next = flipBuzzAt;
         }
         for (int b = 0; b <= FN; b++) {
             long at;

@@ -35,6 +35,17 @@ public final class TouchRouterTest {
             log.add(s.toString());
         }
 
+        /** 多媒体 / 系统键（协议 24）：记成 "c" / "s" + 十六进制的码。 */
+        @Override
+        public void consumer(int usage) {
+            log.add("c" + Integer.toHexString(usage));
+        }
+
+        @Override
+        public void system(int usage) {
+            log.add("s" + Integer.toHexString(usage));
+        }
+
         @Override
         public void haptic(int kind) {
             log.add("h" + kind);

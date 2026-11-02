@@ -357,6 +357,11 @@ public final class MainActivity extends Activity
      */
     private int latchedMods, heldMods, armedMods, fnMods;
     /**
+     * 实体键盘现在这种模式的 F 行翻转（协议 24，"平时按出第二功能"）：设置里的那份（Boards.frowFlip），Fn+Esc 翻了由分流报的 Proto.FROW_FLIP 存回来
+     * （{@link #onFrowReported}）。fnMods 里的 FROW_FLIP 位一律照它（{@link #showKeyState}）：收尾时归零的 showKeyState(0, 0, 0, 0) 不把它也清掉。
+     */
+    private boolean frowFlip;
+    /**
      * Caps 的显示（豆花这边以为主机的大写锁定开着没有）：只有 App 这一份（服务 MSG_CAPS、本地分流 LocalOutput.caps 都只报"翻一下"）。
      * 主机的大写锁定跨连接都在，服务的分流和本地分流各自 releaseAll，放进哪个都会在接管 / 断开时丢；static：Activity 换语言 / 字体重建也不丢，
      * 进程重启才归"关"。换了主机（蓝牙连上的设备地址变了、蓝牙 ↔ 桌面模式）也归"关"（{@link #updateHostKind}）；服务断开、重启不归零
@@ -398,6 +403,7 @@ public final class MainActivity extends Activity
         super.onCreate(savedInstanceState);
         prefs = new Prefs(this);
         boards = prefs.boards(FixedData.catalog(this));
+        frowFlip = boards.frowFlip();
         haptics = new Haptics(this);
         displays = getSystemService(DisplayManager.class);
         audio = getSystemService(AudioManager.class);
@@ -523,6 +529,8 @@ public final class MainActivity extends Activity
             touchButtons = 0;
             bt.sendMouse(air.buttons(), 0, 0, 0, 0);
             bt.sendKeyboard(new byte[Hid.KEYBOARD_REPORT_SIZE]);
+            bt.sendConsumer(0);   // F 行第二功能的多媒体 / 系统键（协议 24）同理
+            bt.sendSystem(0);
             showKeyState(0, 0, 0, 0);
         }
         grabbed = false;
@@ -550,6 +558,9 @@ public final class MainActivity extends Activity
         edgeTbDp = prefs.edgeMarginDp(false);
         updateEdgeMargins();
         btMode = prefs.btMode();
+        // 协议 24：设置页改了"平时按出"、换了 Windows / Mac 模式（engineConfig 带的就是它）。要在 updateHostKind 之前：
+        // 它接着 showKeyState，F 行翻转那一位照这个画（放在后面的话键帽要等下一次修饰键变了才换面）
+        frowFlip = boards.frowFlip();
         updateHostKind();
         if (!btMode && airOn) setAirMode(false);
         if (btMode && gamepadOn) setGamepadMode(false);   // 手柄页第一批只在桌面模式
@@ -1196,13 +1207,17 @@ public final class MainActivity extends Activity
      * 没有外接屏时，豆花虚拟键盘的键会送到这里：吞掉，免得 Esc 被系统当返回键把豆花关了。
      * 豆花自己的手柄（0x1209 / 0xD0A2）的键一律吞（贴字面板开着也吞）：没人处理的手柄键安卓会换成别的键——B → 返回、Home → 回桌面、
      * Select → 菜单（Generic.kcm 的后备键），豆花窗口拿着焦点时一按 B 就把自己关了。
+     * 虚拟键盘的多媒体 / 系统键接口（0x1209 / 0xD0A3，协议 24：F 行第二功能的音量、媒体、亮度、睡眠……）不吞：同一个厂商号，不排除的话会被上面那条
+     * 一起吞掉，豆花窗口拿着焦点时（没接外接屏）F 行的音量就调不了这台手机的音量。这些键归主机（这台手机）处理，交给 super（没人接的音量、媒体键
+     * 系统照常处理）；它发不出 Esc / 返回这类会关掉豆花的键。
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (onHardKey(e)) return true;   // 音量键设了动作：归豆花（音量不变）
         InputDevice dev = e.getDevice();
         if (ownGamepad(dev)) return true;
-        if (textBar.getVisibility() != View.VISIBLE && dev != null && dev.getVendorId() == Proto.HID_VENDOR) return true;
+        if (textBar.getVisibility() != View.VISIBLE && dev != null && dev.getVendorId() == Proto.HID_VENDOR
+                && dev.getProductId() != Proto.HID_CONTROLS_PRODUCT) return true;
         return super.dispatchKeyEvent(e);
     }
 
@@ -2204,9 +2219,33 @@ public final class MainActivity extends Activity
         if (btMode && !stopped) bt.sendKeyboard(report);
     }
 
+    /** 服务接管时转回来的多媒体 / 系统键（协议 24，F 行的第二功能）：蓝牙的报告 3 / 6。 */
+    @Override
+    public void onRelayConsumer(int page, int usage) {
+        if (!btMode || stopped) return;
+        if (page == Proto.PAGE_CONSUMER) bt.sendConsumer(usage);
+        else if (page == Proto.PAGE_GENERIC_DESKTOP) bt.sendSystem(usage);
+    }
+
+    /** 服务报的修饰键 / Fn 状态。F 行翻转（Proto.FROW_FLIP）和设置里的不一样 = 服务那边 Fn+Esc 翻了：存进设置、同步给本地分流。 */
     @Override
     public void onModifiers(int latched, int held, int armed, int fn) {
+        onFrowReported((fn & Proto.FROW_FLIP) != 0, true);
         showKeyState(latched, held, armed, fn);
+    }
+
+    /**
+     * 分流报来的 F 行翻转（协议 24）：和设置里现在这种模式的那份不一样就是 Fn+Esc 翻了——存进设置（设置页"平时按出"是同一份），
+     * 再同步给另一个分流：服务报的同步给本地分流（只设翻转、不换引擎）；本地分流报的发 CMD_CONFIG 给服务（这时服务没接管，换引擎不碍事）。
+     * 服务接管 / 本地分流同一时刻只有一个在收键，所以两边不会同时翻。
+     */
+    private void onFrowReported(boolean flip, boolean fromServer) {
+        if (flip == frowFlip) return;
+        frowFlip = flip;
+        String mode = boards.mode();
+        boards.setFrowFlip(mode, flip);
+        if (fromServer) local.setFrowFlip(flip);
+        else link.config(prefs.engineConfig(), density);
     }
 
     /** Caps 的显示翻一下（服务 MSG_CAPS / 本地分流）：点一下（sent，发了 Caps Lock）和按住 0.4 秒（只切显示）都是翻。 */
@@ -2221,7 +2260,8 @@ public final class MainActivity extends Activity
         latchedMods = latched;
         heldMods = held;
         armedMods = armed;
-        fnMods = fn;
+        fnMods = (fn & ~Proto.FROW_FLIP) | (frowFlip ? Proto.FROW_FLIP : 0);   // F 行翻转照设置（收尾归零时不清）
+        fn = fnMods;
         if (keyboard == null) return;
         keyboard.setKeyState(latched, held, armed, fn, capsShown);
         fixedKeyboard.setKeyState(latched, held, armed, fn, capsShown);
@@ -2485,8 +2525,13 @@ public final class MainActivity extends Activity
                     touchButtons = 0;
                     bt.sendMouse(air.buttons(), 0, 0, 0, 0);
                 }
-                // 键盘同理：服务收尾时先关连接再松键，那份全零报文发不过来，主机那头锁住的修饰键、按着的键会一直按着
-                if (btMode) bt.sendKeyboard(new byte[Hid.KEYBOARD_REPORT_SIZE]);
+                // 键盘同理：服务收尾时先关连接再松键，那份全零报文发不过来，主机那头锁住的修饰键、按着的键会一直按着；
+                // F 行第二功能的多媒体 / 系统键（协议 24）也一样
+                if (btMode) {
+                    bt.sendKeyboard(new byte[Hid.KEYBOARD_REPORT_SIZE]);
+                    bt.sendConsumer(0);
+                    bt.sendSystem(0);
+                }
                 // 屏幕按钮的滚轮经服务转来；蓝牙模式下音量键的不归服务（桌面模式下服务截的音量键上面 endServerHolds 已收尾）
                 if (wheelSource >= AirMouse.SRC_ROUND) stopWheel();
                 air.releaseFrom(AirMouse.SRC_ROUND);   // 屏幕按钮按住的空中移动 / 拖动同理
@@ -3250,6 +3295,18 @@ public final class MainActivity extends Activity
             if (btMode) bt.sendKeyboard(report);
         }
 
+        /** F 行第二功能的多媒体键（协议 24）：蓝牙报告 3。桌面模式下本地分流只收手柄页，不会有。 */
+        @Override
+        public void consumer(int usage) {
+            if (btMode) bt.sendConsumer(usage);
+        }
+
+        /** 同上，系统键（蓝牙报告 6）。 */
+        @Override
+        public void system(int usage) {
+            if (btMode) bt.sendSystem(usage);
+        }
+
         @Override
         public void gamepad(byte[] report) {
             gamepadScreen.setReport(true, report);
@@ -3273,7 +3330,8 @@ public final class MainActivity extends Activity
 
         @Override
         public void modifiers(int latched, int held, int armed, int fn) {
-            onModifiers(latched, held, armed, fn);
+            onFrowReported((fn & Proto.FROW_FLIP) != 0, false);   // 本地分流里 Fn+Esc 翻了：存设置、发给服务
+            showKeyState(latched, held, armed, fn);
         }
 
         @Override

@@ -125,7 +125,7 @@ public final class TestClient {
                     case Proto.MSG_GESTURE:
                         Server.log("自测收到 手势 " + in.readUnsignedByte() + "/" + in.readUnsignedByte());
                         break;
-                    case Proto.MSG_MODIFIERS:   // 协议 21 起：锁住 / 按着 / 快锁了三个字节 + Fn（位：1 单次锁、2 按着、4 快永久锁了、8 永久锁，协议 22）
+                    case Proto.MSG_MODIFIERS:   // 协议 21 起：锁住 / 按着 / 快锁了三个字节 + Fn（位：1 单次锁、2 按着、4 快永久锁了、8 永久锁，协议 22；16 F 行翻转着，协议 24）
                         Server.log("自测收到 修饰键 锁住=" + in.readUnsignedByte() + " 按着=" + in.readUnsignedByte()
                                 + " 快锁了=" + in.readUnsignedByte() + " Fn=" + in.readUnsignedByte());
                         break;
@@ -147,6 +147,12 @@ public final class TestClient {
                         Server.log("自测收到 实体键 截住=" + in.readUnsignedByte() + " 截不了=" + in.readUnsignedByte()
                                 + " 原因=" + in.readUnsignedByte() + " " + in.readUTF());
                         break;
+                    case Proto.MSG_CONSUMER: {   // 协议 24：蓝牙模式转回来的多媒体 / 系统键（页 0x0C 多媒体、0x01 系统键；码 0 = 松开）
+                        int page = in.readUnsignedByte();
+                        int usage = in.readUnsignedShort();
+                        Server.log("自测收到 " + (page == Proto.PAGE_CONSUMER ? "多媒体键" : "系统键") + " 0x" + Integer.toHexString(usage));
+                        break;
+                    }
                     case Proto.MSG_KEYBOARD: {
                         byte[] r = new byte[8];
                         in.readFully(r);

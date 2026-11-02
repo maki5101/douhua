@@ -151,6 +151,17 @@ public final class GestureEngine {
          * （设置里 25%–200%、步长 5%，默认 100%；协议 22 加的，2026-11-01 晚用户："小红点的中键滑动速度还是太快"）。
          */
         public float leverSpeed = 1.0f;
+        /**
+         * 小红点推光标（和左键杆）的加速（0–1）：平台以后那一段陡升按它缩，推满时的速度 = 平台 + 加速 × (最快速度 − 平台)（TrackPoint.moveTop）。
+         * 0 = 推过平台以后不再变快。设置里 0%–100%、步长 5%，默认 100%（= 以前的曲线；范围、默认值在 TrackPoint.ACCEL_PCT_*，百分数换算走 TrackPoint.accelFraction）；
+         * 协议 23 加的，2026-11-01 晚用户："小红点也有点快不太好控制"。中键滚动的曲线、触控板都不跟它。
+         */
+        public float stickAccel = TrackPoint.accelFraction(TrackPoint.ACCEL_PCT_DEFAULT);
+        /**
+         * 加速 100% 时小红点推满的速度（计数 / 秒，不含灵敏度）：加速不到 100% 时实际推满的速度按比例比它低（TrackPoint.moveTop），加速 0 时不起作用。
+         * 设置里 500–3000、步长 100，默认 TrackPoint.TOP_SPEED_DEFAULT（= MOVE_MAX 1200，= 以前）；协议 23。
+         */
+        public float stickMaxSpeed = TrackPoint.TOP_SPEED_DEFAULT;
     }
 
     private static final int MAX_POINTERS = 16;

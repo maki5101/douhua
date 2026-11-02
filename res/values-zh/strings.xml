@@ -92,6 +92,14 @@
     <string name="spin_wave_unsupported">%1$s（这台手机不支持，会用默认的）</string>
     <string name="sec_trackpoint">小红点和左 / 中 / 右键</string>
     <string name="stick_speed">小红点灵敏度</string>
+    <string name="stick_accel">小红点加速</string>
+    <string name="stick_accel_hint">推过一半以后还会再变快：推到底的速度约是推一半时的 %1$s 倍。</string>
+    <string name="stick_accel_hint_off">推过一半以后不再变快：推到底和推一半一样快。</string>
+    <string name="stick_max_speed">小红点最快速度</string>
+    <string name="stick_max_speed_unit">计数/秒</string>
+    <string name="stick_max_speed_hint">推到底时光标约 %1$s 秒横穿 1920 像素宽的屏（按现在的灵敏度、一个计数走一个像素算；主机那边还有自己的鼠标速度和加速，实际会不一样）。</string>
+    <string name="stick_max_speed_off" formatted="false">加速是 0% 时这一项不起作用。</string>
+    <string name="stick_max_speed_actual">上面这个数是加速 100%% 时推到底的速度；现在加速 %1$s，推到底实际约 %2$s。</string>
     <string name="stick_tap">轻点红点 = 左键</string>
     <string name="stick_inertia">起停更利落（负惯性）</string>
     <string name="lever_speed">中键滑动的滚动速度</string>

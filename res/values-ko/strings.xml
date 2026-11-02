@@ -92,6 +92,14 @@
     <string name="spin_wave_unsupported">%1$s (이 폰에서는 지원 안 됨, 기본값 사용)</string>
     <string name="sec_trackpoint">포인팅 스틱과 왼쪽 / 가운데 / 오른쪽 버튼</string>
     <string name="stick_speed">포인팅 스틱 감도</string>
+    <string name="stick_accel">포인팅 스틱 가속</string>
+    <string name="stick_accel_hint">절반보다 더 밀면 더 빨라집니다. 끝까지 밀면 절반만 밀 때의 약 %1$s배 속도입니다.</string>
+    <string name="stick_accel_hint_off">절반보다 더 밀어도 빨라지지 않습니다. 끝까지 밀어도 절반만 밀 때와 같은 속도입니다.</string>
+    <string name="stick_max_speed">포인팅 스틱 최고 속도</string>
+    <string name="stick_max_speed_unit">카운트/초</string>
+    <string name="stick_max_speed_hint">끝까지 밀면 커서가 너비 1920픽셀 화면을 약 %1$s초에 가로지릅니다(현재 감도, 1카운트 = 1픽셀 기준. 호스트에도 자체 마우스 속도와 가속이 있어 실제로는 다릅니다).</string>
+    <string name="stick_max_speed_off" formatted="false">가속이 0%일 때는 효과가 없습니다.</string>
+    <string name="stick_max_speed_actual">이 값은 가속 100%%일 때 끝까지 민 속도입니다. 지금 가속 %1$s에서는 끝까지 밀 때 실제 속도가 약 %2$s입니다.</string>
     <string name="stick_tap">스틱 탭 = 왼쪽 클릭</string>
     <string name="stick_inertia">더 빠릿한 출발과 멈춤(음의 관성)</string>
     <string name="lever_speed">가운데 버튼 밀기 스크롤 속도</string>

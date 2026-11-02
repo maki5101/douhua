@@ -92,6 +92,14 @@
     <string name="spin_wave_unsupported">%1$s (no compatible con este teléfono, se usa el predeterminado)</string>
     <string name="sec_trackpoint">Pointing stick y botones izquierdo / central / derecho</string>
     <string name="stick_speed">Sensibilidad del pointing stick</string>
+    <string name="stick_accel">Aceleración del pointing stick</string>
+    <string name="stick_accel_hint">Más allá de la mitad acelera aún más: empujado a fondo va unas %1$s veces más rápido que a la mitad.</string>
+    <string name="stick_accel_hint_off">No acelera más allá de la mitad: empujado a fondo va igual de rápido que a la mitad.</string>
+    <string name="stick_max_speed">Velocidad máxima del pointing stick</string>
+    <string name="stick_max_speed_unit">unidades/s</string>
+    <string name="stick_max_speed_hint">Empujado a fondo, el cursor cruza una pantalla de 1920 píxeles de ancho en unos %1$s s (con la sensibilidad actual, una unidad por píxel; el host también aplica su propia velocidad y aceleración del ratón, así que en la práctica cambia).</string>
+    <string name="stick_max_speed_off" formatted="false">No tiene efecto mientras la aceleración sea 0 %.</string>
+    <string name="stick_max_speed_actual">Este valor es la velocidad empujado a fondo con aceleración al 100 %%; con la aceleración actual (%1$s), empujado a fondo va en realidad a unas %2$s.</string>
     <string name="stick_tap">Tocar el stick = clic izquierdo</string>
     <string name="stick_inertia">Arranque y parada más rápidos (inercia negativa)</string>
     <string name="lever_speed">Velocidad de desplazamiento al deslizar en el botón central</string>

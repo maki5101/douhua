@@ -92,6 +92,14 @@
     <string name="spin_wave_unsupported">%1$s (auf diesem Handy nicht unterstützt, Standard wird benutzt)</string>
     <string name="sec_trackpoint">Pointing-Stick und linke / mittlere / rechte Taste</string>
     <string name="stick_speed">Empfindlichkeit des Pointing-Sticks</string>
+    <string name="stick_accel">Beschleunigung des Pointing-Sticks</string>
+    <string name="stick_accel_hint">Über die Hälfte hinaus wird er noch schneller: ganz durchgedrückt etwa %1$s-mal so schnell wie halb.</string>
+    <string name="stick_accel_hint_off">Über die Hälfte hinaus wird er nicht schneller: ganz durchgedrückt genauso schnell wie halb.</string>
+    <string name="stick_max_speed">Höchsttempo des Pointing-Sticks</string>
+    <string name="stick_max_speed_unit">Counts/s</string>
+    <string name="stick_max_speed_hint">Ganz durchgedrückt überquert der Zeiger einen 1920 Pixel breiten Bildschirm in etwa %1$s s (bei der aktuellen Empfindlichkeit, ein Count pro Pixel; der Host hat zusätzlich eigene Mausgeschwindigkeit und -beschleunigung, in der Praxis weicht es ab).</string>
+    <string name="stick_max_speed_off" formatted="false">Wirkt nicht, solange die Beschleunigung 0 % ist.</string>
+    <string name="stick_max_speed_actual">Dieser Wert ist das Tempo ganz durchgedrückt bei 100 %% Beschleunigung; bei der aktuellen Beschleunigung (%1$s) sind es ganz durchgedrückt tatsächlich etwa %2$s.</string>
     <string name="stick_tap">Stick antippen = Linksklick</string>
     <string name="stick_inertia">Knackiger anfahren und stoppen (negative Trägheit)</string>
     <string name="lever_speed">Scrolltempo beim Wischen auf der mittleren Taste</string>

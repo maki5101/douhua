@@ -222,6 +222,8 @@ public final class TouchRouterTest {
         leftLeverYieldsToPad();
         leftLeverFirstThenStickAdds();
         leftLeverTicksRandom();
+        stickAccelThroughRouter();
+        stickAccelLeavesScrollAndPad();
         gamepadRoutes();
         gamepadOwnedAtDown();
         gamepadTargets();
@@ -2116,6 +2118,111 @@ public final class TouchRouterTest {
         for (long x = n0 + 1008; x <= n0 + 2000; x += 8) tn.onTick(x);
         check(wheelSum(n, at3) < 0, "红点松了：滚动杆接着滚（12dp，爬行）");
         tn.up(1, n0 + 2000);
+    }
+
+    // ═══════════ 小红点推光标的加速、最快速度（协议 23） ═══════════
+
+    /** 经真 ConfigCodec 写一遍、读回来（同 App → 服务那一路），密度 1。 */
+    static GestureEngine.Config viaCodec(GestureEngine.Config c) {
+        try {
+            java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+            ConfigCodec.write(new java.io.DataOutputStream(b), c, 1f);
+            GestureEngine.Config d = new GestureEngine.Config();
+            ConfigCodec.read(new java.io.DataInputStream(new java.io.ByteArrayInputStream(b.toByteArray())), d);
+            return d;
+        } catch (java.io.IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /**
+     * 设置里的"加速""最快速度"经 CMD_CONFIG 到服务的 TouchRouter：红点推到底、左键杆推到底 1 秒走的 = 平台 + 加速 × (最快 − 平台)；
+     * 加速 0% 时推到底和推一半一样快、最快速度不起作用；默认值时和以前一样（最快 1200）。
+     */
+    static void stickAccelThroughRouter() {
+        float[][] settings = {{1f, 1200f}, {0f, 3000f}, {0f, 500f}, {0.5f, 2000f}, {1f, 3000f}, {0.25f, 500f}};
+        for (float[] st : settings) {
+            GestureEngine.Config c = new GestureEngine.Config();
+            c.stickInertia = false;   // 关掉负惯性：起步不多冲一截，1 秒正好按曲线算
+            c.stickAccel = st[0];
+            c.stickMaxSpeed = st[1];
+            GestureEngine.Config d = viaCodec(c);
+            check(d.stickAccel == st[0] && d.stickMaxSpeed == st[1], "经 CMD_CONFIG 往返：加速 " + st[0] + "、最快 " + st[1]);
+            float top = TrackPoint.MOVE_PLATEAU + st[0] * (st[1] - TrackPoint.MOVE_PLATEAU);
+            Rec a = new Rec();
+            push(stickRouter(a, d), 2, 200, 0, 1000, 1000);   // 推到很远：封顶
+            check(Math.abs(a.dxSum - top) <= 2 && a.dySum == 0, "加速 " + st[0] + "、最快 " + st[1] + "：红点推到底 1 秒走 " + a.dxSum + "（应约 " + top + "）");
+            Rec b = new Rec();
+            leftLever(stickRouter(b, d), 1, 0, 270, 1000, 1000);
+            check(Math.abs(b.dySum - top) <= 2 && b.dxSum == 0 && b.movesWithoutLeft == 0,
+                    "加速 " + st[0] + "、最快 " + st[1] + "：左键杆推到底 1 秒拖 " + b.dySum + "（应约 " + top + "，都带着左键）");
+            Rec h = new Rec();
+            push(stickRouter(h, d), 2, TrackPoint.HALF_DP, 0, 1000, 1000);   // 推一半：平台，不跟这两项
+            check(Math.abs(h.dxSum - TrackPoint.MOVE_PLATEAU) <= 1, "加速 " + st[0] + "、最快 " + st[1] + "：推一半照旧是平台（" + h.dxSum + "）");
+        }
+        // 默认值（加速 100%、最快 1200）经 CMD_CONFIG 以后，红点 / 左键杆出的报文序列和不带这两项时（新建的 Config）逐条一样
+        GestureEngine.Config def = viaCodec(new GestureEngine.Config());
+        boolean same = true;
+        for (float m : new float[]{4, 10, 15, 20, 25, 32, 60}) {
+            Rec a = new Rec(), b = new Rec();
+            push(stickRouter(a), 2, m, m / 3, 1000, 700);
+            push(stickRouter(b, def), 2, m, m / 3, 1000, 700);
+            same &= a.log.equals(b.log) && a.dxSum == b.dxSum && a.dySum == b.dySum;
+            Rec c1 = new Rec(), c2 = new Rec();
+            leftLever(stickRouter(c1), 1, -(slop() + m), 0, 1000, 700);
+            leftLever(stickRouter(c2, def), 1, -(slop() + m), 0, 1000, 700);
+            same &= c1.log.equals(c2.log) && c1.dxSum == c2.dxSum;
+        }
+        check(same, "默认值经 CMD_CONFIG：红点、左键杆出的报文和默认 Config 逐条一样");
+    }
+
+    /** 加速、最快速度不管中键滚动（按住中键推红点、中键滑动杆）和触控板：换了这两项，这几样出的报文逐条一样。 */
+    static void stickAccelLeavesScrollAndPad() {
+        GestureEngine.Config base = new GestureEngine.Config();
+        GestureEngine.Config odd = new GestureEngine.Config();
+        odd.stickAccel = 0f;
+        odd.stickMaxSpeed = 3000f;
+        GestureEngine.Config odd2 = new GestureEngine.Config();
+        odd2.stickAccel = 1f;
+        odd2.stickMaxSpeed = 3000f;
+        boolean same = true;
+        for (GestureEngine.Config o : new GestureEngine.Config[]{odd, odd2}) {
+            for (float m : new float[]{8, 20, 40}) {
+                // 按住中键推红点 = 滚动
+                Rec a = new Rec(), b = new Rec();
+                for (Object[] run : new Object[][]{{a, base}, {b, o}}) {
+                    TouchRouter t = stickRouter((Rec) run[0], (GestureEngine.Config) run[1]);
+                    t.down(3, 2050, 130, 1000);   // 中键
+                    t.frame(1000);
+                    push(t, 2, 0, m, 1000, 800);
+                }
+                same &= a.log.equals(b.log) && wheelSum(a, 0) != 0;
+                // 中键滑动杆（按在中键上的那根手指自己推）
+                Rec c = new Rec(), d = new Rec();
+                for (Object[] run : new Object[][]{{c, base}, {d, o}}) {
+                    TouchRouter t = stickRouter((Rec) run[0], (GestureEngine.Config) run[1]);
+                    t.down(3, 2050, 130, 1000);
+                    t.move(3, 2050, 130 + slop() + m);
+                    t.frame(1000);
+                    for (long x = 1008; x <= 1800; x += 8) t.onTick(x);
+                    t.up(3, 1800);
+                }
+                same &= c.log.equals(d.log) && wheelSum(c, 0) != 0;
+                // 触控板单指划
+                Rec e = new Rec(), f = new Rec();
+                for (Object[] run : new Object[][]{{e, base}, {f, o}}) {
+                    TouchRouter t = stickRouter((Rec) run[0], (GestureEngine.Config) run[1]);
+                    t.down(4, 300, 300, 1000);
+                    for (int i = 1; i <= 30; i++) {
+                        t.move(4, 300 + i * m / 4, 300 + i);
+                        t.frame(1000 + i * 8);
+                    }
+                    t.up(4, 1300);
+                }
+                same &= e.log.equals(f.log) && e.dxSum > 0;
+            }
+        }
+        check(same, "加速 / 最快速度换了：按住中键推红点、中键滑动杆、触控板出的报文逐条一样（只管推光标）");
     }
 
     // ═══════════ 左键杆（按在左键上的那根手指自己推光标 = 拖动） ═══════════

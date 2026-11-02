@@ -24,13 +24,13 @@ trap 'rm -rf "$OUT"' EXIT
 # 分屏透传的分流和注入流拼装（TouchSplit、InjectStream）、
 # 服务的会话交接部件（独占锁、顶替策略、方向锁定、心跳和释放原因）、日志限频、带超时的子进程、实体键（设备挑选、判断状态机）、
 # TouchRouter 的一次性定时器（OneShotTimer：撤掉 / 取代后在等锁的那次不调）、
-# 分屏里豆花拿着键盘焦点时交给另一半（协议 22：服务挑哪个任务 FocusPick、App 什么时候发 FocusHandoff）、
+# 分屏里豆花拿着键盘焦点时交给另一半（协议 22：服务挑哪个任务 FocusPick、App 什么时候发 FocusHandoff；诊断日志只列看得见的任务 FocusPick.describe）、
 # ⋯ 菜单按使用频率排（MenuOrder：每一屏显示哪几项、什么顺序）、
 # 打字测试的重放（KeyReplay）、adb 无线配对的密码学（SPAKE2 / HKDF / AES-GCM，向量取自 BoringSSL）、
 # 豆花自己连 adbd 的协议（消息帧、adb 公钥格式、自签证书、配对 / 连接客户端）和拉起服务的 shell 命令、自动启动的退避规则、
 # 主界面的十八套配色（槽位齐全、对比度、小红点的红）、
 # 惯性滚动的物理（ScrollInertia）、连续滚动的描述符 / 滚轮倍率换算、CMD_CONFIG 编解码（HidTest）、uhid 的 GET / SET_REPORT（UhidEvents）、
-# 小红点（TrackPoint：速度曲线、负惯性、积分、轻点、颗粒、中键滚动）、
+# 小红点（TrackPoint：速度曲线、负惯性、积分、轻点、颗粒、中键滚动；协议 23 的加速 / 最快速度——默认值时和改之前逐点一样、滑块每一格单调、设置页说明里现算的数）、
 # 修饰键 / Caps / 合并键的点一下、按住、锁定，实体键盘的 Fn 层（KeyHolds：真 TouchRouter 跑报文序列，加随机序列查不变量；协议 21 的编码在 ServerPartsTest；
 # 协议 22 起 Fn 点一下单次锁、按住永久锁，随机序列旁边跑一份照新规矩写的模型）、
 # 触控板背景图怎么摆（PadFit：五种显示方式、焦点、吸附、平铺相位、按形状挑设置、解码多大）、

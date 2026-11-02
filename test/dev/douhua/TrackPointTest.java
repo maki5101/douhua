@@ -10,7 +10,9 @@ import java.util.List;
  * 停（抬起 / 取消后迟到的节拍什么都不出）、兜底暂停（20 秒没事件停、再动接着）；
  * 中键滚动杆模式（一直是滚动、和红点的中键滚动出的量一样、先挪出轻点容差才开始、开始以后挪回死区停 / 再推接着、不算轻点、不发颗粒、按格 / 连续、停、暂停）；
  * 左键杆模式（一直是移动、离按下点容差 + m 出的量和红点推 m 一模一样（负惯性开 / 关、8 / 12ms 节拍、灵敏度）、先挪出轻点容差才开始、
- * 位移从容差那一圈起算、挪回来停 / 再推接着、不算轻点、不发颗粒、不滚、停、暂停）。
+ * 位移从容差那一圈起算、挪回来停 / 再推接着、不算轻点、不发颗粒、不滚、停、暂停）；
+ * 推光标的加速、最快速度（协议 23：默认值时曲线逐位和改之前一样、一串随机序列出的东西和改之前的代码算的校验和一样；加速 0% 平台以后是平的、
+ * 最快速度不起作用；滑块每一格速度随位移 / 两个滑块不减；积分、灵敏度照旧；左键杆用的也是新参数；中键滚动不跟；收到坏数截住；设置页说明里现算的倍数、秒数）。
  * 数字只证明代码照设计跑，证明不了手感。
  */
 public final class TrackPointTest {
@@ -81,6 +83,17 @@ public final class TrackPointTest {
         dragLeverRollTap();
         dragLeverNoTapNoTextureNoScroll();
         dragLeverStopsAndPauses();
+        accelDefaultsUnchanged();
+        accelGolden();
+        accelZeroFlat();
+        accelMonotone();
+        accelIntegrate();
+        accelSensitivity();
+        accelDragLever();
+        accelLeavesScroll();
+        accelClamp();
+        accelHints();
+        accelHintTexts();
         System.err.println("小红点：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -905,6 +918,580 @@ public final class TrackPointTest {
         q.move(26, 0);
         check(q.frame(now + 20), "左键杆再动：接着");
         check(q.tick(now + 28, false, true, false) && p.dx > px, "左键杆接着走");
+    }
+
+    // ── 加速、最快速度（协议 23，2026-11-01 晚）──
+
+    /** 设置滑块的每一格：加速 0%–100%（步长 5）、最快速度 500–3000（步长 100），照 Prefs.engineConfig 的换算（百分数 / 100f、整数转 float）。 */
+    static float[] accelGrid() {
+        float[] a = new float[(TrackPoint.ACCEL_PCT_MAX - TrackPoint.ACCEL_PCT_MIN) / TrackPoint.ACCEL_PCT_STEP + 1];
+        for (int i = 0; i < a.length; i++) a[i] = TrackPoint.accelFraction(TrackPoint.ACCEL_PCT_MIN + i * TrackPoint.ACCEL_PCT_STEP);
+        return a;
+    }
+
+    static float[] topGrid() {
+        float[] a = new float[(TrackPoint.TOP_SPEED_MAX - TrackPoint.TOP_SPEED_MIN) / TrackPoint.TOP_SPEED_STEP + 1];
+        for (int i = 0; i < a.length; i++) a[i] = TrackPoint.TOP_SPEED_MIN + i * TrackPoint.TOP_SPEED_STEP;
+        return a;
+    }
+
+    /** 默认值（加速 100%、最快 1200）时曲线和改之前逐点一样：改之前推光标用的是 curve(u, MOVE_CRAWL, MOVE_PLATEAU, 1200)。 */
+    static void accelDefaultsUnchanged() {
+        GestureEngine.Config c = new GestureEngine.Config();
+        check(c.stickAccel == 1f && c.stickMaxSpeed == 1200f && TrackPoint.MOVE_MAX == 1200f, "默认：加速 1、最快 1200（= 以前的 MOVE_MAX）");
+        check(Float.floatToIntBits(TrackPoint.moveTop(c.stickAccel, c.stickMaxSpeed)) == Float.floatToIntBits(1200f), "默认推满的速度正好是 1200（逐位）");
+        // Prefs（离不开 Android，离线编不到）的默认值、范围、换算都引用这几个：STICK_ACCEL_DEFAULT = ACCEL_PCT_DEFAULT、STICK_MAX_DEFAULT = TOP_SPEED_DEFAULT，
+        // engineConfig 里 accelFraction(百分数)、(float) 最快速度。这里锁住它们换算出来逐位等于以前的曲线、等于 Config 的默认值
+        float prefsAccel = TrackPoint.accelFraction(TrackPoint.ACCEL_PCT_DEFAULT), prefsTop = TrackPoint.TOP_SPEED_DEFAULT;
+        check(TrackPoint.ACCEL_PCT_MIN == 0 && TrackPoint.ACCEL_PCT_MAX == 100 && TrackPoint.ACCEL_PCT_DEFAULT == 100 && TrackPoint.TOP_SPEED_DEFAULT == 1200,
+                "滑块的默认值：加速 100%、最快速度 1200（范围 0–100%）");
+        check(Float.floatToIntBits(prefsAccel) == Float.floatToIntBits(1f) && Float.floatToIntBits(prefsTop) == Float.floatToIntBits(TrackPoint.MOVE_MAX),
+                "照 Prefs 的换算（accelFraction(ACCEL_PCT_DEFAULT)、(float) TOP_SPEED_DEFAULT）逐位是 1、MOVE_MAX");
+        check(Float.floatToIntBits(prefsAccel) == Float.floatToIntBits(c.stickAccel) && Float.floatToIntBits(prefsTop) == Float.floatToIntBits(c.stickMaxSpeed),
+                "Prefs 的默认值换算出来和 Config 的默认值逐位一样");
+        check(Float.floatToIntBits(TrackPoint.moveTop(prefsAccel, prefsTop)) == Float.floatToIntBits(1200f), "照 Prefs 的默认值推满也正好是 1200");
+        boolean frac = true;
+        for (int pct = -50; pct <= 150; pct++) {
+            int in = Math.max(0, Math.min(100, pct));
+            frac &= Float.floatToIntBits(TrackPoint.accelFraction(pct)) == Float.floatToIntBits(in / 100f);
+        }
+        check(frac, "accelFraction：百分数截到 0–100 再除以 100（-50–150 每个整数）");
+        boolean same = true;
+        int n = 0;
+        for (int i = 0; i <= 8000; i++) {
+            float m = i * 0.01f;
+            float old = TrackPoint.curve(TrackPoint.level(m), TrackPoint.MOVE_CRAWL, TrackPoint.MOVE_PLATEAU, 1200f);
+            same &= Float.floatToIntBits(TrackPoint.moveSpeed(m, c.stickAccel, c.stickMaxSpeed)) == Float.floatToIntBits(old)
+                    && Float.floatToIntBits(TrackPoint.moveSpeed(m)) == Float.floatToIntBits(old)
+                    && Float.floatToIntBits(TrackPoint.dragLeverSpeed(m + c.tapSlopDp, c.tapSlopDp, c.stickAccel, c.stickMaxSpeed))
+                    == Float.floatToIntBits(TrackPoint.dragLeverSpeed(m + c.tapSlopDp, c.tapSlopDp));
+            n++;
+        }
+        check(same, "默认值：0–80dp 每 0.01dp（" + n + " 个点）推光标的速度和以前的公式逐位一样，左键杆也一样");
+    }
+
+    /**
+     * 默认值时 TrackPoint 出的每一样东西（位移、滚轮、点击、震动、tick 的返回值、started）和改之前一模一样：一串随机序列
+     * （红点 / 左键杆 / 中键滚动杆 × 灵敏度 × 负惯性 × 轻点 × 颗粒 × 中键滑动速度 × 咔嗒 × 8 / 12ms 节拍 × 抖动、卡顿、20 秒暂停、中键按着 / 鼠标键按着 / 连续滚动、
+     * 抬起 / 取消），把出的东西揉成一个 FNV 校验和。校验和是拿 77f6ec7（改之前）的 TrackPoint 跑同一段代码算的（一次性脚本，不进仓库）：
+     * 以后有意改曲线时这里跟着改。
+     */
+    static void accelGolden() {
+        long h = goldenRun(20261101L, 600);
+        check(h == 0xf000b060d8299a8aL, "默认值：600 段随机序列出的东西和改之前一模一样（校验和 " + Long.toHexString(h) + "，应 f000b060d8299a8a；总位移 " + goldenMoved + "）");
+        check(goldenMoved == 276726, "随机序列的总位移和改之前一样（" + goldenMoved + "）");
+    }
+
+    private static long golden;
+    private static long goldenMoved;
+
+    private static void mix(long v) {
+        golden ^= v;
+        golden *= 1099511628211L;
+    }
+
+    static final class GoldenOut implements TrackPoint.Output {
+        long moved;
+
+        @Override
+        public void move(int dx, int dy) {
+            mix(1);
+            mix(dx);
+            mix(dy);
+            moved += Math.abs(dx) + Math.abs(dy);
+        }
+
+        @Override
+        public void scroll(int w, int p) {
+            mix(2);
+            mix(w);
+            mix(p);
+        }
+
+        @Override
+        public void click() {
+            mix(3);
+        }
+
+        @Override
+        public void haptic(int k) {
+            mix(4);
+            mix(k);
+        }
+    }
+
+    /** 随机序列（只用改之前就有的参数；加速、最快速度是默认值）。改这段就要拿改之前的代码重算校验和。 */
+    static long goldenRun(long seed, int episodes) {
+        golden = 1469598103934665603L;
+        java.util.Random r = new java.util.Random(seed);
+        float[] speeds = {0.3f, 0.5f, 1.0f, 1.0f, 1.0f, 1.7f, 3.0f};
+        float[] levers = {0.25f, 1.0f, 2.0f};
+        long moved = 0;
+        for (int e = 0; e < episodes; e++) {
+            int mode = r.nextInt(10) < 5 ? TrackPoint.MODE_STICK : r.nextInt(5) < 3 ? TrackPoint.MODE_DRAG_LEVER : TrackPoint.MODE_SCROLL_LEVER;
+            GoldenOut o = new GoldenOut();
+            TrackPoint t = new TrackPoint(o, mode);
+            GestureEngine.Config c = new GestureEngine.Config();
+            c.stickSpeed = speeds[r.nextInt(speeds.length)];
+            c.stickInertia = r.nextInt(3) != 0;
+            c.stickTap = r.nextBoolean();
+            c.texture = r.nextBoolean();
+            c.leverSpeed = levers[r.nextInt(levers.length)];
+            c.scrollTicks = r.nextBoolean() ? GestureEngine.TICKS_ALL : GestureEngine.TICKS_OFF;
+            t.setConfig(c);
+            int period = r.nextBoolean() ? 8 : 12;
+            long now = r.nextInt(1000);
+            float x = r.nextFloat() * 300, y = r.nextFloat() * 300;
+            float ox = x, oy = y;
+            t.down(x, y, now);
+            int steps = 20 + r.nextInt(200);
+            boolean scroll = r.nextInt(4) == 0, buttons = r.nextInt(4) == 0, smooth = r.nextBoolean();
+            for (int s = 0; s < steps; s++) {
+                int what = r.nextInt(10);
+                if (what < 4) {
+                    // 换位置：离按下点 0–60dp 的随机方向，偶尔小抖
+                    if (r.nextInt(4) == 0) {
+                        x += (r.nextFloat() - 0.5f) * 2;
+                        y += (r.nextFloat() - 0.5f) * 2;
+                    } else {
+                        double ang = r.nextDouble() * Math.PI * 2;
+                        float d = r.nextFloat() * 60;
+                        x = ox + (float) Math.cos(ang) * d;
+                        y = oy + (float) Math.sin(ang) * d;
+                    }
+                    t.move(x, y);
+                    mix(t.frame(now) ? 11 : 10);
+                } else if (what < 9) {
+                    int gap = r.nextInt(20) == 0 ? 30 + r.nextInt(200) : period + (r.nextInt(3) - 1);
+                    now += gap;
+                    if (r.nextInt(30) == 0) scroll = !scroll;
+                    if (r.nextInt(30) == 0) buttons = !buttons;
+                    mix(t.tick(now, scroll, buttons, smooth) ? 21 : 20);
+                    mix(t.started() ? 31 : 30);
+                } else if (r.nextInt(40) == 0) {
+                    // 很久没事件（暂停）再接着
+                    now += TrackPoint.IDLE_PAUSE_MS + 50;
+                    mix(t.tick(now, scroll, buttons, smooth) ? 41 : 40);
+                }
+            }
+            if (r.nextInt(8) == 0) {
+                t.cancel();
+            } else {
+                t.up(now + r.nextInt(300), r.nextInt(6) == 0);
+            }
+            mix(t.tick(now + 100, scroll, buttons, smooth) ? 51 : 50);
+            moved += o.moved;
+        }
+        mix(moved);
+        goldenMoved = moved;
+        return golden;
+    }
+
+    /** 加速 0%：推过平台以后不再变快（平台以前那一段照旧），最快速度不起作用。 */
+    static void accelZeroFlat() {
+        boolean flat = true, before = true, noTop = true;
+        for (float top : topGrid()) {
+            for (int i = 0; i <= 8000; i++) {
+                float m = i * 0.01f;
+                float u = TrackPoint.level(m);
+                float v = TrackPoint.moveSpeed(m, 0f, top);
+                if (u >= TrackPoint.RISE_END) flat &= v == TrackPoint.MOVE_PLATEAU;
+                if (u < TrackPoint.PLATEAU_END) before &= v == TrackPoint.moveSpeed(m);   // 爬行 → 平台那一段和默认一样
+                noTop &= v == TrackPoint.moveSpeed(m, 0f, 1200f);
+            }
+        }
+        check(flat, "加速 0%：过了上升段（u ≥ 0.45）一律是平台 " + TrackPoint.MOVE_PLATEAU);
+        check(before, "加速 0%：平台以前（爬行、上升、平台）和默认一样");
+        check(noTop, "加速 0%：最快速度从 500 到 3000 曲线都一样（不起作用）");
+        check(TrackPoint.moveTop(0f, 3000f) == TrackPoint.MOVE_PLATEAU && TrackPoint.pushRatio(0f, 3000f) == 1f, "加速 0%：推到底 = 推一半");
+    }
+
+    /** 曲线随位移不减；同一个位移，速度随加速、随最快速度不减；平台以前那一段不跟这两项。滑块的每一格都扫。 */
+    static void accelMonotone() {
+        float[] as = accelGrid(), tops = topGrid();
+        boolean inM = true, inA = true, inTop = true, head = true, topOk = true;
+        int cases = 0;
+        for (float a : as) {
+            for (float top : tops) {
+                float prev = 0;
+                for (int i = 0; i <= 4000; i++) {
+                    float m = i * 0.02f;
+                    float v = TrackPoint.moveSpeed(m, a, top);
+                    inM &= v >= prev;
+                    prev = v;
+                    if (TrackPoint.level(m) < TrackPoint.PLATEAU_END) head &= v == TrackPoint.moveSpeed(m);
+                    cases++;
+                }
+                float want = TrackPoint.MOVE_PLATEAU + a * (top - TrackPoint.MOVE_PLATEAU);
+                topOk &= Math.abs(TrackPoint.moveSpeed(TrackPoint.FULL_DP, a, top) - want) <= 1e-3f
+                        && TrackPoint.moveSpeed(200, a, top) == TrackPoint.moveSpeed(TrackPoint.FULL_DP, a, top);
+            }
+        }
+        for (int i = 0; i <= 400; i++) {
+            float m = i * 0.2f;
+            for (float top : tops) {
+                float prev = -1;
+                for (float a : as) {
+                    float v = TrackPoint.moveSpeed(m, a, top);
+                    inA &= v >= prev;
+                    prev = v;
+                }
+            }
+            for (float a : as) {
+                float prev = -1;
+                for (float top : tops) {
+                    float v = TrackPoint.moveSpeed(m, a, top);
+                    inTop &= v >= prev;
+                    prev = v;
+                }
+            }
+        }
+        check(inM, "滑块每一格（21 × 26）：速度随位移不减（" + cases + " 个点）");
+        check(inA, "同一个位移：速度随加速不减");
+        check(inTop, "同一个位移：速度随最快速度不减");
+        check(head, "平台以前（u < 0.70）那一段不跟加速、最快速度");
+        check(topOk, "推到底 = 平台 + 加速 × (最快 − 平台)，再远封顶");
+        check(TrackPoint.TOP_SPEED_MIN > TrackPoint.MOVE_PLATEAU, "最快速度的下限（" + TrackPoint.TOP_SPEED_MIN + "）高于平台（" + TrackPoint.MOVE_PLATEAU + "）");
+        check(TrackPoint.MOVE_MAX >= TrackPoint.TOP_SPEED_MIN && TrackPoint.MOVE_MAX <= TrackPoint.TOP_SPEED_MAX
+                        && ((int) TrackPoint.MOVE_MAX - TrackPoint.TOP_SPEED_MIN) % TrackPoint.TOP_SPEED_STEP == 0 && 100 % TrackPoint.ACCEL_PCT_STEP == 0,
+                "默认值 1200、100% 都正好在滑块的格子上");
+    }
+
+    /** 节拍积分照旧：8 / 12 / 抖动的节拍，1 秒走的 = 新曲线的速度（余数不丢）；推到底走 moveTop。 */
+    static void accelIntegrate() {
+        float[][] settings = {{0f, 1200f}, {0.5f, 2000f}, {1f, 3000f}, {0.35f, 500f}};
+        boolean ok = true;
+        int cases = 0;
+        for (float[] st : settings) {
+            for (float m : new float[]{3, 10, 18, 25, 29, 32, 50}) {
+                for (int period : new int[]{8, 12, 0}) {
+                    Rec r = new Rec();
+                    GestureEngine.Config c = cfg(false);
+                    c.stickAccel = st[0];
+                    c.stickMaxSpeed = st[1];
+                    TrackPoint t = stick(r, c);
+                    t.down(0, 0, 0);
+                    t.move(m, 0);
+                    t.frame(0);
+                    long now = 0;
+                    int[] gaps = {7, 9, 13};
+                    for (int i = 0; now < 997; i++) {
+                        now += period == 0 ? gaps[i % 3] : period;
+                        t.tick(now, false, false, false);
+                    }
+                    float want = TrackPoint.moveSpeed(m, st[0], st[1]) * now / 1000f;
+                    // ≤ 1：余数在 float 里攒，正好整数的总量（平台 450 × 1 秒）可能差一点点、向零取整少 1 个计数（默认曲线也这样）
+                    ok &= Math.abs(r.dx - want) <= 1 && r.dy == 0 && !r.reversed;
+                    cases++;
+                }
+            }
+        }
+        check(ok, "加速 / 最快速度换了：" + cases + " 种（设置 × 位移 × 8 / 12 / 抖动节拍）1 秒走的 = 新曲线 × 时间（误差 ≤ 1 计数）");
+        Rec r = new Rec();
+        GestureEngine.Config c = cfg(false);
+        c.stickAccel = 0.5f;
+        c.stickMaxSpeed = 2000f;
+        TrackPoint t = stick(r, c);
+        t.down(0, 0, 0);
+        t.move(32, 0);
+        t.frame(0);
+        t.tick(200, false, false, false);   // 卡了 200ms
+        float want = TrackPoint.moveTop(0.5f, 2000f) * TrackPoint.MAX_DT_MS / 1000f;
+        check(Math.abs(r.dx - want) < 1, "一拍隔 200ms 照旧按 50ms 算：" + r.dx + "（应 " + want + "）");
+    }
+
+    /** 灵敏度照旧乘在整条曲线上（加速、最快速度换了也一样）。 */
+    static void accelSensitivity() {
+        boolean ok = true;
+        for (float[] st : new float[][]{{0f, 1200f}, {0.5f, 2500f}}) {
+            for (float m : new float[]{10, 20, 32}) {
+                int[] got = new int[2];
+                float[] speeds = {1, 2.5f};
+                for (int i = 0; i < 2; i++) {
+                    Rec r = new Rec();
+                    GestureEngine.Config c = cfg(false);
+                    c.stickSpeed = speeds[i];
+                    c.stickAccel = st[0];
+                    c.stickMaxSpeed = st[1];
+                    TrackPoint t = stick(r, c);
+                    t.down(0, 0, 0);
+                    t.move(m, 0);
+                    t.frame(0);
+                    for (long now = 8; now <= 1000; now += 8) t.tick(now, false, false, false);
+                    got[i] = r.dx;
+                }
+                ok &= Math.abs(got[1] - 2.5f * got[0]) <= 3 && Math.abs(got[0] - TrackPoint.moveSpeed(m, st[0], st[1])) <= 1;
+            }
+        }
+        check(ok, "加速 / 最快速度换了：灵敏度 2.5 倍走 2.5 倍");
+    }
+
+    /** 左键杆用的也是新参数：离按下点（容差 + m）= 红点推 m（加速、最快速度换了照样逐计数一样），推到底封顶在新的最快。 */
+    static void accelDragLever() {
+        int cases = 0, bad = 0;
+        for (float[] st : new float[][]{{0f, 3000f}, {0.5f, 2000f}, {1f, 3000f}, {0.2f, 600f}}) {
+            for (boolean inertia : new boolean[]{false, true}) {
+                for (float m : new float[]{4, 15, 25, 31, 45}) {
+                    GestureEngine.Config c = cfg(inertia);
+                    c.stickAccel = st[0];
+                    c.stickMaxSpeed = st[1];
+                    Rec a = new Rec(), b = new Rec();
+                    TrackPoint s = stick(a, c), lv = dragLever(b, c);
+                    float k = c.tapSlopDp + m;
+                    s.down(0, 0, 0);
+                    s.move(0, m);
+                    s.frame(0);
+                    lv.down(0, 0, 0);
+                    lv.move(0, k);
+                    lv.frame(0);
+                    for (long now = 8; now <= 1000; now += 8) {
+                        s.tick(now, false, false, false);
+                        lv.tick(now, true, false, true);
+                    }
+                    cases++;
+                    if (a.dy != b.dy || a.dx != 0 || b.dx != 0 || b.scrolls != 0) bad++;
+                    if (!inertia && Math.abs(b.dy - TrackPoint.moveSpeed(m, st[0], st[1])) > 1) bad++;   // 走的是新曲线（没负惯性时 1 秒 = 速度）
+                }
+            }
+            GestureEngine.Config c = cfg(false);
+            check(TrackPoint.dragLeverSpeed(80, c.tapSlopDp, st[0], st[1]) == TrackPoint.moveTop(st[0], st[1]),
+                    "左键杆推得很远：封顶在新的最快（加速 " + st[0] + "、最快 " + st[1] + "）");
+        }
+        check(bad == 0, "左键杆 = 红点（加速 / 最快速度换了，" + cases + " 种）：出的位移逐计数一样、走的是新曲线、不滚（错 " + bad + "）");
+    }
+
+    /** 不管中键滚动：红点在中键按着时滚、中键滚动杆，加速 / 最快速度换了出的滚轮逐条一样。 */
+    static void accelLeavesScroll() {
+        boolean same = true;
+        for (int mode : new int[]{TrackPoint.MODE_STICK, TrackPoint.MODE_SCROLL_LEVER}) {
+            for (float m : new float[]{12, 20, 32, 50}) {   // 滚动杆从轻点容差那一圈起算：12dp 斜着推已经出了容差 + 死区
+                for (boolean smooth : new boolean[]{false, true}) {
+                    List<int[]> logs0 = null;
+                    for (float[] st : new float[][]{{1f, 1200f}, {0f, 3000f}, {1f, 3000f}, {0.4f, 500f}}) {
+                        Rec r = new Rec();
+                        GestureEngine.Config c = cfg(true);
+                        c.stickAccel = st[0];
+                        c.stickMaxSpeed = st[1];
+                        TrackPoint t = new TrackPoint(r, mode);
+                        t.setConfig(c);
+                        t.down(0, 0, 0);
+                        t.move(m * 0.3f, m);
+                        t.frame(0);
+                        for (long now = 8; now <= 1500; now += 8) t.tick(now, true, false, smooth);
+                        same &= r.moves == 0 && r.scrolls > 0;
+                        if (logs0 == null) {
+                            logs0 = r.scrollLog;
+                        } else {
+                            same &= logs0.size() == r.scrollLog.size();
+                            for (int i = 0; same && i < logs0.size(); i++) same &= java.util.Arrays.equals(logs0.get(i), r.scrollLog.get(i));
+                        }
+                    }
+                }
+            }
+        }
+        check(same, "加速 / 最快速度换了：中键按着推红点、中键滚动杆出的滚轮逐条一样（只管推光标）");
+    }
+
+    /** 服务收到什么样的数（存坏了、版本混着跑）曲线都不往下走：加速截到 0–1，最快速度不低于平台，NaN 当 0 / 平台。 */
+    static void accelClamp() {
+        check(TrackPoint.moveTop(-1f, 2000f) == TrackPoint.MOVE_PLATEAU && TrackPoint.moveTop(Float.NaN, 2000f) == TrackPoint.MOVE_PLATEAU,
+                "加速是负数 / NaN：当 0");
+        check(TrackPoint.moveTop(5f, 2000f) == 2000f, "加速超过 1：当 1");
+        check(TrackPoint.moveTop(1f, 100f) == TrackPoint.MOVE_PLATEAU && TrackPoint.moveTop(1f, Float.NaN) == TrackPoint.MOVE_PLATEAU,
+                "最快速度低于平台 / NaN：当平台（推过一半不会变慢）");
+        boolean mono = true;
+        float prev = 0;
+        for (int i = 0; i <= 4000; i++) {
+            float v = TrackPoint.moveSpeed(i * 0.02f, 1f, 100f);
+            mono &= v >= prev;
+            prev = v;
+        }
+        check(mono, "最快速度给得比平台低：曲线照样不减");
+        // ±无穷大（审查发现：以前 +无穷大 没截住，加速 0 时 0 × 无穷大 = NaN，余数变成 NaN 后这次按下一个计数都不出；加速 > 0 时每拍 move(Integer.MAX_VALUE)）
+        float inf = Float.POSITIVE_INFINITY, ninf = Float.NEGATIVE_INFINITY;
+        check(TrackPoint.moveTop(0f, inf) == TrackPoint.MOVE_PLATEAU && TrackPoint.moveTop(1f, inf) == TrackPoint.TOP_SPEED_MAX
+                        && TrackPoint.moveTop(0.5f, inf) == TrackPoint.MOVE_PLATEAU + 0.5f * (TrackPoint.TOP_SPEED_MAX - TrackPoint.MOVE_PLATEAU),
+                "最快速度 +无穷大：当 " + TrackPoint.TOP_SPEED_MAX + "（加速 0 时还是平台，不出 NaN）");
+        check(TrackPoint.moveTop(1f, ninf) == TrackPoint.MOVE_PLATEAU && TrackPoint.moveTop(inf, 2000f) == 2000f && TrackPoint.moveTop(ninf, 2000f) == TrackPoint.MOVE_PLATEAU,
+                "最快速度 -无穷大当平台；加速 +无穷大当 1、-无穷大当 0");
+        check(TrackPoint.moveTop(1f, 5000f) == TrackPoint.TOP_SPEED_MAX && TrackPoint.moveTop(1f, Float.MAX_VALUE) == TrackPoint.TOP_SPEED_MAX,
+                "最快速度超过滑块的上限：当上限 " + TrackPoint.TOP_SPEED_MAX);
+        boolean finite = true;
+        float[] odd = {Float.NaN, inf, ninf, -1f, 0f, 0.5f, 1f, 5f, Float.MAX_VALUE, -Float.MAX_VALUE, Float.MIN_VALUE};
+        float[] oddTop = {Float.NaN, inf, ninf, -1f, 0f, 100f, 450f, 451f, 1200f, 3000f, 3001f, 1e30f, Float.MAX_VALUE, -Float.MAX_VALUE};
+        for (float a : odd) {
+            for (float top : oddTop) {
+                float v = TrackPoint.moveTop(a, top);
+                finite &= !Float.isNaN(v) && !Float.isInfinite(v) && v >= TrackPoint.MOVE_PLATEAU && v <= TrackPoint.TOP_SPEED_MAX;
+            }
+        }
+        check(finite, "怪数（NaN、±无穷大、负数、极大极小）两两组合：推满的速度都在 平台–" + TrackPoint.TOP_SPEED_MAX + " 之间");
+        // 真 TrackPoint 跑：推到 30dp 0.2 秒、退回 20dp（平台那一段，u ≈ 0.59）1 秒，每拍出的位移有界、退回平台以后照样按平台走
+        boolean bounded = true, recovers = true;
+        int cases = 0;
+        for (float a : odd) {
+            for (float top : oddTop) {
+                final int[] most = {0};
+                final int[] sum = {0};
+                TrackPoint.Output o = new TrackPoint.Output() {
+                    @Override
+                    public void move(int dx, int dy) {
+                        most[0] = Math.max(most[0], Math.abs(dx) + Math.abs(dy));
+                        sum[0] += dx;
+                    }
+
+                    @Override
+                    public void scroll(int w, int p) {
+                    }
+
+                    @Override
+                    public void click() {
+                    }
+
+                    @Override
+                    public void haptic(int k) {
+                    }
+                };
+                GestureEngine.Config c = cfg(false);
+                c.stickAccel = a;
+                c.stickMaxSpeed = top;
+                TrackPoint t = new TrackPoint(o);
+                t.setConfig(c);
+                t.down(0, 0, 0);
+                t.move(30, 0);
+                t.frame(0);
+                long now = 0;
+                for (; now < 200; now += 8) t.tick(now + 8, false, false, false);
+                t.move(20, 0);
+                t.frame(now);
+                int before = sum[0];
+                for (long end = now + 1000; now < end; now += 8) t.tick(now + 8, false, false, false);
+                // 一拍最多 50ms × 3000 计数 / 秒（灵敏度 1）= 150 个计数
+                bounded &= most[0] <= TrackPoint.TOP_SPEED_MAX * TrackPoint.MAX_DT_MS / 1000 + 1;
+                recovers &= Math.abs(sum[0] - before - TrackPoint.MOVE_PLATEAU) <= 2;
+                cases++;
+            }
+        }
+        check(bounded, "怪数 " + cases + " 种：真 TrackPoint 每拍出的位移不超过 50ms × " + TrackPoint.TOP_SPEED_MAX + " 计数 / 秒");
+        check(recovers, "怪数 " + cases + " 种：推满以后退回平台，1 秒照样走 " + TrackPoint.MOVE_PLATEAU + " 个计数（余数没变成 NaN）");
+    }
+
+    /**
+     * 设置页说明里现算的数（SettingsActivity.refreshStickAccel 只调这几个）："推到底比推一半快约 N 倍"、"推到底约 N 秒横穿 1920 像素宽的屏"（含灵敏度）。
+     */
+    static void accelHints() {
+        float halfU = TrackPoint.level(TrackPoint.HALF_DP);
+        check(halfU >= TrackPoint.RISE_END && halfU < TrackPoint.PLATEAU_END, "\"推一半\"（" + TrackPoint.HALF_DP + "dp）落在平台那一段（u = " + halfU + "）");
+        check(TrackPoint.tenths(TrackPoint.pushRatio(1f, 1200f)).equals("2.7"), "默认：推到底约是推一半的 2.7 倍（" + TrackPoint.pushRatio(1f, 1200f) + "）");
+        check(TrackPoint.tenths(TrackPoint.crossSeconds(1f, 1200f, 1f)).equals("1.6"), "默认：推到底约 1.6 秒横穿 1920 像素");
+        check(TrackPoint.pushRatio(0f, 3000f) == 1f, "加速 0%：倍数是 1（设置页这时换成\"推过一半以后不再变快\"）");
+        check(TrackPoint.tenths(TrackPoint.crossSeconds(0f, 3000f, 1f)).equals("4.3"), "加速 0%：推到底就是平台，约 4.3 秒横穿");
+        check(TrackPoint.tenths(TrackPoint.pushRatio(1f, 3000f)).equals("6.7") && TrackPoint.tenths(TrackPoint.crossSeconds(1f, 3000f, 1f)).equals("0.6"),
+                "最快 3000（原来的值）：6.7 倍、0.6 秒");
+        check(TrackPoint.tenths(TrackPoint.crossSeconds(1f, 1200f, 2f)).equals("0.8") && TrackPoint.tenths(TrackPoint.crossSeconds(1f, 1200f, 0.5f)).equals("3.2"),
+                "灵敏度 2 / 0.5：0.8 / 3.2 秒（灵敏度乘在整条曲线上）");
+        check(TrackPoint.tenths(TrackPoint.crossSeconds(0.5f, 2000f, 1.3f)).equals("1.2"), "加速 50%、最快 2000、灵敏度 1.3：推到底 1225 × 1.3 计数 / 秒，约 1.2 秒");
+        // 倍数随两个滑块不减、秒数随两个滑块和灵敏度不增；每一格都是正常的数
+        boolean ok = true;
+        float[] as = accelGrid(), tops = topGrid();
+        for (float a : as) {
+            float prevR = 0;
+            for (float top : tops) {
+                float rr = TrackPoint.pushRatio(a, top);
+                ok &= rr >= prevR && rr >= 1f && !Float.isNaN(rr);
+                prevR = rr;
+                float prevS = Float.MAX_VALUE;
+                for (float sens = 0.3f; sens <= 3.0f; sens += 0.1f) {
+                    float sec = TrackPoint.crossSeconds(a, top, sens);
+                    ok &= sec <= prevS && sec > 0 && !Float.isInfinite(sec);
+                    prevS = sec;
+                }
+            }
+        }
+        for (float top : tops) {
+            float prev = 0;
+            for (float a : as) {
+                float rr = TrackPoint.pushRatio(a, top);
+                ok &= rr >= prev;
+                prev = rr;
+            }
+        }
+        check(ok, "滑块每一格 × 灵敏度 0.3–3.0：倍数 ≥ 1、随两个滑块不减，秒数是正数、随灵敏度不增");
+    }
+
+    /**
+     * 设置页说明里写出来的那几个字（审查后加的）：
+     * ratioText——"推过一半以后还会再变快：约是推一半时的 N 倍"里的 N，一位小数写出来是 "1.0" 时（加速很小、最快速度很低）写两位，不然前后半句自相矛盾；
+     * topSpeedText——"最快速度"滑块上的数是加速 100% 时推满的速度，加速在 0%–100% 之间时说明里写实际推满多快（不然标题 1200、秒数按 825 算，对不上）。
+     */
+    static void accelHintTexts() {
+        check(TrackPoint.ratioText(1f, 1200f).equals("2.7") && TrackPoint.ratioText(1f, 3000f).equals("6.7"), "倍数：默认 2.7、最快 3000 时 6.7（一位小数）");
+        check("1.01".equals(TrackPoint.ratioText(0.05f, 500f)) && "1.05".equals(TrackPoint.ratioText(0.45f, 500f)) && "1.1".equals(TrackPoint.ratioText(0.05f, 1000f)),
+                "倍数：5% / 500 写 1.01、45% / 500 写 1.05（一位小数都是 1.0）、5% / 1000 写 1.1（" + TrackPoint.ratioText(0.05f, 500f) + "、"
+                        + TrackPoint.ratioText(0.45f, 500f) + "、" + TrackPoint.ratioText(0.05f, 1000f) + "）");
+        check(TrackPoint.ratioText(0.001f, 500f) == null && TrackPoint.ratioText(Float.NaN, 1200f) == null,
+                "倍数：快不到千分之五（滑块拖不出来的 0.1%）、NaN 当不再变快（null）");
+        boolean zeroNull = true, gridOk = true, monoA = true, monoTop = true;
+        int twoDigits = 0, cells = 0;
+        float[] as = accelGrid(), tops = topGrid();
+        for (float top : tops) zeroNull &= TrackPoint.ratioText(0f, top) == null;
+        for (float a : as) {
+            if (!(a > 0)) continue;
+            float prev = 0;
+            for (float top : tops) {
+                String t = TrackPoint.ratioText(a, top);
+                cells++;
+                if (t == null || t.equals("1.0") || t.equals("1.00")) {
+                    gridOk = false;
+                    continue;
+                }
+                float shown = Float.parseFloat(t), real = TrackPoint.pushRatio(a, top);
+                boolean two = t.length() == 4;
+                if (two) twoDigits++;
+                gridOk &= shown > 1f && Math.abs(shown - real) <= (two ? 0.005f : 0.05f) + 1e-6f && (t.length() == 3 || two);
+                monoTop &= shown >= prev;
+                prev = shown;
+            }
+        }
+        for (float top : tops) {
+            float prev = 0;
+            for (float a : as) {
+                String t = TrackPoint.ratioText(a, top);
+                float shown = t == null ? 1f : Float.parseFloat(t);
+                monoA &= shown >= prev;
+                prev = shown;
+            }
+        }
+        check(zeroNull, "倍数：加速 0% 时一律 null（换成\"不再变快\"那句，和最快速度那一行灰掉同一个条件）");
+        check(gridOk, "倍数：加速 > 0 的 " + cells + " 格都写得出比 1 大的数、没有 \"1.0\"，和真实的倍数差不过最后一位的一半");
+        check(twoDigits == 15, "倍数：写两位小数的正好是一位小数会写成 1.0 的那 15 格（" + twoDigits + "）");
+        check(monoA && monoTop, "倍数：写出来的数随加速、随最快速度不减");
+
+        check("825".equals(TrackPoint.topSpeedText(0.5f, 1200f)) && "453".equals(TrackPoint.topSpeedText(0.05f, 500f))
+                        && "2873".equals(TrackPoint.topSpeedText(0.95f, 3000f)),
+                "实际推满：50% / 1200 是 825、5% / 500 是 453、95% / 3000 是 2873（" + TrackPoint.topSpeedText(0.5f, 1200f) + "、"
+                        + TrackPoint.topSpeedText(0.05f, 500f) + "、" + TrackPoint.topSpeedText(0.95f, 3000f) + "）");
+        check(TrackPoint.topSpeedText(Float.NaN, 1200f) == null, "实际推满：加速 NaN 不写");
+        boolean ends = true, mid = true;
+        int midCells = 0;
+        for (float top : tops) {
+            ends &= TrackPoint.topSpeedText(0f, top) == null && TrackPoint.topSpeedText(1f, top) == null;   // 0% 另有一句、100% 滑块上的数就是实际的
+            for (float a : as) {
+                if (!(a > 0 && a < 1)) continue;
+                String t = TrackPoint.topSpeedText(a, top);
+                midCells++;
+                if (t == null) {
+                    mid = false;
+                    continue;
+                }
+                int v = Integer.parseInt(t);
+                // 等于 平台 + 加速 × (最快 − 平台) 取整、比滑块上的数小、比平台大；下面那句的秒数就是按它算的
+                mid &= v == Math.round(TrackPoint.MOVE_PLATEAU + a * (top - TrackPoint.MOVE_PLATEAU)) && v < top && v > TrackPoint.MOVE_PLATEAU
+                        && Math.abs(TrackPoint.crossSeconds(a, top, 1f) - (float) TrackPoint.CROSS_PX / v) < 0.01f;
+            }
+        }
+        check(ends, "实际推满：加速 0% / 100% 不写");
+        check(mid, "实际推满：加速在中间的 " + midCells + " 格都写，等于 平台 + 加速 × (最快 − 平台) 取整、比滑块上的数小，和秒数对得上");
     }
 
     // ── 工具 ──

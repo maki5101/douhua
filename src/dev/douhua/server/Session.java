@@ -830,7 +830,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         String line = "分屏交焦点（屏幕 " + displayId + "）：" + r.line;
         if (debug) {
             Server.log(line);
-            if (r.detail != null) Server.log("这块屏上的任务：\n" + r.detail);
+            if (r.detail != null) Server.log("这块屏上看得见的任务（和挑中的那个）：\n" + r.detail);   // 看不见的只记个数，见 FocusPick.describe
             return;
         }
         String l = focusLog.error(line, SystemClock.uptimeMillis());

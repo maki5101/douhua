@@ -795,6 +795,11 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     }
 
     private void slider(int labelRes, String key, float def, float min, float max, float step, String fmt) {
+        slider(labelRes, key, def, min, max, step, fmt, null);
+    }
+
+    /** 同上，拖动时存完再调 changed（null = 不调；别的行里现算的说明跟着变）。 */
+    private void slider(int labelRes, String key, float def, float min, float max, float step, String fmt, Runnable changed) {
         String label = getString(labelRes);
         TextView title = text("", 16, 0xFFE8E8E8);
         SeekBar bar = new SeekBar(this);
@@ -807,6 +812,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             float v = min + p * step;
             prefs.putFloat(key, v);
             title.setText(getString(R.string.value_format, label, String.format(Locale.ROOT, fmt, v)));
+            if (changed != null) changed.run();
         }));
         list.addView(title);
         list.addView(bar);
@@ -818,6 +824,11 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
 
     /** 同上，数后面接 unit（"%" 之类；空 = 不接）。存坏了的值（超出范围）显示时截到范围里。 */
     private void sliderInt(int labelRes, String key, int def, int min, int max, int step, String unit) {
+        sliderInt(labelRes, key, def, min, max, step, unit, null);
+    }
+
+    /** 同上，拖动时存完再调 changed（null = 不调）。返回 {标题, 滑块}（要灰掉这一行时用）。 */
+    private View[] sliderInt(int labelRes, String key, int def, int min, int max, int step, String unit, Runnable changed) {
         String label = getString(labelRes);
         TextView title = text("", 16, 0xFFE8E8E8);
         SeekBar bar = new SeekBar(this);
@@ -829,9 +840,11 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
             int v = min + p * step;
             prefs.putInt(key, v);
             title.setText(getString(R.string.value_format, label, v + unit));
+            if (changed != null) changed.run();
         }));
         list.addView(title);
         list.addView(bar);
+        return new View[]{title, bar};
     }
 
     /** 滚动速度 1–10 档，换算成"滚一格要划多少 dp"（档位越高，划得越少就滚一格）。 */
@@ -1166,7 +1179,8 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     private void trackpoint(GestureEngine.Config def) {
         header(R.string.sec_trackpoint);
         slider(R.string.stick_speed, Prefs.STICK_SPEED, def.stickSpeed, Prefs.STICK_SPEED_MIN, Prefs.STICK_SPEED_MAX,
-                Prefs.STICK_SPEED_STEP, "%.1f");
+                Prefs.STICK_SPEED_STEP, "%.1f", this::refreshStickAccel);   // 灵敏度一变，"横穿 1920 像素约几秒"跟着变
+        stickAccel();
         toggle(R.string.stick_tap, Prefs.STICK_TAP, def.stickTap);
         toggle(R.string.stick_inertia, Prefs.STICK_INERTIA, def.stickInertia);
         // 中键滑动（中键自己当滚动杆）的滚动速度：百分数，只管它（按住中键推红点的不变）
@@ -1193,6 +1207,46 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         list = outer;
         list.addView(box);
         box.setVisibility(s.isChecked() ? View.VISIBLE : View.GONE);
+    }
+
+    /** "加速"下面那行说明、"最快速度"那一行（标题、滑块，加速 0% 时灰掉）和下面那行说明：三个滑块（含灵敏度）一动就照 TrackPoint 现算。 */
+    private TextView stickAccelHint, stickMaxHint;
+    private View[] stickMaxRow;
+
+    /**
+     * 小红点推光标（和左键杆）的"加速""最快速度"（协议 23）：推满时的速度 = 平台 + 加速 × (最快 − 平台)（TrackPoint.moveTop）。
+     * 中键滚动的曲线、触控板不跟它们。最快速度的值（加速 100% 时推满的速度）后面接单位（计数 / 秒）；加速 0% 时最快速度那一行灰掉、说明里写不起作用，
+     * 加速在 0%–100% 之间时说明里先写一句"这个数是加速 100% 时的、现在实际约多少"（不然标题写 1200、下面的秒数按 825 算，对不上）。
+     */
+    private void stickAccel() {
+        sliderInt(R.string.stick_accel, Prefs.STICK_ACCEL, Prefs.STICK_ACCEL_DEFAULT, Prefs.STICK_ACCEL_MIN, Prefs.STICK_ACCEL_MAX,
+                Prefs.STICK_ACCEL_STEP, "%", this::refreshStickAccel);
+        stickAccelHint = text("", 14, 0xFF9AA0A6);
+        list.addView(stickAccelHint);
+        stickMaxRow = sliderInt(R.string.stick_max_speed, Prefs.STICK_MAX, Prefs.STICK_MAX_DEFAULT, Prefs.STICK_MAX_MIN, Prefs.STICK_MAX_MAX,
+                Prefs.STICK_MAX_STEP, " " + getString(R.string.stick_max_speed_unit), this::refreshStickAccel);
+        stickMaxHint = text("", 14, 0xFF9AA0A6);
+        list.addView(stickMaxHint);
+        refreshStickAccel();
+    }
+
+    private void refreshStickAccel() {
+        if (stickAccelHint == null) return;
+        GestureEngine.Config c = prefs.engineConfig();   // 和发给服务的同一套换算（百分数 → 0–1、截到范围里）
+        boolean off = !(c.stickAccel > 0);
+        // 倍数照写出来的数挑那句：一位小数是 "1.0" 时 ratioText 写两位，两位还是 1.00（或加速 0）才用"不再变快"那句
+        String ratio = TrackPoint.ratioText(c.stickAccel, c.stickMaxSpeed);
+        stickAccelHint.setText(ratio == null ? getString(R.string.stick_accel_hint_off) : getString(R.string.stick_accel_hint, ratio));
+        String secs = getString(R.string.stick_max_speed_hint, TrackPoint.tenths(TrackPoint.crossSeconds(c.stickAccel, c.stickMaxSpeed, c.stickSpeed)));
+        String top = TrackPoint.topSpeedText(c.stickAccel, c.stickMaxSpeed);   // 加速在 0%–100% 之间时推到底实际多快（滑块上的数是 100% 时的）
+        String first = off ? getString(R.string.stick_max_speed_off)
+                : top == null ? null
+                : getString(R.string.stick_max_speed_actual, prefs.stickAccelPct() + "%", top + " " + getString(R.string.stick_max_speed_unit));
+        stickMaxHint.setText(first == null ? secs : first + "\n" + secs);
+        for (View v : stickMaxRow) {
+            v.setEnabled(!off);
+            v.setAlpha(off ? 0.4f : 1f);
+        }
     }
 
     /** 连续滚动：开关 + 说明（蓝牙开 / 关后要重新配对）+ 蓝牙连着时这台主机开没开。蓝牙模式下切开关马上用新描述符重新注册。 */

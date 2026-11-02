@@ -28,10 +28,10 @@
 
 | 文件 | 职责 |
 |---|---|
-| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 22：加了 CMD_FOCUS_OTHER（17，displayId:i32，分屏里豆花拿着键盘焦点时请服务交给另一半）；同一批 CMD_CONFIG 末尾加 leverSpeed:f32、MSG_MODIFIERS 第四个字节多一位 FN_LOCKED = 8（永久锁），FN_LATCHED 改成单次锁、FN_ARMED 改成快永久锁了，都算在 22 里）；手柄控件编号（gamepadId：0x4000 \| 种类 << 10 \| 副本 << 8 \| 参数）和输出码（GP_*，按位置；GP_C_* = N64 的 C 键，GamepadTouch 换成右摇杆推满）；按键的 action（KEY_UP / KEY_DOWN / KEY_CANCEL，CMD_HID_KEY 协议 20 起 key:i32 + action:u8）、CMD_UNLATCH（16，不带参数）、MSG_MODIFIERS 四个字节（锁住 / 按着 / 快锁了，协议 21 起第四个字节是 Fn 的 FN_LATCHED / FN_HELD / FN_ARMED 位）、MSG_CAPS（0x8B）；合并键的 id（dualKey：点一下的键 \| 按住 0.4 秒的键 << 16，isDualKey / dualTap / dualHold；协议 21 起 hold 最多 0x3FFF）；实体键盘的 Fn（协议 21）：FN_FLAG 那一段（0x40000000–0x40FFFFFF）里 Fn 键自己 FN_KEY（Windows 模式）/ FN_GLOBE_KEY（Mac 模式 fn🌐），带 Fn 层的键 fnLayerKey(底层, Fn 层的码)（isFnKey / isFnLayerKey / fnBase / fnCode），三种 id 的范围互不重叠；🌐 的按钮编号 GLOBE_BUTTON_ID（302，KeyRows 的就是它，fn🌐 单点报它的 BUTTON_TAP） |
+| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 23：CMD_CONFIG 末尾加了 stickAccel:f32、stickMaxSpeed:f32（小红点推光标的加速、最快速度，2026-11-01 晚）；版本 22：加了 CMD_FOCUS_OTHER（17，displayId:i32，分屏里豆花拿着键盘焦点时请服务交给另一半）；同一批 CMD_CONFIG 末尾加 leverSpeed:f32、MSG_MODIFIERS 第四个字节多一位 FN_LOCKED = 8（永久锁），FN_LATCHED 改成单次锁、FN_ARMED 改成快永久锁了，都算在 22 里）；手柄控件编号（gamepadId：0x4000 \| 种类 << 10 \| 副本 << 8 \| 参数）和输出码（GP_*，按位置；GP_C_* = N64 的 C 键，GamepadTouch 换成右摇杆推满）；按键的 action（KEY_UP / KEY_DOWN / KEY_CANCEL，CMD_HID_KEY 协议 20 起 key:i32 + action:u8）、CMD_UNLATCH（16，不带参数）、MSG_MODIFIERS 四个字节（锁住 / 按着 / 快锁了，协议 21 起第四个字节是 Fn 的 FN_LATCHED / FN_HELD / FN_ARMED 位）、MSG_CAPS（0x8B）；合并键的 id（dualKey：点一下的键 \| 按住 0.4 秒的键 << 16，isDualKey / dualTap / dualHold；协议 21 起 hold 最多 0x3FFF）；实体键盘的 Fn（协议 21）：FN_FLAG 那一段（0x40000000–0x40FFFFFF）里 Fn 键自己 FN_KEY（Windows 模式）/ FN_GLOBE_KEY（Mac 模式 fn🌐），带 Fn 层的键 fnLayerKey(底层, Fn 层的码)（isFnKey / isFnLayerKey / fnBase / fnCode），三种 id 的范围互不重叠；🌐 的按钮编号 GLOBE_BUTTON_ID（302，KeyRows 的就是它，fn🌐 单点报它的 BUTTON_TAP） |
 | `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测）；惯性滚动（边缘一拨接着转、碰触控板抓住，用唯一的定时器槽 TIMER_SPIN）、连续滚动（按 1/120 格出、每滚过一格咔嗒、双指锁主方向）也在这里；滚轮量的单位是 1/120 格；中键按着时单指划 = 滚动（setScrollHold，方向"推哪边视野往哪边走"、不起长按 / 惯性），小红点的位移、滚轮经 externalMove / externalScroll 出 |
 | `src/dev/douhua/ScrollInertia.java` | 惯性滚动的物理（黏滞 + 恒定摩擦的闭式解、阻尼档位 → τ、停止时间 / 距离），纯 Java（离线测，HidTest），引擎和设置页共用 |
-| `src/dev/douhua/ConfigCodec.java` | CMD_CONFIG 的编解码（App 的 Link 写、服务的 Session 读、TestClient 写，三处共用一份），纯 Java（离线测往返）；协议 22 起末尾多一个 leverSpeed:f32（中键滑动的滚动速度倍数），共 60 字节 |
+| `src/dev/douhua/ConfigCodec.java` | CMD_CONFIG 的编解码（App 的 Link 写、服务的 Session 读、TestClient 写，三处共用一份），纯 Java（离线测往返）；协议 22 起末尾多一个 leverSpeed:f32（中键滑动的滚动速度倍数），共 60 字节；协议 23 起再加 stickAccel:f32、stickMaxSpeed:f32（小红点推光标的加速 0–1、最快速度 计数 / 秒），共 68 字节 |
 | `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键（按住要计时的修饰键 / Caps / 合并键交给 KeyHolds，报文、自带修饰键的键、开合的 Ctrl 自己管），纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，按得到的是报上来那个正方形的内切圆——Region.contains，服务、App 本地分流、KeyFingers 共用；第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数——holdLeft 的松开只减它自己那几份 cmdLeftHolds，收尾以后迟到的松开不理，中键按着 = 滚动、没滚过松开补中键单击；按在中键上的第一根手指自己也是滚动杆——lever，另一个滚动杆模式的 TrackPoint，和红点共用一套节拍：任一按着就开、都松了才停（stopTicksIfIdle），挪出轻点容差就算滚过、松开不补单击；中键按着、滚动杆还没挪出轻点容差时别的来源——红点、触控板、开合、滚轮动作——先出了滚轮，滚动杆让位到抬起（leverYield：按着中键当修饰键时拇指漂一点不另外滚））；按在左键上的第一根手指是左键杆（leftLever，2026-11-01 晚：另一个 TrackPoint 的左键杆模式，按下照旧马上按住左键、轻点 = 单击，
 挪出轻点容差后照红点推光标的曲线出位移 = 拖动；节拍和红点、滚动杆三个来源共用——ticksWanted / stopTicksIfIdle；左键杆还没开始时别的来源——红点、触控板——先动了光标就让位到抬起，leftLeverYield；滑出左键照样是杆）；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立）；按键（2026-11-01，协议 20）：区域那一路（down / up）和界面那一路（key(key, action, t)）都进 KeyHolds，按键专用的第二个定时器 Output.scheduleKeys / cancelKeys → onKeyTimer（和引擎那个槽分开），每个带时间的入口记下 now；鼠标键按下 / 松开、带着按住的鼠标键移动、滚轮、开合、三指四指手势给按着的修饰键标"用过"（mouse 第一行在 lastButtons 赋值之前比），开合开始前先结算待定的键；unlatch（CMD_UNLATCH）；Output.modifiers(锁住, 按着, 快锁了, Fn) 变了才报（协议 21 起带 Fn 的状态）、Output.caps(sent) 报"Caps 显示翻一下"；Mac 模式 fn🌐 单点时报 Proto.GLOBE_BUTTON_ID 的 BUTTON_TAP（HoldsHost.globe，和 🌐 键同一条路）；换参数时按着键的手指留着（clearSlots(true)：键不依赖引擎，抬起照常松开、照常判；按着的 Fn、锁着的 Fn 同样留着） |
 | `src/dev/douhua/KeyHolds.java` | 按着时要计时的键（2026-11-01），纯 Java（离线测，KeyHoldsTest 全经真 TouchRouter 跑），TouchRouter 持有一份、不加锁：修饰键（0xE0–0xE7、不带自带修饰键，左右八个含 AltGr / ⌃⌥⌘）按下马上发，按住期间用过（按了别的键、TouchRouter 报的鼠标 / 滚轮 / 开合 / 手势，used）或按下时已有别的键 / 鼠标键按着（Host.mouseBusy）= 组合、松手就松，单独点一下 = 点一下，单独按住 HOLD_MS（0.4 秒）–LOCK_MAX_MS（1 秒）松手 = 锁（到 0.4 秒 armed + 震），超过 1 秒退回不锁；锁了以后打完下一个普通键解开、再按一下锁住的键也解开；Caps（0x39）按下先不发，点一下发 Caps Lock（按着 CAPS_TAP_MS 60ms 再松）+ Host.caps(true)，按住 0.4 秒只 Host.caps(false) + 震；合并键（Proto.dualKey）点一下 tap 键、按住 0.4 秒 hold 键（只发一次）+ 震；待定的 Caps / 合并键在别的键按下、手指按着的修饰键（正常）松开、开合开始（settle）之前当点一下结算（被取消的修饰键松开不结算）；按着的键按 id 计数（计数 0 的松开整个不理：releaseAll 之后迟到的）；到点按截止时刻 + 当前状态处理（onTimer，过期的回调什么都不多做），排定时器正好排在最早的截止时刻；Host 的 pressKey / releaseKey 是原语、不回调这里；Fn（第 3 批，协议 21，Proto.FN_KEY / FN_GLOBE_KEY）：阶段和修饰键放在一起算（第 9 格，到点、用过、排定时器同一份代码）；协议 22 起（2026-11-01 晚）不再照修饰键——组合 = 那一下出 Fn 层，Windows 模式单独点一下 = 单次锁（fnOnce：下一个普通键出 Fn 层、它松开时解开，修饰键不消耗它），fn🌐 单独点一下照旧 = 🌐（Host.globe，没有单次锁），单独按住到 0.4 秒 = 永久锁（fnLock，到点 ARMED + 震，没有 1 秒的上限，按多久都算），锁着（单次或永久）时单独再按一下 Fn = 松手解开（阶段 UNLOCK；按住也算、不震、fn🌐 不出 🌐），锁着时当组合用（用过、按下时别的键按着）锁照旧；不发 HID；fn() 报 Fn 的单次锁 / 按着 / 快永久锁了 / 永久锁（FN_LATCHED / HELD / ARMED / LOCKED）；fnActive = 按着 \| 单次锁 \| 永久锁；带 Fn 层的键（Proto.fnLayerKey）按下那一刻按 Fn 按着或锁着（fnActive）定码、记在 fnPresses，之后当那个码处理（底层是修饰键的照修饰键），松开松记下的码；同一个 id 已经按着时后来的手指跟着第一根的码，最后一根松开才忘；releaseAll / unlatch 连 Fn 的单次锁、永久锁一起清，打完普通键只清单次锁 |
@@ -55,13 +55,13 @@
 | `src/dev/douhua/MenuLayer.java` | ⋯ 菜单，主界面和键盘屏共用一份（根视图最上面一层、铺满整页；屏幕边缘留白时和别的页一样往里收，离各边少留，setEdgeInsets）：盖住整页的"点外面" + 菜单底板（项是它的子 view，只排显示着的，KeyboardPlan.menuGrid 排、先排满第一列）；贴着当前那一屏的 ⋯ 弹出（Host.menuAnchor + KeyboardPlan.menuPosition）；⋯ 那一支单独重新布局时由 MainActivity 在根视图的布局监听里再 place 一次 |
 | `src/dev/douhua/Style.java` | 共用样式（边框、按下 / 高亮、触控板角上的小按钮——small 的 onImage：触控板上有背景图时平时垫不透明的触控板底色）；颜色从当前主题取（setTheme，MainActivity 设），设置页预览用带 Theme 参数的那几个；键帽（整屏键盘、数字键盘）走 keyButton / keyLook（边框跟"按键边框"开关；缩到最小字号还放不下的键名末尾省略"…"），其它按钮走 button / look（一直有边框）；sp 换像素（Style.sp，跟着系统字体大小）；键帽分主次：keyLook / look 带 fn（功能键的颜色；高亮时照旧是普通键帽底色 + 强调色的边）；被小红点切掉一块的键帽（keyLook 的 cut → CutCap：圆角矩形减去圆，底色、边框沿着圆弧走，颜色同别的键帽）；两个字并排的键帽（PairKey，keyButton(c, sp, pair)，2026-11-01 晚取代右上角小字的 CornerKey：合并键的 "," "." 一样的字号、挨在一起居中、中间隔半个字号，"." 用 Theme.softText，放不下一起缩、最小 7sp；主字照旧是 TextView 自己的文字、自动缩字号，只是由它画）；⋯ 用强调色（2026-11-01）：键帽形状的 ⋯ 走 menuKeyLook（强调色底 menuKey / 按下 menuKeyPressed、反差字 menuKeyText、不画边框、不跟"按键边框"开关，被切时也走 CutCap），不带框的 ⋯（触控板顶上、手柄页顶上）走 bare（字 menuDots，按着时垫 pressed） |
 | `src/dev/douhua/Theme.java` | 主界面的十八套配色（设置 → 外观；ALL 先深色后浅色）：每套写几个底子、其余按规则推（灰字取"刚够 4.5:1"的、强调色当字用不够就推亮 / 推暗）；功能键的槽位 fnKey / fnText / fnPressed（底色掺强调色，到和键帽、页面色差 ≥ 8 为止，fnTint）；纯黑每个槽位照以前的常量写死（功能键和普通键一样）；对比度、CIE76 色差计算，纯 Java（离线测 ThemeTest）；小红点的红（stick：ThinkPad 红推到对页面、触控板底色都 ≥ 3:1，stickRed）；⋯ 的四个槽位（2026-11-01）：menuKey（强调色推到对页面、键帽、功能键都 ≥ 3:1，reachAll：一次看几个底、方向看第一个）、menuKeyText（页面色 / 正文色里对它反差大的那个，再推到 ≥ 4.5:1）、menuKeyPressed（底往字掺一成半）、menuDots（强调色推到对触控板底、页面 ≥ 4.5:1、对 pressed ≥ 3:1）；纯黑这四个写死成 focus 的蓝（#8AB4F8 底、黑字、按下 #7599D3、不带框的蓝字）；浅一档的字 softText（2026-11-01 晚，逗号句号合键里的 "."：正文往键帽底色掺到对键帽、按下的底还刚好 ≥ 3:1——SOFT_RATIO，和正文色差不到 8 的——Solarized Dark——再往键帽掺到 ≥ 8、对键帽照样 ≥ 3:1，soft；纯黑也照规则推） |
-| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 键盘 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），七页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、轻点 = 左键、负惯性、中键滑动的滚动速度（2026-11-01 晚，sliderInt 带单位"%"，25%–200%、步长 5%，Prefs.LEVER_SPEED）、三键条开关和上沿 / 下沿）；"键盘"页（第 1B 批，keyboardSection）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘的语言（第 2 批起点开是一个按名字排的列表 langDialog：每项下面一行小字写 Mac / Windows 里叫什么——只有一家有的写"Windows 没有这一套"之类，现在的模式下没数据的灰掉、写原因）/ 形状（ANSI / ISO / ABNT2，照清单）/ 尺寸（六种，从小到大：苹果紧凑 / 笔记本 / 65% / 75% / TKL / 全尺寸，FixedLayout.ALL_SIZES、sizeLabel，写键数（照当前的形状、模式现算），下面一行写逐级缩的规则 kbd_size_note）/ Windows · Mac 模式（这个布局没数据的那种灰掉，choiceRow 带 enabled 的那个）、主机那边要设成同一种布局的说明（桌面模式下一个按钮打开手机的实体键盘设置）、豆花布局的快捷行（从"按钮与按键"挪过来）；"通用"页最下面"开源许可"（licenses：res/raw/licenses.txt 的全文）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它）；苹果紧凑（第 3 批）在 Windows 模式、ABNT2 形状下灰掉（kbd_size_apple_only），选着苹果紧凑时模式里的 Windows、形状里的 ABNT2（kbd_apple_unavailable）、语言列表里只有 ABNT2 的布局（kbd_lang_no_apple）灰掉，存着的组合配不上时标红一行 kbd_no_size_data |
+| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 键盘 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），七页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、加速 + 最快速度（协议 23，2026-11-01 晚：stickAccel / refreshStickAccel，加速 0%–100% 下面一行"推到底约是推一半的 N 倍"（N 照 TrackPoint.ratioText，一位小数写出来是 1.0 时写两位）、最快速度 500–3000 计数 / 秒下面一行"推到底约 N 秒横穿 1920 像素宽的屏"（crossSeconds），数都现算、灵敏度一动也跟着变；加速 0% 时最快速度那一行灰掉、说明前面加"不起作用"，加速在 0%–100% 之间时说明前面加"这个数是加速 100% 时的、现在实际约多少"（stick_max_speed_actual，topSpeedText））、轻点 = 左键、负惯性、中键滑动的滚动速度（2026-11-01 晚，sliderInt 带单位"%"，25%–200%、步长 5%，Prefs.LEVER_SPEED）、三键条开关和上沿 / 下沿）；"键盘"页（第 1B 批，keyboardSection）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘的语言（第 2 批起点开是一个按名字排的列表 langDialog：每项下面一行小字写 Mac / Windows 里叫什么——只有一家有的写"Windows 没有这一套"之类，现在的模式下没数据的灰掉、写原因）/ 形状（ANSI / ISO / ABNT2，照清单）/ 尺寸（六种，从小到大：苹果紧凑 / 笔记本 / 65% / 75% / TKL / 全尺寸，FixedLayout.ALL_SIZES、sizeLabel，写键数（照当前的形状、模式现算），下面一行写逐级缩的规则 kbd_size_note）/ Windows · Mac 模式（这个布局没数据的那种灰掉，choiceRow 带 enabled 的那个）、主机那边要设成同一种布局的说明（桌面模式下一个按钮打开手机的实体键盘设置）、豆花布局的快捷行（从"按钮与按键"挪过来）；"通用"页最下面"开源许可"（licenses：res/raw/licenses.txt 的全文）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它）；苹果紧凑（第 3 批）在 Windows 模式、ABNT2 形状下灰掉（kbd_size_apple_only），选着苹果紧凑时模式里的 Windows、形状里的 ABNT2（kbd_apple_unavailable）、语言列表里只有 ABNT2 的布局（kbd_lang_no_apple）灰掉，存着的组合配不上时标红一行 kbd_no_size_data |
 | `src/dev/douhua/ThemeGrid.java` | 设置 → 外观的主题色块网格（一组深色或浅色）：每格一小块样子（普通键 A + 功能键 ⇧ + 一小块触控板）+ 名字，每行几格按宽度定（每格 ≥ 96dp），选中框用设置页自己的蓝 |
 | `src/dev/douhua/ButtonStrip.java` | 自定义按键（主界面左边一列，原来的左侧按钮条；设置里打开，默认关），屏幕矮时自动分列 |
 | `src/dev/douhua/PadArea.java` | 触控板 + 数字键盘的排布 |
 | `src/dev/douhua/PadStack.java` | 主界面的触控板（连四角的小按钮）+ 顶上正中的 ⋯（KeyboardPlan.padMenuTop，三键条在上沿时在它正下方）+ 可选的三键条（KeyboardPlan.cutBar，onLayout 里按离窗口边多远切；48dp 高，中键窄、左右键宽（约 2.2 : 1 : 2.2、中键在正中），KeyboardPlan.middleKey）；离边 20dp 按窗口算，屏幕边缘留白不用另外管 |
 | `src/dev/douhua/TrackPoint.java` | 小红点（模拟 ThinkPad TrackPoint），纯 Java（离线测，TrackPointTest）：手指离按下点的位移 → 速度（S 形曲线：死区、爬行、平台、陡升、封顶）× 灵敏度，负惯性，按节拍积分、余数留着；轻点 = 左键；中键按着时出滚轮（推哪边视野往哪边走、主方向）；颗粒 / 咔嗒；20 秒没事件暂停；三种模式（TrackPoint(out, mode)：MODE_STICK 红点 / MODE_SCROLL_LEVER / MODE_DRAG_LEVER）；中键滚动杆模式（MODE_SCROLL_LEVER，TouchRouter 给中键上那根手指用：一直是滚动、抬起不算轻点、先挪出轻点容差 tapSlopDp 才开始——started，之后照曲线、挪回死区就停；自己一条曲线 LEVER_* = 1 / 5 / 20 格每秒（2026-11-01 晚再慢一半），另乘设置里的 Config.leverSpeed，按住中键推红点的不乘）；左键杆模式（MODE_DRAG_LEVER，2026-11-01 晚，TouchRouter 给左键上那根手指用：一直是移动、一直当按着鼠标键（不发颗粒）、抬起不算轻点、
-同样先挪出轻点容差才开始、位移从容差那一圈起算（leverLevel），走红点推光标的那条曲线 MOVE_* × 灵敏度、负惯性照设置——离按下点容差 + m = 推红点 m，dragLeverSpeed） |
+同样先挪出轻点容差才开始、位移从容差那一圈起算（leverLevel），走红点推光标的那条曲线 MOVE_* × 灵敏度、负惯性照设置——离按下点容差 + m = 推红点 m，dragLeverSpeed）；推光标那条曲线（红点、左键杆）平台以后可调（协议 23，2026-11-01 晚）：推满时的速度 = 平台 + 加速 × (最快速度 − 平台)（moveTop，Config.stickAccel 0–1 / stickMaxSpeed 计数 / 秒——最快速度就是加速 100% 时推满的速度；加速截到 0–1、最快速度截到 平台–3000，NaN 当 0 / 平台、+无穷大当 1 / 3000，审查后连无穷大也截住），默认（1、MOVE_MAX 1200）逐位等于以前；中键滚动的曲线（SCROLL_*、LEVER_*）不跟；设置滑块的范围、步长、默认值都在这里（ACCEL_PCT_MIN / MAX / STEP / DEFAULT 0 / 100 / 5 / 100、TOP_SPEED_MIN / MAX / STEP / DEFAULT 500 / 3000 / 100 / 1200，Prefs 和 Config 的默认值都引用它们，百分数换成 0–1 只走 accelFraction），设置页说明里现算的数也在这里（pushRatio：推到底 / 推一半（HALF_DP，平台）几倍；ratioText：倍数写成几位——一位小数写出来是 1.0 时写两位、加速 0 返回 null；crossSeconds：推到底横穿 CROSS_PX 1920 像素几秒，含灵敏度；topSpeedText：加速在 0%–100% 之间时推满实际多快；tenths：一位小数） |
 | `src/dev/douhua/TrackPointView.java` | 小红点的样子：红帽 + 九个凹点（RoundPad.dots）；不压键时外面一圈淡圆（帽占 0.7），按着时圈换 focus 色；嵌在键里时（setEmbedded）只画红帽（半径 = 按得到的圆的半径 − 缝 / 2，键自己沿圆弧切口），按着时缝的里半圈描一圈 focus 色；isEmbedded（服务连着没接管时 MainActivity 让嵌在键里的红点一根手指都不收、全落到底下的面板上，面板按内切圆挖洞；放在键盘外面时整块吃掉） |
 | `src/dev/douhua/GamepadSpec.java` | 手柄页摆哪些控件：一组参数（左手 / 面键排法 / 字样 / 右摇杆 / L1 R1 LT RT 各自有没有 / 中间 / 摇杆按下 / 偏好方向），15 个固定预设（PRESETS，⋯ 菜单里轮换、设置页网格同序，默认 Xbox）+ 自定义（Builder 从一个预设复制再改，encode / decode 存成一行，取值写名字、认不出的跳过、缺的照 base 那个预设）；每种排法 × 字样印什么（faceOutputs / faceLabels / outputLabel；N64、GameCube 的键帽固定），预设自己的肩键名（N64 的 Z；GameCube 左边本来没有的肩键也写了 ZL，不和左扳机 L 重名）只在字样没换时用，shoulderLabel 给设置页"肩键 / 扳机"开关写这一对在这一套里叫什么；按位置发（任天堂的 A 发东），纯 Java（离线测，GamepadSpecTest） |
 | `src/dev/douhua/GamepadPlan.java` | 手柄页自动排（预设和自定义一样排），纯 Java（离线测，GamepadPlanTest）：宽 ≥ 1.3 × 高横排（两块对称的手区贴下沿、中间 Select / Home / Start + LS / RS、肩键贴上沿两角），不然竖排（手区在下半截）；一只手两个控件斜着错开（上靠外、下靠里）；放不下先缩缝、再按比例缩到最小值、再不放 LS / RS，还不行缩到最小值以下（fitted 假）；面键十种排法（faceCenters 给每颗圆心和直径，N64 的 C 键小一点、GameCube 的 A 大 B 小——按真机比例，不受 44dp 下限约束，各自的最小值 faceMin：C 键 / B 33dp、X Y 约 37dp）；一只手可以空着、两边肩键颗数可以不一样；输出控件的判定 / 画的范围（dp）、⋯、状态字 |
@@ -98,7 +98,7 @@
 | `tools/adb-device.sh` | 选哪台手机（-s → ANDROID_SERIAL → 只连一台就用它 → 多台时列出来让人选），start/stop-server、selftest、build --install 共用 |
 | `src/dev/douhua/KeyboardSnap.java` | 调整键盘时的轻微吸附（分裂时 applySplit：贴边 / 两半合拢 / 上下边），纯 Java（离线测） |
 | `src/dev/douhua/EdgeMargin.java` | 屏幕边缘留白，纯 Java（离线测，EdgeMarginTest）：哪几条边留、留多少（margins：窗口贴着屏幕边的才留，一个方向最多窗口的一半）、页面收进去以后"离屏幕边 20dp"在页面里还剩多少（edges）、设置的范围（0–48dp、步长 2、默认 8） |
-| `src/dev/douhua/Prefs.java` | 设置键名和默认值（2026-11-01 晚加了中键滑动的滚动速度 lever_speed_pct：百分数 25–200、步长 5、默认 100，leverSpeedPct 截到范围里，engineConfig 换成 Config.leverSpeed） |
+| `src/dev/douhua/Prefs.java` | 设置键名和默认值（2026-11-01 晚加了中键滑动的滚动速度 lever_speed_pct：百分数 25–200、步长 5、默认 100，leverSpeedPct 截到范围里，engineConfig 换成 Config.leverSpeed；协议 23 加了小红点的加速 stick_accel_pct（百分数 0–100、步长 5、默认 100，stickAccelPct）和最快速度 stick_max_speed（计数 / 秒 500–3000、步长 100、默认 1200，stickMaxSpeed），范围、步长、默认值都引用 TrackPoint 的常量（ACCEL_PCT_*、TOP_SPEED_*），engineConfig 换成 Config.stickAccel（TrackPoint.accelFraction(百分数)）/ stickMaxSpeed；engineConfig 接没接上这两项离线测不到（Prefs 离不开 Android）） |
 | `src/dev/douhua/MenuOrder.java` | ⋯ 菜单有哪几项、什么顺序、哪一屏显示哪几项（2026-11-01 晚，按使用频率排：设置第一、退出最后、手柄——手柄页上是返回触控板——倒数第二），纯 Java（离线测，MenuOrderTest）：编号（值照旧）、ORDER（三屏的顺序合成的一条）、onScreen / items / index；MainActivity 照它建项、开菜单时挑这一屏的 |
 | `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息；空闲 2 秒发保活（CMD_PING），连接超时 / 5 秒等不到 hello 报"服务没响应"；记下 hello 里服务的 APK 路径（serverApk）；回调全部经一个异步 Handler 到主线程（不排在界面重画的同步屏障后面）；协议 20：hidKey(key:i32, action)、unlatch（CMD_UNLATCH），读 MSG_CAPS（onCaps）；协议 21：读 MSG_MODIFIERS 四个字节（onModifiers(锁住, 按着, 快锁了, Fn)）；协议 22：focusOther(displayId)（CMD_FOCUS_OTHER） |
 | `src/dev/douhua/FocusHandoff.java` | App 什么时候请服务交焦点（协议 22），纯 Java（离线测，FocusHandoffTest）：eligible = 桌面模式 + 窗口没占满 + 没接外接屏 + 连着服务 + 贴字面板没开 + 在前台（再加窗口真拿着焦点）；decide：同一次拿到焦点（同一条连接上）只发一次，focusLost / reconnected 算新的一次，两次之间至少隔 MIN_GAP_MS（1 秒），隔不够返回还要等多久；App 分不出分屏和小窗，两种都发，小窗时服务不交（FocusPick） |
@@ -107,8 +107,8 @@
 | `src/dev/douhua/server/Server.java` | 服务入口：主线程只 accept，按 SessionPolicy 接 / 顶掉旧会话 / 回"忙"，每条连接一个 douhua-session 线程；`probe` 只画方块不点击；`grabtest` 独占 0.5 秒；`keys` 只读：用 getevent -i 列出输入设备、音量键能不能截、会截哪块 / 旁观哪块；`tasks <屏幕编号>` 只读：列出那块屏上的任务、分屏里豆花拿着焦点时会交给谁（TaskFocus.handOff(…, false)，不交；豆花这时没拿着焦点——交焦点已经生效——就另外说"豆花拿着焦点的话会怎样"） |
 | `src/dev/douhua/server/Session.java` | 一次 App 连接：建虚拟设备、发 hello、独占时机、把触摸交给 TouchRouter、把结果写到 /dev/uhid 和发回 App；10 秒没消息自己断开，可被新连接顶掉（kick）；小红点 / 中键滚动杆 / 左键杆的节拍在单独的 douhua-tick 线程上（桌面模式 8ms、蓝牙转发 12ms，startTicks / stopTicks）；TouchRouter 的定时器交给 OneShotTimer（引擎那个 routerTimer、按键专用的 keyTimer 两个，协议 20）；CMD_HID_KEY（key:i32, action，时间用收到的时刻）、CMD_UNLATCH → router.unlatch，MSG_MODIFIERS 四个字节（协议 21 起带 Fn）、MSG_CAPS；虚拟手柄（第一次用到才建 UhidGamepad、会话结束才关；CMD_GAMEPAD / CMD_GAMEPAD_CONFIG、MSG_GAMEPAD；两路合并 GamepadMux，接管时清 App 那路）；CMD_FOCUS_OTHER（协议 22）→ 单独的 douhua-focus 线程（requestFocusOther / handFocus：排着一次就只换屏幕编号；TaskFocus.handOff，诊断模式每次记、平时同一条连接里同一行 60 秒一次——限频器每条连接一份，每次从设置页回来是新连接、记一行） |
 | `src/dev/douhua/server/OneShotTimer.java` | TouchRouter 的一次性定时器（Output.schedule / cancelSchedule 的服务端实现）：再排取代上一次；撤掉 / 被取代之后，已经到点、卡在锁上的那次回调拿到锁先比令牌、过期了就不调（ScheduledFuture.cancel 撤不掉已经开始跑的任务），纯 JDK（离线测，ServerPartsTest 真起一个定时器线程） |
-| `src/dev/douhua/server/TaskFocus.java` | 分屏里豆花拿着键盘焦点时把焦点交给另一半（协议 22，2026-11-01 晚）：IActivityTaskManager.getTasks（14–16 四参数带 displayId、13 三参数）列这块屏的任务 → FocusPick 挑 → setFocusedTask（= WMS 点别的窗口时走的那条，handleTaskFocusChange）→ 再列一次核对焦点过没过去；只读时（apply = false）豆花没拿着焦点就另外按"拿着焦点"再挑一次说给人看；签名、字段、权限（REAL_GET_TASKS / MANAGE_ACTIVITY_TASKS，shell 都有）照 AOSP 原文写在类注释；代理现取、失败重取再试一次（同 DexFocus），接口 / 方法 / 字段对不上就永久停用（日志里列出接口里实际有的签名）；只在 douhua-focus 线程和 Server tasks 里调 |
-| `src/dev/douhua/server/FocusPick.java` | 挑谁接焦点，纯 Java（离线测，FocusPickTest）：RunningTaskInfo 按字段名反射读成 Task（read：taskId / displayId / topActivity / isVisible / isFocused / topActivityType 必须有，isVisibleRequested 14 起、isTopActivityNoDisplay 16 起、getWindowingMode 读不出算不知道）；pick：只看这块屏、豆花的任务（顶上或最底下是 dev.douhua）得正拿着焦点（pick(…, false) 不看这条，只读用），**只在分屏时交**（审查后，2026-11-01 晚：豆花的任务窗口模式得是 MULTI_WINDOW 6——小窗 5、全屏 1、读不出来都不交，候选也得是 6，分屏的另一半），候选 = 不是豆花 / SystemUI、普通应用类型（0 / 1，不是桌面、最近任务、助手、屏保）、不是画中画、看得见且没在藏起来、不是 noDisplay，挑 lastActiveTime 最大的、一样取靠前的；Pick.ownNotFocused 标出"不交是因为豆花没拿着焦点"；focusedOn 核对用 |
+| `src/dev/douhua/server/TaskFocus.java` | 分屏里豆花拿着键盘焦点时把焦点交给另一半（协议 22，2026-11-01 晚）：IActivityTaskManager.getTasks（14–16 四参数带 displayId、13 三参数）列这块屏的任务 → FocusPick 挑 → setFocusedTask（= WMS 点别的窗口时走的那条，handleTaskFocusChange）→ 再列一次核对焦点过没过去；只读时（apply = false）豆花没拿着焦点就另外按"拿着焦点"再挑一次说给人看；诊断用的任务列表（Result.detail）交焦点时只有看得见的和挑中的那个、只读时全列（FocusPick.describe）；签名、字段、权限（REAL_GET_TASKS / MANAGE_ACTIVITY_TASKS，shell 都有）照 AOSP 原文写在类注释；代理现取、失败重取再试一次（同 DexFocus），接口 / 方法 / 字段对不上就永久停用（日志里列出接口里实际有的签名）；只在 douhua-focus 线程和 Server tasks 里调 |
+| `src/dev/douhua/server/FocusPick.java` | 挑谁接焦点，纯 Java（离线测，FocusPickTest）：RunningTaskInfo 按字段名反射读成 Task（read：taskId / displayId / topActivity / isVisible / isFocused / topActivityType 必须有，isVisibleRequested 14 起、isTopActivityNoDisplay 16 起、getWindowingMode 读不出算不知道）；pick：只看这块屏、豆花的任务（顶上或最底下是 dev.douhua）得正拿着焦点（pick(…, false) 不看这条，只读用），**只在分屏时交**（审查后，2026-11-01 晚：豆花的任务窗口模式得是 MULTI_WINDOW 6——小窗 5、全屏 1、读不出来都不交，候选也得是 6，分屏的另一半），候选 = 不是豆花 / SystemUI、普通应用类型（0 / 1，不是桌面、最近任务、助手、屏保）、不是画中画、看得见且没在藏起来、不是 noDisplay，挑 lastActiveTime 最大的、一样取靠前的；Pick.ownNotFocused 标出"不交是因为豆花没拿着焦点"；focusedOn 核对用；describe（2026-11-01 晚）：诊断日志的任务列表——交焦点时（all = false）只列看得见的和挑中的那个、别的只记"另有 N 个看不见的"（服务日志在 /data/local/tmp、谁都能读，全列等于把最近用过哪些应用落了盘），只读的 Server tasks（all = true，输出到终端）全列 |
 | `src/dev/douhua/server/SessionPolicy.java` | 新连接来时旧会话怎么办：没有 / 已收尾 → 接，沉默 ≥ 5 秒 → 顶掉，否则回"忙"，纯 Java（离线测） |
 | `src/dev/douhua/server/GrabCondition.java` | 独占条件里的心跳（只有心跳和布局算，保活不算）和释放原因码，Session 调它，纯 Java（离线测） |
 | `src/dev/douhua/server/TouchGrabLock.java` | 全服务一把锁：同一时刻只有一个会话能独占触摸屏，纯 Java（离线测） |
@@ -205,6 +205,8 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   **小红点状态下三个鼠标键铺满底行、快捷行让出的空位**，同样排在键盘范围前面：空位里每一点归某个鼠标键。nearestKey 不选红点、鼠标键；
   红点圆、空位外的每一点和没有它们时一模一样（KeyboardPlanTest.stickRouting 三层逐点锁住；面板自己收触摸时 KeyFingers.pick 带洞——红点圆、空位——同样锁住；
   服务连着没接管时 TrackPointView 只吃圆里的按下）。按在红点、键盘里的鼠标键上的触点不进键盘触点日志（不是按键）。
+- **服务日志不列这块屏上看不见的任务**（2026-11-01 晚）：/data/local/tmp/douhua-server.log 谁都能读（rw-rw-rw-），交焦点的诊断日志只列看得见的任务和挑中的那个，
+  看不见的（最近用过的微信、WhatsApp……）只记个数（FocusPick.describe，FocusPickTest 锁住）；要全列只在人手动跑、输出到终端的 Server tasks 里。以后往服务日志里加任务 / 应用列表照这条。
 - **键盘触点日志等于按键记录**：只在可调试包、只能由 adb 广播（DUMP 权限）打开、租期 10 秒不续自己关、只写 logcat 不落盘；
   服务端每条连接默认关，开关只能由通过 uid 校验的连接发（CMD_TRACE）。
 - **主机实测扫描（DEBUG_KEYSCAN）只在可调试包、只由 adb 广播（DUMP 权限）触发**；一次广播最多 12 个键，只许出字的位置和 Shift / Alt，
@@ -1707,6 +1709,45 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
     三处改法都在 scratchpad 的副本上改坏跑过（实体键松开照旧减共用计数 12 项报错、收尾不清实体键那份 9 项、左键杆不看死区 2 项），新检查都报错。
   - 只跑了离线测试和编译，真机要看的见"进行中"。
 
+- **小红点推光标的"加速""最快速度"两个滑块**（2026-11-01 晚，协议 23；用户："小红点，现在的光标加速是可调的吗？……感觉小红点也有点快不太好控制"，
+  协调者问要不要加"加速""最快速度"两个滑块，用户："加上"；协调者定稿的方案 design-stick-accel.md）。只改 App 的设置页和两边共用的 TrackPoint / ConfigCodec / Proto。
+  - 曲线：TrackPoint 推光标那条（死区 2.5dp、爬行 40、升到平台 450、平台、平台以后陡升、推满 32dp 封顶）只改平台以后那一段：推满时的速度 = 平台 + 加速 × (最快速度 − 平台)
+    （TrackPoint.moveTop），爬行 → 平台那一段不变，灵敏度照旧乘整条。加速 0% = 推过平台以后不再变快；默认（100%、1200）和以前的曲线逐位一样（离线锁住，见"测试"）。
+  - 管红点推光标和左键杆（同一条曲线）；不管中键滚动的几条曲线（按住中键推红点 SCROLL_*、中键滑动杆 LEVER_*）、触控板。
+  - 设置 → 触控板 → "小红点和左 / 中 / 右键"，灵敏度下面：加速 0%–100%、步长 5%、默认 100%；最快速度 500–3000 计数 / 秒、步长 100、默认 1200
+    （范围、步长、默认值都在 TrackPoint 的常量里——ACCEL_PCT_*、TOP_SPEED_*——Prefs 和 Config 的默认值都引用它们，审查后改的）。"最快速度"是加速 100% 时推满的速度，加速不到 100% 时实际推满的比它低。
+    下限 500：平台是 450，最快低于平台的话推过一半反而变慢，500 是平台以上第一个整百；上限 3000：最快原来就是 3000（一屏约 0.65 秒），用户嫌推远了不好控制才降到 1200，
+    再快没意义（灵敏度还能再乘到 3 倍）。最快速度的值写成"1200 计数/秒"（单位九种语言翻）。
+  - 说明现算（SettingsActivity.refreshStickAccel，数只从 TrackPoint 的 ratioText / crossSeconds / topSpeedText / tenths 来）：加速下面一行"推到底的速度约是推一半时的 N 倍"（推一半 = 推满距离的一半 16dp，
+    落在平台那一段；N 一位小数，写出来是 1.0 时写两位——见下面审查后的修改），0% 时换成"推过一半以后不再变快"；最快速度下面一行"推到底时光标约 N 秒横穿 1920 像素宽的屏"（按现在的灵敏度、一个计数走一个像素算，括号里提一句主机还有自己的鼠标速度和加速）。
+    加速 0% 时最快速度那一行灰掉（拖不动），说明前面加一句"加速是 0% 时这一项不起作用"，秒数照算（= 平台）；加速在 0%–100% 之间时说明前面加一句"上面这个数是加速 100% 时推到底的速度；现在加速 X%，推到底实际约 Y 计数/秒"。
+    三个滑块（含灵敏度）哪个一动都重算（slider / sliderInt 加了拖动回调）。默认 2.7 倍、1.6 秒。
+  - 协议 23：CMD_CONFIG 末尾加 stickAccel:f32、stickMaxSpeed:f32（ConfigCodec，68 字节）。22 那一版已经打过包（ac34fcd）、用户可能装着，CMD_CONFIG 变长后混着跑会读错，所以单独升一号；
+    版本不一致时 App 的 Link 在读 hello 里的 APK 路径之前就断开、报"版本不一致"（按 APK 路径重启那条路——SelfStart.onServiceConnected——走不到）；
+    接着 MainActivity.onLinkStatus(false) 在开着"自动启动服务"时调 SelfStart.autoStart：配对过、密钥没被拒、不在退避中，它探到旧版本（SERVICE_OLD_VERSION）就自己重启服务；
+    不满足（比如服务是电脑上 start-server.sh 起的、手机没配过对，或者关了自动启动、正在退避）状态字会一直停在"版本不一致"，要手动重跑 tools/start-server.sh 或在设置页点"启动服务"。
+    TestClient 用 ConfigCodec + 默认 Config，自动跟着，没改代码（只改了 focus 那段注释）。
+    moveTop 自己再截一次（加速截到 0–1、最快速度截到 平台–3000，NaN 当 0 / 平台、±无穷大当 1 / 3000 或 0 / 平台）：服务收到什么样的数曲线都不会往下走、也出不了 NaN / 无穷大。
+  - 和方案不一样的地方：① "推一半"定成推满距离的一半（16dp，平台那一段），方案只举了"快约 2.7 倍"的例子（= 最快 / 平台，对得上）；② 秒数含灵敏度（方案没说；不含的话灵敏度不是 1 时数就是错的），
+    所以灵敏度滑块也接了回调；③ 中文写"约是推一半时的 N 倍"，没照方案写"快约 N 倍"（中文"快 2.7 倍"有人读成 3.7 倍）；④ 加速 0% 时最快速度那一行既灰掉又写明不起作用（方案说"灰掉或写明"）；
+    ⑤ 范围就是方案举的 500–3000。
+  - 审查后的修改（同一天，只跑了离线测试和编译）：
+    ① 加速 5% / 最快 500–900、加速 45% / 最快 500 这类 15 种组合，倍数一位小数写出来是"1.0"，前半句却说"推过一半以后还会再变快"（自相矛盾）：现在照写出来的数挑句子
+    （TrackPoint.ratioText：一位小数是 1.0 时写两位，5% / 500 写"1.01"、45% / 500 写"1.05"；两位还是 1.00 或加速 0 才用"不再变快"那句——滑块上拖不出这种）。没加新的"只快一点点"字符串：两位小数够准，也不用九种语言再翻一句。
+    ② moveTop 以前没截住 +无穷大：CMD_CONFIG 里最快速度是 +无穷大时，加速 0 时 0 × 无穷大 = NaN（余数变成 NaN，这次按下剩下的时间一个计数都不出），加速 > 0 时每拍 move(Integer.MAX_VALUE)。
+    App 正常发不出这种数（Prefs 截到 500–3000），只是"服务收到什么样的数都不往下走"这句以前不成立。现在最快速度截到 平台–TOP_SPEED_MAX（3000）。
+    ③ "最快速度"滑块上的数只在加速 100% 时是推到底的实际速度（加速 50%、最快 1200 实际是 825，下面的秒数却按 825 算，和标题对不上）：说明里加一句实际推满多快（stick_max_speed_actual，九种语言，
+    TrackPoint.topSpeedText；加速 100% 时不写——标题就是实际的——0% 时照旧写"不起作用"），Config / Prefs / Proto 的注释改成"加速 100% 时推满的速度"。没改滑块的名字（"加速 100% 时的最快速度"太长）。
+    ④ Prefs 里加速的范围、默认值原来是写死的字面量（只有步长、最快速度那几个来自 TrackPoint），Prefs 又不进离线测试，"默认值偏一点"改坏了也没有测试报：
+    现在 TrackPoint 有 ACCEL_PCT_MIN / MAX / DEFAULT、TOP_SPEED_DEFAULT，Prefs、Config 的默认值都引用它们，百分数换成 0–1 只走 TrackPoint.accelFraction；TrackPointTest 锁住它们换算出来逐位是 1 / 1200、等于 Config 的默认值。
+    engineConfig 里那两行接没接上离线还是测不到，只能真机核对（"进行中"②）。
+    ⑤ 装完怎么重启旧服务原来写成"按 APK 路径自己重启"，机制说错了、也漏了前提（见上面"协议 23"那一条），Proto.VERSION 的注释、"进行中"跟着改。
+  - 顺带（同一批）：交焦点的诊断日志（服务用 --debug 起时每次都记任务列表）只列看得见的任务和挑中的那个，别的只记"另有 N 个看不见的，不列"（FocusPick.describe）：
+    主力机 23:13:16 的日志里把这块屏上二十来个任务全列了，含微信、WhatsApp 这类看不见的，日志文件在 /data/local/tmp、rw-rw-rw-，等于把最近用过哪些应用落了盘。
+    只读的 Server tasks 照旧全列（人手动跑、输出到终端）。平时（不带 --debug）那一行本来就只写交给了谁 / 为什么不交。交焦点主力机上已经验证成了（日志"交给 com.limelight（task 7714）：成了"，
+    豆花和 Moonlight 的窗口模式都是 6）。
+  - 只跑了离线测试和编译，真机要看的见"进行中"。
+
 ## 测试
 
 - **测试设备**：用 USB 连的测试机（序列号见 `.private/NOTES.md`），命令里显式 `adb -s`。用户的主力机禁止拿来测试。
@@ -1910,7 +1951,7 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   分屏时浮着的第三个小窗、后面的全屏、读不出模式的哪怕最近也不挑、另一半没有能挑的就不交；只读的那一问（pick(…, false)：豆花没拿着焦点时照"拿着"挑、也守分屏的规矩、ownNotFocused 只在没拿着焦点时标）；
   随机 5000 组列表（豆花偶尔是小窗）查挑出来的能挑、在这块屏、在分屏里、最近，不交的分四种都有）、
   FocusHandoffTest（六个条件 64 种组合只有一种发、同一次焦点只发一次、丢了焦点 / 重新连上算新的一次、1 秒间隔和等多久再问；照 MainActivity 用法的随机序列 400 组 × 200 步，
-  查不满足时绝不发、两次至少隔 1 秒、同一次焦点同一条连接只发一次、满足后最多 1 秒内一定发出去）、ServerPartsTest.protocol22（版本 22、CMD_FOCUS_OTHER = 17 不撞、不算心跳）。
+  查不满足时绝不发、两次至少隔 1 秒、同一次焦点同一条连接只发一次、满足后最多 1 秒内一定发出去）、ServerPartsTest.protocol22（协议 22 起、CMD_FOCUS_OTHER = 17 不撞、不算心跳）。
   把几条规则改坏（不看豆花有没有焦点、桌面也挑、不看最近、不看 isVisibleRequested、不守间隔、同一次焦点反复发、全屏也发；审查后又改坏五处：小窗也交、分屏时不只挑另一半、
   窗口模式读不出来也交、不认拿着焦点的那个豆花任务、只读那一问照样要焦点）各跑过一遍，都有检查报错。
   真机上只读核对反射通不通：`adb shell CLASSPATH=<apk 路径> app_process / dev.douhua.server.Server tasks <屏幕编号>`（列出这块屏的任务和各自的窗口模式、说会交给谁，不交）。
@@ -1930,7 +1971,42 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   取大小位置不按实际指点、句号不浅、旧菜单顺序、滑块不生效、服务不读滑块、永久锁画成单次锁的高亮）各跑过，都有检查报错。
   界面（PairKey 画出来的样子、Fn 实底、设置页的滑块、菜单）离线编不到，没在真机上看过。
 
+- 小红点的加速 / 最快速度（协议 23，2026-11-01 晚，`tools/test.sh`）：TrackPointTest（默认值时 0–80dp 每 0.01dp 推光标的速度、左键杆的速度和以前的公式逐位一样，moveTop(1, 1200) 逐位是 1200；
+  一串随机序列——红点 / 左键杆 / 中键滚动杆 × 灵敏度 × 负惯性 × 轻点 × 颗粒 × 中键滑动速度 × 咔嗒 × 8 / 12ms 节拍、抖动、卡顿、20 秒暂停 × 中键按着 / 鼠标键按着 / 连续滚动 × 抬起 / 取消，600 段、
+  总位移 276726 计数——出的每样东西（位移、滚轮、点击、震动、tick 的返回值、started）揉成的 FNV 校验和等于拿 77f6ec7 的 TrackPoint 跑同一段代码算的 f000b060d8299a8a（goldenRun；以后有意改曲线要跟着重算）；
+  加速 0% 平台以后是平的、最快速度不起作用；滑块每一格（21 × 26）速度随位移 / 加速 / 最快速度不减、平台以前那一段不变、推到底 = 平台 + 加速 × (最快 − 平台)；8 / 12 / 抖动节拍积分、50ms 上限照旧；
+  灵敏度照乘；左键杆 = 红点（新参数下逐计数一样、走的是新曲线）；按住中键推红点、中键滚动杆出的滚轮不变；收到坏数截住；设置页说明的数——默认 2.7 倍 / 1.6 秒、0% 时 1 倍 / 4.3 秒、
+  最快 3000 时 6.7 倍 / 0.6 秒、灵敏度 2 / 0.5 时 0.8 / 3.2 秒，滑块每一格 × 灵敏度 0.3–3.0：倍数 ≥ 1 且随两个滑块不减、秒数是正数且随灵敏度不增），
+  TouchRouterTest（stickAccelThroughRouter：经真 ConfigCodec 往返后进真 TouchRouter，六组设置下红点 / 左键杆推到底 1 秒走 平台 + 加速 × (最快 − 平台)、推一半照旧是平台，默认值经 CMD_CONFIG 出的报文和默认 Config 逐条一样；
+  stickAccelLeavesScrollAndPad：换了这两项，按住中键推红点、中键滑动杆、触控板出的报文逐条一样），HidTest.configRoundTrip（68 字节、前 60 字节和协议 22 的编码逐字节一样——CRC32 是拿 77f6ec7 的 ConfigCodec 编同一组值算的、
+  最后 12 字节依次是 leverSpeed / stickAccel / stickMaxSpeed、默认 100% / 1200），ServerPartsTest.protocol23。把 TrackPoint 改坏三处（推满速度多 0.01、节拍里不看新参数、加速乘 0.999）各跑过，都有检查报错。
+  审查后加的（TrackPointTest）：accelDefaultsUnchanged 多查 Prefs 用的那几个常量——accelFraction(ACCEL_PCT_DEFAULT)、(float) TOP_SPEED_DEFAULT 逐位是 1 / MOVE_MAX、等于 Config 的默认值，
+  accelFraction 在 -50–150 每个整数截到 0–100 再除以 100（Prefs 自己离线编不到，engineConfig 接没接上这两项测不到）；accelClamp 多查 ±无穷大、极大极小和 NaN 两两组合推满的速度都在 平台–3000、
+  真 TrackPoint 跑 154 种怪数（推满 0.2 秒再退回平台 1 秒）每拍出的位移不超过 50ms × 3000、退回平台照样 1 秒走 450；accelHintTexts：倍数（ratioText）默认 2.7、5% / 500 写 1.01、45% / 500 写 1.05、
+  加速 0 / NaN / 快不到千分之五是 null，加速 > 0 的 520 格都写得出比 1 大的数、没有"1.0"、和真实倍数差不过最后一位的一半、写两位的正好 15 格、随两个滑块不减；
+  实际推满（topSpeedText）50% / 1200 是 825、加速 0% / 100% 不写、中间 494 格都写且等于 平台 + 加速 × (最快 − 平台) 取整、比滑块上的数小、和秒数对得上。
+  把四处改回去（不截无穷大、倍数只写一位、默认加速 95%、加速 100% 也写实际推满）各跑过，都有检查报错。
+  交焦点的诊断日志：FocusPickTest.describeVisibleOnly / describeRandom（只列看得见的和挑中的、"另有 N 个"的个数对、全看得见时没有那一行、Server tasks 全列，随机 2000 组）。
+  设置页的两个滑块、灰掉、说明文字（SettingsActivity）离线编不到，没在真机上看过。
+
 ## 进行中（交接；做完删掉这一节）
+
+- **小红点推光标的"加速""最快速度"（2026-11-01 晚写完，没提交，待真机验证；协议 23，App 和服务一起改了（TrackPoint / ConfigCodec 两边共用），装完要重启服务——
+  协议版本变了，App 连上旧服务时报"版本不一致"：开着"自动启动服务"、配对过（不在退避中）时 SelfStart.autoStart 会自己重启它，不然手动重跑 tools/start-server.sh 或在设置页点"启动服务"）**：
+  见决策记录"小红点推光标的'加速''最快速度'两个滑块"（含审查后的修改）。只跑了离线测试（小红点 214 项——原来 154、
+  触摸分流 638 项——原来 612、滚轮倍率 / CMD_CONFIG 191 项——原来 189、服务端部件 305 项——原来 304、交焦点挑任务 89 项——原来 79，别的各组照旧）和编译，真机一次都没看过。要看：
+  ① 设置 → 触控板 → "小红点和左 / 中 / 右键"：灵敏度下面"小红点加速：100%"、"小红点最快速度：1200 计数/秒"和各自下面那行说明（默认"约是推一半时的 2.7 倍""约 1.6 秒横穿 1920 像素"），
+  拖哪个（含灵敏度）说明跟着变；加速拖到 0% 时最快速度那一行变灰、拖不动、说明写"不起作用"，拖回 5% 恢复；加速拖到 50%，最快速度下面先多一句"上面这个数是加速 100% 时推到底的速度；现在加速 50%，推到底实际约 825 计数/秒"，
+  秒数变成约 2.3；加速 5%、最快速度 500 时倍数写"1.01"（不是"1.0"）；九种语言放不放得下（德 / 法语长，单位"计数/秒"、新加的那句翻得对不对）。
+  ② 默认值下推红点、左键杆拖动的手感和上一版一模一样（不用重新习惯）。这一条也是在核对 Prefs.engineConfig 有没有把加速、最快速度接上（离线测不到）：
+  默认推到底 1 秒约 1200 个计数，改了滑块回键盘页手感跟着变。
+  ③ 加速调低（30%–50%）后推远了好不好控制；0% 时推到底和推一半一样快能不能接受；最快速度拉到 3000 / 降到 500 差别明不明显。默认值要不要改由用户定。
+  ④ 改完回键盘页马上生效：桌面模式服务接管、蓝牙模式服务接管、蓝牙模式没开服务（本地分流）三条路；左键杆拖动跟着变；按住中键推红点、中键滑动、触控板不变。
+  ⑤ 说明里"1920 像素约几秒"和主机上实际横穿的时间差多少（主机的鼠标速度 / 加速会让它不准）。
+  ⑥ 交焦点的诊断日志：服务用 --debug 起，分屏时从设置页回来，服务日志里"这块屏上看得见的任务（和挑中的那个）"只有豆花、Moonlight 这类看得见的，加一行"另有 N 个看不见的，不列"，没有微信 / WhatsApp；
+  `Server tasks` 照旧全列。
+  ⑦ 装完以后旧服务（协议 22）被自动重启（状态字不会一直停在"版本不一致"）：前提是设置里"自动启动服务"开着、配对过、不在退避中；服务是电脑上 start-server.sh 起的、手机没配过对时不会自动重启，
+  状态字停在"版本不一致"，手动重跑 tools/start-server.sh（或设置页"启动服务"）。
 
 - **左键也当杆：按住左键挪 = 拖动（2026-11-01 晚写完，没提交，待真机验证；不改协议（还是 22），但 TouchRouter / TrackPoint 是服务和 App 共用的，装完要重启服务——
   App 更新后按 hello 里的 APK 路径会自己重启旧服务；旧服务接管时左键还是只能点、按住不能自己推）**：见决策记录"左键也当杆"。只跑了离线测试（触摸分流 612 项——原来 422、

@@ -220,6 +220,30 @@ final class FocusPick {
         return new Pick(best, "交给 " + best.name() + "（task " + best.taskId + "）");
     }
 
+    /**
+     * 诊断日志里的任务列表（一行一个，前面空两格）。all = false（交焦点时记进服务日志）：只列看得见的，加上挑中的那个（target，可以是 null），
+     * 别的只记个数——日志文件在 /data/local/tmp、谁都能读，全列等于把最近用过哪些应用（微信、WhatsApp……）落了盘（2026-11-01 主力机的日志里列了二十来个）。
+     * all = true（只读的 Server tasks：人手动跑、输出到终端）：照旧全列。
+     */
+    static String describe(List<Task> tasks, Task target, boolean all) {
+        if (tasks.isEmpty()) return "  （这块屏上一个任务都没列出来）";
+        StringBuilder b = new StringBuilder();
+        int hidden = 0;
+        for (Task t : tasks) {
+            if (!all && !t.visible && t != target) {
+                hidden++;
+                continue;
+            }
+            if (b.length() > 0) b.append('\n');
+            b.append("  ").append(t.describe());
+        }
+        if (hidden > 0) {
+            if (b.length() > 0) b.append('\n');
+            b.append("  （另有 ").append(hidden).append(" 个看不见的，不列）");
+        }
+        return b.toString();
+    }
+
     /** 这块屏上现在拿着焦点的任务（核对交没交过去用）；没有就是 null。 */
     static Task focusedOn(List<Task> tasks, int displayId) {
         for (Task t : tasks) {

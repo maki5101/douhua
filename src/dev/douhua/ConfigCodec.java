@@ -40,6 +40,9 @@ public final class ConfigCodec {
         out.writeByte(c.stickInertia ? 1 : 0);
         // 协议 22 起：中键滑动的滚动速度
         out.writeFloat(c.leverSpeed);
+        // 协议 23 起：小红点推光标的加速、最快速度
+        out.writeFloat(c.stickAccel);
+        out.writeFloat(c.stickMaxSpeed);
     }
 
     /** 读进 c（覆盖 c 里的每一项），返回 density。 */
@@ -68,6 +71,8 @@ public final class ConfigCodec {
         c.stickTap = in.readUnsignedByte() == 1;
         c.stickInertia = in.readUnsignedByte() == 1;
         c.leverSpeed = in.readFloat();
+        c.stickAccel = in.readFloat();
+        c.stickMaxSpeed = in.readFloat();
         return density;
     }
 }

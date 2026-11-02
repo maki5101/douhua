@@ -47,7 +47,10 @@ final class TaskFocus {
         final boolean moved;
         /** 记日志用的一行（交给了谁、成没成 / 为什么没交）。 */
         final String line;
-        /** 诊断模式多记的：这块屏上的任务列表（没列出来是 null）。 */
+        /**
+         * 诊断模式多记的：这块屏上的任务列表（没列出来是 null）。交焦点时只有看得见的和挑中的那个、别的只记个数（{@link FocusPick#describe}），
+         * 只读的 Server tasks 全列。
+         */
         final String detail;
 
         Result(boolean moved, String line, String detail) {
@@ -68,8 +71,9 @@ final class TaskFocus {
             try {
                 ensure();
                 List<FocusPick.Task> before = list(displayId);
-                String detail = describe(before);
                 FocusPick.Pick p = FocusPick.pick(before, displayId);
+                // 交焦点时（记进服务日志）只列看得见的和挑中的那个；只读的 Server tasks（输出到终端）照旧全列
+                String detail = FocusPick.describe(before, p.target, !apply);
                 if (!apply) {
                     String line = p.target == null ? "不交：" + p.why : "会" + p.why + "（只读，没交）";
                     if (p.ownNotFocused) {
@@ -121,16 +125,6 @@ final class TaskFocus {
             if (t.displayId == displayId) here.add(t);
         }
         return here;
-    }
-
-    private static String describe(List<FocusPick.Task> tasks) {
-        if (tasks.isEmpty()) return "  （这块屏上一个任务都没列出来）";
-        StringBuilder b = new StringBuilder();
-        for (FocusPick.Task t : tasks) {
-            if (b.length() > 0) b.append('\n');
-            b.append("  ").append(t.describe());
-        }
-        return b.toString();
     }
 
     /** 不支持时顺手列出接口里实际有的 getTasks / setFocusedTask 签名（各家改过的系统上好对照）。 */

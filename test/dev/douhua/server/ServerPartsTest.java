@@ -77,6 +77,7 @@ public final class ServerPartsTest {
         protocol20();
         protocol21();
         protocol22();
+        protocol23();
         staleKeyTimerDoesNothing();
 
         System.err.println("服务端部件：" + checks + " 项检查，" + failures + " 项失败");
@@ -582,11 +583,19 @@ public final class ServerPartsTest {
     }
 
     /**
+     * 协议 23（CMD_CONFIG 末尾加了小红点推光标的加速、最快速度，2026-11-01 晚）：版本号。22 已经打过包，CMD_CONFIG 变长后新旧混着跑会读错，
+     * 所以单独升一号；字段往返、长度在 HidTest.configCodec。
+     */
+    static void protocol23() {
+        check(Proto.VERSION == 23, "协议 23");
+    }
+
+    /**
      * 协议 22（分屏里豆花拿着键盘焦点时交给另一半）：版本号；CMD_FOCUS_OTHER = 17、不和别的命令撞；不是心跳
      * （App 主线程卡住时不会发，但连接线程可能把排着的发出去；同保活不算心跳的理由）。
      */
     static void protocol22() {
-        check(Proto.VERSION == 22, "协议 22");
+        check(Proto.VERSION >= 22, "协议 22 起");
         check(Proto.CMD_FOCUS_OTHER == 17, "CMD_FOCUS_OTHER = 17");
         int[] cmds = {Proto.CMD_PING, Proto.CMD_KEY, Proto.CMD_CLICK, Proto.CMD_CONFIG, Proto.CMD_LAYOUT, Proto.CMD_HEARTBEAT, Proto.CMD_HID_KEY,
                 Proto.CMD_ROTATE, Proto.CMD_WHEEL, Proto.CMD_TRACE, Proto.CMD_HARD_KEYS, Proto.CMD_HOLD_LEFT, Proto.CMD_GAMEPAD,

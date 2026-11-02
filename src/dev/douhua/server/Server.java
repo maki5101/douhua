@@ -30,7 +30,7 @@ import dev.douhua.Proto;
  *      app_process / dev.douhua.server.Server probe [秒数]   只造鼠标画个方块，不点击，用来验证这条路通不通
  *      app_process / dev.douhua.server.Server focus <屏幕编号>   只把键盘输入切到那块屏（验证 DexFocus 用）
  *      app_process / dev.douhua.server.Server keys   只读：用 getevent -i 列出输入设备、音量键能不能单独截、为什么（不独占任何设备）
- *      app_process / dev.douhua.server.Server tasks <屏幕编号>   只读：列出那块屏上的任务、分屏里豆花拿着焦点时会交给谁（不交，验证 TaskFocus 用）
+ *      app_process / dev.douhua.server.Server tasks <屏幕编号>   只读：列出那块屏上的全部任务（含看不见的，输出到终端）、分屏里豆花拿着焦点时会交给谁（不交，验证 TaskFocus 用）
  */
 public final class Server {
     private static final int UID_ROOT = 0;

@@ -191,8 +191,34 @@ final class Prefs {
         c.stickTap = getBool(STICK_TAP, c.stickTap);
         c.stickInertia = getBool(STICK_INERTIA, c.stickInertia);
         c.leverSpeed = leverSpeedPct() / 100f;
+        c.stickAccel = TrackPoint.accelFraction(stickAccelPct());
+        c.stickMaxSpeed = stickMaxSpeed();
         return c;
     }
+
+    /** 小红点推光标的加速（百分数，设置里的滑块 {@link #STICK_ACCEL_MIN}–{@link #STICK_ACCEL_MAX}、步长 {@link #STICK_ACCEL_STEP}，默认 100）；存坏了截到范围里。 */
+    int stickAccelPct() {
+        int v = getInt(STICK_ACCEL, STICK_ACCEL_DEFAULT);
+        return Math.max(STICK_ACCEL_MIN, Math.min(STICK_ACCEL_MAX, v));
+    }
+
+    /** 小红点加速 100% 时推满的速度（计数 / 秒，{@link #STICK_MAX_MIN}–{@link #STICK_MAX_MAX}、步长 {@link #STICK_MAX_STEP}，默认 1200）；存坏了截到范围里。 */
+    int stickMaxSpeed() {
+        int v = getInt(STICK_MAX, STICK_MAX_DEFAULT);
+        return Math.max(STICK_MAX_MIN, Math.min(STICK_MAX_MAX, v));
+    }
+
+    /**
+     * 小红点推光标（和左键杆）的加速、最快速度（协议 23，2026-11-01 晚，用户："感觉小红点也有点快不太好控制"）：推满时的速度 = 平台 + 加速 × (最快 − 平台)，
+     * 见 TrackPoint.moveTop。范围、步长、默认值都在 TrackPoint（ACCEL_PCT_*、TOP_SPEED_*；离线测试照它扫滑块的每一格、锁住默认值换算出来和以前一样；为什么是这些数也写在那里）：
+     * 加速百分数 0–100、步长 5、默认 100；最快速度（加速 100% 时推满的速度）计数 / 秒 500–3000、步长 100、默认 1200（= TrackPoint.MOVE_MAX，两个都是默认时曲线和以前一样）。
+     * 百分数换成 0–1 走 TrackPoint.accelFraction（和 Config 的默认值同一个）。engineConfig 有没有把这两项接上离线测不到（Prefs 离不开 Android），靠真机核对默认手感。
+     */
+    static final String STICK_ACCEL = "stick_accel_pct", STICK_MAX = "stick_max_speed";
+    static final int STICK_ACCEL_MIN = TrackPoint.ACCEL_PCT_MIN, STICK_ACCEL_MAX = TrackPoint.ACCEL_PCT_MAX, STICK_ACCEL_STEP = TrackPoint.ACCEL_PCT_STEP,
+            STICK_ACCEL_DEFAULT = TrackPoint.ACCEL_PCT_DEFAULT;
+    static final int STICK_MAX_MIN = TrackPoint.TOP_SPEED_MIN, STICK_MAX_MAX = TrackPoint.TOP_SPEED_MAX, STICK_MAX_STEP = TrackPoint.TOP_SPEED_STEP,
+            STICK_MAX_DEFAULT = TrackPoint.TOP_SPEED_DEFAULT;
 
     /** 中键滑动的滚动速度（百分数，设置里的滑块 {@link #LEVER_SPEED_MIN}–{@link #LEVER_SPEED_MAX}、步长 {@link #LEVER_SPEED_STEP}，默认 100）；存坏了截到范围里。 */
     int leverSpeedPct() {

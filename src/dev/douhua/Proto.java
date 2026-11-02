@@ -17,11 +17,15 @@ public final class Proto {
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
     /**
-     * 协议版本。22（2026-11-01 晚）：加了 {@link #CMD_FOCUS_OTHER}（分屏里豆花拿着键盘焦点时交给另一半）；
+     * 协议版本。23（2026-11-01 晚）：CMD_CONFIG 末尾加了小红点推光标的加速、最快速度（stickAccel:f32、stickMaxSpeed:f32）。
+     * 22 那一版已经打过包、用户可能装着，CMD_CONFIG 变长后新旧混着跑会读错，所以单独升一号。版本不一致时 App 的 Link 在读 hello 里的 APK 路径之前就断开、
+     * 报"版本不一致"（按 APK 路径重启那条路走不到）；开着"自动启动服务"、配对过、密钥没被拒、不在退避中时 SelfStart.autoStart 探到旧版本会自己重启它，
+     * 不然要手动重起服务（tools/start-server.sh，或设置页"启动服务"）。
+     * 22（2026-11-01 晚）：加了 {@link #CMD_FOCUS_OTHER}（分屏里豆花拿着键盘焦点时交给另一半）；
      * 同一批 CMD_CONFIG 末尾加了中键滑动速度（leverSpeed:f32）、MSG_MODIFIERS 第四个字节多了 {@link #FN_LOCKED}、Fn 换了规矩
      * （点一下单次锁、按住 0.4 秒永久锁，KeyHolds），都算在 22 里。
      */
-    public static final int VERSION = 22;
+    public static final int VERSION = 23;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
     /**
@@ -41,8 +45,10 @@ public final class Proto {
      * edgeScrollHorizontal:u8, edgeWidthDp:f32, scrollTicks:u8, longPressDrag:u8, longPressMs:i32,
      * tapToDrag:u8, dragWindowMs:i32, density:f32（每 dp 多少像素）, slowFactor:f32, texture:u8（移动时的颗粒震动），
      * inertia:u8（惯性滚动）, inertiaTauMs:i32（阻尼）, inertiaMinSpeed:f32（多快算拨，dp/ms）, smoothScroll:u8（连续滚动），
-     * stickSpeed:f32（小红点灵敏度）, stickTap:u8（轻点红点 = 左键）, stickInertia:u8（小红点负惯性）, leverSpeed:f32（中键滑动的滚动速度倍数）。
-     * inertia 到 stickInertia 七项是协议 18 加的，leverSpeed 是协议 22 加的。编解码只在 {@link ConfigCodec} 一处（App、服务、自测共用）。
+     * stickSpeed:f32（小红点灵敏度）, stickTap:u8（轻点红点 = 左键）, stickInertia:u8（小红点负惯性）, leverSpeed:f32（中键滑动的滚动速度倍数），
+     * stickAccel:f32（小红点推光标的加速，0–1）, stickMaxSpeed:f32（加速 100% 时小红点推满的速度，计数 / 秒）。
+     * inertia 到 stickInertia 七项是协议 18 加的，leverSpeed 是协议 22 加的，stickAccel、stickMaxSpeed 是协议 23 加的。
+     * 编解码只在 {@link ConfigCodec} 一处（App、服务、自测共用）。
      */
     public static final int CMD_CONFIG = 4;
     /**

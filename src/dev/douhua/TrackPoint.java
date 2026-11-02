@@ -12,6 +12,11 @@ package dev.douhua;
  * u < 0.15 爬行（像素级微调），0.15–0.45 平滑升到平台，0.45–0.70 平台（速度基本不变、好对准），0.70–1 陡升到最快，≥ 1 封顶。
  * 再乘设置里的灵敏度（{@link GestureEngine.Config#stickSpeed}）。不加平滑滤波（论文说更拖，空中鼠标也试过"如履薄冰"）。
  *
+ * 推光标那条曲线（红点推光标、左键杆）平台以后那一段可调（协议 23，2026-11-01 晚，用户："感觉小红点也有点快不太好控制"）：
+ * 推满时的速度 = 平台 + 加速 × (最快速度 − 平台)（{@link #moveTop}；{@link GestureEngine.Config#stickAccel} 0–1、{@link GestureEngine.Config#stickMaxSpeed} 计数 / 秒，就是加速 100% 时推满的速度）。
+ * 加速 0 = 推过平台以后不再变快（爬行 → 平台那一段照旧），默认（加速 1、最快 {@link #MOVE_MAX}）和以前逐点一样。
+ * 中键滚动的几条曲线（SCROLL_*、LEVER_*）不跟它。
+ *
  * 负惯性（{@link GestureEngine.Config#stickInertia}，Barrett 等 CHI '95 / 专利 US5570111）：对位移加微分项
  * z = m + I·(m − m 的一阶滞后)，起步、停下更利落，巡航速度不变；夹在不反向（不往回弹）。I = 3（专利是 6，触摸屏 120Hz 一阶一阶地更新，6 时平台速度抖得多）。
  *
@@ -38,7 +43,7 @@ package dev.douhua;
  * 左键杆（{@link #MODE_DRAG_LEVER}，2026-11-01 晚）：TouchRouter 给按在左键（三个鼠标键的左键）上的第一根手指另开一个，
  * 让这根手指自己当小红点用——左键一直按着（TouchRouter 按下时就按住了），所以推出来的就是拖动。和中键滚动杆一样：抬起不算轻点
  * （单击由左键自己的按下 / 松开出）；先挪出轻点容差才开始；位移从轻点容差那一圈起算（{@link #leverLevel}，一出容差不跳一下）。
- * 和中键滚动杆不一样：一直是移动模式（tick 的 scroll 不看，中键按着也不滚）、走红点推光标的那条曲线（MOVE_*，× 灵敏度、负惯性照设置），
+ * 和中键滚动杆不一样：一直是移动模式（tick 的 scroll 不看，中键按着也不滚）、走红点推光标的那条曲线（MOVE_*，× 灵敏度、负惯性、加速、最快速度照设置），
  * 一直当按着鼠标键（不发颗粒：拖动有持续轻震，同"同一种操作，反馈一样"）。
  *
  * 不加锁：宿主保证同一时刻只有一个线程在调（同 TouchRouter）。
@@ -67,6 +72,23 @@ final class TrackPoint {
      * 最快原来 3000（约 0.65 秒一屏），用户 2026-11-01："移动远一点的话非常不好控制，要降低一些"——平台到最快只翻 2.7 倍（原来 6.7 倍）。
      */
     static final float MOVE_CRAWL = 40, MOVE_PLATEAU = 450, MOVE_MAX = 1200;
+    /**
+     * "推一半"（dp）：推到底的一半，落在平台那一段里（u ≈ 0.46）。设置页说明"推到底比推一半快几倍"用（{@link #pushRatio}）。
+     */
+    static final float HALF_DP = FULL_DP / 2;
+    /** 设置页说明里横穿多宽的屏（像素，按一个计数走一个像素算，{@link #crossSeconds}）。 */
+    static final int CROSS_PX = 1920;
+    /**
+     * 设置里"加速"滑块（百分数）：0%–100%、步长 5%、默认 100%（= 以前的曲线）。Prefs、{@link GestureEngine.Config#stickAccel} 的默认值都从这里来，
+     * 百分数换成 0–1 只走 {@link #accelFraction}（离线测试锁住默认值换算出来逐位是 1）。
+     */
+    static final int ACCEL_PCT_MIN = 0, ACCEL_PCT_MAX = 100, ACCEL_PCT_STEP = 5, ACCEL_PCT_DEFAULT = 100;
+    /**
+     * 设置里"最快速度"滑块（计数 / 秒，加速 100% 时推满的速度）：下限 500——平台是 {@link #MOVE_PLATEAU} 450，比它低的话推过一半反而变慢，500 是平台以上第一个整百；
+     * 上限 3000——最快原来就是 3000（一屏 1920 像素约 0.65 秒），用户嫌推远了不好控制才降到 1200，再快没意义（灵敏度还能再乘到 3 倍）；步长 100；
+     * 默认 = {@link #MOVE_MAX}（1200，= 以前）。Prefs、{@link GestureEngine.Config#stickMaxSpeed} 的默认值都从这里来。
+     */
+    static final int TOP_SPEED_MIN = 500, TOP_SPEED_MAX = 3000, TOP_SPEED_STEP = 100, TOP_SPEED_DEFAULT = (int) MOVE_MAX;
     /** 中键滚动的速度（格 / 秒）：原来 2 / 10 / 40，用户 2026-11-01 嫌慢，整体翻倍。 */
     static final float SCROLL_CRAWL = 4, SCROLL_PLATEAU = 20, SCROLL_MAX = 80;
     /**
@@ -256,7 +278,7 @@ final class TrackPoint {
             emitScroll(smooth);
             return true;
         }
-        float v = curve(u, MOVE_CRAWL, MOVE_PLATEAU, MOVE_MAX) * cfg.stickSpeed * dt / 1000f;
+        float v = curve(u, MOVE_CRAWL, MOVE_PLATEAU, moveTop(cfg.stickAccel, cfg.stickMaxSpeed)) * cfg.stickSpeed * dt / 1000f;
         float fx = ux * v + remX, fy = uy * v + remY;
         int ix = (int) fx, iy = (int) fy;   // 向零取整，余数留到下一拍
         remX = fx - ix;
@@ -328,6 +350,11 @@ final class TrackPoint {
         return moveSpeed(leverLevel(dist, slop));
     }
 
+    /** 同上，加速 accel、最快速度 maxSpeed 照给的（左键杆和红点推光标同一份）。 */
+    static float dragLeverSpeed(float dist, float slop, float accel, float maxSpeed) {
+        return moveSpeed(leverLevel(dist, slop), accel, maxSpeed);
+    }
+
     /** 位移（dp）→ 曲线的横轴 u：死区里 ≤ 0，推到底 = 1。 */
     static float level(float m) {
         return (m - DEAD_DP) / (FULL_DP - DEAD_DP);
@@ -343,9 +370,72 @@ final class TrackPoint {
         return max;
     }
 
-    /** 光标速度（计数 / 秒，不含灵敏度）：位移 m（dp）时多快。设置页、测试用。 */
+    /** 光标速度（计数 / 秒，不含灵敏度）：位移 m（dp）时多快（加速、最快速度是默认值时）。测试用。 */
     static float moveSpeed(float m) {
         return curve(level(m), MOVE_CRAWL, MOVE_PLATEAU, MOVE_MAX);
+    }
+
+    /** 同上，加速 accel（0–1）、最快速度 maxSpeed（计数 / 秒）照给的（{@link #moveTop}）。设置页说明、测试用。 */
+    static float moveSpeed(float m, float accel, float maxSpeed) {
+        return curve(level(m), MOVE_CRAWL, MOVE_PLATEAU, moveTop(accel, maxSpeed));
+    }
+
+    /**
+     * 推光标那条曲线推满时多快（计数 / 秒，不含灵敏度）：平台 + 加速 × (最快速度 − 平台)。加速截到 0–1、最快速度截到 平台–{@link #TOP_SPEED_MAX}
+     * （设置页本来就截了；这里再截一次，服务收到什么样的数——负数、NaN、±无穷大——曲线都不会往下走、也不会出 NaN / 无穷大），
+     * NaN 当 0 / 平台，+无穷大当 1 / {@link #TOP_SPEED_MAX}。默认（1、{@link #MOVE_MAX}）正好是 MOVE_MAX。
+     */
+    static float moveTop(float accel, float maxSpeed) {
+        float a = accel >= 0 ? Math.min(1f, accel) : 0f;
+        float top = maxSpeed > MOVE_PLATEAU ? Math.min(maxSpeed, TOP_SPEED_MAX) : MOVE_PLATEAU;
+        return MOVE_PLATEAU + a * (top - MOVE_PLATEAU);
+    }
+
+    /** 设置里"加速"的百分数换成 {@link GestureEngine.Config#stickAccel}（0–1）：截到 {@link #ACCEL_PCT_MIN}–{@link #ACCEL_PCT_MAX} 再除以 100（Prefs.engineConfig、Config 的默认值共用）。 */
+    static float accelFraction(int pct) {
+        return Math.max(ACCEL_PCT_MIN, Math.min(ACCEL_PCT_MAX, pct)) / 100f;
+    }
+
+    /** 推到底比推一半（{@link #HALF_DP}，平台）快几倍：设置页"加速"下面那行说明。加速 0 时是 1。 */
+    static float pushRatio(float accel, float maxSpeed) {
+        return moveSpeed(FULL_DP, accel, maxSpeed) / moveSpeed(HALF_DP, accel, maxSpeed);
+    }
+
+    /**
+     * "加速"下面那行说明里的倍数（{@link #pushRatio}）怎么写：一位小数。加速很小、最快速度很低时（5% / 500–900、45% / 500 这类，滑块上 15 格）一位小数写出来是 "1.0"，
+     * 和"推过一半以后还会再变快"那句对不上（审查发现），这时写两位（5% / 500 是 "1.01"）。两位还是 "1.00"（快不到千分之五：只有存坏了的、滑块拖不出来的百分数）
+     * 或者正好是 1（加速 0）返回 null：设置页换成"推过一半以后不再变快"那句。
+     */
+    static String ratioText(float accel, float maxSpeed) {
+        float r = pushRatio(accel, maxSpeed);
+        if (!(r > 1f)) return null;
+        String s = tenths(r);
+        if (!s.equals(tenths(1f))) return s;
+        s = String.format(java.util.Locale.ROOT, "%.2f", r);
+        return s.equals("1.00") ? null : s;
+    }
+
+    /**
+     * "最快速度"下面那行说明里"推到底实际多快"（计数 / 秒，取整，不含灵敏度）：滑块上的数是加速 100% 时推满的速度，加速不到 100% 时实际推满的速度比它低
+     * （平台 + 加速 × (最快 − 平台)，加速 50%、最快 1200 是 825；审查发现标题写 1200、说明里的秒数却按 825 算，对不上），这时返回实际的；
+     * 加速是 100%（滑块上的数就是实际的）或 0%（这一项不起作用，说明里另有一句）返回 null。
+     */
+    static String topSpeedText(float accel, float maxSpeed) {
+        if (!(accel > 0 && accel < 1)) return null;
+        return String.valueOf(Math.round(moveTop(accel, maxSpeed)));
+    }
+
+    /**
+     * 推到底时横穿 {@link #CROSS_PX} 像素要几秒（按一个计数走一个像素算，含灵敏度 sensitivity）：设置页"最快速度"下面那行说明。
+     * 主机那边还有自己的鼠标速度和加速，实际会不一样（说明里写了）。
+     */
+    static float crossSeconds(float accel, float maxSpeed, float sensitivity) {
+        return CROSS_PX / (moveSpeed(FULL_DP, accel, maxSpeed) * sensitivity);
+    }
+
+    /** 设置页说明里的数（{@link #pushRatio}、{@link #crossSeconds}）怎么写：一位小数，Locale.ROOT（同别的说明）。 */
+    static String tenths(float v) {
+        return String.format(java.util.Locale.ROOT, "%.1f", v);
     }
 
     private static float smoothstep(float t) {

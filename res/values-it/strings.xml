@@ -92,6 +92,14 @@
     <string name="spin_wave_unsupported">%1$s (non supportato su questo telefono, si usa quello predefinito)</string>
     <string name="sec_trackpoint">Pointing stick e tasti sinistro / centrale / destro</string>
     <string name="stick_speed">Sensibilità del pointing stick</string>
+    <string name="stick_accel">Accelerazione del pointing stick</string>
+    <string name="stick_accel_hint">Oltre metà corsa accelera ancora: spinto fino in fondo va circa %1$s volte più veloce che a metà.</string>
+    <string name="stick_accel_hint_off">Oltre metà corsa non accelera: spinto fino in fondo va veloce come a metà.</string>
+    <string name="stick_max_speed">Velocità massima del pointing stick</string>
+    <string name="stick_max_speed_unit">unità/s</string>
+    <string name="stick_max_speed_hint">Spinto fino in fondo, il cursore attraversa uno schermo largo 1920 pixel in circa %1$s s (con la sensibilità attuale, un\'unità per pixel; anche l\'host applica la propria velocità e accelerazione del mouse, quindi nella pratica cambia).</string>
+    <string name="stick_max_speed_off" formatted="false">Non ha effetto quando l\'accelerazione è 0%.</string>
+    <string name="stick_max_speed_actual">Questo valore è la velocità spinto fino in fondo con accelerazione al 100%%; con l\'accelerazione attuale (%1$s), spinto fino in fondo va in realtà a circa %2$s.</string>
     <string name="stick_tap">Tocco sullo stick = clic sinistro</string>
     <string name="stick_inertia">Partenza e arresto più decisi (inerzia negativa)</string>
     <string name="lever_speed">Velocità di scorrimento strisciando sul tasto centrale</string>

@@ -92,6 +92,14 @@
     <string name="spin_wave_unsupported">%1$s (not supported on this phone, the default is used)</string>
     <string name="sec_trackpoint">Pointing stick and left / middle / right buttons</string>
     <string name="stick_speed">Pointing stick sensitivity</string>
+    <string name="stick_accel">Pointing stick acceleration</string>
+    <string name="stick_accel_hint">Pushing past halfway speeds it up further: pushed all the way it moves about %1$s× as fast as pushed halfway.</string>
+    <string name="stick_accel_hint_off">No speed-up past halfway: pushed all the way it moves as fast as pushed halfway.</string>
+    <string name="stick_max_speed">Pointing stick top speed</string>
+    <string name="stick_max_speed_unit">counts/s</string>
+    <string name="stick_max_speed_hint">Pushed all the way, the cursor crosses a 1920-pixel-wide screen in about %1$s s (at the current sensitivity, one count per pixel; the host also applies its own mouse speed and acceleration, so in practice it differs).</string>
+    <string name="stick_max_speed_off" formatted="false">Has no effect while acceleration is 0%.</string>
+    <string name="stick_max_speed_actual">This value is the full-push speed at 100%% acceleration; at the current %1$s, pushed all the way it actually moves at about %2$s.</string>
     <string name="stick_tap">Tap the stick = left click</string>
     <string name="stick_inertia">Snappier start and stop (negative inertia)</string>
     <string name="lever_speed">Middle-button slide scroll speed</string>

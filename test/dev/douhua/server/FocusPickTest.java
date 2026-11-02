@@ -39,6 +39,8 @@ public final class FocusPickTest {
         systemOrder14();
         systemOrder13();
         randomLists();
+        describeVisibleOnly();
+        describeRandom();
 
         System.err.println("交焦点挑任务：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
@@ -418,6 +420,72 @@ public final class FocusPickTest {
                 + "，豆花不在分屏里 " + notSplit + "，分屏里没有能挑的 " + none + "）");
         check(picked > 500 && notFocused > 500 && notSplit > 200 && none > 200,
                 "随机里四种情况都有（" + picked + " / " + notFocused + " / " + notSplit + " / " + none + "）");
+    }
+
+    /**
+     * 诊断日志的任务列表（{@link FocusPick#describe}，2026-11-01 晚）：交焦点时只列看得见的和挑中的那个，看不见的（微信、WhatsApp 这类最近用过的）只记个数；
+     * 只读的 Server tasks 照旧全列。
+     */
+    static void describeVisibleOnly() {
+        List<FocusPick.Task> l = Arrays.asList(own(true), task(2, 0, "com.limelight", true, false, 1, 99),
+                task(3, 0, "com.sec.android.app.launcher", false, false, 2, 50), task(4, 0, "com.tencent.mm", false, false, 1, 40),
+                task(5, 0, "com.whatsapp", false, false, 1, 30));
+        FocusPick.Pick p = FocusPick.pick(l, 0);
+        String log = FocusPick.describe(l, p.target, false);
+        check(log.contains(FocusPick.OWN_PACKAGE) && log.contains("com.limelight"), "交焦点的日志：列看得见的（豆花、Moonlight）：\n" + log);
+        check(!log.contains("com.tencent.mm") && !log.contains("com.whatsapp") && !log.contains("launcher"), "交焦点的日志：看不见的不列包名");
+        check(log.contains("另有 3 个看不见的") && log.split("\n").length == 3, "交焦点的日志：看不见的只记个数（3 个），一共三行");
+        String all = FocusPick.describe(l, p.target, true);
+        check(all.contains("com.tencent.mm") && all.contains("com.whatsapp") && all.contains("launcher") && !all.contains("另有")
+                && all.split("\n").length == 5, "Server tasks（只读、输出到终端）：照旧全列，五行");
+        // 挑中的那个照列（就算看不见——照规则挑不出看不见的，这里直接给，防以后规则变了日志里看不出交给了谁）
+        FocusPick.Task hiddenTarget = task(6, 0, "com.example.hidden", false, false, 1, 10);
+        List<FocusPick.Task> m = Arrays.asList(own(true), hiddenTarget, task(7, 0, "com.example.other", false, false, 1, 5));
+        String withTarget = FocusPick.describe(m, hiddenTarget, false);
+        check(withTarget.contains("com.example.hidden") && !withTarget.contains("com.example.other") && withTarget.contains("另有 1 个看不见的"),
+                "挑中的那个看不见也列，别的看不见的只记个数");
+        // 全都看得见：没有"另有"那一行；空列表照旧一句
+        List<FocusPick.Task> v = Arrays.asList(own(true), task(2, 0, "com.limelight", true, false, 1, 99));
+        check(!FocusPick.describe(v, null, false).contains("另有") && FocusPick.describe(v, null, false).equals(FocusPick.describe(v, null, true)),
+                "全都看得见：两种写法一样，没有\"另有\"那一行");
+        check(FocusPick.describe(new ArrayList<>(), null, false).contains("一个任务都没列出来"), "空列表：照旧一句");
+        // 一个看得见的都没有（target 也没有）：只剩个数那一行
+        List<FocusPick.Task> none = Arrays.asList(task(3, 0, "com.a", false, false, 1, 1), task(4, 0, "com.b", false, false, 1, 1));
+        String n = FocusPick.describe(none, null, false);
+        check(n.equals("  （另有 2 个看不见的，不列）"), "一个看得见的都没有：只剩个数那一行：" + n);
+    }
+
+    /** 随机列表：交焦点的日志里出现的包名正好是看得见的 + 挑中的；行数 = 列出的个数 + (有看不见的 ? 1 : 0)；Server tasks 全列。 */
+    static void describeRandom() {
+        Random r = new Random(1102);
+        boolean ok = true;
+        int withHidden = 0;
+        for (int iter = 0; iter < 2000; iter++) {
+            int n = 1 + r.nextInt(25);
+            List<FocusPick.Task> l = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                String pkg = i == 0 && r.nextBoolean() ? FocusPick.OWN_PACKAGE : "pkg" + i + "x";   // 包名互不相同，好查谁被列了
+                l.add(new FocusPick.Task(i + 1, 0, pkg, pkg, r.nextInt(3) != 0, r.nextBoolean(), r.nextInt(4) == 0, r.nextInt(3) == 0 ? 2 : 1,
+                        r.nextInt(4) == 0 ? 5 : 6, false, r.nextInt(100)));
+            }
+            FocusPick.Task target = r.nextInt(3) == 0 ? l.get(r.nextInt(l.size())) : FocusPick.pick(l, 0).target;
+            String log = FocusPick.describe(l, target, false);
+            int listed = 0, hidden = 0;
+            for (FocusPick.Task t : l) {
+                boolean show = t.visible || t == target;
+                if (show) listed++;
+                else hidden++;
+                ok &= log.contains(t.name() + " ") == show;
+            }
+            if (hidden > 0) withHidden++;
+            ok &= log.split("\n").length == listed + (hidden > 0 ? 1 : 0);
+            ok &= hidden == 0 ? !log.contains("另有") : log.contains("另有 " + hidden + " 个看不见的");
+            String all = FocusPick.describe(l, target, true);
+            for (FocusPick.Task t : l) ok &= all.contains(t.name() + " ");
+            ok &= all.split("\n").length == l.size() && !all.contains("另有");
+        }
+        check(ok, "随机 2000 组：交焦点的日志只列看得见的和挑中的、看不见的个数对，Server tasks 全列");
+        check(withHidden > 1000, "随机里多数有看不见的（" + withHidden + "）");
     }
 
     static void check(boolean ok, String what) {

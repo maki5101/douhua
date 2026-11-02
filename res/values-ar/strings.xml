@@ -92,6 +92,14 @@
     <string name="spin_wave_unsupported">%1$s (غير مدعوم في هذا الهاتف، يُستخدم الافتراضي)</string>
     <string name="sec_trackpoint">عصا التأشير والأزرار الأيسر / الأوسط / الأيمن</string>
     <string name="stick_speed">حساسية عصا التأشير</string>
+    <string name="stick_accel">تسارع عصا التأشير</string>
+    <string name="stick_accel_hint">بعد منتصف الدفع تزداد السرعة أكثر: عند الدفع حتى النهاية تكون السرعة نحو %1$s ضعف سرعة الدفع إلى المنتصف.</string>
+    <string name="stick_accel_hint_off">لا تزداد السرعة بعد منتصف الدفع: الدفع حتى النهاية بسرعة الدفع إلى المنتصف نفسها.</string>
+    <string name="stick_max_speed">السرعة القصوى لعصا التأشير</string>
+    <string name="stick_max_speed_unit">وحدة/ث</string>
+    <string name="stick_max_speed_hint">عند الدفع حتى النهاية يعبر المؤشر شاشة عرضها 1920 بكسل في نحو %1$s ث (بالحساسية الحالية، وحدة واحدة لكل بكسل؛ للمضيف أيضًا سرعة وتسارع خاصان بالفأرة، لذا يختلف الواقع).</string>
+    <string name="stick_max_speed_off" formatted="false">ليس لها تأثير عندما يكون التسارع 0%.</string>
+    <string name="stick_max_speed_actual">هذه القيمة هي السرعة عند الدفع حتى النهاية بتسارع 100%%؛ مع التسارع الحالي (%1$s) تكون السرعة الفعلية عند الدفع حتى النهاية نحو %2$s.</string>
     <string name="stick_tap">النقر على العصا = نقرة يسرى</string>
     <string name="stick_inertia">بدء وتوقف أسرع (قصور ذاتي سالب)</string>
     <string name="lever_speed">سرعة التمرير عند السحب على الزر الأوسط</string>

@@ -92,6 +92,14 @@
     <string name="spin_wave_unsupported">%1$s（このスマホは非対応。既定のものを使う）</string>
     <string name="sec_trackpoint">ポインティングスティックと左 / 中 / 右ボタン</string>
     <string name="stick_speed">スティックの感度</string>
+    <string name="stick_accel">スティックの加速</string>
+    <string name="stick_accel_hint">半分より先に倒すとさらに速くなる：いっぱいまで倒したときの速さは半分のときの約 %1$s 倍。</string>
+    <string name="stick_accel_hint_off">半分より先に倒しても速くならない：いっぱいまで倒しても半分のときと同じ速さ。</string>
+    <string name="stick_max_speed">スティックの最高速度</string>
+    <string name="stick_max_speed_unit">カウント/秒</string>
+    <string name="stick_max_speed_hint">いっぱいまで倒すと、カーソルは幅 1920 ピクセルの画面を約 %1$s 秒で横切る（今の感度、1 カウント = 1 ピクセルで計算。ホスト側にもマウスの速度と加速があるので、実際は変わる）。</string>
+    <string name="stick_max_speed_off" formatted="false">加速が 0% のときは効かない。</string>
+    <string name="stick_max_speed_actual">この数値は加速 100%% のときのいっぱいまで倒した速さ。今の加速 %1$s では、いっぱいまで倒したときの実際の速さは約 %2$s。</string>
     <string name="stick_tap">スティックをタップ = 左クリック</string>
     <string name="stick_inertia">動き出しと止まりをキビキビ（負の慣性）</string>
     <string name="lever_speed">中ボタンをなぞるスクロール速度</string>

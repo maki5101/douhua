@@ -35,7 +35,7 @@ import dev.douhua.adb.PairingClient;
  *
  * 启动一次（{@link #startService}，单线程 worker 上跑）：
  * <ol>
- * <li>开发者选项、USB 调试必须开着（服务跟着 adbd：两个调试开关都关了 init 会连进程组一起杀，见 CLAUDE.md 决策记录）；</li>
+ * <li>开发者选项、USB 调试必须开着（服务跟着 adbd：两个调试开关都关了 init 会连进程组一起杀，见 docs/decisions.md）；</li>
  * <li>无线调试关着：有 WRITE_SECURE_SETTINGS 且连着 Wi-Fi 就自己打开（"是豆花开的"先落盘再打开，见 {@link #KEY_OWN_WIRELESS}），否则报给界面引导用户；</li>
  * <li>mDNS 找 _adb-tls-connect._tcp 端口，用配对过的密钥连 127.0.0.1（{@link AdbConnection}）；</li>
  * <li>没授权过就 pm grant WRITE_SECURE_SETTINGS；停旧服务；和 tools/start-server.sh 一样起服务（{@link ServerCommands}）；</li>

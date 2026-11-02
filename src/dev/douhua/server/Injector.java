@@ -156,7 +156,7 @@ final class Injector {
 
     /**
      * 单独注入一次"按下"或"松开"（实体键补发给系统用），保留原始 downTime，不指定屏幕
-     * （{@link Display#INVALID_DISPLAY}）——和真实物理键一样由系统按策略派发到当前有焦点的屏（理由见 CLAUDE.md 决策记录）。
+     * （{@link Display#INVALID_DISPLAY}）——和真实物理键一样由系统按策略派发到当前有焦点的屏（理由见 docs/decisions.md）。
      * 补发出去的每个"按下"在所有退出路径上都要配一个"松开"，不然系统会一直连发（音量被推到头 / 关机菜单弹出）。
      */
     synchronized void keyState(int keyCode, boolean down, long downTime, long eventTime)

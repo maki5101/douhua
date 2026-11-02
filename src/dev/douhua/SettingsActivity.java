@@ -2605,7 +2605,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
     // ═══════════ 对方还连着手机的音频 ═══════════
     //
     // 电脑之类配对时常把自己当耳机，顺带连上手机的通话（HFP）和媒体音频（A2DP）。这时蓝牙按耳机省电，
-    // 链路几百毫秒才通一次，键鼠报文排队：一卡一卡、停手后光标还在走（2026-10-14 实测，见 CLAUDE.md）。
+    // 链路几百毫秒才通一次，键鼠报文排队：一卡一卡、停手后光标还在走（2026-10-14 实测，见 docs/decisions.md）。
     // App 没权限替用户断开这两项，只能提醒去系统蓝牙设置里关。
 
     private void openAudioProxies() {

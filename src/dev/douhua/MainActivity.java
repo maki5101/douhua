@@ -159,6 +159,13 @@ public final class MainActivity extends Activity
     };
     private Prefs prefs;
     private Haptics haptics;
+    /** 声音（进程一份，设置页的试听台也用它）；套装是"关"（默认）时什么都不建。 */
+    private Sounds sounds;
+    /**
+     * 声音的事件层（"发生了什么" → 放哪个声音、震不震，纯 Java）：在下面调震动的那几处调它，声音先交出去、再震。
+     * 声音关着时它什么都不放、haptic 一律返回"照旧震"，整个界面和以前一样。
+     */
+    private final SoundEvents sound = new SoundEvents((id, key, delayMs) -> sounds.play(id, key, delayMs));
     private DisplayManager displays;
     private float density;
 
@@ -344,7 +351,10 @@ public final class MainActivity extends Activity
      * 通话 / 来电响铃时音量键一个都不截（要能用音量键静音、调通话音量）：模式一变就重新告诉服务。
      * 这是第二道保险：振动 / 静音模式下来电不改音频模式，响铃由服务自己查 Telecom 放开（server.CallState）。
      */
-    private final AudioManager.OnModeChangedListener audioMode = mode -> sendHardKeys();
+    private final AudioManager.OnModeChangedListener audioMode = mode -> {
+        sendHardKeys();
+        sounds.setSuppressed(inCall());   // 通话 / 来电响铃时不出声
+    };
     /** 上次提示过的"实体键截不了"（截不了的键位 | 原因 << 8）：同样的不重复提示，配置改了重来。 */
     private int hardToasted = -1;
     /** 上次读到的实体键配置（位同 CMD_HARD_KEYS），用来判断配置改没改。 */
@@ -405,6 +415,7 @@ public final class MainActivity extends Activity
         boards = prefs.boards(FixedData.catalog(this));
         frowFlip = boards.frowFlip();
         haptics = new Haptics(this);
+        sounds = Sounds.get(this);
         displays = getSystemService(DisplayManager.class);
         audio = getSystemService(AudioManager.class);
         bt = BtHid.get(this);
@@ -463,6 +474,7 @@ public final class MainActivity extends Activity
         selfStart.addListener(selfStartListener);
         PadImage.setImportedHook(padBgImported);
         applyPrefs();
+        sounds.acquire();   // 套装是"关"时什么都不建；开着就开管道（在声音线程里，主线程不等）
         refreshDisplay();
         Display disp = getDisplay();
         if (disp != null) air.setRotation(disp.getRotation());
@@ -523,6 +535,7 @@ public final class MainActivity extends Activity
     protected void onStop() {
         closeTextBar();
         link.stop();
+        sounds.release();   // 计数到 0（没去设置页）就关管道
         stopped = true;
         if (btMode) {
             // 服务释放触摸屏后发回的"松开"可能还在路上，连接就关了：主机那头别留着按住的鼠标键、键盘键
@@ -569,7 +582,8 @@ public final class MainActivity extends Activity
         updateAirAbs();   // 屏幕比例可能刚改过
         loadHardKeys();
         sendHardKeys();
-        local.setConfig(prefs.engineConfig(), density);
+        applySound();   // 要在发引擎参数之前：滚轮的咔嗒发不发看它（engineConfig）
+        local.setConfig(engineConfig(), density);
         local.setGamepadConfig(prefs.gamepadConfig());
         gamepadScreen.setSpec(prefs.gamepadSpec());   // 设置 → 手柄里换了预设 / 改了自定义（内容没变不算换）
         applyBackSwallow();
@@ -582,7 +596,7 @@ public final class MainActivity extends Activity
         if (btMode) bt.descriptorChanged();   // "连续滚动"开关变了：蓝牙用新描述符重新注册（对方要重新配对）
         GestureEngine.Config cfg = prefs.engineConfig();
         textureOn = cfg.texture;
-        scrollTicksOn = cfg.scrollTicks != GestureEngine.TICKS_OFF;
+        scrollTicksOn = prefs.scrollTicks();   // 用户的震动开关（发给引擎的可能为了出声另开着，见 engineConfig）
         float edge = cfg.edgeWidthDp * density;
         pad.setEdgeGuides(edge, cfg.edgeScroll, cfg.edgeScrollHorizontal);
         miniPad.setEdgeGuides(edge, cfg.edgeScroll, cfg.edgeScrollHorizontal);
@@ -611,9 +625,33 @@ public final class MainActivity extends Activity
         keyboardScreen.setPadKeys(prefs.padKeys());
         padStack.setKeys(prefs.padKeys());
         updateMenuLabels();
-        link.config(prefs.engineConfig(), density);
+        link.config(engineConfig(), density);
         link.gamepadConfig(prefs.gamepadConfig());
         updateFocusable();
+    }
+
+    /**
+     * 声音的设置（设置 → 外观 → 声音：套装、音量、哪些出声；调试版的候选 / 偏移 / 随机幅度 / 震动延后）。默认套装"关"：
+     * Sounds 什么都不建、事件层什么都不放、震动不延后（和以前逐字一样）。设置页的试听台也照这一套配（SettingsActivity.applySound）。
+     */
+    private void applySound() {
+        int pack = prefs.soundPack();
+        sounds.configure(pack, prefs.soundVolume(), prefs.soundChoices(pack), prefs.soundOffsetDb(), prefs.soundRandomScale());
+        sounds.setSuppressed(inCall());
+        sound.configure(pack != SoundBank.PACK_OFF, prefs.soundKeys(), prefs.soundMouse(), prefs.soundScroll(), prefs.soundGamepad(),
+                prefs.scrollTicks());
+        // 调试版"震动延后"：只在声音开着时（正式包、声音关着一律 0）
+        haptics.setDelayMs(sounds.tuning() && pack != SoundBank.PACK_OFF ? prefs.soundHapticDelay() : 0);
+    }
+
+    /**
+     * 发给引擎（本地分流、服务）的手势参数：设置里的，只有滚轮的咔嗒（scrollTicks，连惯性的放开 / 刹住、小红点 / 滚动杆滚动的咔嗒）看事件层——
+     * 震动开关关着、但声音开着且滚轮出声时也让引擎发，App 收到后只出声不震（SoundEvents.haptic）。声音关着时和 prefs.engineConfig() 一模一样。
+     */
+    private GestureEngine.Config engineConfig() {
+        GestureEngine.Config c = prefs.engineConfig();
+        if (sound.on() && sound.wantTicks()) c.scrollTicks = GestureEngine.TICKS_ALL;   // 声音关着时一个字节都不动
+        return c;
     }
 
     // ═══════════ 界面 ═══════════
@@ -849,7 +887,7 @@ public final class MainActivity extends Activity
                 }
                 return true;
             case MotionEvent.ACTION_CANCEL:
-                onButton(id, Proto.BUTTON_UP);
+                onButton(id, Proto.BUTTON_UP | Proto.BUTTON_CANCELED);
                 return true;
             default:
                 return true;
@@ -1073,14 +1111,19 @@ public final class MainActivity extends Activity
                 Style.keyLook(b, fn, false, false);
                 b.setOnTouchListener((v, e) -> {
                     int a = e.getActionMasked();
-                    if (a == MotionEvent.ACTION_DOWN) {   // 先发键，再震、再画按下的样子
+                    if (a == MotionEvent.ACTION_DOWN) {   // 先发键，再出声、震、再画按下的样子
                         numpadHeld.add(v);
                         onLocalKey(usage, Proto.KEY_DOWN);
+                        sound.keyDown(usage);
                         keyHaptic();
                         Style.keyLook(v, fn, false, true);
                     } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
-                        // 接管时已经替它松开过（releaseNumpad）的，迟到的抬起不再发
-                        if (numpadHeld.remove(v)) onLocalKey(usage, a == MotionEvent.ACTION_CANCEL ? Proto.KEY_CANCEL : Proto.KEY_UP);
+                        // 接管时已经替它松开过（releaseNumpad）的，迟到的抬起不再发、不出声
+                        if (numpadHeld.remove(v)) {
+                            boolean cancel = a == MotionEvent.ACTION_CANCEL;
+                            onLocalKey(usage, cancel ? Proto.KEY_CANCEL : Proto.KEY_UP);
+                            sound.keyUp(usage, cancel);
+                        }
                         Style.keyLook(v, fn, false, false);
                     }
                     return true;
@@ -1524,8 +1567,8 @@ public final class MainActivity extends Activity
                 boolean inside = e.getX() >= 0 && e.getX() <= v.getWidth() && e.getY() >= 0 && e.getY() <= v.getHeight();
                 onButton(id, inside ? Proto.BUTTON_TAP : Proto.BUTTON_UP);
                 return true;
-            case MotionEvent.ACTION_CANCEL:
-                onButton(id, Proto.BUTTON_UP);
+            case MotionEvent.ACTION_CANCEL:   // 同分流报的被取消（协议 25）：照旧当松开，只是不出松开声
+                onButton(id, Proto.BUTTON_UP | Proto.BUTTON_CANCELED);
                 return true;
             default:
                 return true;
@@ -1534,9 +1577,14 @@ public final class MainActivity extends Activity
 
     @Override
     public void onButton(int id, int action) {
+        // 协议 25：松开可能带"被取消"（手掌、收尾、View 的 ACTION_CANCEL）。只有声音看它，别的照旧按去掉标记的 action 处理
+        boolean canceled = Proto.buttonCanceled(action);
+        int raw = action;
+        action = Proto.buttonAction(action);
         boolean down = action == Proto.BUTTON_DOWN;
-        if (id >= Proto.KEY_ID_BASE) {   // 键盘键：按键本身服务已经发了，这里只管画面和震动
+        if (id >= Proto.KEY_ID_BASE) {   // 键盘键：按键本身服务已经发了，这里只管声音、画面和震动
             int key = id - Proto.KEY_ID_BASE;
+            sound.routerButton(id, raw);   // 先出声（不等）：按下 / 正常松开，被取消的不出声
             if (down) keyHaptic();
             keyboardScreen.face().showPressed(key, down);
             // 分流照 KeyHolds 先把按着的合并键结算成逗号了：它的放大提示别再到 0.4 秒换成句号（实体键盘没有合并键）
@@ -1546,7 +1594,8 @@ public final class MainActivity extends Activity
             }
             return;
         }
-        if (Proto.isGamepadId(id)) {   // 手柄控件：报文本身分流已经发了，按下的样子看报文画；这里只震能打断的"嗒"（同键盘键）
+        if (Proto.isGamepadId(id)) {   // 手柄控件：报文本身分流已经发了，按下的样子看报文画；这里只出声（设置里默认关）、震能打断的"嗒"（同键盘键）
+            sound.routerButton(id, raw);
             if (down) keyHaptic();
             return;
         }
@@ -1562,6 +1611,7 @@ public final class MainActivity extends Activity
                 || id == KeyboardPanel.MENU_BUTTON_ID
                 || (id >= KeyboardPanel.ROW_ACTION_BASE_ID && id < KeyboardPanel.ROW_ACTION_BASE_ID + keyboardRow.size())) {
             if (down) onKeyHaptic(id, true);
+            else sound.specialUp(id, canceled);   // 松开声（只给按过的：fn🌐 单点报的 🌐 点击没有按下）
             keyboardScreen.face().showPressed(id, down);
             if (action == Proto.BUTTON_TAP) onSpecialKey(id);
             return;
@@ -1571,13 +1621,13 @@ public final class MainActivity extends Activity
             return;
         }
         if (id >= Proto.MOUSE_BUTTON_ID_BASE && id < Proto.MOUSE_BUTTON_ID_BASE + 8) {
-            mouseKeyButton(id - Proto.MOUSE_BUTTON_ID_BASE, down);
+            mouseKeyButton(id - Proto.MOUSE_BUTTON_ID_BASE, down, canceled);
             return;
         }
         if (id >= CORNER_BASE_ID && id < CORNER_BASE_ID + cornerButtons.size()) {
             TextView b = cornerButtons.get(id - CORNER_BASE_ID);
             Style.small(b, down, cornersOnImage);
-            buttonAction((Actions.Action) b.getTag(), action, AirMouse.SRC_CORNER + id - CORNER_BASE_ID);
+            buttonAction((Actions.Action) b.getTag(), action, canceled, AirMouse.SRC_CORNER + id - CORNER_BASE_ID);
             return;
         }
         if (id == KB_MENU_ID || id == PAD_MENU_ID) {
@@ -1637,7 +1687,7 @@ public final class MainActivity extends Activity
         }
         if (id >= AIR_SLOT_BASE_ID && id < AIR_SLOT_BASE_ID + airSlots.size()) {
             TextView b = airSlots.get(id - AIR_SLOT_BASE_ID);
-            buttonAction((Actions.Action) b.getTag(), action, AirMouse.SRC_AIR_PAGE + id - AIR_SLOT_BASE_ID);
+            buttonAction((Actions.Action) b.getTag(), action, canceled, AirMouse.SRC_AIR_PAGE + id - AIR_SLOT_BASE_ID);
             Style.look(b, isActive(b), down);
             return;
         }
@@ -1658,26 +1708,28 @@ public final class MainActivity extends Activity
         if (id < 0 || id >= stripButtons.size()) return;
         TextView b = stripButtons.get(id);
         if (!(b.getTag() instanceof Actions.Action)) return;
-        buttonAction((Actions.Action) b.getTag(), action, AirMouse.SRC_STRIP + id);
+        buttonAction((Actions.Action) b.getTag(), action, canceled, AirMouse.SRC_STRIP + id);
         Style.look(b, isActive(b), down);
     }
 
     /**
      * 按钮条、角上按钮、空中鼠标页的按钮共用：按住类的动作按下 / 松开各做一半，别的动作轻点（松手时还在按钮上）才做。
-     * source 区分是哪个按钮按着（AirMouse.SRC_*），一个松开不影响别的。
+     * source 区分是哪个按钮按着（AirMouse.SRC_*），一个松开不影响别的。action 已经去掉了"被取消"那一位，canceled 是它（只给声音用）。
      */
-    private void buttonAction(Actions.Action a, int action, int source) {
+    private void buttonAction(Actions.Action a, int action, boolean canceled, int source) {
         boolean down = action == Proto.BUTTON_DOWN;
         switch (a.kind) {
-            case HOLD_LEFT:   // 鼠标左键由分流直接按住 / 松开（REGION_HOLD_LEFT），这里只管震动
+            case HOLD_LEFT:   // 鼠标左键由分流直接按住 / 松开（REGION_HOLD_LEFT），这里只管声音和震动
                 leftFollow(source, down);
+                if (down) sound.mouseDown(Proto.BUTTON_LEFT);
+                else sound.mouseUp(Proto.BUTTON_LEFT, canceled);
                 holdLeftFeedback(down);
                 break;
             case AIR_MOVE:
             case AIR_DRAG:
             case WHEEL:
                 if (down) actionDown(a, source);
-                else actionUp(a, source);
+                else actionUp(a, source, canceled);
                 break;
             default:
                 if (action == Proto.BUTTON_TAP) fire(a);
@@ -1699,6 +1751,7 @@ public final class MainActivity extends Activity
             case HOLD_LEFT:   // 音量键按住（屏幕上的"左键"按钮走分流，不经过这里）
                 holdLeft(source, true);
                 leftFollow(source, true);
+                sound.mouseDown(Proto.BUTTON_LEFT);
                 holdLeftFeedback(true);
                 break;
             case WHEEL:   // 震动是每格的咔嗒（同触控板滚动），不另外"嗒"
@@ -1714,17 +1767,22 @@ public final class MainActivity extends Activity
         }
     }
 
-    private void actionUp(Actions.Action a, int source) {
+    /**
+     * 按住类动作的松开。canceled = 不是用户松了手（收尾：退后台 / 服务放开实体键 / 断开时补的结束、被系统取消的按键、
+     * 分流报来的被取消，协议 25）：动作照样收尾，只是不出松开声。
+     */
+    private void actionUp(Actions.Action a, int source, boolean canceled) {
         switch (a.kind) {
             case AIR_MOVE:
                 air.holdFollow(source, false);
                 break;
             case AIR_DRAG:
-                air.holdDrag(source, false);
+                air.holdDrag(source, false, canceled);
                 break;
             case HOLD_LEFT:
                 holdLeft(source, false);
                 leftFollow(source, false);
+                sound.mouseUp(Proto.BUTTON_LEFT, canceled);
                 holdLeftFeedback(false);
                 break;
             case WHEEL:
@@ -1746,6 +1804,7 @@ public final class MainActivity extends Activity
         } else {
             link.wheel(n);
         }
+        sound.wheel();   // 滚一格的刻度声（滚轮出声开着才有），震不震照旧看震动开关
         if (scrollTicksOn) haptics.play(GestureEngine.HAPTIC_TICK);
     }
 
@@ -1772,13 +1831,16 @@ public final class MainActivity extends Activity
     }
 
     /**
-     * 三个鼠标键按下 / 松开（鼠标键本身由分流按，这里只管样子和震动）：左键和"左键"按钮一样（"嗒" + 持续轻震，松开停震再"嗒"，
+     * 三个鼠标键按下 / 松开（鼠标键本身由分流按，这里只管样子、声音和震动）：左键和"左键"按钮一样（"嗒" + 持续轻震，松开停震再"嗒"，
      * 共用计数）；右键、中键按下"嗒"一下（右键按住拖少见，不嗡）。中键滚动的咔嗒由分流发。两组三键条一起画（只有一组看得见）。
+     * 声音：按下"咔"、松开"哒"（中键略闷），被取消的（canceled，协议 25）松开不出声。
      */
-    private void mouseKeyButton(int mask, boolean down) {
+    private void mouseKeyButton(int mask, boolean down, boolean canceled) {
         int i = mask == Proto.BUTTON_LEFT ? 0 : mask == Proto.BUTTON_RIGHT ? 1 : mask == Proto.BUTTON_MIDDLE ? 2 : -1;
         if (i < 0) return;
-        if (!down && mouseKeysHeld[i] == 0) return;   // 收尾时已经清过（接管、断开），迟到的松开不再震
+        if (!down && mouseKeysHeld[i] == 0) return;   // 收尾时已经清过（接管、断开），迟到的松开不再震、不出声
+        if (down) sound.mouseDown(mask);
+        else sound.mouseUp(mask, canceled);
         mouseKeysHeld[i] = Math.max(0, mouseKeysHeld[i] + (down ? 1 : -1));
         int pressed = (mouseKeysHeld[0] > 0 ? Proto.BUTTON_LEFT : 0) | (mouseKeysHeld[1] > 0 ? Proto.BUTTON_RIGHT : 0)
                 | (mouseKeysHeld[2] > 0 ? Proto.BUTTON_MIDDLE : 0);
@@ -1845,9 +1907,14 @@ public final class MainActivity extends Activity
         air.center();
     }
 
-    /** 点一下就做的动作：震一下再做（按钮轻点、音量键点一下）。滚轮的震动是那一格的咔嗒，不另外"嗒"。 */
+    /**
+     * 点一下就做的动作：震一下再做（按钮轻点、音量键点一下）。滚轮的震动是那一格的咔嗒，不另外"嗒"。
+     * 点击类动作（单击 / 右键…，只能点一下的地方的"左键"）出鼠标的一对"咔哒"（SoundEvents.click）；别的动作是界面按钮，不出声。
+     */
     private void fire(Actions.Action a) {
         if (a.kind == Actions.Kind.NONE) return;
+        if (a.kind == Actions.Kind.CLICK) sound.click(a.code);
+        else if (a.kind == Actions.Kind.HOLD_LEFT) sound.click(Proto.BUTTON_LEFT);
         if (a.kind != Actions.Kind.WHEEL) haptics.play(GestureEngine.HAPTIC_CLICK);
         run(a);
     }
@@ -2197,12 +2264,23 @@ public final class MainActivity extends Activity
         for (TextView b : cornerButtons) Style.small(b, false, on);
     }
 
+    /**
+     * 键按下的反馈（面板自己收触摸时每个键、分流报来的特殊键）：先出声（按下声，特殊键当功能键）、再震能打断的"嗒"。
+     * 分流报来的普通键不走这里（onButton 键盘键那一支直接 routerButton + keyHaptic）。
+     */
     @Override
     public void onKeyHaptic(int id, boolean special) {
-        // 快捷行里的"滚轮"：那一格自己咔嗒（同触控板滚动），按下不再"嗒"
+        // 快捷行里的"滚轮"：那一格自己咔嗒（同触控板滚动），按下不再"嗒"，也不出按键声（滚的那一格出刻度声）
         int i = id - KeyboardPanel.ROW_ACTION_BASE_ID;
         if (special && i >= 0 && i < keyboardRow.size() && keyboardRow.get(i).kind == Actions.Kind.WHEEL) return;
+        sound.panelDown(id, special);
         keyHaptic();
+    }
+
+    /** 面板自己收触摸时键松开：只出声（松开不震），被取消的不出声。快捷行的"滚轮"按下没出声，松开也不出（specialUp 只配按过的）。 */
+    @Override
+    public void onKeyRelease(int id, boolean special, boolean canceled) {
+        sound.panelUp(id, special, canceled);
     }
 
     private void keyHaptic() {
@@ -2245,7 +2323,7 @@ public final class MainActivity extends Activity
         String mode = boards.mode();
         boards.setFrowFlip(mode, flip);
         if (fromServer) local.setFrowFlip(flip);
-        else link.config(prefs.engineConfig(), density);
+        else link.config(engineConfig(), density);
     }
 
     /** Caps 的显示翻一下（服务 MSG_CAPS / 本地分流）：点一下（sent，发了 Caps Lock）和按住 0.4 秒（只切显示）都是翻。 */
@@ -2470,8 +2548,15 @@ public final class MainActivity extends Activity
         run(Actions.get(prefs.gestureFor(fingers, kind)));
     }
 
+    /**
+     * 服务 / 本地分流报来的震动：先出声（SoundEvents：轻点 = 像 MacBook 触控板的一对、拖动、滚一格、刹住；按住到点不出声），
+     * 再震。返回 false 的只有一种：滚轮的咔嗒震动开关关着、引擎只为出声才发的（见 engineConfig）。手柄页上的咔嗒是十字键 / 摇杆的。
+     */
     @Override
     public void onHaptic(int kind) {
+        if (!sound.haptic(kind, gamepadOn ? SoundEvents.FROM_GAMEPAD : SoundEvents.FROM_ROUTER)) return;
+        // 拖动被取消着结束（协议 25）：只有声音分它（不出松开声），震动照拖动结束
+        if (kind == GestureEngine.HAPTIC_DRAG_CANCEL) kind = GestureEngine.HAPTIC_DRAG_END;
         // 空中指针那一路按着左键（音量键按住左键）时在触控板上划 = 拖动：和"左键"按钮一样只有持续轻震，没有颗粒
         if (kind == GestureEngine.HAPTIC_TEXTURE && air.buttons() != 0) return;
         if (kind == GestureEngine.HAPTIC_DRAG_END && (air.buttons() & Proto.BUTTON_LEFT) != 0) kind = GestureEngine.HAPTIC_TICK;
@@ -2489,7 +2574,7 @@ public final class MainActivity extends Activity
             linkSeen = true;
             selfStart.onServiceConnected(link.serverApk());   // 服务还跑着 App 更新前的 APK：重启成新代码
             requestOrientationSelf(-1);   // 方向交给服务
-            link.config(prefs.engineConfig(), density);
+            link.config(engineConfig(), density);
             link.gamepadConfig(prefs.gamepadConfig());
             gamepadFailed = false;
             // 新会话的手柄从中立开始：本地分流里还按着的手柄键也松掉（不然两边对不上，抬起时才补上）
@@ -2549,6 +2634,7 @@ public final class MainActivity extends Activity
                     fixedKeyboard.clearPressed();
                     for (int i = 0; i < numpadButtons.size(); i++) numpadLook(i, false);
                     clearMouseKeys();
+                    sound.reset();   // 服务转来的特殊键按下同理：之后迟到的松开不出声
                 }
                 if (air.buttons() == 0) haptics.stopHum();   // 收不到"拖动结束"了（空中指针那一路不归服务管）
                 updateActiveButtons();
@@ -2574,6 +2660,7 @@ public final class MainActivity extends Activity
             keyboard.releaseTouches();
             fixedKeyboard.releaseTouches();
             releaseNumpad();
+            sound.reset();   // 按着的特殊键等不到松开了（面板 releaseTouches 已经当取消报过）
         }
         if (!isGrabbed && air.buttons() == 0) haptics.stopHum();
         if (isGrabbed && (btMode || gamepadOn)) {
@@ -2604,8 +2691,8 @@ public final class MainActivity extends Activity
     @Override
     public void onHardKey(int key, int event) {
         if (key != HardKeys.VOL_UP && key != HardKeys.VOL_DOWN) return;
-        if (event == Proto.HARD_HOLD_END) {
-            endServerHold(key);
+        if (event == Proto.HARD_HOLD_END || event == Proto.HARD_HOLD_CANCEL) {   // 协议 25：服务收尾补的结束是 HOLD_CANCEL（不出松开声）
+            endServerHold(key, event == Proto.HARD_HOLD_CANCEL);
             return;
         }
         if (!resumed || stopped) return;   // 不在前台：不做（服务随后会放开实体键）
@@ -2620,17 +2707,21 @@ public final class MainActivity extends Activity
         }
     }
 
-    /** 服务那一路的按住结束（收到 HOLD_END，或断开 / 暂停 / 服务放开实体键时补）：只结束一次。 */
-    private void endServerHold(int key) {
+    /**
+     * 服务那一路的按住结束（收到 HOLD_END / HOLD_CANCEL，或断开 / 暂停 / 服务放开实体键时补）：只结束一次。
+     * canceled = 不是用户松了手（HOLD_CANCEL、自己补的收尾）：不出松开声。
+     */
+    private void endServerHold(int key, boolean canceled) {
         Actions.Action a = serverHeld[key];
         if (a == null) return;
         serverHeld[key] = null;
-        actionUp(a, key);
+        actionUp(a, key, canceled);
     }
 
+    /** 收尾（退后台、断开、服务放开实体键）：服务那一路还按着的都结束，当被取消（不出松开声）。 */
     private void endServerHolds() {
-        endServerHold(HardKeys.VOL_UP);
-        endServerHold(HardKeys.VOL_DOWN);
+        endServerHold(HardKeys.VOL_UP, true);
+        endServerHold(HardKeys.VOL_DOWN, true);
     }
 
     /**
@@ -2999,6 +3090,8 @@ public final class MainActivity extends Activity
 
     @Override
     public void airHaptic(int kind) {
+        sound.haptic(kind, SoundEvents.FROM_AIR);   // 按住拖动开始 / 结束 = 鼠标左键按下 / 松开的声音；收尾放掉的不出声；回正中、颗粒不出声（空中鼠标的一律照旧震）
+        if (kind == GestureEngine.HAPTIC_DRAG_CANCEL) kind = GestureEngine.HAPTIC_DRAG_END;   // 收尾放掉的拖动：震动照拖动结束
         // 移动"颗粒"和触控板一个规矩：设置里开着才有；按着左键（拖动）时是持续轻震，不发颗粒
         if (kind == GestureEngine.HAPTIC_TEXTURE && (!textureOn || touchButtons != 0)) return;
         // 触摸那一路还按着左键：空中拖动结束了也还在拖，接着嗡
@@ -3157,10 +3250,11 @@ public final class MainActivity extends Activity
             if (a != null) actionDown(a, key);   // 来源编号 = 键（AirMouse.SRC_VOL_UP / SRC_VOL_DOWN）
         }
 
+        /** canceled：被系统取消的按键、reset 收尾（退后台、键盘盖上空中鼠标页）——动作照样收尾，不出松开声。 */
         @Override
-        public void holdEnd(int key) {
+        public void holdEnd(int key, boolean canceled) {
             Actions.Action a = hardKeyActions[key][1];
-            if (a != null) actionUp(a, key);
+            if (a != null) actionUp(a, key, canceled);
         }
 
         @Override

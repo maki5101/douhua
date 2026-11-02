@@ -556,11 +556,13 @@ final class FixedKeyboardView extends View implements KeyboardFace {
     private void release(int index, boolean tap) {
         if (index < 0 || index >= model.keys().size()) return;
         int id = model.keyId(index);
-        if (model.sendsKey(index)) {
+        boolean key = model.sendsKey(index);
+        if (key) {
             listener.onLocalKey(id, tap ? Proto.KEY_UP : Proto.KEY_CANCEL);
         } else if (tap) {
             post(() -> listener.onSpecialKey(id));
         }
+        listener.onKeyRelease(id, !key, !tap);   // 松开声（被取消的不出），同 KeyboardPanel
         if (index < pressed.length) pressed[index] = false;
         preview(index, false);
         invalidate();

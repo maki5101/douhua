@@ -19,7 +19,11 @@ public final class HardKeys {
 
         void holdStart(int key);
 
-        void holdEnd(int key);
+        /**
+         * 按住结束。canceled = 不是用户松了手（被系统取消的按键、{@link #reset} 收尾——退后台、服务放开实体键、电源键组合交还系统）：
+         * 动作照样收尾，只是不出松开声（协议 25，同 Proto.BUTTON_CANCELED）。
+         */
+        void holdEnd(int key, boolean canceled);
 
         /** 按住计时：再调一次就覆盖这个键上一次的。 */
         void schedule(int key, long delayMs);
@@ -76,7 +80,7 @@ public final class HardKeys {
             out.cancelSchedule(key);
             if (hasTap[key]) out.tap(key);
         } else if (s == HOLDING) {
-            out.holdEnd(key);
+            out.holdEnd(key, false);
         }
     }
 
@@ -88,7 +92,7 @@ public final class HardKeys {
 
     /** 被系统取消的按键（FLAG_CANCELED 的松开）：当放手，不算点一下。 */
     public void cancel(int key) {
-        if (state[key] == HOLDING) out.holdEnd(key);
+        if (state[key] == HOLDING) out.holdEnd(key, true);
         if (state[key] == PENDING) out.cancelSchedule(key);
         pressed[key] = false;
         state[key] = IDLE;
@@ -97,7 +101,7 @@ public final class HardKeys {
     /** 放手：按住中的先 holdEnd，计时作废；还按着的键等松开以后再重新算。 */
     public void reset() {
         for (int k = 0; k < 2; k++) {
-            if (state[k] == HOLDING) out.holdEnd(k);
+            if (state[k] == HOLDING) out.holdEnd(k, true);
             if (state[k] == PENDING) out.cancelSchedule(k);
             state[k] = pressed[k] ? SWALLOW : IDLE;
         }

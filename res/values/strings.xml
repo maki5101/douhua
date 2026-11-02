@@ -619,4 +619,36 @@
     <string name="kbd_no_size_data">Apple compact only comes in Mac mode with the ANSI / ISO shape, so the keyboard screen shows the Douhua layout. Pick another size, mode or layout.</string>
     <string name="sec_kbd_douhua">Douhua layout</string>
     <string name="licenses">Open-source licenses</string>
+    <string name="sec_sound">Sound</string>
+    <string name="sound_pack_off">Off (vibration only)</string>
+    <string name="sound_pack_light">Light (a very soft, short tap; barely audible)</string>
+    <string name="sound_pack_wood">Wood and twigs (letters are wood blocks, Space snaps a thin twig, Enter is a bamboo tube)</string>
+    <string name="sound_note">Silent, vibrate and Do Not Disturb modes keep it quiet, and so does a call. It only plays through the phone\'s own speaker (silent when headphones or an external display take the sound). Loudness follows the phone\'s \"System\" volume; if you hear nothing, check that first. Tap a set to hear it; the switches below take effect when you go back to the touchpad.</string>
+    <string name="sound_volume">Volume</string>
+    <string name="sound_keys">Keyboard</string>
+    <string name="sound_mouse">Mouse buttons (including touchpad taps)</string>
+    <string name="sound_scroll">Scroll wheel (including stopping a spin)</string>
+    <string name="sound_gamepad">Gamepad (off by default: while streaming, the phone is usually playing the game\'s sound)</string>
+    <string name="sound_bench">Try it</string>
+    <string name="sound_bench_hint">These give the real sound and the real vibration.</string>
+    <string name="sound_bench_pad">Tap = click · Swipe = scroll</string>
+    <string name="sound_try">Candidates (debug build only): tap one to hear it and feel the vibration; the selected one is what Douhua uses from now on. \"Rapid\" plays it 7 times a second for 2 seconds. The release build always uses A.</string>
+    <string name="sound_shuffle">Shuffle (A / B / C / D are reassigned at random and the parameters hidden; turn it off to reveal)</string>
+    <string name="sound_burst">Rapid</string>
+    <string name="sound_slot_key">Key press</string>
+    <string name="sound_slot_big">Big key press (Backspace, Shift)</string>
+    <string name="sound_slot_space">Space</string>
+    <string name="sound_slot_enter">Enter</string>
+    <string name="sound_slot_key_up">Key release</string>
+    <string name="sound_slot_mouse_down">Mouse button press</string>
+    <string name="sound_slot_mouse_up">Mouse button release</string>
+    <string name="sound_slot_pad">Touchpad tap (like a MacBook touchpad)</string>
+    <string name="sound_slot_scroll">One scroll notch</string>
+    <string name="sound_slot_catch">Stopping a spin</string>
+    <string name="sound_cand_silent">silent</string>
+    <string name="sound_offset">Volume offset</string>
+    <string name="sound_random">Randomness</string>
+    <string name="sound_haptic_delay">Vibration delay</string>
+    <string name="sound_haptic_delay_hint">How much later the vibration comes than the sound; move it until the two feel like one. Only while sound is on; the start and end of a drag aren\'t delayed.</string>
+    <string name="sound_diag">Diagnostics (for the developer)</string>
 </resources>

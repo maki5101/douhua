@@ -332,9 +332,10 @@ final class HardKeyGate {
             out.toApp(key, Proto.HARD_HOLD_START);
         }
 
+        /** 被取消的（releaseAll 收尾、电源键组合交还系统时的 vol.cancel）报 HARD_HOLD_CANCEL（协议 25）：App 照样收尾、只是不出松开声。 */
         @Override
-        public void holdEnd(int key) {
-            out.toApp(key, Proto.HARD_HOLD_END);
+        public void holdEnd(int key, boolean canceled) {
+            out.toApp(key, canceled ? Proto.HARD_HOLD_CANCEL : Proto.HARD_HOLD_END);
         }
 
         @Override

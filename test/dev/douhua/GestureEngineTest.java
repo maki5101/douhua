@@ -86,6 +86,7 @@ public final class GestureEngineTest {
         doubleTap();
         tripleTap();
         tapThenHoldAndMoveDrags();
+        dragCanceledKind();
         tapThenWaitIsNotDrag();
         twoFingerTapIsRightClick();
         twoFingerScrollNatural();
@@ -543,6 +544,61 @@ public final class GestureEngineTest {
                 eq(count(r, "h" + GestureEngine.HAPTIC_TICK), 0, "关了就不咔嗒");
             }
         }
+    }
+
+    /**
+     * 拖动被取消着结束（协议 25）：手指被取消（up 的 canceled：手掌、丢数据、收尾补报的抬起）、cancel()（释放触摸屏 / 退后台 / 换参数）报 HAPTIC_DRAG_CANCEL
+     * （App 照拖动结束震、不出松开声；审查发现以前一律 DRAG_END，收尾时也出"哒"）；用户松手、第二根手指来了照旧 HAPTIC_DRAG_END。左键照样松开。
+     */
+    static void dragCanceledKind() {
+        String end = "h" + GestureEngine.HAPTIC_DRAG_END, canceled = "h" + GestureEngine.HAPTIC_DRAG_CANCEL;
+        for (int w = 0; w < 6; w++) {
+            Rec r = new Rec();
+            GestureEngine e = engine(r);
+            String what;
+            boolean wantCancel;
+            if (w < 3) {   // 长按拖动
+                e.down(0, 50, 50, 1000);
+                e.onTimer(1450);
+                moveTo(e, 0, 120, 50, 1550);
+            } else {       // 轻点后拖
+                tap(e, 0, 1000);
+                e.down(0, 50, 50, 1100);
+                moveTo(e, 0, 80, 50, 1150);
+            }
+            if (w % 3 == 0) {
+                what = "松手";
+                e.up(0, 1600);
+                wantCancel = false;
+            } else if (w % 3 == 1) {
+                what = "手指被取消";
+                e.up(0, 1600, true);
+                wantCancel = true;
+            } else {
+                what = "cancel() 收尾";
+                e.cancel();
+                wantCancel = true;
+            }
+            what = (w < 3 ? "长按拖动" : "轻点后拖") + "：" + what;
+            check(r.has(wantCancel ? canceled : end) && !r.has(wantCancel ? end : canceled),
+                    what + "：报 " + (wantCancel ? "HAPTIC_DRAG_CANCEL" : "HAPTIC_DRAG_END"));
+            List<String> b = r.buttons();
+            check(!b.isEmpty() && b.get(b.size() - 1).equals("m0"), what + "：左键照样松开");
+        }
+        // 第二根手指来了结束的拖动：用户的动作，照旧 DRAG_END
+        Rec r = new Rec();
+        GestureEngine e = engine(r);
+        e.down(0, 50, 50, 1000);
+        e.onTimer(1450);
+        e.down(1, 200, 200, 1500);
+        check(r.has(end) && !r.has(canceled), "长按拖动中来了第二根手指：照旧 HAPTIC_DRAG_END");
+        // 没在拖：cancel、被取消的抬起都不报拖动结束
+        Rec q = new Rec();
+        GestureEngine g = engine(q);
+        g.down(0, 50, 50, 1000);
+        g.up(0, 1300, true);
+        g.cancel();
+        check(!q.has(end) && !q.has(canceled), "没在拖：不报拖动结束");
     }
 
     static void longPressDrags() {

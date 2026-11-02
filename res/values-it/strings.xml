@@ -619,4 +619,36 @@
     <string name="kbd_no_size_data">La Apple compatta esiste solo in modalità Mac con forma ANSI / ISO: la schermata tastiera mostra il layout Douhua. Scegli un\'altra dimensione, modalità o layout.</string>
     <string name="sec_kbd_douhua">Layout Douhua</string>
     <string name="licenses">Licenze open source</string>
+    <string name="sec_sound">Suono</string>
+    <string name="sound_pack_off">Disattivato (solo vibrazione)</string>
+    <string name="sound_pack_light">Leggero (un tocco molto morbido e breve; appena udibile)</string>
+    <string name="sound_pack_wood">Legno e rametti (le lettere sono blocchi di legno, Spazio spezza un rametto sottile, Invio è un tubo di bambù)</string>
+    <string name="sound_note">In modalità silenzioso, vibrazione e Non disturbare non suona, e nemmeno durante una chiamata. Esce solo dall\'altoparlante del telefono (niente quando il suono va alle cuffie o a uno schermo esterno). Il volume segue il volume «Sistema» del telefono; se non senti nulla, controlla prima quello. Tocca un\'opzione per ascoltarla; gli interruttori qui sotto si applicano quando torni al touchpad.</string>
+    <string name="sound_volume">Volume</string>
+    <string name="sound_keys">Tastiera</string>
+    <string name="sound_mouse">Tasti del mouse (compresi i tocchi sul touchpad)</string>
+    <string name="sound_scroll">Rotella (compreso l\'arresto dell\'inerzia)</string>
+    <string name="sound_gamepad">Gamepad (disattivato di default: durante lo streaming il telefono di solito riproduce l\'audio del gioco)</string>
+    <string name="sound_bench">Prova</string>
+    <string name="sound_bench_hint">Qui senti il suono vero e la vibrazione vera.</string>
+    <string name="sound_bench_pad">Tocco = clic · Scorri = scorrimento</string>
+    <string name="sound_try">Candidati (solo versione di debug): toccane uno per ascoltarlo e sentire la vibrazione; quello selezionato verrà usato d\'ora in poi. «Raffica» lo riproduce 7 volte al secondo per 2 secondi. La versione di rilascio usa sempre A.</string>
+    <string name="sound_shuffle">Mescola (A / B / C / D vengono riassegnati a caso e i parametri nascosti; disattiva per svelare)</string>
+    <string name="sound_burst">Raffica</string>
+    <string name="sound_slot_key">Pressione di un tasto</string>
+    <string name="sound_slot_big">Pressione di un tasto grande (Backspace, Maiusc)</string>
+    <string name="sound_slot_space">Spazio</string>
+    <string name="sound_slot_enter">Invio</string>
+    <string name="sound_slot_key_up">Rilascio di un tasto</string>
+    <string name="sound_slot_mouse_down">Pressione di un tasto del mouse</string>
+    <string name="sound_slot_mouse_up">Rilascio di un tasto del mouse</string>
+    <string name="sound_slot_pad">Tocco sul touchpad (come il trackpad di un MacBook)</string>
+    <string name="sound_slot_scroll">Uno scatto della rotella</string>
+    <string name="sound_slot_catch">Arresto dell\'inerzia</string>
+    <string name="sound_cand_silent">muto</string>
+    <string name="sound_offset">Scostamento del volume</string>
+    <string name="sound_random">Casualità</string>
+    <string name="sound_haptic_delay">Ritardo della vibrazione</string>
+    <string name="sound_haptic_delay_hint">Quanto la vibrazione arriva dopo il suono; regola finché i due sembrano una cosa sola. Solo con il suono attivo; inizio e fine di un trascinamento non vengono ritardati.</string>
+    <string name="sound_diag">Diagnostica (per lo sviluppatore)</string>
 </resources>

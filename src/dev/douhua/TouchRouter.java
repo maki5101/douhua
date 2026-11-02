@@ -67,7 +67,10 @@ public final class TouchRouter implements GestureEngine.Output {
 
         void gesture(int fingers, int kind);
 
-        /** 按钮 / 键按下、松开（id、action 同 Proto.MSG_BUTTON），界面据此画按下状态、执行动作。 */
+        /**
+         * 按钮 / 键按下、松开（id、action 同 Proto.MSG_BUTTON），界面据此画按下状态、执行动作。
+         * 协议 25 起被取消的手指（{@link #up} 的 canceled、{@link #releaseAll}、换参数）报的松开带 Proto.BUTTON_CANCELED，别的照旧（界面先去掉这一位）。
+         */
         void button(int id, int action);
 
         /**
@@ -228,6 +231,8 @@ public final class TouchRouter implements GestureEngine.Output {
     private boolean ticking;
     /** 手柄页的控件（REGION_GAMEPAD）。 */
     private final GamepadTouch gamepad = new GamepadTouch(new PadOutput());
+    /** 正在替手柄收尾（被取消的手指抬起、releaseAll、换参数）：PadOutput 报的松开带 Proto.BUTTON_CANCELED（协议 25）。 */
+    private boolean gamepadCanceling;
     /** 按着要计时的键（修饰键、Caps、合并键）、锁定的修饰键、按着的键的计数。 */
     private final KeyHolds holds = new KeyHolds(new HoldsHost());
     /** 上次报给界面的修饰键状态、Fn 的状态（Output.modifiers，变了才报）。 */
@@ -271,7 +276,9 @@ public final class TouchRouter implements GestureEngine.Output {
             slotKind[s] = KIND_NONE;
             slotRegion[s] = null;
         }
+        gamepadCanceling = true;   // 换参数也是收尾：按着的手柄键报的松开带"被取消"（协议 25）
         gamepad.setConfig(c);
+        gamepadCanceling = false;
     }
 
     /**
@@ -487,6 +494,7 @@ public final class TouchRouter implements GestureEngine.Output {
             if (trace != null) trace.line(String.format(Locale.ROOT, "u %d %d %.1f %.1f", t, slot, lastX[slot], lastY[slot]));
         }
         if (engine == null) return;
+        int rel = canceled ? Proto.BUTTON_CANCELED : 0;   // 协议 25：被取消的松开带标记（只加信息，App 先去掉它再照旧处理）
         switch (kind) {
             case KIND_PAD:
                 engine.up(slot, t, canceled);
@@ -496,13 +504,13 @@ public final class TouchRouter implements GestureEngine.Output {
                     leftHolds = 0;
                     applyExternal();
                 }
-                out.button(r.id, Proto.BUTTON_UP);
+                out.button(r.id, Proto.BUTTON_UP | rel);
                 break;
             case KIND_STICK:
                 stickSlot = -1;
                 stopTicksIfIdle();
                 stick.up(t, canceled);   // 轻点 = 左键（被取消的不算）
-                out.button(r.id, Proto.BUTTON_UP);
+                out.button(r.id, Proto.BUTTON_UP | rel);
                 break;
             case KIND_MOUSE:
                 if (slot == leverSlot) {   // 滚动杆先停，再按"滚过没有"松中键
@@ -517,20 +525,23 @@ public final class TouchRouter implements GestureEngine.Output {
                     stopTicksIfIdle();
                 }
                 mouseButton(r.id & MOUSE_MASK, false, canceled);
-                out.button(r.id, Proto.BUTTON_UP);
+                out.button(r.id, Proto.BUTTON_UP | rel);
                 break;
             case KIND_BUTTON: {
-                // 还在按钮上松开才算点击；被分过来的键盘特殊键（?123 / Fn / 🌐 / 快捷行动作），手指一直停在缝里也算
+                // 还在按钮上松开才算点击；被分过来的键盘特殊键（?123 / Fn / 🌐 / 快捷行动作），手指一直停在缝里也算。
+                // 被取消的照旧（还在按钮上就是 TAP），只是带上标记：协议 25 只加信息、不改按钮的行为
                 float x = lastX[slot], y = lastY[slot];
-                out.button(r.id, r.contains(x, y) || r.same(hit(x, y)) ? Proto.BUTTON_TAP : Proto.BUTTON_UP);
+                out.button(r.id, (r.contains(x, y) || r.same(hit(x, y)) ? Proto.BUTTON_TAP : Proto.BUTTON_UP) | rel);
                 break;
             }
             case KIND_KEY:
                 holds.up(r.id, t, canceled);   // 被取消的：修饰键松开但不锁，Caps、合并键什么都不出
-                out.button(Proto.KEY_ID_BASE + r.id, Proto.BUTTON_UP);
+                out.button(Proto.KEY_ID_BASE + r.id, Proto.BUTTON_UP | rel);
                 break;
             case KIND_GAMEPAD:
-                gamepad.up(slot);   // 被取消的也一样：全松
+                gamepadCanceling = canceled;   // 被取消的也一样：全松（报给界面的松开带标记）
+                gamepad.up(slot);
+                gamepadCanceling = false;
                 break;
             default:
                 break;
@@ -747,10 +758,11 @@ public final class TouchRouter implements GestureEngine.Output {
         if (engine != null) engine.cancel();
         for (int s = 0; s < SLOTS; s++) {
             if (slotRegion[s] == null) continue;
+            // 收尾：报给界面的松开都带"被取消"（协议 25），界面照旧画回松开、停震，只是不出松开声
             if (slotKind[s] == KIND_BUTTON || slotKind[s] == KIND_HOLD || slotKind[s] == KIND_STICK || slotKind[s] == KIND_MOUSE) {
-                out.button(slotRegion[s].id, Proto.BUTTON_UP);
+                out.button(slotRegion[s].id, Proto.BUTTON_UP | Proto.BUTTON_CANCELED);
             } else if (slotKind[s] == KIND_KEY) {
-                out.button(Proto.KEY_ID_BASE + slotRegion[s].id, Proto.BUTTON_UP);
+                out.button(Proto.KEY_ID_BASE + slotRegion[s].id, Proto.BUTTON_UP | Proto.BUTTON_CANCELED);
             }
         }
         clearSlots(false);
@@ -786,7 +798,9 @@ public final class TouchRouter implements GestureEngine.Output {
         leftLeverSlot = -1;
         leftLeverYielded = false;
         stopTicks();
+        gamepadCanceling = true;   // 收尾（releaseAll、换参数）：手柄键报的松开带"被取消"（协议 25）
         gamepad.releaseAll();   // 按着的手柄键报松开、发全零（没用过就什么都不发）
+        gamepadCanceling = false;
     }
 
     // ═══════════ 键盘触点记录 ═══════════
@@ -1010,10 +1024,13 @@ public final class TouchRouter implements GestureEngine.Output {
             return TouchRouter.this.mouseBusy();
         }
 
-        /** 按住到点、Fn+Esc 翻转 F 行：震一下（同锁修饰键那一下）。 */
+        /**
+         * 按住到点、Fn+Esc 翻转 F 行：震一下（同锁修饰键那一下）。协议 25 起单独一种 HAPTIC_HOLD（震的样子同 HAPTIC_CLICK）：
+         * App 靠它分得出"点了一下"和"快锁了"，后者是软件状态、不出声。
+         */
         @Override
         public void holdReached() {
-            out.haptic(GestureEngine.HAPTIC_CLICK);
+            out.haptic(GestureEngine.HAPTIC_HOLD);
         }
 
         @Override
@@ -1045,9 +1062,10 @@ public final class TouchRouter implements GestureEngine.Output {
             out.gamepad(report);
         }
 
+        /** 被取消的手指抬起、收尾时（{@link #gamepadCanceling}）报的松开带 Proto.BUTTON_CANCELED（协议 25；GamepadTouch 自己不知道是不是被取消的）。 */
         @Override
         public void button(int id, int action) {
-            out.button(id, action);
+            out.button(id, gamepadCanceling && action != Proto.BUTTON_DOWN ? action | Proto.BUTTON_CANCELED : action);
         }
 
         @Override

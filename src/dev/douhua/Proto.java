@@ -17,7 +17,16 @@ public final class Proto {
     public static final String HOST = "127.0.0.1";
     public static final int PORT = 37601;
     /**
-     * 协议版本。24（2026-11-02）：实体键盘 F1–F12 的第二功能（音量、亮度、媒体、睡眠……）和"F 行翻转"（FnLock）：
+     * 协议版本。25（2026-11-02，声音第一批的事件层）：两处小改，都是给声音分"发生了什么"，震动、按键、动作的行为一点不变——
+     * ① "按住到点"（修饰键快锁了、Caps 只切显示、合并键出第二个字、Fn 快永久锁了、Fn+Esc 翻转 F 行，KeyHolds.Host.holdReached）
+     * 单独一种震动 GestureEngine.HAPTIC_HOLD（以前用 HAPTIC_CLICK，App 分不出是"鼠标点了一下"还是"修饰键快锁了"）；App 照点一下震（Haptics 把它当 HAPTIC_CLICK）；
+     * ② "被取消"的标记：{@link #MSG_BUTTON} 的松开（BUTTON_UP / BUTTON_TAP）带 {@link #BUTTON_CANCELED}（手掌、丢数据、服务释放触摸屏时补报的抬起、
+     * releaseAll 收尾）；触控板上的拖动被取消着结束（手掌、收尾、换参数）单独一种震动 GestureEngine.HAPTIC_DRAG_CANCEL（App 照拖动结束震）；
+     * 实体键的按住被收尾补着结束（releaseAll、电源键组合交还系统）报 {@link #HARD_HOLD_CANCEL}（App 照 HARD_HOLD_END 收尾）。
+     * App 照旧处理，只有声音看它（被取消的不出松开声）。旧服务不发这几样，所以升号；
+     * 版本不一致时同 24 那条：Link 读 hello 就断开、报"版本不一致"，靠"连不上 → 自动启动"（SelfStart.autoStart）重启服务，
+     * 或者 deploy 脚本 / tools/start-server.sh 重起。
+     * 24（2026-11-02）：实体键盘 F1–F12 的第二功能（音量、亮度、媒体、睡眠……）和"F 行翻转"（FnLock）：
      * F 行键的区域 id 带两面（{@link #frowKey}），Esc 在 Fn 层是 F 行翻转开关（{@link #FN_LOCK_KEY}）；CMD_CONFIG 末尾加 frowFlip:u8；
      * MSG_MODIFIERS 第四个字节多一位 {@link #FROW_FLIP}；新消息 {@link #MSG_CONSUMER}（蓝牙模式下服务接管时把多媒体 / 系统键转回 App 由蓝牙发）。
      * 桌面模式另有第四个 uhid 设备 "Douhua Keyboard Controls"（{@link #HID_CONTROLS_PRODUCT}，多媒体 + 系统键）。旧服务会把 F 行键的 id 当普通键、
@@ -31,7 +40,7 @@ public final class Proto {
      * 同一批 CMD_CONFIG 末尾加了中键滑动速度（leverSpeed:f32）、MSG_MODIFIERS 第四个字节多了 {@link #FN_LOCKED}、Fn 换了规矩
      * （点一下单次锁、按住 0.4 秒永久锁，KeyHolds），都算在 22 里。
      */
-    public static final int VERSION = 24;
+    public static final int VERSION = 25;
     /** 虚拟鼠标 / 键盘的厂商号（pid.codes 的开源项目厂商号）；App 靠它认出自己的虚拟键盘发来的键。 */
     public static final int HID_VENDOR = 0x1209;
     /**
@@ -361,11 +370,11 @@ public final class Proto {
     public static final int HELLO_OK = 1;
     /** 另一个连接正在用服务、而且还在说话：服务发完这条就关掉这条连接，App 照常每秒重试。message 为空。 */
     public static final int HELLO_BUSY = 2;
-    /** 震动：kind:u8（GestureEngine.HAPTIC_*；协议 18 起多了惯性的"放开" 6、"刹住" 7）。 */
+    /** 震动：kind:u8（GestureEngine.HAPTIC_*；协议 18 起多了惯性的"放开" 6、"刹住" 7；协议 25 起多了"按住到点" 8、"拖动被取消着结束" 9）。 */
     public static final int MSG_HAPTIC = 0x81;
     /** 三指 / 四指手势：fingers:u8, kind:u8（GestureEngine.GESTURE_*）。 */
     public static final int MSG_GESTURE = 0x82;
-    /** 按钮：id:i32, action:u8（BUTTON_DOWN / BUTTON_UP / BUTTON_TAP）。 */
+    /** 按钮：id:i32, action:u8（BUTTON_DOWN / BUTTON_UP / BUTTON_TAP；协议 25 起松开可能带 {@link #BUTTON_CANCELED}）。 */
     public static final int MSG_BUTTON = 0x83;
     /**
      * 触摸屏接管状态：grabbed:u8, reason:u8（GRAB_*）, detail:UTF。
@@ -417,7 +426,7 @@ public final class Proto {
     public static final int MSG_MOUSE = 0x86;
     /** 转发的键盘报文（relay 模式）：HID 键盘报文原样 8 字节（修饰键位、保留、6 个键）。 */
     public static final int MSG_KEYBOARD = 0x87;
-    /** 实体按键（服务已判断好）：key:u8（HARD_VOL_UP / HARD_VOL_DOWN）, event:u8（HARD_TAP / HARD_HOLD_START / HARD_HOLD_END）。 */
+    /** 实体按键（服务已判断好）：key:u8（HARD_VOL_UP / HARD_VOL_DOWN）, event:u8（HARD_TAP / HARD_HOLD_START / HARD_HOLD_END / HARD_HOLD_CANCEL）。 */
     public static final int MSG_HARD_KEY = 0x88;
     /** 和 HardKeys.VOL_UP / VOL_DOWN 一致。 */
     public static final int HARD_VOL_UP = 0;
@@ -425,6 +434,11 @@ public final class Proto {
     public static final int HARD_TAP = 0;
     public static final int HARD_HOLD_START = 1;
     public static final int HARD_HOLD_END = 2;
+    /**
+     * 按住被取消着结束（协议 25 起）：服务放开实体键（releaseAll：停止拦截、通话、心跳超时）、电源键组合交还系统时补的结束。
+     * App 照 HARD_HOLD_END 收尾，只是不出松开声（同 {@link #BUTTON_CANCELED}）。以前这几种也报 HARD_HOLD_END。
+     */
+    public static final int HARD_HOLD_CANCEL = 3;
     /**
      * 实体按键的独占状态：grabbed:u8, unavailable:u8（位掩码：HARD_BIT_*）, reason:u8（HARD_*）, detail:UTF。
      * unavailable = 配了动作、却截不了的键。文字由 App 按语言拼，服务只发代码和细节（设备名、多出来的键码、错误原文）。
@@ -471,6 +485,22 @@ public final class Proto {
     public static final int BUTTON_UP = 1;
     /** 在按钮里按下又松开。 */
     public static final int BUTTON_TAP = 2;
+    /**
+     * 松开带的"被取消"标记（协议 25 起）：BUTTON_UP / BUTTON_TAP 再或上这一位 = 这根手指是被取消的（手掌、丢数据、服务释放触摸屏时补报的抬起、
+     * releaseAll / 换参数收尾），按下从不带。只加信息、不改意思：被取消的手指松开时还在按钮里照样是 BUTTON_TAP（和以前一样，TouchRouter.up），
+     * App 收到先去掉这一位（{@link #buttonAction}）再照旧处理；只有声音看它（被取消的松开不出声，SoundEvents）。
+     */
+    public static final int BUTTON_CANCELED = 0x80;
+
+    /** 去掉 {@link #BUTTON_CANCELED} 那一位：BUTTON_DOWN / BUTTON_UP / BUTTON_TAP。 */
+    public static int buttonAction(int action) {
+        return action & ~BUTTON_CANCELED;
+    }
+
+    /** 这次松开是被取消的（{@link #BUTTON_CANCELED}）。 */
+    public static boolean buttonCanceled(int action) {
+        return (action & BUTTON_CANCELED) != 0;
+    }
 
     // ═══════════ 鼠标按键位 ═══════════
 

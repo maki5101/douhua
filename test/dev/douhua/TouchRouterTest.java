@@ -242,6 +242,7 @@ public final class TouchRouterTest {
         gamepadOneReportPerFrame();
         gamepadUnusedSendsNothing();
         gamepadStopsSpinSilently();
+        protocol25Flags();
         System.err.println("触摸分流：" + checks + " 项检查，" + failures + " 项失败");
         if (failures > 0) System.exit(1);
     }
@@ -514,7 +515,8 @@ public final class TouchRouterTest {
         eq(r.only("k"), list("k1"), "Ctrl 按下马上发");
         check(r.keyPending && r.keyDelay == KeyHolds.HOLD_MS, "排 0.4 秒的按键定时器");
         t.onKeyTimer(1400);
-        check(r.log.contains("mod0/1/1") && r.log.contains("h" + GestureEngine.HAPTIC_CLICK), "到 0.4 秒：快锁了（高亮）+ 震一下");
+        check(r.log.contains("mod0/1/1") && r.log.contains("h" + GestureEngine.HAPTIC_HOLD), "到 0.4 秒：快锁了（高亮）+ 震一下（协议 25 起是\"按住到点\"那一种）");
+        check(!r.log.contains("h" + GestureEngine.HAPTIC_CLICK), "按住到点不报 HAPTIC_CLICK（那是\"点了一下\"，App 据此出鼠标声）");
         t.up(0, 1500);
         eq(r.only("k"), list("k1"), "0.4–1 秒松手：锁住，HID 里照旧按着（主机看不到松开）");
         check(r.log.contains("mod1/0/0") && !r.keyPending, "告诉界面 Ctrl 锁定了，定时器撤了");
@@ -535,7 +537,7 @@ public final class TouchRouterTest {
         t.up(0, 2500);
         eq(r.only("k"), list("k1", "k0"), "锁住后再点一下就解开（按下时不发、松手松开）");
         eq(r.only("mod"), list("mod0/1/0", "mod0/1/1", "mod1/0/0", "mod0/1/0", "mod0/0/0"), "界面跟着变：解锁那一下按多久都不再快锁");
-        eq(r.only("h"), list("h" + GestureEngine.HAPTIC_CLICK), "只在第一次到 0.4 秒时震");
+        eq(r.only("h"), list("h" + GestureEngine.HAPTIC_HOLD), "只在第一次到 0.4 秒时震");
     }
 
     /** 单点修饰键（< 0.4 秒）：按下 / 松开各一帧、不锁、不震（主机上单点 Shift 切中英文照常）。 */
@@ -743,8 +745,10 @@ public final class TouchRouterTest {
         t.releaseAll();
         List<String> k = r.only("k");
         eq(k.get(k.size() - 1), "k0", "放手：键全部松开");
-        check(r.log.contains("b7:" + Proto.BUTTON_UP), "按着的按钮报告松开");
-        check(r.log.contains("b" + (Proto.KEY_ID_BASE + KEY_C) + ":" + Proto.BUTTON_UP), "按着的键报告松开");
+        // 协议 25：收尾报的松开带"被取消"（界面先去掉这一位照旧处理，只有声音看它）
+        check(r.log.contains("b7:" + (Proto.BUTTON_UP | Proto.BUTTON_CANCELED)), "按着的按钮报告松开（带被取消）");
+        check(r.log.contains("b" + (Proto.KEY_ID_BASE + KEY_C) + ":" + (Proto.BUTTON_UP | Proto.BUTTON_CANCELED)), "按着的键报告松开（带被取消）");
+        check(!r.log.contains("b7:" + Proto.BUTTON_UP) && !r.log.contains("b7:" + Proto.BUTTON_TAP), "收尾不报不带标记的松开 / 点击");
         check(r.log.contains("mod0/0/0"), "锁定的修饰键解开");
         check(!r.keyPending, "按键定时器撤了");
         int before = r.log.size();
@@ -1042,7 +1046,7 @@ public final class TouchRouterTest {
         t.releaseAll();
         List<String> k = r.only("k");
         eq(k.get(k.size() - 1), "k0", "放手：分到的键松开");
-        check(r.log.contains("b" + (Proto.KEY_ID_BASE + Q) + ":" + Proto.BUTTON_UP), "报告分到的那个键松开");
+        check(r.log.contains("b" + (Proto.KEY_ID_BASE + Q) + ":" + (Proto.BUTTON_UP | Proto.BUTTON_CANCELED)), "报告分到的那个键松开（带被取消）");
     }
 
     static void gapModifierLatches() {
@@ -1345,7 +1349,7 @@ public final class TouchRouterTest {
         t.down(1, 2050, 130, 1000);   // 中键
         t.up(1, 1500, true);
         check(!r.only("m").contains("m4"), "中键被取消：不补中键单击");
-        check(r.log.contains("b" + M_MIDDLE + ":" + Proto.BUTTON_UP), "中键被取消：界面照样收到松开");
+        check(r.log.contains("b" + M_MIDDLE + ":" + (Proto.BUTTON_UP | Proto.BUTTON_CANCELED)), "中键被取消：界面照样收到松开（协议 25 带被取消）");
         int at = r.log.size();
         t.down(0, 500, 300, 1600);
         for (int i = 1; i <= 10; i++) {
@@ -1371,8 +1375,9 @@ public final class TouchRouterTest {
         push(t, 2, 15, 0, 1000, 200);
         t.releaseAll();
         check(!r.ticking && r.tickStarts == r.tickStops, "releaseAll：节拍停（开停配对）");
-        check(r.log.contains("b" + STICK + ":" + Proto.BUTTON_UP) && r.log.contains("b" + M_MIDDLE + ":" + Proto.BUTTON_UP)
-                && r.log.contains("b" + M_RIGHT + ":" + Proto.BUTTON_UP), "releaseAll：红点、中键、右键报松开");
+        int canceledUp = Proto.BUTTON_UP | Proto.BUTTON_CANCELED;
+        check(r.log.contains("b" + STICK + ":" + canceledUp) && r.log.contains("b" + M_MIDDLE + ":" + canceledUp)
+                && r.log.contains("b" + M_RIGHT + ":" + canceledUp), "releaseAll：红点、中键、右键报松开（带被取消）");
         check(!r.only("m").contains("m4") && !r.only("m").contains("m6"), "releaseAll：中键不补单击");
         eq(r.only("m").get(r.only("m").size() - 1), "m0", "releaseAll：右键松开");
         int at = r.log.size();
@@ -1589,7 +1594,7 @@ public final class TouchRouterTest {
         check(a.ticking, "滚动杆推着：节拍开着");
         ta.releaseAll();
         check(!a.ticking && a.tickStarts == a.tickStops, "releaseAll：节拍停（开停配对）");
-        check(a.log.contains("b" + M_MIDDLE + ":" + Proto.BUTTON_UP) && !a.only("m").contains("m4"), "releaseAll：中键报松开、不补单击");
+        check(a.log.contains("b" + M_MIDDLE + ":" + (Proto.BUTTON_UP | Proto.BUTTON_CANCELED)) && !a.only("m").contains("m4"), "releaseAll：中键报松开（带被取消）、不补单击");
         int at2 = a.log.size();
         ta.onTick(n3 + 8);
         ta.move(1, 2050, 200);
@@ -2539,7 +2544,7 @@ public final class TouchRouterTest {
         check(a.ticking, "左键杆推着：节拍开着");
         ta.releaseAll();
         check(!a.ticking && a.tickStarts == a.tickStops, "releaseAll：节拍停（开停配对）");
-        check(a.log.contains("b" + M_LEFT + ":" + Proto.BUTTON_UP) && "m0".equals(last(a.only("m"))), "releaseAll：左键报松开、左键松开");
+        check(a.log.contains("b" + M_LEFT + ":" + (Proto.BUTTON_UP | Proto.BUTTON_CANCELED)) && "m0".equals(last(a.only("m"))), "releaseAll：左键报松开（带被取消）、左键松开");
         int at2 = a.log.size();
         ta.onTick(n3 + 8);
         ta.move(1, 2100, 200);
@@ -2922,6 +2927,125 @@ public final class TouchRouterTest {
         }
         check(bad == 0 && yields > 0 && starts > 0 && late > 0, "三个来源随机交错 400 组 × 100 步（" + steps + " 步，左键杆让位 " + yields + " 次、左键杆单独推出位移 " + starts
                 + " 帧、实体键迟到的松开 " + late + " 次）：节拍开着 ⇔ 有来源在推、开停配对、节拍不出多余的东西、红点没按着时节拍出的位移都带着左键、全部抬起后左键松开（错 " + bad + "）");
+    }
+
+    // ═══════════ 协议 25：松开带"被取消"、按住到点单独一种震动 ═══════════
+
+    /**
+     * 每条报给界面的按钮事件：按下从不带 Proto.BUTTON_CANCELED；正常抬起不带；被取消的抬起（up 的 canceled）、releaseAll、换参数（手柄那一路）带。
+     * 只加信息不改意思：去掉标记后和以前一模一样（被取消的手指还在按钮里照样是 TAP）。按住到点报 HAPTIC_HOLD，触控板轻点照旧 HAPTIC_CLICK。
+     */
+    static void protocol25Flags() {
+        int up = Proto.BUTTON_UP, tap = Proto.BUTTON_TAP, cancel = Proto.BUTTON_CANCELED;
+        // 正常抬起：不带
+        Rec n = new Rec();
+        TouchRouter tn = stickRouter(n);
+        tn.down(0, 1050, 350, 1000);   // C
+        tn.down(1, 1050, 150, 1000);   // 按钮
+        tn.down(2, 1050, 50, 1000);    // "左键"
+        tn.down(3, 2085, 130, 1000);   // 右键
+        tn.down(4, 2050, 50, 1000);    // 红点
+        tn.up(0, 1100);
+        tn.up(1, 1100);
+        tn.up(2, 1100);
+        tn.up(3, 1100);
+        tn.up(4, 1100);
+        eq(n.only("b"), list("b" + (Proto.KEY_ID_BASE + KEY_C) + ":0", "b" + BUTTON + ":0", "b3:0", "b" + M_RIGHT + ":0", "b" + STICK + ":0",
+                "b" + (Proto.KEY_ID_BASE + KEY_C) + ":" + up, "b" + BUTTON + ":" + tap, "b3:" + up, "b" + M_RIGHT + ":" + up, "b" + STICK + ":" + up),
+                "正常按下 / 抬起：都不带被取消（按钮还在里面是 TAP）");
+        // 被取消的抬起：带（按钮还在里面照样是 TAP，只是带上标记）
+        Rec c = new Rec();
+        TouchRouter tc = stickRouter(c);
+        tc.down(0, 1050, 350, 1000);
+        tc.down(1, 1050, 150, 1000);
+        tc.down(2, 1050, 50, 1000);
+        tc.down(3, 2085, 130, 1000);
+        tc.down(4, 2050, 50, 1000);
+        tc.down(5, 1050, 150, 1000);   // 按钮，再挪出去
+        tc.move(5, 1500, 1500);
+        for (int s = 0; s <= 5; s++) tc.up(s, 1100, true);
+        eq(c.only("b").subList(6, 12), list("b" + (Proto.KEY_ID_BASE + KEY_C) + ":" + (up | cancel), "b" + BUTTON + ":" + (tap | cancel), "b3:" + (up | cancel),
+                "b" + M_RIGHT + ":" + (up | cancel), "b" + STICK + ":" + (up | cancel), "b" + BUTTON + ":" + (up | cancel)),
+                "被取消的抬起：都带被取消；去掉标记和以前一样（还在按钮里 = TAP，挪出去 = UP）");
+        // releaseAll：按着的键、按钮、"左键"（REGION_HOLD_LEFT）、鼠标键、红点报的松开都带被取消（审查发现"左键"那一种以前没有测试锁住：
+        // 去掉它的标记，按着"左键"时服务释放触摸屏 / 退后台就会多出一声鼠标"哒"）
+        Rec ra = new Rec();
+        TouchRouter tra = stickRouter(ra);
+        tra.down(0, 1050, 350, 1000);   // C
+        tra.down(1, 1050, 150, 1000);   // 按钮
+        tra.down(2, 1050, 50, 1000);    // "左键"
+        tra.down(3, 2085, 130, 1000);   // 右键
+        tra.down(4, 2050, 50, 1000);    // 红点
+        tra.releaseAll();
+        List<String> rel = ra.only("b");
+        eq(rel.subList(5, rel.size()), list("b" + (Proto.KEY_ID_BASE + KEY_C) + ":" + (up | cancel), "b" + BUTTON + ":" + (up | cancel), "b3:" + (up | cancel),
+                "b" + M_RIGHT + ":" + (up | cancel), "b" + STICK + ":" + (up | cancel)),
+                "releaseAll：键、按钮、\"左键\"、鼠标键、红点的松开都带被取消（\"左键\"是 b3:" + (up | cancel) + "）");
+        // 按下从来不带、正常的也不带：随便按一通，只有收尾那些带
+        boolean downsClean = true;
+        for (String e : c.only("b")) if (e.endsWith(":" + (Proto.BUTTON_DOWN | cancel))) downsClean = false;
+        check(downsClean, "按下从来不带被取消");
+        // 换参数：按着的键留着，之后照常抬起不带标记
+        Rec k = new Rec();
+        TouchRouter tk = router(k);
+        tk.down(0, 1050, 350, 1000);
+        tk.setConfig(new GestureEngine.Config(), 1);
+        tk.up(0, 1100);
+        eq(last(k.only("b")), "b" + (Proto.KEY_ID_BASE + KEY_C) + ":" + up, "换参数时按着的键：之后正常抬起不带标记");
+        // 手柄：正常抬起不带；被取消的抬起、releaseAll、setConfig、setGamepadConfig 带
+        for (int w = 0; w < 5; w++) {
+            Rec g = new Rec();
+            TouchRouter tg = gamepadRouter(g);
+            tg.down(0, 2037, 37, 100);   // A
+            tg.down(1, 2632, 22, 100);   // Start
+            tg.frame(100);
+            String what;
+            if (w == 0) {
+                what = "正常抬起";
+                tg.up(0, 120);
+                tg.up(1, 120);
+            } else if (w == 1) {
+                what = "被取消的抬起";
+                tg.up(0, 120, true);
+                tg.up(1, 120, true);
+            } else if (w == 2) {
+                what = "releaseAll";
+                tg.releaseAll();
+            } else if (w == 3) {
+                what = "setConfig";
+                tg.setConfig(new GestureEngine.Config(), 1);
+            } else {
+                what = "setGamepadConfig";
+                tg.setGamepadConfig(new GamepadConfig());
+            }
+            int downs = 0, ups = 0, flagged = 0;
+            for (String e : g.only("b")) {
+                int id = Integer.parseInt(e.substring(1, e.indexOf(':')));
+                int a = Integer.parseInt(e.substring(e.indexOf(':') + 1));
+                if (!Proto.isGamepadId(id)) continue;
+                if (a == Proto.BUTTON_DOWN) downs++;
+                else ups++;
+                if (Proto.buttonCanceled(a)) flagged++;
+            }
+            check(downs == 2 && ups == 2 && flagged == (w == 0 ? 0 : 2), "手柄 " + what + "：两个按下配两个松开，" + (w == 0 ? "都不带" : "都带") + "被取消");
+            // 收尾之后再按：正常的不带（标记只在那一刻）
+            int at = g.log.size();
+            tg.down(2, 2037, 37, 200);
+            tg.frame(200);
+            tg.up(2, 220);
+            boolean clean = true;
+            for (String e : g.log.subList(at, g.log.size())) if (e.startsWith("b") && Proto.buttonCanceled(Integer.parseInt(e.substring(e.indexOf(':') + 1)))) clean = false;
+            check(clean, "手柄 " + what + " 之后再正常按一下：不带被取消");
+        }
+        // 按住到点 = HAPTIC_HOLD；触控板轻点 = HAPTIC_CLICK
+        Rec h = new Rec();
+        TouchRouter th = router(h);
+        th.down(0, 1050, 250, 1000);   // Ctrl 按住到点
+        th.onKeyTimer(1400);
+        th.up(0, 1500);
+        th.down(1, 500, 500, 1600);   // 触控板轻点
+        th.up(1, 1650);
+        eq(h.only("h"), list("h" + GestureEngine.HAPTIC_HOLD, "h" + GestureEngine.HAPTIC_CLICK), "按住到点报 HAPTIC_HOLD、触控板轻点报 HAPTIC_CLICK");
     }
 
     // ═══════════ 手柄页 ═══════════

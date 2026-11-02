@@ -619,4 +619,36 @@
     <string name="kbd_no_size_data">苹果紧凑只配 Mac 模式和 ANSI / ISO 形状，键盘页暂用豆花儿布局。换个尺寸、模式或布局就好。</string>
     <string name="sec_kbd_douhua">豆花儿布局</string>
     <string name="licenses">开源许可</string>
+    <string name="sec_sound">声音</string>
+    <string name="sound_pack_off">关（只有震动）</string>
+    <string name="sound_pack_light">轻（很闷很短的一下，几乎听不见）</string>
+    <string name="sound_pack_wood">木与枝（字母是木块，空格是一截细树枝折断，回车是竹筒）</string>
+    <string name="sound_note">静音、振动、勿扰模式下不响，通话中也不响；只从手机自己的喇叭出（声音被耳机、外接屏接走时不出声）。大小跟手机的「系统」音量走，听不到时先看看它。点一项就放一遍；下面的开关回到触控板时生效。</string>
+    <string name="sound_volume">音量</string>
+    <string name="sound_keys">键盘</string>
+    <string name="sound_mouse">鼠标键（含触控板轻点）</string>
+    <string name="sound_scroll">滚轮（含惯性刹住）</string>
+    <string name="sound_gamepad">手柄（默认关：串流时手机多半在放游戏声）</string>
+    <string name="sound_bench">试听台</string>
+    <string name="sound_bench_hint">按下去就是真的声音和真的震动。</string>
+    <string name="sound_bench_pad">轻点 = 点击 · 划 = 滚动</string>
+    <string name="sound_try">候选（只在调试版）：点一下放一遍、震一下，选中的就是以后用的；「连打」用这个候选每秒 7 下连放 2 秒。正式包一律用 A。</string>
+    <string name="sound_shuffle">打乱顺序（A / B / C / D 背后是哪个随机换，不写参数；关掉就揭晓）</string>
+    <string name="sound_burst">连打</string>
+    <string name="sound_slot_key">按键按下</string>
+    <string name="sound_slot_big">大键按下（退格、Shift）</string>
+    <string name="sound_slot_space">空格</string>
+    <string name="sound_slot_enter">回车</string>
+    <string name="sound_slot_key_up">按键松开</string>
+    <string name="sound_slot_mouse_down">鼠标键按下</string>
+    <string name="sound_slot_mouse_up">鼠标键松开</string>
+    <string name="sound_slot_pad">触控板轻点（像 MacBook 触控板）</string>
+    <string name="sound_slot_scroll">滚轮一格</string>
+    <string name="sound_slot_catch">惯性刹住</string>
+    <string name="sound_cand_silent">不出声</string>
+    <string name="sound_offset">音量偏移</string>
+    <string name="sound_random">随机幅度</string>
+    <string name="sound_haptic_delay">震动延后</string>
+    <string name="sound_haptic_delay_hint">震动比声音晚多少；调到两个像一个东西为止。只在声音开着时；开始 / 结束拖动不延后。</string>
+    <string name="sound_diag">诊断（给开发者看）</string>
 </resources>

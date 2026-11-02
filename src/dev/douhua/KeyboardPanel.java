@@ -57,7 +57,15 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
          */
         void onLocalKey(int key, int action);
 
+        /** 面板自己收的手指按下了一个键（发完键之后）：出按键声、震能打断的"嗒"。special = 符 / Fn / 🌐 / ⋯ / 快捷行的动作（id 是界面上的按钮编号）。 */
         void onKeyHaptic(int id, boolean special);
+
+        /**
+         * 面板自己收的手指松开了一个键（发完松开之后，特殊键在 onSpecialKey 之前）：只给声音用（松开不震）。
+         * canceled = 不是正常抬起（ACTION_CANCEL、被顶掉、服务接管时 releaseTouches、换键时消失了的）：不出声。
+         * 特殊键没点成的松开以前不回报（只有点成了才 onSpecialKey），声音要配上按下那一声，所以另加了它（声音第一批第 ③ 步）。
+         */
+        void onKeyRelease(int id, boolean special, boolean canceled);
 
         /** 服务没接管时，非 HID 的特殊键（符 / Fn / 🌐 / ⋯ / 快捷行里的非键盘动作）被点了。 */
         void onSpecialKey(int id);
@@ -725,6 +733,7 @@ final class KeyboardPanel extends ViewGroup implements KeyboardFace {
         } else if (tap) {
             post(() -> listener.onSpecialKey(c.key.id));
         }
+        listener.onKeyRelease(c.key.id, c.key.special, !tap);   // 松开声（被取消的不出）
         look(c, false);
         preview(c, false);
     }

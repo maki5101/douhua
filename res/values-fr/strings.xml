@@ -619,4 +619,36 @@
     <string name="kbd_no_size_data">Le format Apple compact n\'existe qu\'en mode Mac avec la forme ANSI / ISO : l\'écran clavier affiche la disposition Douhua. Choisissez une autre taille, un autre mode ou une autre disposition.</string>
     <string name="sec_kbd_douhua">Disposition Douhua</string>
     <string name="licenses">Licences open source</string>
+    <string name="sec_sound">Son</string>
+    <string name="sound_pack_off">Désactivé (vibration seulement)</string>
+    <string name="sound_pack_light">Léger (un tapotement très doux et court ; à peine audible)</string>
+    <string name="sound_pack_wood">Bois et brindilles (les lettres sont des blocs de bois, Espace casse une fine brindille, Entrée est un tube de bambou)</string>
+    <string name="sound_note">Muet en mode silencieux, vibreur et Ne pas déranger, ainsi que pendant un appel. Le son ne sort que du haut-parleur du téléphone (rien quand des écouteurs ou un écran externe prennent le son). Le volume suit le volume « Système » du téléphone ; si vous n\'entendez rien, vérifiez-le d\'abord. Touchez une option pour l\'écouter ; les interrupteurs ci-dessous prennent effet au retour sur le pavé tactile.</string>
+    <string name="sound_volume">Volume</string>
+    <string name="sound_keys">Clavier</string>
+    <string name="sound_mouse">Boutons de souris (y compris les touchers du pavé)</string>
+    <string name="sound_scroll">Molette (y compris l\'arrêt de l\'inertie)</string>
+    <string name="sound_gamepad">Manette (désactivé par défaut : pendant le streaming, le téléphone joue souvent le son du jeu)</string>
+    <string name="sound_bench">Essayer</string>
+    <string name="sound_bench_hint">Ici, c\'est le vrai son et la vraie vibration.</string>
+    <string name="sound_bench_pad">Toucher = clic · Glisser = défiler</string>
+    <string name="sound_try">Candidats (version de débogage seulement) : touchez-en un pour l\'entendre et sentir la vibration ; celui qui est sélectionné sera utilisé désormais. « Rafale » le joue 7 fois par seconde pendant 2 secondes. La version publiée utilise toujours A.</string>
+    <string name="sound_shuffle">Mélanger (A / B / C / D sont réattribués au hasard et les paramètres masqués ; désactivez pour révéler)</string>
+    <string name="sound_burst">Rafale</string>
+    <string name="sound_slot_key">Appui sur une touche</string>
+    <string name="sound_slot_big">Appui sur une grande touche (Retour arrière, Maj)</string>
+    <string name="sound_slot_space">Espace</string>
+    <string name="sound_slot_enter">Entrée</string>
+    <string name="sound_slot_key_up">Relâchement d\'une touche</string>
+    <string name="sound_slot_mouse_down">Appui sur un bouton de souris</string>
+    <string name="sound_slot_mouse_up">Relâchement d\'un bouton de souris</string>
+    <string name="sound_slot_pad">Toucher du pavé (comme un trackpad de MacBook)</string>
+    <string name="sound_slot_scroll">Un cran de molette</string>
+    <string name="sound_slot_catch">Arrêt de l\'inertie</string>
+    <string name="sound_cand_silent">muet</string>
+    <string name="sound_offset">Décalage de volume</string>
+    <string name="sound_random">Part d\'aléatoire</string>
+    <string name="sound_haptic_delay">Retard de la vibration</string>
+    <string name="sound_haptic_delay_hint">De combien la vibration arrive après le son ; réglez jusqu\'à ce que les deux ne fassent qu\'un. Seulement avec le son activé ; le début et la fin d\'un glissement ne sont pas retardés.</string>
+    <string name="sound_diag">Diagnostic (pour le développeur)</string>
 </resources>

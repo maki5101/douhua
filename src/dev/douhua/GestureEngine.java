@@ -75,6 +75,18 @@ public final class GestureEngine {
     public static final int HAPTIC_SPIN_START = 6;
     /** 惯性滚动"刹住"：转着时碰了屏幕，马上停。自然停下、按键停、cancel 停都不震。 */
     public static final int HAPTIC_SPIN_CATCH = 7;
+    /**
+     * "按住到点"（协议 25 起）：修饰键单独按住到 0.4 秒快锁了、Caps 按住只切显示、合并键出第二个字、Fn 快永久锁了、Fn+Esc 翻转 F 行那一下
+     * （KeyHolds.Host.holdReached，TouchRouter 发）。引擎自己不发。震的样子和 HAPTIC_CLICK 一模一样（Haptics 把它当点一下震）；
+     * 单独一种是给声音分：它是软件状态、不出声，从分流来的 HAPTIC_CLICK 就只剩"点了一下"（触控板轻点、红点轻点）。
+     */
+    public static final int HAPTIC_HOLD = 8;
+    /**
+     * 拖动被取消着结束（协议 25 起）：拖着（长按拖动、轻点后拖）的时候手指被取消（手掌、丢数据、服务收尾补报的抬起）或者整个收尾（cancel：
+     * 释放触摸屏、退后台、换参数）。震的样子和 HAPTIC_DRAG_END 一模一样（Haptics 把它当拖动结束震：先停持续轻震）；单独一种是给声音分：
+     * 不是用户松了手，不出松开声（同 Proto.BUTTON_CANCELED）。第二根手指来了结束的拖动照旧是 HAPTIC_DRAG_END（那是用户的动作）。
+     */
+    public static final int HAPTIC_DRAG_CANCEL = 9;
 
     /** 按下点在左右边缘带里（单指上下滑 = 竖向滚动）。 */
     public static final int EDGE_VERTICAL = 1;
@@ -428,7 +440,7 @@ public final class GestureEngine {
         active[id] = false;
         activeCount--;
         if (activeCount > 0) return;
-        finishGesture(t);
+        finishGesture(t, canceled);
     }
 
     /** 系统取消了触摸、或触摸屏被释放：松开一切，不算点击。转着的惯性也停（不震）。 */
@@ -438,7 +450,7 @@ public final class GestureEngine {
         if (timerAction != TIMER_NONE) out.cancelSchedule();
         timerAction = TIMER_NONE;
         secondTouch = false;
-        if (dragging || longDrag) out.haptic(HAPTIC_DRAG_END);
+        if (dragging || longDrag) out.haptic(HAPTIC_DRAG_CANCEL);   // 收尾：不是用户松了手（震的样子同拖动结束，只是不出松开声）
         dragging = false;
         longDrag = false;
         scrollHold = false;
@@ -615,7 +627,9 @@ public final class GestureEngine {
         }
     }
 
-    private void finishGesture(long t) {
+    /** 全部手指抬起：canceled = 最后抬起的那根是被取消的（手掌、丢数据、收尾补报的）——拖着的话报 HAPTIC_DRAG_CANCEL。 */
+    private void finishGesture(long t, boolean canceled) {
+        int dragEnd = canceled ? HAPTIC_DRAG_CANCEL : HAPTIC_DRAG_END;
         endZoom();
         if (timerAction == TIMER_LONG_PRESS) {
             out.cancelSchedule();
@@ -624,7 +638,7 @@ public final class GestureEngine {
         if (longDrag) {
             longDrag = false;
             setButtons(buttons & ~Proto.BUTTON_LEFT);
-            out.haptic(HAPTIC_DRAG_END);
+            out.haptic(dragEnd);
             return;
         }
         if (maxFingers == 1 && edgeMode != 0 && moved && !holdUsed) {
@@ -640,7 +654,7 @@ public final class GestureEngine {
             if (dragging) {
                 dragging = false;
                 setButtons(buttons & ~Proto.BUTTON_LEFT);
-                out.haptic(HAPTIC_DRAG_END);
+                out.haptic(dragEnd);
             } else if (isTap) {
                 // 双击：松开第一下，隔一会儿再点第二下
                 setButtons(buttons & ~Proto.BUTTON_LEFT);

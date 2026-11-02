@@ -619,4 +619,36 @@
     <string name="kbd_no_size_data">Apple compacto solo existe en modo Mac con forma ANSI / ISO: la pantalla de teclado muestra la distribución Douhua. Elige otro tamaño, modo o distribución.</string>
     <string name="sec_kbd_douhua">Diseño Douhua</string>
     <string name="licenses">Licencias de código abierto</string>
+    <string name="sec_sound">Sonido</string>
+    <string name="sound_pack_off">Desactivado (solo vibración)</string>
+    <string name="sound_pack_light">Ligero (un toque muy suave y corto; apenas se oye)</string>
+    <string name="sound_pack_wood">Madera y ramitas (las letras son bloques de madera, Espacio quiebra una ramita fina, Intro es un tubo de bambú)</string>
+    <string name="sound_note">En modo silencio, vibración y No molestar no suena, ni durante una llamada. Solo sale por el altavoz del propio teléfono (nada si el sonido va a unos auriculares o a una pantalla externa). El volumen sigue el volumen «Sistema» del teléfono; si no oyes nada, revísalo primero. Toca una opción para escucharla; los interruptores de abajo se aplican al volver al panel táctil.</string>
+    <string name="sound_volume">Volumen</string>
+    <string name="sound_keys">Teclado</string>
+    <string name="sound_mouse">Botones del ratón (incluidos los toques en el panel táctil)</string>
+    <string name="sound_scroll">Rueda (incluida la parada de la inercia)</string>
+    <string name="sound_gamepad">Mando (desactivado por defecto: al hacer streaming el teléfono suele reproducir el sonido del juego)</string>
+    <string name="sound_bench">Pruébalo</string>
+    <string name="sound_bench_hint">Aquí oyes el sonido real y sientes la vibración real.</string>
+    <string name="sound_bench_pad">Toque = clic · Deslizar = desplazar</string>
+    <string name="sound_try">Candidatos (solo versión de depuración): toca uno para oírlo y sentir la vibración; el marcado es el que se usará a partir de ahora. «Ráfaga» lo reproduce 7 veces por segundo durante 2 segundos. La versión publicada usa siempre A.</string>
+    <string name="sound_shuffle">Mezclar (A / B / C / D se reasignan al azar y se ocultan los parámetros; desactívalo para revelar)</string>
+    <string name="sound_burst">Ráfaga</string>
+    <string name="sound_slot_key">Pulsar una tecla</string>
+    <string name="sound_slot_big">Pulsar una tecla grande (Retroceso, Mayús)</string>
+    <string name="sound_slot_space">Espacio</string>
+    <string name="sound_slot_enter">Intro</string>
+    <string name="sound_slot_key_up">Soltar una tecla</string>
+    <string name="sound_slot_mouse_down">Pulsar un botón del ratón</string>
+    <string name="sound_slot_mouse_up">Soltar un botón del ratón</string>
+    <string name="sound_slot_pad">Toque en el panel táctil (como el trackpad de un MacBook)</string>
+    <string name="sound_slot_scroll">Un paso de la rueda</string>
+    <string name="sound_slot_catch">Parada de la inercia</string>
+    <string name="sound_cand_silent">sin sonido</string>
+    <string name="sound_offset">Desfase de volumen</string>
+    <string name="sound_random">Aleatoriedad</string>
+    <string name="sound_haptic_delay">Retraso de la vibración</string>
+    <string name="sound_haptic_delay_hint">Cuánto más tarde llega la vibración que el sonido; ajústalo hasta que ambos parezcan uno solo. Solo con el sonido activado; el inicio y el final de un arrastre no se retrasan.</string>
+    <string name="sound_diag">Diagnóstico (para el desarrollador)</string>
 </resources>

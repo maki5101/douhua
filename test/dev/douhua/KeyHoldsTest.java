@@ -15,7 +15,8 @@ import java.util.Random;
 public final class KeyHoldsTest {
     static final int SHIFT = 0xE1, CTRL = 0xE0, ALT = 0xE2, RSHIFT = 0xE5, A = 0x04, B = 0x05, I = 0x0C, AT = 0x1F | (Hid.MOD_SHIFT << 8),
             CAPS = 0x39, SPACE = 0x2C, DUAL = Proto.dualKey(0x36, 0x37);
-    static final int CLICK = GestureEngine.HAPTIC_CLICK;
+    /** "按住到点"的那一下震动：协议 25 起单独一种 HAPTIC_HOLD（以前和触控板轻点同是 HAPTIC_CLICK）。clicks 数的就是它。 */
+    static final int CLICK = GestureEngine.HAPTIC_HOLD;
 
     /** 屏幕：触控板 (0,0)-(1000,1000)；下面一排键（每个 100 宽，第几个就是第几列），两个 Shift（⇧ 和功能行的）、两个空格副本、右 Shift；右上一个"左键"按钮。 */
     static final TouchRouter.Region[] REGIONS = {
@@ -433,7 +434,8 @@ public final class KeyHoldsTest {
             }
             h.to(1500);
             h.ku(CTRL, 1500);
-            check(h.r.lastL == 0 && h.r.clicks == clicksFromPad(h, k), what[k] + "：按着 Ctrl 时用了鼠标，不锁、不到点震");
+            check(h.r.lastL == 0 && h.r.clicks == 0, what[k] + "：按着 Ctrl 时用了鼠标，不锁、不到点震");
+            check(h.r.all.contains("h" + GestureEngine.HAPTIC_CLICK) == (k == 0), what[k] + "：只有触控板轻点自己报\"点了一下\"（HAPTIC_CLICK）");
         }
         // 双指开合（缩放 = Ctrl + 滚轮）
         H h = new H();
@@ -442,11 +444,6 @@ public final class KeyHoldsTest {
         h.to(1500);
         h.ku(SHIFT, 1500);
         check(h.r.lastL == 0 && h.r.clicks == 0, "按着 Shift 双指缩放：不锁");
-    }
-
-    /** 触控板轻点自己会震一下（HAPTIC_CLICK），别的情况不震。 */
-    static int clicksFromPad(H h, int k) {
-        return k == 0 ? 1 : 0;
     }
 
     static void pinch(H h, long t0) {

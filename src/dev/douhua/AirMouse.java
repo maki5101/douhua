@@ -220,13 +220,18 @@ final class AirMouse implements SensorEventListener {
 
     /** 按住拖动：按着时左键按下、光标跟着手机走。 */
     void holdDrag(int source, boolean on) {
+        holdDrag(source, on, false);
+    }
+
+    /** 同上；canceled = 这一下松开不是用户松了手（收尾补的，协议 25）：拖动结束的震动照旧，报 HAPTIC_DRAG_CANCEL（不出松开声）。 */
+    void holdDrag(int source, boolean on, boolean canceled) {
         boolean was = !dragSources.isEmpty();
         if (on) dragSources.add(source);
         else dragSources.remove(source);
         boolean now = !dragSources.isEmpty();
         if (now != was) {
             updateLeft();
-            host.airHaptic(now ? GestureEngine.HAPTIC_DRAG_START : GestureEngine.HAPTIC_DRAG_END);
+            host.airHaptic(now ? GestureEngine.HAPTIC_DRAG_START : canceled ? GestureEngine.HAPTIC_DRAG_CANCEL : GestureEngine.HAPTIC_DRAG_END);
         }
         updateFollow();
     }
@@ -263,7 +268,8 @@ final class AirMouse implements SensorEventListener {
         dragSources.removeIf(s -> s >= minSource);
         leftSources.removeIf(s -> s >= minSource);
         updateLeft();
-        if (dragging && dragSources.isEmpty()) host.airHaptic(GestureEngine.HAPTIC_DRAG_END);
+        // 收尾放掉的（不是用户松了手）：震动同拖动结束，只是不出松开声（协议 25 的 HAPTIC_DRAG_CANCEL）
+        if (dragging && dragSources.isEmpty()) host.airHaptic(GestureEngine.HAPTIC_DRAG_CANCEL);
         updateFollow();
     }
 
@@ -275,7 +281,7 @@ final class AirMouse implements SensorEventListener {
         leftSources.clear();
         toggledFollow = false;
         updateLeft();
-        if (dragging) host.airHaptic(GestureEngine.HAPTIC_DRAG_END);
+        if (dragging) host.airHaptic(GestureEngine.HAPTIC_DRAG_CANCEL);   // 收尾：震动同拖动结束、不出松开声
         updateFollow();
     }
 

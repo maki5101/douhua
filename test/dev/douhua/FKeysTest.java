@@ -28,7 +28,8 @@ public final class FKeysTest {
             F5 = FKeyFunctions.regionId(5, FKeyFunctions.get("none"), WIN),
             F6 = FKeyFunctions.regionId(6, FKeyFunctions.get("vol_up"), WIN);
     static final int UP = Proto.fnLayerKey(0x52, 0x4B);
-    static final int CLICK = GestureEngine.HAPTIC_CLICK;
+    /** 按住到点 / 翻转 F 行的那一下震动：协议 25 起单独一种 HAPTIC_HOLD（以前是 HAPTIC_CLICK）。 */
+    static final int CLICK = GestureEngine.HAPTIC_HOLD;
     static final int FN_HELD = Proto.FN_HELD, FN_LATCHED = Proto.FN_LATCHED, FN_LOCKED = Proto.FN_LOCKED, FLIP = Proto.FROW_FLIP;
 
     /** 屏幕：下面一排 Fn、fn🌐、Esc（F 行翻转开关）、F1–F6、Shift、a、↑（Fn 层 PgUp）；右上"左键"按钮、触控板。 */

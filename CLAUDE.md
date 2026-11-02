@@ -29,17 +29,25 @@
 
 | 文件 | 职责 |
 |---|---|
-| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 24（2026-11-02）：实体键盘 F1–F12 的第二功能、F 行翻转——F 行键的区域 id frowKey(类型, 底层, 第二功能)（FN_FLAG \| 类型 << 24 \| 第二功能 << 8 \| 底层，类型 FROW_KEY 1 键 / 组合键、FROW_CONSUMER 2 多媒体、FROW_SYSTEM 3 系统键、FROW_FN_LOCK 4 Esc 的 F 行翻转开关；isFrowKey / frowType / frowBase / frowSecond，范围 0x41000000–0x44FFFFFF，和别的几种 id 不重叠），FN_LOCK_KEY（Esc 那一个）；CMD_CONFIG 末尾加 frowFlip:u8；MSG_MODIFIERS 第四个字节多一位 FROW_FLIP = 16；MSG_CONSUMER（0x8C，page:u8 + usage:u16，PAGE_CONSUMER 0x0C / PAGE_GENERIC_DESKTOP 0x01：蓝牙模式服务接管时把多媒体 / 系统键转回 App）；HID_CONTROLS_PRODUCT 0xD0A3（"Douhua Keyboard Controls"）；版本 23：CMD_CONFIG 末尾加了 stickAccel:f32、stickMaxSpeed:f32（小红点推光标的加速、最快速度，2026-11-01 晚）；版本 22：加了 CMD_FOCUS_OTHER（17，displayId:i32，分屏里豆花拿着键盘焦点时请服务交给另一半）；同一批 CMD_CONFIG 末尾加 leverSpeed:f32、MSG_MODIFIERS 第四个字节多一位 FN_LOCKED = 8（永久锁），FN_LATCHED 改成单次锁、FN_ARMED 改成快永久锁了，都算在 22 里）；手柄控件编号（gamepadId：0x4000 \| 种类 << 10 \| 副本 << 8 \| 参数）和输出码（GP_*，按位置；GP_C_* = N64 的 C 键，GamepadTouch 换成右摇杆推满）；按键的 action（KEY_UP / KEY_DOWN / KEY_CANCEL，CMD_HID_KEY 协议 20 起 key:i32 + action:u8）、CMD_UNLATCH（16，不带参数）、MSG_MODIFIERS 四个字节（锁住 / 按着 / 快锁了，协议 21 起第四个字节是 Fn 的 FN_LATCHED / FN_HELD / FN_ARMED 位）、MSG_CAPS（0x8B）；合并键的 id（dualKey：点一下的键 \| 按住 0.4 秒的键 << 16，isDualKey / dualTap / dualHold；协议 21 起 hold 最多 0x3FFF）；实体键盘的 Fn（协议 21）：FN_FLAG 那一段（0x40000000–0x40FFFFFF）里 Fn 键自己 FN_KEY（Windows 模式）/ FN_GLOBE_KEY（Mac 模式 fn🌐），带 Fn 层的键 fnLayerKey(底层, Fn 层的码)（isFnKey / isFnLayerKey / fnBase / fnCode），三种 id 的范围互不重叠；🌐 的按钮编号 GLOBE_BUTTON_ID（302，KeyRows 的就是它，fn🌐 单点报它的 BUTTON_TAP） |
-| `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测）；惯性滚动（边缘一拨接着转、碰触控板抓住，用唯一的定时器槽 TIMER_SPIN）、连续滚动（按 1/120 格出、每滚过一格咔嗒、双指锁主方向）也在这里；滚轮量的单位是 1/120 格；中键按着时单指划 = 滚动（setScrollHold，方向"推哪边视野往哪边走"、不起长按 / 惯性），小红点的位移、滚轮经 externalMove / externalScroll 出 |
+| `src/dev/douhua/Proto.java` | 协议常量，两边共用（版本 25（2026-11-02，声音第一批的事件层）：MSG_BUTTON 的松开可以带"被取消" BUTTON_CANCELED（0x80，按下从不带；buttonAction 去掉它、buttonCanceled 认它），"按住到点"单独一种震动 GestureEngine.HAPTIC_HOLD，"拖动被取消着结束"单独一种 HAPTIC_DRAG_CANCEL，实体键收尾补的结束按住 HARD_HOLD_CANCEL（3）；24（2026-11-02）：实体键盘 F1–F12 的第二功能、F 行翻转——F 行键的区域 id frowKey(类型, 底层, 第二功能)（FN_FLAG \| 类型 << 24 \| 第二功能 << 8 \| 底层，类型 FROW_KEY 1 键 / 组合键、FROW_CONSUMER 2 多媒体、FROW_SYSTEM 3 系统键、FROW_FN_LOCK 4 Esc 的 F 行翻转开关；isFrowKey / frowType / frowBase / frowSecond，范围 0x41000000–0x44FFFFFF，和别的几种 id 不重叠），FN_LOCK_KEY（Esc 那一个）；CMD_CONFIG 末尾加 frowFlip:u8；MSG_MODIFIERS 第四个字节多一位 FROW_FLIP = 16；MSG_CONSUMER（0x8C，page:u8 + usage:u16，PAGE_CONSUMER 0x0C / PAGE_GENERIC_DESKTOP 0x01：蓝牙模式服务接管时把多媒体 / 系统键转回 App）；HID_CONTROLS_PRODUCT 0xD0A3（"Douhua Keyboard Controls"）；版本 23：CMD_CONFIG 末尾加了 stickAccel:f32、stickMaxSpeed:f32（小红点推光标的加速、最快速度，2026-11-01 晚）；版本 22：加了 CMD_FOCUS_OTHER（17，displayId:i32，分屏里豆花拿着键盘焦点时请服务交给另一半）；同一批 CMD_CONFIG 末尾加 leverSpeed:f32、MSG_MODIFIERS 第四个字节多一位 FN_LOCKED = 8（永久锁），FN_LATCHED 改成单次锁、FN_ARMED 改成快永久锁了，都算在 22 里）；手柄控件编号（gamepadId：0x4000 \| 种类 << 10 \| 副本 << 8 \| 参数）和输出码（GP_*，按位置；GP_C_* = N64 的 C 键，GamepadTouch 换成右摇杆推满）；按键的 action（KEY_UP / KEY_DOWN / KEY_CANCEL，CMD_HID_KEY 协议 20 起 key:i32 + action:u8）、CMD_UNLATCH（16，不带参数）、MSG_MODIFIERS 四个字节（锁住 / 按着 / 快锁了，协议 21 起第四个字节是 Fn 的 FN_LATCHED / FN_HELD / FN_ARMED 位）、MSG_CAPS（0x8B）；合并键的 id（dualKey：点一下的键 \| 按住 0.4 秒的键 << 16，isDualKey / dualTap / dualHold；协议 21 起 hold 最多 0x3FFF）；实体键盘的 Fn（协议 21）：FN_FLAG 那一段（0x40000000–0x40FFFFFF）里 Fn 键自己 FN_KEY（Windows 模式）/ FN_GLOBE_KEY（Mac 模式 fn🌐），带 Fn 层的键 fnLayerKey(底层, Fn 层的码)（isFnKey / isFnLayerKey / fnBase / fnCode），三种 id 的范围互不重叠；🌐 的按钮编号 GLOBE_BUTTON_ID（302，KeyRows 的就是它，fn🌐 单点报它的 BUTTON_TAP） |
+| `src/dev/douhua/GestureEngine.java` | 手势识别，纯 Java（`tools/test.sh` 离线测）；惯性滚动（边缘一拨接着转、碰触控板抓住，用唯一的定时器槽 TIMER_SPIN）、连续滚动（按 1/120 格出、每滚过一格咔嗒、双指锁主方向）也在这里；滚轮量的单位是 1/120 格；中键按着时单指划 = 滚动（setScrollHold，方向"推哪边视野往哪边走"、不起长按 / 惯性），小红点的位移、滚轮经 externalMove / externalScroll 出；震动种类 HAPTIC_*（协议 25 起多一种 HAPTIC_HOLD = 8"按住到点"：引擎自己不发，TouchRouter 替 KeyHolds 发，震的样子同点一下，App 据此不出声；HAPTIC_DRAG_CANCEL = 9"拖动被取消着结束"（拖着时手指被取消、cancel 收尾——释放触摸屏 / 退后台 / 换参数——报它，用户松手、第二根手指来了照旧 HAPTIC_DRAG_END；震的样子同拖动结束，App 据此不出松开声）） |
 | `src/dev/douhua/ScrollInertia.java` | 惯性滚动的物理（黏滞 + 恒定摩擦的闭式解、阻尼档位 → τ、停止时间 / 距离），纯 Java（离线测，HidTest），引擎和设置页共用 |
 | `src/dev/douhua/ConfigCodec.java` | CMD_CONFIG 的编解码（App 的 Link 写、服务的 Session 读、TestClient 写，三处共用一份），纯 Java（离线测往返）；协议 22 起末尾多一个 leverSpeed:f32（中键滑动的滚动速度倍数），共 60 字节；协议 23 起再加 stickAccel:f32、stickMaxSpeed:f32（小红点推光标的加速 0–1、最快速度 计数 / 秒），共 68 字节；协议 24 起再加 frowFlip:u8（实体键盘 F 行平时按出第二功能，GestureEngine.Config.frowFlip，手势引擎不看、TouchRouter.setConfig 交给 KeyHolds），共 69 字节 |
 | `src/dev/douhua/TouchRouter.java` | 触摸分流 + 键盘修饰键（按住要计时的修饰键 / Caps / 合并键交给 KeyHolds，报文、自带修饰键的键、开合的 Ctrl 自己管），纯 Java（离线测）；桌面模式跑在服务的 Session 里，蓝牙模式跑在 App 里；键盘的缝分给最近的键（nearestKey）、键盘触点记录（Trace）也在这里；onTarget（只读：落在键 / 按钮 / 键盘范围上吗，分屏透传问手势带里的点用）；惯性转着时碰屏幕任何地方都停（down 里不在触控板上的按下、stopSpin 给服务的透传手指 / App 用），修饰键一变告诉引擎 Ctrl 按没按着；小红点（REGION_STICK，按得到的是报上来那个正方形的内切圆——Region.contains，服务、App 本地分流、KeyFingers 共用；第一根手指交给 TrackPoint，按着时请宿主开节拍 Output.startTicks / onTick）、三个鼠标键（REGION_MOUSE_BUTTON：左键和"左键"按钮 / holdLeft 共用计数——holdLeft 的松开只减它自己那几份 cmdLeftHolds，收尾以后迟到的松开不理，中键按着 = 滚动、没滚过松开补中键单击；按在中键上的第一根手指自己也是滚动杆——lever，另一个滚动杆模式的 TrackPoint，和红点共用一套节拍：任一按着就开、都松了才停（stopTicksIfIdle），挪出轻点容差就算滚过、松开不补单击；中键按着、滚动杆还没挪出轻点容差时别的来源——红点、触控板、开合、滚轮动作——先出了滚轮，滚动杆让位到抬起（leverYield：按着中键当修饰键时拇指漂一点不另外滚））；按在左键上的第一根手指是左键杆（leftLever，2026-11-01 晚：另一个 TrackPoint 的左键杆模式，按下照旧马上按住左键、轻点 = 单击，
-挪出轻点容差后照红点推光标的曲线出位移 = 拖动；节拍和红点、滚动杆三个来源共用——ticksWanted / stopTicksIfIdle；左键杆还没开始时别的来源——红点、触控板——先动了光标就让位到抬起，leftLeverYield；滑出左键照样是杆）；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立）；按键（2026-11-01，协议 20）：区域那一路（down / up）和界面那一路（key(key, action, t)）都进 KeyHolds，按键专用的第二个定时器 Output.scheduleKeys / cancelKeys → onKeyTimer（和引擎那个槽分开），每个带时间的入口记下 now；鼠标键按下 / 松开、带着按住的鼠标键移动、滚轮、开合、三指四指手势给按着的修饰键标"用过"（mouse 第一行在 lastButtons 赋值之前比），开合开始前先结算待定的键；unlatch（CMD_UNLATCH）；Output.modifiers(锁住, 按着, 快锁了, Fn) 变了才报（协议 21 起带 Fn 的状态）、Output.caps(sent) 报"Caps 显示翻一下"；Mac 模式 fn🌐 单点时报 Proto.GLOBE_BUTTON_ID 的 BUTTON_TAP（HoldsHost.globe，和 🌐 键同一条路）；换参数时按着键的手指留着（clearSlots(true)：键不依赖引擎，抬起照常松开、照常判；按着的 Fn、锁着的 Fn 同样留着）；F 行的第二功能（协议 24，2026-11-02）：多媒体页、系统键那一组各一个槽（Hid.UsageSlot：一次报一个码、报最后按下的、全松开报 0、变了才发），Output.consumer / system 出（不做成 default），pressKey / releaseKey 照 KeyHolds 的内部码（CODE_CONSUMER / CODE_SYSTEM）分派到槽；releaseAll 两个槽不是 0 就各发一帧 0；setConfig 顺带设 F 行翻转（c.frowFlip，不报界面），setFrowFlip 只设翻转（App 同步本地分流用） |
+挪出轻点容差后照红点推光标的曲线出位移 = 拖动；节拍和红点、滚动杆三个来源共用——ticksWanted / stopTicksIfIdle；左键杆还没开始时别的来源——红点、触控板——先动了光标就让位到抬起，leftLeverYield；滑出左键照样是杆）；手柄页（REGION_GAMEPAD 交给 GamepadTouch，Output.gamepad 出报文，setGamepadConfig、releaseAll / 换参数时回中立）；按键（2026-11-01，协议 20）：区域那一路（down / up）和界面那一路（key(key, action, t)）都进 KeyHolds，按键专用的第二个定时器 Output.scheduleKeys / cancelKeys → onKeyTimer（和引擎那个槽分开），每个带时间的入口记下 now；鼠标键按下 / 松开、带着按住的鼠标键移动、滚轮、开合、三指四指手势给按着的修饰键标"用过"（mouse 第一行在 lastButtons 赋值之前比），开合开始前先结算待定的键；unlatch（CMD_UNLATCH）；Output.modifiers(锁住, 按着, 快锁了, Fn) 变了才报（协议 21 起带 Fn 的状态）、Output.caps(sent) 报"Caps 显示翻一下"；Mac 模式 fn🌐 单点时报 Proto.GLOBE_BUTTON_ID 的 BUTTON_TAP（HoldsHost.globe，和 🌐 键同一条路）；换参数时按着键的手指留着（clearSlots(true)：键不依赖引擎，抬起照常松开、照常判；按着的 Fn、锁着的 Fn 同样留着）；F 行的第二功能（协议 24，2026-11-02）：多媒体页、系统键那一组各一个槽（Hid.UsageSlot：一次报一个码、报最后按下的、全松开报 0、变了才发），Output.consumer / system 出（不做成 default），pressKey / releaseKey 照 KeyHolds 的内部码（CODE_CONSUMER / CODE_SYSTEM）分派到槽；releaseAll 两个槽不是 0 就各发一帧 0；setConfig 顺带设 F 行翻转（c.frowFlip，不报界面），setFrowFlip 只设翻转（App 同步本地分流用）；协议 25（声音第一批的事件层）：被取消的手指（up 的 canceled、releaseAll，换参数 / setGamepadConfig 时手柄那一路——gamepadCanceling）报给界面的松开带 Proto.BUTTON_CANCELED（只加信息：还在按钮里照旧是 TAP），KeyHolds 的按住到点报 HAPTIC_HOLD（HoldsHost.holdReached；TouchRouterTest.protocol25Flags） |
 | `src/dev/douhua/KeyHolds.java` | 按着时要计时的键（2026-11-01），纯 Java（离线测，KeyHoldsTest 全经真 TouchRouter 跑），TouchRouter 持有一份、不加锁：修饰键（0xE0–0xE7、不带自带修饰键，左右八个含 AltGr / ⌃⌥⌘）按下马上发，按住期间用过（按了别的键、TouchRouter 报的鼠标 / 滚轮 / 开合 / 手势，used）或按下时已有别的键 / 鼠标键按着（Host.mouseBusy）= 组合、松手就松，单独点一下 = 点一下，单独按住 HOLD_MS（0.4 秒）–LOCK_MAX_MS（1 秒）松手 = 锁（到 0.4 秒 armed + 震），超过 1 秒退回不锁；锁了以后打完下一个普通键解开、再按一下锁住的键也解开；Caps（0x39）按下先不发，点一下发 Caps Lock（按着 CAPS_TAP_MS 60ms 再松）+ Host.caps(true)，按住 0.4 秒只 Host.caps(false) + 震；合并键（Proto.dualKey）点一下 tap 键、按住 0.4 秒 hold 键（只发一次）+ 震；待定的 Caps / 合并键在别的键按下、手指按着的修饰键（正常）松开、开合开始（settle）之前当点一下结算（被取消的修饰键松开不结算）；按着的键按 id 计数（计数 0 的松开整个不理：releaseAll 之后迟到的）；到点按截止时刻 + 当前状态处理（onTimer，过期的回调什么都不多做），排定时器正好排在最早的截止时刻；Host 的 pressKey / releaseKey 是原语、不回调这里；Fn（第 3 批，协议 21，Proto.FN_KEY / FN_GLOBE_KEY）：阶段和修饰键放在一起算（第 9 格，到点、用过、排定时器同一份代码）；协议 22 起（2026-11-01 晚）不再照修饰键——组合 = 那一下出 Fn 层，Windows 模式单独点一下 = 单次锁（fnOnce：下一个普通键出 Fn 层、它松开时解开，修饰键不消耗它），fn🌐 单独点一下照旧 = 🌐（Host.globe，没有单次锁），单独按住到 0.4 秒 = 永久锁（fnLock，到点 ARMED + 震，没有 1 秒的上限，按多久都算），锁着（单次或永久）时单独再按一下 Fn = 松手解开（阶段 UNLOCK；按住也算、不震、fn🌐 不出 🌐），锁着时当组合用（用过、按下时别的键按着）锁照旧；不发 HID；fn() 报 Fn 的单次锁 / 按着 / 快永久锁了 / 永久锁（FN_LATCHED / HELD / ARMED / LOCKED）；fnActive = 按着 \| 单次锁 \| 永久锁；带 Fn 层的键（Proto.fnLayerKey）按下那一刻按 Fn 按着或锁着（fnActive）定码、记在 fnPresses，之后当那个码处理（底层是修饰键的照修饰键），松开松记下的码；同一个 id 已经按着时后来的手指跟着第一根的码，最后一根松开才忘；releaseAll / unlatch 连 Fn 的单次锁、永久锁一起清，打完普通键只清单次锁；F 行键（协议 24，Proto.frowKey）照带 Fn 层的键那一套：按下那一刻定码、记在 fnPresses、松开松记下的那个——F1–F12 发第二功能 = fnActive ^ frowFlip（F 行翻转，"平时按出第二功能"），第二功能是组合键时就是一个自带修饰键的键、是多媒体 / 系统键时出内部码 CODE_CONSUMER / CODE_SYSTEM \| 用法码（负数，撞不上区域 id，宿主照标记分派），第二功能也是普通键（解开锁住的修饰键、让按着的修饰键算用过、用掉 Fn 单次锁）；Esc（FROW_FN_LOCK）在 fnActive 时定成 CODE_FN_LOCK_TOGGLE：第一根手指按下翻转 frowFlip、报界面，不发 HID，确认的那一下晚 FLIP_BUZZ_MS（100ms）再 Host.holdReached 震（当场震会被 Esc 按下的"嗒"盖掉，审查后改的；走按键定时器、releaseAll 撤掉、连翻两次只震后一次），松开只用掉 Fn 单次锁（锁住的修饰键不解开）；frowFlip 是设置（setFrowFlip 不报界面，releaseAll / unlatch 不清），fn() 第四个字节带 FROW_FLIP |
 | `src/dev/douhua/Hid.java` | 鼠标 / 键盘 / 媒体键的 HID 描述符和报文、键盘按键状态，纯 Java；USB 和蓝牙发的字节一样，蓝牙多报文编号；带滚轮分辨率倍率的鼠标描述符（MOUSE_DESC_HIRES 蓝牙用，竖、横两个倍率；MOUSE_DESC_HIRES_V 桌面模式 uhid 用，只有竖向一个；输入报文都和旧的一字不差）、倍率字节编解码、WheelOut（1/120 格 → 计数、余数、拆帧；uhid 那份设 / 问倍率的 setUhidFeature / uhidFeatureReport，UhidMouse 只调它们；离线测 HidTest）；手柄描述符 GAMEPAD_DESC（Game Pad、15 键 + Hat + X/Y/Z/Rz + Brake/Accelerator，13 字节，全零 = 中立）和 Gamepad（状态、报文、两路合并 merge）；修饰键掩码的小工具（ctrl：左右 Ctrl 都算；modifierBit）。以前的 modifierUsages（界面替服务解开锁定时逐个点一下）2026-11-01 随协议 20 删了，改发 CMD_UNLATCH；协议 24：系统键那一组 SYSTEM_DESC（Generic Desktop / System Control，16 位数组、码 1–0xB7、逻辑最小 1 → 0 = 没按，照 QMK、对过 HUT 1.7），蓝牙 combinedDescriptor(abs, hires, system) 末尾加报告 6（两参数的版本照旧不带，前面报告 1–4 逐字节不变），桌面模式 controlsDescriptor（多媒体报告 3 + 系统键报告 6，字节同蓝牙那两段）和 controlsReport（[编号, 低, 高]）、usageReport（蓝牙 2 字节），UsageSlot（一次报一个码的槽，TouchRouter 用） |
 | `src/dev/douhua/BtHid.java` | 蓝牙模式：注册成蓝牙键盘鼠标、连上次那台、发报文；进程里一份，最后一个用的界面走了 60 秒才停；描述符跟着"连续滚动"开关（变了就注销、重新注册，descriptorChanged），回应主机设 / 问滚轮倍率；协议 24：描述符末尾一直带系统键（报告 6，Hid.combinedDescriptor(true, hires, true)），对方删掉手机重新配对一次才认；sendConsumer / sendSystem（按下发码、松开发 0，F 行的第二功能；按钮动作的 pressConsumer = sendConsumer(码) + sendConsumer(0)，共用报告 3），onGetReport 认报告 6 |
-| `src/dev/douhua/Haptics.java` | 震动：点击、咔嗒、颗粒、拖动时的持续轻震、按键的"嗒"、惯性的"放开 / 刹住"（调试版设置里能挑候选波形，正式包用默认） |
-| `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；几屏共用的 ⋯ 菜单的项（2026-11-01 晚起按使用频率排，顺序、编号、哪屏有哪几项都在纯 Java 的 MenuOrder：主界面 设置 / 键盘 / 旋转 / 手柄 / 退出，键盘屏 设置 / 收起键盘 / 键盘（豆花 / 实体，MENU_BOARD_ID 418，switchBoard 只写 kbd_board；写"实体 · 名字 · 模式"，没数据的模式写 kbd_menu_no_mode）/ 指点（显示着的那块自己的；实体键盘按显示着的那一级——fixedSizeShown——写实际用的、轮换时不给小红点就跳过它，Boards.pointer(尺寸) / nextPointer(尺寸)）/ 布局（只在显示豆花布局时）/ 调整大小 / 旋转 / 手柄 / 退出，手柄页 设置 / 预设 / 旋转 / 返回触控板 / 退出；"手柄"只在桌面模式；项的字照编号取 menuLabel，不靠平行数组）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：五页往里收）；手柄页的进出（setGamepadMode：桌面模式下手柄页走本地分流，CMD_GAMEPAD 发给服务）、吞自己手柄的键和摇杆（dispatchKeyEvent / dispatchGenericMotionEvent）；修饰键 / Caps 的显示（2026-11-01）：onModifiers(锁住, 按着, 快锁了, Fn) → showKeyState 两块面板都画（Fn 的状态 fnMods，协议 21，只有实体键盘画）；Mac 模式 fn🌐 单点时分流报的 🌐 点击（Proto.GLOBE_BUTTON_ID）照 🌐 键走 onSpecialKey；Caps 的显示只有这一份（static capsShown，服务 MSG_CAPS / 本地分流只报"翻一下"，换了主机——蓝牙地址变了、蓝牙 ↔ 桌面模式——在 updateHostKind 里归"关"）；本地分流的按键定时器 localKeyTimer；onLocalKey(key, action)（KEY_DOWN / KEY_UP / KEY_CANCEL，数字键盘、动作里的组合键同）；进空中鼠标 / 手柄页替服务解开锁定发 CMD_UNLATCH（link.unlatch）；实体键盘的 Fn / fn🌐（第 3 批，协议 21）是键不是按钮：区域是 REGION_KEY、id 是 Proto.FN_KEY / FN_GLOBE_KEY（FixedLayout.regionType / keyId），App 收到的按下 / 松开是 KEY_ID_BASE + 这个 id、走 onButton 里键盘键那一支（只画样子、震），按住 / 点一下 / 锁的规矩在 KeyHolds，App 不另外处理（onSpecialKey 里没有 Fn）；⋯ 菜单「键盘」那一项在存着的组合尺寸配不上时写 kbd_menu_no_size；分屏里拿着焦点就交给另一半（协议 22，2026-11-01 晚）：maybeHandFocus 照 FocusHandoff 问、发 link.focusOther，拿到 / 丢掉焦点、连上 / 断开服务、窗口占满 ↔ 没占满、贴字面板收起、外接屏变了时都问一次，隔不够 1 秒就 postDelayed（focusRetry）再问；F 行的第二功能（协议 24）：LocalOutput.consumer / system → bt.sendConsumer / sendSystem（只蓝牙模式），onRelayConsumer（MSG_CONSUMER → 蓝牙报告 3 / 6），onStop、服务断开补发的全零也补这两个；F 行翻转 frowFlip（设置里现在这种模式的那份，Boards.frowFlip）：分流报的 Proto.FROW_FLIP 和它不一样 = Fn+Esc 翻了（onFrowReported：存进设置；服务报的同步给本地分流 local.setFrowFlip，本地分流报的发 link.config 给服务），showKeyState 里 fnMods 的 FROW_FLIP 位一律照它（收尾归零时不清）；dispatchKeyEvent 吞自己虚拟键盘的键时不吞多媒体 / 系统键接口（产品号 Proto.HID_CONTROLS_PRODUCT）的：音量、媒体这些归主机（这台手机）处理 |
+| `src/dev/douhua/Haptics.java` | 震动：点击、咔嗒、颗粒、拖动时的持续轻震、按键的"嗒"、惯性的"放开 / 刹住"（调试版设置里能挑候选波形，正式包用默认）；协议 25 的 HAPTIC_HOLD（按住到点）照点一下震（playNow 开头换成 HAPTIC_CLICK）、HAPTIC_DRAG_CANCEL（拖动被取消着结束）照拖动结束震；调试版"震动延后"（声音第一批第 ④ 步，setDelayMs 0–40 ms）：有声音的那几种——按键的"嗒"（playKey）、点一下、滚轮咔嗒、惯性刹住——晚这么多再震（Handler 消息，不分配），开始 / 结束拖动（连着持续轻震的开关）、颗粒、手势、惯性放开、按住到点不延后；0 = 不延后（正式包、声音关着时一律 0，和以前逐字一样） |
+| `src/dev/douhua/Sounds.java` | 声音（2026-11-02 第一批，和 Haptics 并列；MainActivity 经事件层 SoundEvents 调它，设置 → 外观 → 声音那一节（第 ④ 步）打开，默认套装"关"）：进程一份（get），主界面和设置页的试听台共用；configure（套装 / 音量 / 调试版的候选、偏移、随机幅度）、acquire / release（页面 onStart / onStop 计数，到 0 关管道；设置页也 acquire）、play(声音 id, key[, delayMs])（主线程只往无锁队列写一个数，暂停着时再 unpark；delayMs = 一对"咔哒"的"哒"晚多少毫秒）、audition(声音 id, key, 候选[, delayMs])（指定候选，调试版候选区）、ready（这一套算好、管道开着：这时交的不会被丢，设置页点一项套装后等它再放那一小段）、setSuppressed（通话中）、diag（Diag：拿没拿到低延迟、采样率、burst、缓冲 / 容量、实际出声设备、是不是手机喇叭、断流（放着放着断的 xrun，和起步 / 换套 / 换路由那几下 start 分开记）/ 写错 / 丢掉 / 放了 / 抢占 / 合并、算声音的毫秒和字节、线程优先级；line() 一行技术缩写；管道坏了也照样写 failed 和原因）。管道在 douhua-sound 线程（Engine）：AudioTrack 低延迟 + 流模式、原生采样率、单声道 16 位、USAGE_ASSISTANCE_SONIFICATION（静音 / 勿扰下系统自己静音、跟"系统"那档音量、不抢音频焦点）、setPreferredDevice(手机喇叭) + 查实际路由（不是手机喇叭写静音；play 之前查一次，还不知道的只在没声音时再查，路由变了马上查、重读缓冲和低延迟）、拿到低延迟才把缓冲压到两个 burst（每写一块查断流，放着放着断了加一个 burst；拿不到不动系统给的大小）、起步 / 换套 / 换路由那几块（GRACE_WRITES）的断流不算缓冲不够、换套重算前先 pause + flush（算的那段不写也不断流）、10 秒没声音 pause + flush + park；建 / 写 / 查路由 / 关都不在主线程；套装"关"时不建线程不建管道；这个线程里任何 Throwable 只让声音停掉；线程结束（开不起来、一直写出错、出错）告诉主线程（engineEnded），还有页面开着就过 RETRY_MS 5 秒（连着坏翻倍、最多 60 秒）开一个新的，退后台、换套装从头算 |
+| `src/dev/douhua/SoundSynth.java` | 合成的声音（第一批全是合成的），纯 Java（离线测，SoundTest）：八种配方（TAP 轻的闷嗒（另压一道 450 Hz 二阶高通：噪声激励的裙边拖进 500 Hz 以下）、SWITCH 鼠标微动开关、TAPTIC 像 MacBook 触控板、TAPTIC_LOW 像 MacBook 更低的那种（只放 340 Hz 上下那个低音的 2、3、4 倍泛音，耳朵听出低音——残留音高；手机喇叭放不出低音本身）、TICK 滚轮刻度、WOOD 木块 / 木鱼、TWIG 细树枝折断（第一下和后面的小裂分开算，后面的合起来最响压到第一下的 TWIG_REST_MAX 0.55：第一下永远最响）、BAMBOO 竹筒）= 激励（锤头半个正弦 / 冲击 / 衰减噪声）喂二阶共振器（模态合成）；变体之间共振 ±0.9%（VARIANT_F，约 ±16 音分）、T60 ±5%；统一收尾 finish：4 阶高通 300 Hz、3.7 kHz 宽凹 −9 dB（压 2.5–5.5k）、剪开头静音、按 −60 dB 剪尾巴 + 3 ms 淡出、峰值归一；Recipe（不可变，scaled 派生左右中 / 松开）；Rng（自己写的 SplitMix64，同一个种子在电脑、手机上逐个一样）；噪声按 √(48000 / 采样率) 缩，44.1 / 48 / 96 kHz 听起来一样 |
+| `src/dev/douhua/SoundBank.java` | 声音的清单，纯 Java（离线测）：套装（PACK_IDS：off / light / wood，存 Prefs 用的字，packOf 认回来）、声音 id（"发生了什么"：KEY_DOWN / KEY_UP / MOUSE_DOWN / MOUSE_UP / PAD_DOWN / PAD_UP / SCROLL / CATCH / GAMEPAD_DOWN / GAMEPAD_UP / GAMEPAD_TICK，事件层只认这一层）、槽（SLOT_IDS：key / big / space / enter / key_up / mouse_down / mouse_up / pad / scroll / catch，候选按它分）、子声音（鼠标左右中、触控板按下 / 松开，subRecipe）、candidates(套, 槽)（每类 2–4 个，第 0 个默认，code A–D、desc() 数字和单位不翻译；触控板两套共用同一组像 MacBook 的）、电平 levelDb（照方案 2.6 的表，说的是响度不是峰值）、响度 loudnessDb（过粗略的手机喇叭——SPEAKER_HZ 800 Hz 二阶高通——取最响的 50 ms 里的能量）、build（按采样率预先算好 Bank：每个子声音 VARIANTS = 4 个变体，调试版全算、正式包只算选的；每个子声音按算出来的响度补增益 Bank.gain(槽, 候选, 子声音)，补到 LOUDNESS_REF_DB −41 + 电平表——几十毫秒的声音听起来多响看能量不看峰值，以前按峰值归一时鼠标比字母轻 7 dB、触控板只比鼠标轻 0.4 dB）；"像 MacBook"四个候选、竹筒的主共振放在 550 Hz 以上（手机喇叭放不出更低的） |
+| `src/dev/douhua/SoundVary.java` | 变化规则（方案 2.6），纯 Java（离线测）：resolve(声音 id, key, 帧, 采样率) → Shot（槽、子声音、音分、dB、互斥的组、短尾巴；每次用同一个对象）；键的类别 keyClass（只看键 id 里的用法码 usage：普通 / 功能 −1.5 dB / 修饰 −3 dB / 大键（退格、Shift、小键盘 + 0）/ 空格 / 回车，三条触摸路径、两块键盘一样）、行 row → rowCents（F 行 +30 … 空格那一排 −20 音分）；小随机（按键 ±12 音分、鼠标 ±10、滚轮 ±8、±1.2 dB，乘随机幅度；加上变体之间的 ±16 不超过方案的 ±30；变体不连着重复，随机幅度 0 时一律第 0 个）；打得快（平均间隔 < 125 ms 轻 1.5–4 dB、短尾巴，≥ 140 ms 才恢复——回差，压在门槛上抖着打不忽轻忽重；按下一定出声）；滚轮一秒超过 25 格合并、轻 3 dB；时间不随机 |
+| `src/dev/douhua/SoundQueue.java` | 主线程 → 混音线程的请求队列：定长、无锁、不分配，多写一读（CAS 抢位置、0 = 空格子），满了丢；纯 JDK（离线测，含 4 个线程同时写） |
+| `src/dev/douhua/SoundMixer.java` | 混音，纯 Java（离线测）：request 把一次请求打包成一个 long（声音 id、key、候选、再轻多少；第 ③ 步加了"晚多少毫秒" 0–255——一对"咔哒"的"哒"：从这一块第 0 帧往后数正好那么多帧开始，交的时候不淡同一组正在响的，等着的时候被同一组新来的淡掉 / 被抢占就整个不放）；post（任何线程）；render（混音线程，每块开头取完请求、一律从第 0 帧开始）；同组 6 ms 淡出（同一个键的按下 / 松开、同一个鼠标键）；活着的最多 8 个、超了淡最老的，池子 16（满了硬切淡得最少的）；线性插值变调；软限幅 softClip（0.5 以下原样、tanh）；每个声音乘 Bank.gain（响度补到电平表，单个声音的峰值都在 0.5 以下）；音量滑块 volumeGain（0–100，每格 0.4 dB）；quiet / idleFrames 给 Sounds 判断暂停 |
+| `src/dev/douhua/SoundEvents.java` | 声音的事件层（2026-11-02 第一批第 ③ 步），纯 Java（离线测，SoundEventsTest）："发生了什么" → 放哪个声音（Out.play → Sounds.play）、这一下震不震；MainActivity 在调震动的那几处调它，声音先交出去再震，只在主线程用、不分配。键 keyDown / keyUp（被取消的不出声）、键盘上的特殊键 specialDown / specialUp（?123 / Fn / 🌐 / ⋯ / 快捷行动作，发声时当 Menu 键 0x65——功能键、最下一排——的合并键 specialKey，每个一组；只给按过的松开出声：fn🌐 单点报的 🌐 点击没有按下）、鼠标键 mouseDown / mouseUp、点击类动作 click（一对：按下 + CLICK_GAP_MS 45 ms 后松开）、滚轮动作 wheel、手柄 gamepadDown / Up；routerButton(id, action)：分流报来的键盘键、手柄控件（协议 25 的被取消标记在这里拆）；haptic(kind, from)：分流 / 手柄页 / 空中鼠标报来的震动 → 轻点（HAPTIC_CLICK）= 像 MacBook 触控板的一对 PAD_DOWN + 45 ms PAD_UP、触控板拖动开始 / 结束 = PAD_DOWN / PAD_UP（空中鼠标的按住拖动是鼠标左键；拖动被取消着结束 HAPTIC_DRAG_CANCEL 不出声）、滚一格 = SCROLL（手柄页上是 GAMEPAD_TICK、空中鼠标的回正中不出）、刹住 = CATCH、放开 / 按住到点 / 颗粒 / 手势不出声，返回震不震；四个开关（键盘、鼠标键含触控板轻点、滚轮含刹住、手柄）；wantTicks（引擎要不要发滚轮咔嗒：震动开关 \|\| 声音开着且滚轮出声）——"滚轮出声、不震"时引擎照样发、haptic 对滚一格 / 惯性放开 / 刹住返回 false；声音关着时什么都不放、haptic 一律 true、wantTicks = 震动开关（逐字和以前一样）；reset（接管、断开时忘掉按着的特殊键）；panelDown / panelUp（面板自己收触摸的键：特殊键当特殊键、普通键当键，canceled 不出声；MainActivity.onKeyHaptic / onKeyRelease 只调它们） |
+| `src/dev/douhua/SoundBench.java` | 设置 → 外观 → 声音那一节的纯 Java 部分（2026-11-02 第一批第 ④ 步，离线测 SoundBenchTest）：试听台的一排键（KEYS ⇧ a s d ⌫ Space ↵ = 用法码，KEY_LABELS / KEY_WEIGHTS，keyFn 同 KeyRows.functionKey）；点一项套装放的那一小段（DEMO：h e y、空格、回车、触控板轻点一对、滚两格，{毫秒, 声音 id, key}，不到 1.5 秒）；调试版候选区：hit(槽, 第几下, 连打)（Shot：声音 id、key、晚多少毫秒、candidate = 用正在试的候选；点一下只放这个槽、松开的槽只放松开；连打的每一下是完整的一下——按键按下 + KEY_HOLD_MS 70 ms 松开、鼠标 + 45 ms，试的那一半用候选、另一半用选的；按键轮着换三排上的几个字母）、haptic(槽)（同主界面同一种操作的震动：键"嗒" HAPTIC_KEY、鼠标 / 触控板点一下、滚轮咔嗒、惯性刹住，松开不震 HAPTIC_NONE）、连打 BURST_HZ 7 × BURST_MS 2 秒（方案写 8，8 下正好间隔 125 ms、压在"打得快"的门槛上忽轻忽重，改 7）、"打乱顺序" shuffled / order（同一个种子一样）、code（A–D）、微调滑块的范围（OFFSET_* −20..+6 dB、RANDOM_MAX_PCT 300、DELAY_MAX_MS 40、clampDelay）；试听台那一小块触控板 Pad（轻点 = 没挪出容差、不超过轻点时长，抬起时认；划 = 挪出容差以后从按下点起按路长每 step 一格；cancel） |
+| `src/dev/douhua/MainActivity.java` | 界面、按钮事件、贴字面板、数字键盘、旋转、动作执行；把区域位置报给服务；几屏共用的 ⋯ 菜单的项（2026-11-01 晚起按使用频率排，顺序、编号、哪屏有哪几项都在纯 Java 的 MenuOrder：主界面 设置 / 键盘 / 旋转 / 手柄 / 退出，键盘屏 设置 / 收起键盘 / 键盘（豆花 / 实体，MENU_BOARD_ID 418，switchBoard 只写 kbd_board；写"实体 · 名字 · 模式"，没数据的模式写 kbd_menu_no_mode）/ 指点（显示着的那块自己的；实体键盘按显示着的那一级——fixedSizeShown——写实际用的、轮换时不给小红点就跳过它，Boards.pointer(尺寸) / nextPointer(尺寸)）/ 布局（只在显示豆花布局时）/ 调整大小 / 旋转 / 手柄 / 退出，手柄页 设置 / 预设 / 旋转 / 返回触控板 / 退出；"手柄"只在桌面模式；项的字照编号取 menuLabel，不靠平行数组）、开关（setMenu）、⋯ 在哪（menuAnchor），键盘屏调整栏的按钮；主界面四角的小按钮、自定义按键（applyCustomKeys）；屏幕边缘留白（updateEdgeMargins：五页往里收）；手柄页的进出（setGamepadMode：桌面模式下手柄页走本地分流，CMD_GAMEPAD 发给服务）、吞自己手柄的键和摇杆（dispatchKeyEvent / dispatchGenericMotionEvent）；修饰键 / Caps 的显示（2026-11-01）：onModifiers(锁住, 按着, 快锁了, Fn) → showKeyState 两块面板都画（Fn 的状态 fnMods，协议 21，只有实体键盘画）；Mac 模式 fn🌐 单点时分流报的 🌐 点击（Proto.GLOBE_BUTTON_ID）照 🌐 键走 onSpecialKey；Caps 的显示只有这一份（static capsShown，服务 MSG_CAPS / 本地分流只报"翻一下"，换了主机——蓝牙地址变了、蓝牙 ↔ 桌面模式——在 updateHostKind 里归"关"）；本地分流的按键定时器 localKeyTimer；onLocalKey(key, action)（KEY_DOWN / KEY_UP / KEY_CANCEL，数字键盘、动作里的组合键同）；进空中鼠标 / 手柄页替服务解开锁定发 CMD_UNLATCH（link.unlatch）；实体键盘的 Fn / fn🌐（第 3 批，协议 21）是键不是按钮：区域是 REGION_KEY、id 是 Proto.FN_KEY / FN_GLOBE_KEY（FixedLayout.regionType / keyId），App 收到的按下 / 松开是 KEY_ID_BASE + 这个 id、走 onButton 里键盘键那一支（只画样子、震），按住 / 点一下 / 锁的规矩在 KeyHolds，App 不另外处理（onSpecialKey 里没有 Fn）；⋯ 菜单「键盘」那一项在存着的组合尺寸配不上时写 kbd_menu_no_size；分屏里拿着焦点就交给另一半（协议 22，2026-11-01 晚）：maybeHandFocus 照 FocusHandoff 问、发 link.focusOther，拿到 / 丢掉焦点、连上 / 断开服务、窗口占满 ↔ 没占满、贴字面板收起、外接屏变了时都问一次，隔不够 1 秒就 postDelayed（focusRetry）再问；F 行的第二功能（协议 24）：LocalOutput.consumer / system → bt.sendConsumer / sendSystem（只蓝牙模式），onRelayConsumer（MSG_CONSUMER → 蓝牙报告 3 / 6），onStop、服务断开补发的全零也补这两个；F 行翻转 frowFlip（设置里现在这种模式的那份，Boards.frowFlip）：分流报的 Proto.FROW_FLIP 和它不一样 = Fn+Esc 翻了（onFrowReported：存进设置；服务报的同步给本地分流 local.setFrowFlip，本地分流报的发 link.config 给服务），showKeyState 里 fnMods 的 FROW_FLIP 位一律照它（收尾归零时不清）；dispatchKeyEvent 吞自己虚拟键盘的键时不吞多媒体 / 系统键接口（产品号 Proto.HID_CONTROLS_PRODUCT）的：音量、媒体这些归主机（这台手机）处理；声音（2026-11-02 第一批第 ③ 步，协议 25）：Sounds（进程一份，onStart acquire / onStop release，applySound 读 Prefs 配套装、音量、四个开关，通话中 setSuppressed）+ 事件层 sound（SoundEvents）挂在调震动的那几处——onButton 先拆协议 25 的被取消标记（Proto.buttonAction，别的照旧按去掉标记的处理），键盘键 / 手柄 routerButton、特殊键 onKeyHaptic / specialUp、三个鼠标键 mouseKeyButton（迟到的松开照旧不理）、"左键"按钮 / 音量键按住左键 buttonAction / actionDown / actionUp、点击类动作 fire、滚轮动作 wheel、面板自己收触摸 onKeyHaptic / onKeyRelease、数字键盘、onHaptic（分流的震动，手柄页上 FROM_GAMEPAD；返回 false 就不震）、airHaptic（FROM_AIR）；localTouch / mouseKeyTouch 的 ACTION_CANCEL 也报带标记的松开；engineConfig()：声音开着且滚轮出声时让引擎发滚轮咔嗒（震不震照 SoundEvents.haptic），声音关着时和 prefs.engineConfig() 一模一样；scrollTicksOn 是用户的震动开关；applySound 第 ④ 步起读的是这一套的候选（prefs.soundChoices(套)），调试版、声音开着时把"震动延后"交给 Haptics.setDelayMs（别的时候 0） |
 | `src/dev/douhua/FixedSizing.java` | 实体键盘逐级缩的状态（2026-11-01），纯 Java（离线测，FixedLayoutTest.sizing，含随机序列）：这次显示哪一级（update：KeyboardPlan.fixedLevel 按整页宽现算、不做回差）、用哪份大小位置（按显示着的那个尺寸取：缩成笔记本就用笔记本那份）、调大小从显示着的（撑开过的）那份开始拖（beginDrag）、没拖动就换回、拖了就存进显示着的那个尺寸（endDrag 返回 Save）、中途换级 / 换存的那几份 / 换键盘这一下作废、恢复默认（reset）；KeyboardScreen 只调它 |
 | `src/dev/douhua/KeyboardFace.java` | 键盘页上两块面板（豆花布局 KeyboardPanel、实体键盘 FixedKeyboardView）对外的共同方法（第 1B 批）：修饰键、按下的样子、松开、主题、报区域、⋯ 键、空位、红点；KeyboardScreen.face 给显示着的那块；setKeyState(锁住, 按着, 快锁了, Fn, caps)（2026-11-01 起取代 setModifiers：高亮 = 锁住 \| 快锁了 和 Caps 的显示，键帽上的字照 锁住 \| 按着 换；Fn 协议 21 起，只有实体键盘画：协议 22 起单次锁画高亮、永久锁 / 快永久锁了画实底） |
 | `src/dev/douhua/FixedLegends.java` | 实体键盘的键帽字（res/raw/kbd_win / kbd_mac）和布局清单（kbd_catalog）的读法，纯 Java（离线测，FixedLegendsTest）：格式照 tools/kbd/kbdtable.py（段、别名、死键 `\*`、转义），读不出就抛异常；四层（普通 / Shift / 第三层 / 第三层+Shift）；画不画得出来（printable：私用区的苹果标、组合附加符号不画）。Mac 模式查不对调那段（`<id>`，不读 `<id>.iso`）。清单（第 2 批）按文件头 `#!columns` 认栏（缺栏 / 栏数不对抛异常）：Layout 带起名字的 locale + variant（variantWord：小写的要翻译）、有数据的模式（hasMode，至少一种：拉美没有 Mac 的，意大利 QZERTY、瑞典旧版没有 Windows 的）、kpdl / kpdlWin / kpco（小键盘小数点按模式取 kpdl(mode)：Windows 模式照微软布局表的 kpdl_win、Mac 模式照 xkb 的 kpdl；ABNT2 小键盘多的 0x85）、capsMac（拼音的 中/英）、macOS 现名 / CLDR 旧名、Windows / Linux / 安卓名（原来的 LOCALE_TAGS 挪进了清单） |
@@ -53,7 +61,7 @@ fitText（先照旧缩到 7sp，一行还放不下 hard 的组合键在 "+" / �
 | `src/dev/douhua/FixedData.java` | 实体键盘的数据从 res/raw 读进来（进程里读一次缓存），拼逐级缩的几级（ladder：选的尺寸往下每级一块，FixedLayout.forEntry；右 Alt 写不写 AltGr 看字表有没有第三层，小键盘的两个字、Mac 模式的 Caps 键帽看清单；字表读不出来 / 没有这一段（拉美的 Mac 模式，意大利 QZERTY、瑞典旧版的 Windows 模式）时是空列表，键盘页照样显示豆花布局）、尺寸的短名字（sizeName，⋯ 菜单用）、布局在界面语言里叫什么（langName → Boards.langName：界面语言 + 小写区分词的翻译 kbd_var_intl / legacy / pinyin；第 2 批起 1B 的 kbd_lang_us / de 不用了、删了）、设置页的语言列表（langChoices）、开源许可页的文本；第 3 批：sizeName 认 75% / 65% / 苹果紧凑（kbd_size_short_75 / 65 / apple）；ladder 对配不上的组合（苹果紧凑 × Windows / ABNT2）也是空列表；langChoices 带尺寸；协议 24：ladder 每一级照 spec.fkeys（这种模式下 F1–F12 配的第二功能）拼（FixedLayout.forEntry 带 fkeys） |
 | `src/dev/douhua/FixedKeyboardView.java` | 实体键盘的面板（第 1B 批）：逐级缩的几级（setBoards / ladder）、量尺寸时换到哪一级（useLevel：换级先松开自己收的手指）；一个 View 自己画全部键帽（L 形回车、两三层字、死键强调色、左右八个修饰键高亮、被小红点切到的键用 Style.CutCap 画），自己收触摸（服务没接管时，照 FixedPanel.keyAt）；规则全在 FixedPanel；高亮看 锁住 \| 快锁了 和 Caps、字看 锁住 \| 按着 和 Caps（setKeyState → FixedPanel.active / glyphs / preview 带 caps），自己收的手指被取消 / 换键盘时发 KEY_CANCEL；⋯ 槽（在哪见 FixedLayout.menu；认 ⋯ 只问 KeyRows.menuKey）画成强调色的底 + 反差字、不描边（同豆花布局的 ⋯ 键，2026-11-01）；Fn（协议 21）：setKeyState 带 Fn 的状态，Fn 键单次锁时高亮、永久锁 / 快永久锁了时画成 ⋯ 那种强调色实底 + 反差字（协议 22，像亮着的 Fn Lock 灯；🌐 照字色剪影画），Fn 锁着或按着时带 Fn 层的键帽整片换成 Fn 层的字（不换层、不重报区域），按下的样子按报的 id 对（showPressed → FixedPanel.keyId），自己收触摸时发 keyId（Fn 键、带 Fn 层的键是协议 21 的编码）；协议 24：画字只调 FixedPanel.glyphsAt（fnState 带 F 行翻转那一位），第二功能的图标照 FKeyFaces 的笔画画（drawIcon：线、折线、多边形、圆角矩形、圆、椭圆、圆弧、月牙，24 × 24 的方格按键帽大小缩放，颜色同字、压暗的带透明度；两面都印时图标在上半、F1 小字在下面）；每个字都经 fit → FixedPanel.textRooms / fitText 放（折行的几行按 FontMetrics 的行高叠，drawCentered(String[])），
 画字和图标前按键帽 clipRect（审查后：长组合键以前缩到 7sp 就不再缩、不裁，压到隔壁的键上） |
-| `src/dev/douhua/KeyboardPanel.java` | 外接键盘的键帽、触摸、高亮（键位本身在 KeyRows；第 1B 批起叫"豆花布局"，implements KeyboardFace，切到实体键盘再切回来不销毁），键 id = 用法码 \| 自带修饰键 << 8；自己摆放键帽（ViewGroup，所有键帽是直接子 view，按 KeyRows.place 摆）；报区域时键后面报键盘范围（REGION_KEYBOARD：整块一块，分裂时左右两半各一块）；功能行带不带最右边的 ⋯ 键（setMenuKey，小触控板上没摆出 ⋯ 时带，menuKeyRect 给菜单定位）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键；嵌在键里的小红点圆里、让给三个鼠标键的空位里不算任何键）；三层的全部行交给 KeyboardPlan 算红点多大、空位多宽（layers）；键帽照 KeyRows.capKeys 建（含小红点状态底行的 before / after）；小红点状态（2026-11-01）：底行在中间让出空位、快捷行分得开时也让（setHole(hole, spread)，KeyRows.place 的 hole / spread），红点嵌在键里时碰到切口的键帽沿圆弧画（setStick → Style.keyLook 的 cut）、字竖着挪开（上下内边距，KeyboardPlan.labelShift）；三层、两种布局的键帽各建一次，换层 / 分裂只切显示；键帽文字 / 高亮没变的键不重设；修饰键 / Caps 的样子（2026-11-01，setKeyState：KeyRows.capText 定键帽上的字、KeyRows.lit 定高亮）；合并键的键帽两个字并排（Style.keyButton 的 pair → PairKey："," 照字色、"." 浅一档 Theme.softText，2026-11-01 晚），按着 0.4 秒放大提示换成第二个字；自己收触摸时按下发 KEY_DOWN、抬起 KEY_UP、被取消 / 消失 KEY_CANCEL；换层、分裂 / 合拢、⋯ 键、让位、重建底行都走 changeKeys：按 Key 对象（Cap）把手指重新对上（KeyFingers.remap），还显示着的键照旧按着，只有真消失的当取消松开（服务接管时的 releaseTouches 照旧全部取消）；功能行最右的 ⋯ 键画成强调色的底 + 反差字、不带边框（look → Style.menuKeyLook，2026-11-01） |
+| `src/dev/douhua/KeyboardPanel.java` | 外接键盘的键帽、触摸、高亮（键位本身在 KeyRows；第 1B 批起叫"豆花布局"，implements KeyboardFace，切到实体键盘再切回来不销毁），键 id = 用法码 \| 自带修饰键 << 8；自己摆放键帽（ViewGroup，所有键帽是直接子 view，按 KeyRows.place 摆）；报区域时键后面报键盘范围（REGION_KEYBOARD：整块一块，分裂时左右两半各一块）；功能行带不带最右边的 ⋯ 键（setMenuKey，小触控板上没摆出 ⋯ 时带，menuKeyRect 给菜单定位）；服务没接管、没走本地分流时面板整块自己收触摸（onTouchEvent，按手指编号分给键；嵌在键里的小红点圆里、让给三个鼠标键的空位里不算任何键）；三层的全部行交给 KeyboardPlan 算红点多大、空位多宽（layers）；键帽照 KeyRows.capKeys 建（含小红点状态底行的 before / after）；小红点状态（2026-11-01）：底行在中间让出空位、快捷行分得开时也让（setHole(hole, spread)，KeyRows.place 的 hole / spread），红点嵌在键里时碰到切口的键帽沿圆弧画（setStick → Style.keyLook 的 cut）、字竖着挪开（上下内边距，KeyboardPlan.labelShift）；三层、两种布局的键帽各建一次，换层 / 分裂只切显示；键帽文字 / 高亮没变的键不重设；修饰键 / Caps 的样子（2026-11-01，setKeyState：KeyRows.capText 定键帽上的字、KeyRows.lit 定高亮）；合并键的键帽两个字并排（Style.keyButton 的 pair → PairKey："," 照字色、"." 浅一档 Theme.softText，2026-11-01 晚），按着 0.4 秒放大提示换成第二个字；自己收触摸时按下发 KEY_DOWN、抬起 KEY_UP、被取消 / 消失 KEY_CANCEL；松开另报 Listener.onKeyRelease(id, special, canceled)（只给声音用，特殊键没点成的也报，2026-11-02 声音第一批第 ③ 步；FixedKeyboardView 同样）；换层、分裂 / 合拢、⋯ 键、让位、重建底行都走 changeKeys：按 Key 对象（Cap）把手指重新对上（KeyFingers.remap），还显示着的键照旧按着，只有真消失的当取消松开（服务接管时的 releaseTouches 照旧全部取消）；功能行最右的 ⋯ 键画成强调色的底 + 反差字、不带边框（look → Style.menuKeyLook，2026-11-01） |
 | `src/dev/douhua/KeyRows.java` | 键位和排布，纯 Java（离线测，KeyRowsTest）：键（Key）、每行整块 / 分裂时左右两半各是哪些键（Row）、键盘区宽 ≥ 2 × 高（shouldSplit）、每个键摆在哪（place）；分裂时两半中间放触控板（各三分之一宽）或只隔一条缝（leftEnd 的 middle），只隔一条缝时两块键盘范围伸到缝的中线（areaEnd / areaStart）；同一个键两种布局用同一个 Key 对象；功能行两份（topRows：不带 / 带最右边的 ⋯，⋯ 是特殊键 MENU_BUTTON_ID = 303）；哪些键算功能键（functionKey；数字键盘另有 numpadFunctionKey，"-" 在那里算运算符；实体键盘的 0x64、巴西 ABNT2 的 0x87 / 小键盘 0x85 算普通键），主题按它分主次上色；一层的全部行（rows / layers，KeyboardPanel 和 KeyboardPlan 共用）；小红点嵌在哪（stickPoint：字母层 g|h、v|b 的缝和 a–l / z–m 两行交界那一点，只有整块）；小红点状态下底行、快捷行让出空位（Row 的 before / after：底行 ?123 [,.] 空格（缩短，STICK_SPACE 1.5 份、最短 STICK_SPACE_MIN 1 份，只有它跟着空位伸缩）│ 空位 │ 空格 ↵；spread：快捷行按个数分到两边 spreadLeft，place 的 spread 为假时照旧铺满；holeUnits / holeTop / holeBottom 给 KeyboardPlan 算空位）；所有布局下会显示的键（capKeys，KeyboardPanel 照它建键帽）；小红点状态底行的两个新键（2026-11-01）：COMMA_PERIOD（Proto.dualKey(0x36, 0x37)，点一下 , 按住 .，Key.pair = "."——2026-11-01 晚起和 "," 并排、一样大、浅一档（以前叫 corner、画在右上角），占 , 原来的 1 份）、STICK_SPACE_R（右边的空格，另一个键帽、同一个 id，占 . 原来的 1 份；份数没变，空位 / 红点 / 鼠标键全都不变）；键帽上的字 capText（Shift = 锁住 \| 按着、字母连苹果设备 Shift ∨ Caps 别的 Shift ⊕ Caps）、高亮 lit（修饰键左右八个看 锁住 \| 快锁了、Caps 看显示）；哪个键是 ⋯（menuKey：豆花布局的 ⋯ 键、实体键盘的 ⋯ 槽同一个编号，两块面板按它画强调色的 ⋯）；实体键盘 Fn 键的按钮编号 FIXED_FN_BUTTON_ID = 304（第 3 批，FixedLayout.FN_ID；和豆花布局的 Fn 层按钮 301 不是一回事） |
 | `src/dev/douhua/KeyboardPlan.java` | 键盘界面怎么摆，纯 Java（离线测，KeyboardPlanTest；实体键盘那部分 FixedLayoutTest）：实体键盘（第 1B 批：fixedFits 一格 ≥ 32dp 才显示、逐级缩挑第一个放得下的 fixedLevel（2026-11-01；梯子是 FixedLayout.ladder 给的）、存的位置在窄窗口里撑到一格 32dp 才显示 fitFixedRect（存的不改）、fixedDefaultRect 按"行高 ≈ 键宽 × 1.1"的自然比例（守调大小的约束：不比 fixedMinWidth 窄——一格 ≥ 32dp、不比 MIN_HEIGHT 矮）、planFixed：不分裂、触控板同合并、⋯ 在触控板顶上或这个尺寸的 ⋯ 槽里（FixedLayout.menu：TKL / 全尺寸 / 75% 在 Esc–F1，65% 在左下角 Ctrl 右边，笔记本在 F 行 Ins 那格（协议 24 起，左下第二格给了 Fn），苹果紧凑在 F 行最右）、小红点在 G / H / B 中间 + 空格那一排的三个鼠标键；红点嵌在键里多大 / 嵌不下放哪和豆花布局共用 placeStickAt）；布局（自动 / 分裂 / 合并）轮换、分不分裂（键太窄不分）、分裂 / 合并时键盘占哪块、触控板放在空得最多的一侧（太小不放）、宽窗口没调过大小时的默认位置（触控板显示且放得下才三分之二宽）；⋯ 菜单的几何（menuTop：⋯ 放触控板顶上正中、padMenuTop：主界面的 ⋯ 放不下也照样放、menuPosition：菜单弹在哪不出屏、menuGrid：项多窗口矮时先压矮再分列、adjustBarTop：调整栏放上还是下、barButtonWidth：调整栏按钮宽度）；分裂时对称调大小的几何（左半"格子"、默认格子、fitSplit 按窗口守约束、dragSplit 拖法和约束）；指点三选一（POINTER_PAD / STICK / NONE，nextPointer；nextPointer(p, stickOk) 不给小红点时跳过它，fixedPointer：实体键盘存着小红点、这一块不给时照触控板，planFixed 一开头就换，2026-11-01 晚）：小红点照真的 ThinkPad 键盘摆（2026-11-01）、固定合并（不管"布局"）——三个鼠标键铺满底行、快捷行在中间让出的空位（stickHole：以红点为中线对称、空格尽量长、三个键各 ≥ 44dp，放不下就空格最短、三个键最窄 32dp；holeKeys 铺法，Plan.hole / keys / middleKey；快捷行分到两边后每个键连缝 ≥ 32dp 才也让位、三个键跨两行，不然只占空格那一排，shortcutsSpread / Plan.spread），红点在 KeyRows.stickPoint（placeStick：嵌在四个键的交界、挨着的键被和红点同心的圆切掉一块，stickRadius 按每层每个键被切掉的面积 cutShare（精确算）、键上的字躲不躲得开 labelShift 定多大，Plan.cut 是切口半径；嵌不下放键盘外面上 / 下 / 旁边），中键窄、左右键宽、中键对着红点（middleKey，三键条也用）；触控板的三键条（cutBar，上沿 / 下沿，主界面也用）、⋯ 放哪（Plan.menuArea / menuMargin；没有触控板时回功能行）；离页面边的距离可以各边不一样（Sizes.edgeL / T / R / B、withEdges，menuTop / menuGrid / menuPosition / adjustBarTop 各有带 {左, 上, 右, 下} 的版本，屏幕边缘留白用） |
 | `src/dev/douhua/KeyFingers.java` | 键盘面板自己收触摸时每根手指按的是哪个键（按 pointer id 记，抬起只松自己那个）；按下定键 = 包含的键优先、缝里交给 TouchRouter.nearestKey（几块范围时只在落进的那一块里分），落在洞（嵌在键里的小红点——REGION_STICK 按内切圆认；小红点状态下让给三个鼠标键的空位）里不算任何键，纯 Java（离线测）；remap（2026-11-01）：面板换键时按新下标对上还显示着的键、返回消失了的（调用方当取消松开） |
@@ -61,7 +69,7 @@ fitText（先照旧缩到 7sp，一行还放不下 hard 的组合键在 "+" / �
 | `src/dev/douhua/MenuLayer.java` | ⋯ 菜单，主界面和键盘屏共用一份（根视图最上面一层、铺满整页；屏幕边缘留白时和别的页一样往里收，离各边少留，setEdgeInsets）：盖住整页的"点外面" + 菜单底板（项是它的子 view，只排显示着的，KeyboardPlan.menuGrid 排、先排满第一列）；贴着当前那一屏的 ⋯ 弹出（Host.menuAnchor + KeyboardPlan.menuPosition）；⋯ 那一支单独重新布局时由 MainActivity 在根视图的布局监听里再 place 一次 |
 | `src/dev/douhua/Style.java` | 共用样式（边框、按下 / 高亮、触控板角上的小按钮——small 的 onImage：触控板上有背景图时平时垫不透明的触控板底色）；颜色从当前主题取（setTheme，MainActivity 设），设置页预览用带 Theme 参数的那几个；键帽（整屏键盘、数字键盘）走 keyButton / keyLook（边框跟"按键边框"开关；缩到最小字号还放不下的键名末尾省略"…"），其它按钮走 button / look（一直有边框）；sp 换像素（Style.sp，跟着系统字体大小）；键帽分主次：keyLook / look 带 fn（功能键的颜色；高亮时照旧是普通键帽底色 + 强调色的边）；被小红点切掉一块的键帽（keyLook 的 cut → CutCap：圆角矩形减去圆，底色、边框沿着圆弧走，颜色同别的键帽）；两个字并排的键帽（PairKey，keyButton(c, sp, pair)，2026-11-01 晚取代右上角小字的 CornerKey：合并键的 "," "." 一样的字号、挨在一起居中、中间隔半个字号，"." 用 Theme.softText，放不下一起缩、最小 7sp；主字照旧是 TextView 自己的文字、自动缩字号，只是由它画）；⋯ 用强调色（2026-11-01）：键帽形状的 ⋯ 走 menuKeyLook（强调色底 menuKey / 按下 menuKeyPressed、反差字 menuKeyText、不画边框、不跟"按键边框"开关，被切时也走 CutCap），不带框的 ⋯（触控板顶上、手柄页顶上）走 bare（字 menuDots，按着时垫 pressed） |
 | `src/dev/douhua/Theme.java` | 主界面的十八套配色（设置 → 外观；ALL 先深色后浅色）：每套写几个底子、其余按规则推（灰字取"刚够 4.5:1"的、强调色当字用不够就推亮 / 推暗）；功能键的槽位 fnKey / fnText / fnPressed（底色掺强调色，到和键帽、页面色差 ≥ 8 为止，fnTint）；纯黑每个槽位照以前的常量写死（功能键和普通键一样）；对比度、CIE76 色差计算，纯 Java（离线测 ThemeTest）；小红点的红（stick：ThinkPad 红推到对页面、触控板底色都 ≥ 3:1，stickRed）；⋯ 的四个槽位（2026-11-01）：menuKey（强调色推到对页面、键帽、功能键都 ≥ 3:1，reachAll：一次看几个底、方向看第一个）、menuKeyText（页面色 / 正文色里对它反差大的那个，再推到 ≥ 4.5:1）、menuKeyPressed（底往字掺一成半）、menuDots（强调色推到对触控板底、页面 ≥ 4.5:1、对 pressed ≥ 3:1）；纯黑这四个写死成 focus 的蓝（#8AB4F8 底、黑字、按下 #7599D3、不带框的蓝字）；浅一档的字 softText（2026-11-01 晚，逗号句号合键里的 "."：正文往键帽底色掺到对键帽、按下的底还刚好 ≥ 3:1——SOFT_RATIO，和正文色差不到 8 的——Solarized Dark——再往键帽掺到 ≥ 8、对键帽照样 ≥ 3:1，soft；纯黑也照规则推） |
-| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 键盘 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），七页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、加速 + 最快速度（协议 23，2026-11-01 晚：stickAccel / refreshStickAccel，加速 0%–100% 下面一行"推到底约是推一半的 N 倍"（N 照 TrackPoint.ratioText，一位小数写出来是 1.0 时写两位）、最快速度 500–3000 计数 / 秒下面一行"推到底约 N 秒横穿 1920 像素宽的屏"（crossSeconds），数都现算、灵敏度一动也跟着变；加速 0% 时最快速度那一行灰掉、说明前面加"不起作用"，加速在 0%–100% 之间时说明前面加"这个数是加速 100% 时的、现在实际约多少"（stick_max_speed_actual，topSpeedText））、轻点 = 左键、负惯性、中键滑动的滚动速度（2026-11-01 晚，sliderInt 带单位"%"，25%–200%、步长 5%，Prefs.LEVER_SPEED）、三键条开关和上沿 / 下沿）；"键盘"页（第 1B 批，keyboardSection）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘的语言（第 2 批起点开是一个按名字排的列表 langDialog：每项下面一行小字写 Mac / Windows 里叫什么——只有一家有的写"Windows 没有这一套"之类，现在的模式下没数据的灰掉、写原因）/ 形状（ANSI / ISO / ABNT2，照清单）/ 尺寸（六种，从小到大：苹果紧凑 / 笔记本 / 65% / 75% / TKL / 全尺寸，FixedLayout.ALL_SIZES、sizeLabel，写键数（照当前的形状、模式现算），下面一行写逐级缩的规则 kbd_size_note）/ Windows · Mac 模式（这个布局没数据的那种灰掉，choiceRow 带 enabled 的那个）、主机那边要设成同一种布局的说明（桌面模式下一个按钮打开手机的实体键盘设置）；实体键盘那一节下面"F1–F12 的第二功能"（协议 24，2026-11-02，fkeySection：显示现在这种模式那一套；预设 ThinkPad 风格 / 苹果风格 / 不用、逐个改过时多一项灰着的"自定义"，"平时按出：F1–F12 / 第二功能"——和键盘上 Fn+Esc 同一份 Boards.frowFlip，F1–F12 各一行点开是分组的列表 fkeyDialog（FKeyChoices；分组标题灰字点不了、现在配的蓝字加粗），"自定义组合键…"另弹 fkeyCombo（同动作清单那个对话框 comboDialog，没有名字框、Mac 模式修饰键写 ⌃ ⇧ ⌥ ⌘、照现在配的预先勾好）；选"不用"时"平时按出"和 12 行藏起来；一直写"65% 没有 F 行"，蓝牙模式下琥珀色一句系统键要重新配对一次）、豆花布局的快捷行（从"按钮与按键"挪过来）；"通用"页最下面"开源许可"（licenses：res/raw/licenses.txt 的全文）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它）；苹果紧凑（第 3 批）在 Windows 模式、ABNT2 形状下灰掉（kbd_size_apple_only），选着苹果紧凑时模式里的 Windows、形状里的 ABNT2（kbd_apple_unavailable）、语言列表里只有 ABNT2 的布局（kbd_lang_no_apple）灰掉，存着的组合配不上时标红一行 kbd_no_size_data |
+| `src/dev/douhua/SettingsActivity.java` | 设置页：顶上固定一排标签（通用 / 触控板 / 键盘 / 按钮与按键 / 空中鼠标 / 手柄 / 外观，放不下横着滑），七页的内容每次都全建、只显示选中那一页（其它 GONE）；记住上次那一页（Prefs.settingsTab）；serviceIntent / tabIntent（带 EXTRA_TAB）打开时停在指定那一页（手柄页 ⋯ 菜单的"设置"停在"手柄"）；"手柄"页：预览 + 预设网格（最后一格自定义）、自定义那一节（选中自定义才显示：左手 / 面键排法 / 字样 / 右摇杆 / 肩键 / 扳机 / 中间三颗 / 摇杆按下、从某个预设重新开始）、摇杆 / 十字键 / 面键的手感（gp_*）、Moonlight 里建议怎么设；切页回顶时先停掉上一页的惯性滑动（selectTab）；"触控板"页的"角上的小按钮"四个（按 左上、右上、左下、右下 列），最后一节"小红点和左 / 中 / 右键"（灵敏度、加速 + 最快速度（协议 23，2026-11-01 晚：stickAccel / refreshStickAccel，加速 0%–100% 下面一行"推到底约是推一半的 N 倍"（N 照 TrackPoint.ratioText，一位小数写出来是 1.0 时写两位）、最快速度 500–3000 计数 / 秒下面一行"推到底约 N 秒横穿 1920 像素宽的屏"（crossSeconds），数都现算、灵敏度一动也跟着变；加速 0% 时最快速度那一行灰掉、说明前面加"不起作用"，加速在 0%–100% 之间时说明前面加"这个数是加速 100% 时的、现在实际约多少"（stick_max_speed_actual，topSpeedText））、轻点 = 左键、负惯性、中键滑动的滚动速度（2026-11-01 晚，sliderInt 带单位"%"，25%–200%、步长 5%，Prefs.LEVER_SPEED）、三键条开关和上沿 / 下沿）；"键盘"页（第 1B 批，keyboardSection）：用哪块键盘（豆花布局 / 实体键盘）、实体键盘的语言（第 2 批起点开是一个按名字排的列表 langDialog：每项下面一行小字写 Mac / Windows 里叫什么——只有一家有的写"Windows 没有这一套"之类，现在的模式下没数据的灰掉、写原因）/ 形状（ANSI / ISO / ABNT2，照清单）/ 尺寸（六种，从小到大：苹果紧凑 / 笔记本 / 65% / 75% / TKL / 全尺寸，FixedLayout.ALL_SIZES、sizeLabel，写键数（照当前的形状、模式现算），下面一行写逐级缩的规则 kbd_size_note）/ Windows · Mac 模式（这个布局没数据的那种灰掉，choiceRow 带 enabled 的那个）、主机那边要设成同一种布局的说明（桌面模式下一个按钮打开手机的实体键盘设置）；实体键盘那一节下面"F1–F12 的第二功能"（协议 24，2026-11-02，fkeySection：显示现在这种模式那一套；预设 ThinkPad 风格 / 苹果风格 / 不用、逐个改过时多一项灰着的"自定义"，"平时按出：F1–F12 / 第二功能"——和键盘上 Fn+Esc 同一份 Boards.frowFlip，F1–F12 各一行点开是分组的列表 fkeyDialog（FKeyChoices；分组标题灰字点不了、现在配的蓝字加粗），"自定义组合键…"另弹 fkeyCombo（同动作清单那个对话框 comboDialog，没有名字框、Mac 模式修饰键写 ⌃ ⇧ ⌥ ⌘、照现在配的预先勾好）；选"不用"时"平时按出"和 12 行藏起来；一直写"65% 没有 F 行"，蓝牙模式下琥珀色一句系统键要重新配对一次）、豆花布局的快捷行（从"按钮与按键"挪过来）；"通用"页最下面"开源许可"（licenses：res/raw/licenses.txt 的全文）；"按钮与按键"页第一节"自定义按键"（开关 + 开着时才列出的槽位，customKeys）；"外观"页主题之后是"屏幕边缘留白"（左右、上下两个滑块）、"触控板背景图"一节（PadBgSection，选图的 onActivityResult 转给它）；苹果紧凑（第 3 批）在 Windows 模式、ABNT2 形状下灰掉（kbd_size_apple_only），选着苹果紧凑时模式里的 Windows、形状里的 ABNT2（kbd_apple_unavailable）、语言列表里只有 ABNT2 的布局（kbd_lang_no_apple）灰掉，存着的组合配不上时标红一行 kbd_no_size_data；"外观"页最后一节"声音"（2026-11-02 声音第一批第 ④ 步，震动后面，soundSection）：套装（关 / 轻 / 木与枝，点一项就放一遍——等 Sounds.ready 再照 SoundBench.DEMO 交）、一句说明，套装不是"关"时下面才有音量（0–100，松手放一下按键声）、键盘 / 鼠标键 / 滚轮 / 手柄四个开关、试听台（soundBench：一排键、一小块触控板、三个鼠标键 MouseKeys.setTheme，照选的主题画、跟着主题刷新；按下就是真的声音 + 真的震动——同一个 Sounds、自己的一份 SoundEvents 和 Haptics、照 MainActivity 同样配，syncBench；按下时不让 ScrollView 抢手指）；调试版另有候选区（soundTuning：这一套每个槽的候选按钮 A–D + 参数（打乱时不写）、点一下 = 放一遍 + 震一下并存下（Prefs.setSoundChoice，每套各记各的）、"连打"、"打乱顺序"、音量偏移 / 随机幅度 / 震动延后三个滑块、每半秒刷新一次的诊断行 Sounds.Diag.line）；这页 onStart acquire 声音管道、onStop 撤掉没放完的那一小段 / 连打 / 诊断刷新、停持续轻震、release；"恢复默认"后声音回到"关"（applySound） |
 | `src/dev/douhua/ThemeGrid.java` | 设置 → 外观的主题色块网格（一组深色或浅色）：每格一小块样子（普通键 A + 功能键 ⇧ + 一小块触控板）+ 名字，每行几格按宽度定（每格 ≥ 96dp），选中框用设置页自己的蓝 |
 | `src/dev/douhua/ButtonStrip.java` | 自定义按键（主界面左边一列，原来的左侧按钮条；设置里打开，默认关），屏幕矮时自动分列 |
 | `src/dev/douhua/PadArea.java` | 触控板 + 数字键盘的排布 |
@@ -77,7 +85,7 @@ fitText（先照旧缩到 7sp，一行还放不下 hard 的组合键在 "+" / �
 | `src/dev/douhua/GamepadPainter.java` | 手柄控件的画法（手柄页和设置页的预览共用）：面键圆、△○×□ 和 N64 的 C 键画形状、十字键、街机摇杆底座、摇杆、肩键 / 扳机 / 中间小长条；k = 一个 dp 画成几像素，minText = 0 时不写字（网格小图） |
 | `src/dev/douhua/GamepadPreview.java` | 设置 → 手柄的预览：按 930 × 350dp（分屏下半边）摆、缩小了画（GamepadPainter，没按着的键），大预览写字、网格小图不写；颜色用设置里的主题；顶上的 ⋯ 同手柄页用 Theme.menuDots |
 | `src/dev/douhua/GamepadGrid.java` | 设置 → 手柄的预设网格：每格一张 GamepadPreview 小图 + 名字，最后一格自定义；每行几格按宽度定、选中框用设置页的蓝（同 ThemeGrid） |
-| `src/dev/douhua/MouseKeys.java` | 一排左 / 中 / 右三个鼠标键（选小红点时底行、快捷行让出的空位里，触控板的三键条）：中键窄、左右键宽（setMiddle，没设时平分）；铺满模式（setTiled，键盘里）三个键的 view 铺满空位、不留缝（报的区域也就铺满），键帽各缩进同键盘的键画；不写字，照真 ThinkPad：左右键下沿（靠用户那条长边）横着一道红线、几乎占满键宽，中键没有红线、上沿附近一排 7 个小点；按掩码画按下 |
+| `src/dev/douhua/MouseKeys.java` | 一排左 / 中 / 右三个鼠标键（选小红点时底行、快捷行让出的空位里，触控板的三键条）：中键窄、左右键宽（setMiddle，没设时平分）；铺满模式（setTiled，键盘里）三个键的 view 铺满空位、不留缝（报的区域也就铺满），键帽各缩进同键盘的键画；不写字，照真 ThinkPad：左右键下沿（靠用户那条长边）横着一道红线、几乎占满键宽，中键没有红线、上沿附近一排 7 个小点；按掩码画按下；setTheme（声音第一批第 ④ 步）：照给的主题画、不看 Style 的当前主题（设置页试听台用，主界面不调） |
 | `src/dev/douhua/TrackpadView.java` | 只画底色、背景图（PadImage，可选）、边缘滚动带的细线、状态字和边框（颜色画的时候从当前主题现取）；状态字两边让出多宽（setStatusSide：主界面下面两个角有按钮时让过它们）；有图时状态字、⋯（setMenuChip，KeyboardScreen / PadStack 告诉它 ⋯ 在哪）下面垫不透明的触控板底色、细线下面垫 3dp 底条，边框最后画 |
 | `src/dev/douhua/PadFit.java` | 触控板背景图怎么摆，纯 Java（离线测，PadFitTest）：五种显示方式（填满 / 完整显示 / 拉伸 / 平铺 / 原大小）、焦点规则（offset：要裁时焦点尽量在正中、有空余时照百分比）、吸附（snap）、平铺相位、按形状挑哪套（Settings.pick：分开设时高 > 宽用高的那套）、解码多大（decodeSize：短边到窗口最大长边、总像素 2²³、单边 4096）|
 | `src/dev/douhua/PadImage.java` | 触控板背景图的 Android 部分：导入（后台拷原文件进 files/padbg/、限 50MB、ImageDecoder 解一张小图验证、换名、写 Prefs、删旧的；完了通知设置页——不在就留下结果码，下次 start 取走——和在前台的主界面）、显示用的后台解码（软件位图 + mipmap、代数号丢过时结果、文件不在就清 Prefs）、画（每块触控板一个 Brush，BitmapShader：平铺 REPEAT、其它 DECAL）；设置页预览的小图（loadPreview）、删文件（deleteAll）|
@@ -87,10 +95,10 @@ fitText（先照旧缩到 7sp，一行还放不下 hard 的组合键在 "+" / �
 | `art/icon.webp` → `tools/make_icon.py` | App 图标原图（不带元数据）；脚本生成自适应图标的前景层 `ic_launcher_fg.webp` 和彩蛋大图 `egg.webp`（都在 `res/drawable-nodpi/`，换图后重跑，要 Pillow） |
 | 彩蛋 | 设置页"通用"页最下面的版本号快速连点 5 下（每下间隔 ≤ 0.6 秒），弹出 egg.webp；SettingsActivity.version / showEgg。README 里不写 |
 | `src/dev/douhua/Combos.java` | 自定义组合键：可选的键、拼 id、起名字、迁移上一版键盘快捷行的存储格式 |
-| `src/dev/douhua/HardKeys.java` | 音量 + / − 的"点一下 / 按住"判断（做什么由设置里选的动作定），纯 Java（离线测）；蓝牙模式 App 自己用，桌面模式服务里的 HardKeyGate 用同一个；设了动作的键整个归豆花 |
+| `src/dev/douhua/HardKeys.java` | 音量 + / − 的"点一下 / 按住"判断（做什么由设置里选的动作定），纯 Java（离线测）；蓝牙模式 App 自己用，桌面模式服务里的 HardKeyGate 用同一个；设了动作的键整个归豆花；holdEnd(键, canceled)：被系统取消的按键、reset 收尾报 canceled（协议 25，App 照样收尾、不出松开声；服务那边报 HARD_HOLD_CANCEL） |
 | `src/dev/douhua/AirPointer.java` | 陀螺仪 + 重力 → 光标位移：斜基分解（左右 = 绕竖直轴、上下 = 绕手机自己的右轴、绕水平朝前拧不算）、固定灵敏度不加速、两级 1€ 滤波消抖 + 软死区（可选轨迹平滑、防抖半径），纯 Java（离线测） |
 | `src/dev/douhua/CenterRunner.java` | 主线程上按固定间隔一帧帧发位移（只剩调试位移 DebugMoves 在用） |
-| `src/dev/douhua/AirMouse.java` | 空中指针：按住移动 / 按住拖动 / 按住左键（按来源分开记）、陀螺仪按需开关、移动颗粒；回正中发一帧绝对坐标 |
+| `src/dev/douhua/AirMouse.java` | 空中指针：按住移动 / 按住拖动 / 按住左键（按来源分开记）、陀螺仪按需开关、移动颗粒；回正中发一帧绝对坐标；收尾放掉的拖动（releaseAll / releaseFrom、holdDrag 带 canceled）报 HAPTIC_DRAG_CANCEL（震动同拖动结束、不出松开声） |
 | `src/dev/douhua/DebugMoves.java` | 只在可调试包里：`adb shell am broadcast -a dev.douhua.DEBUG_MOVES --es moves "dx,dy,ms;…"` 让手机经蓝牙发任意位移（要 DUMP 权限，adb shell 有），量回正中 / 加速用；另有 DEBUG_AIRLOG（空中鼠标日志）、DEBUG_KEYLOG（键盘触点日志，租期制）、DEBUG_KEYSCAN（主机实测扫描：一段键依次发给主机，每个后面跟空格和 Tab，经 MainActivity.onLocalKey；一次最多 12 个、只许出字的位置 + Shift / Alt，`--ez stop true` 停、按着的补松开） |
 | `src/dev/douhua/KeyScan.java` | 主机实测扫描的纯逻辑：许发哪些键（allowed）、广播里的键怎么解析（parse，整段拒绝）、一段拆成哪几拍（键 / 空格 / Tab 各按下松开），纯 Java（离线测，KeyScanTest） |
 | `src/dev/douhua/RoundPad.java` | 空中鼠标页的圆钮：圆 + 3×3 九个小点（像 ThinkPad 小红点，dots 键盘页的小红点也用），按住移动、点一下锁定移动 / 再点解锁 |
@@ -104,9 +112,9 @@ fitText（先照旧缩到 7sp，一行还放不下 hard 的组合键在 "+" / �
 | `tools/adb-device.sh` | 选哪台手机（-s → ANDROID_SERIAL → 只连一台就用它 → 多台时列出来让人选），start/stop-server、selftest、build --install 共用 |
 | `src/dev/douhua/KeyboardSnap.java` | 调整键盘时的轻微吸附（分裂时 applySplit：贴边 / 两半合拢 / 上下边），纯 Java（离线测） |
 | `src/dev/douhua/EdgeMargin.java` | 屏幕边缘留白，纯 Java（离线测，EdgeMarginTest）：哪几条边留、留多少（margins：窗口贴着屏幕边的才留，一个方向最多窗口的一半）、页面收进去以后"离屏幕边 20dp"在页面里还剩多少（edges）、设置的范围（0–48dp、步长 2、默认 8） |
-| `src/dev/douhua/Prefs.java` | 设置键名和默认值（2026-11-01 晚加了中键滑动的滚动速度 lever_speed_pct：百分数 25–200、步长 5、默认 100，leverSpeedPct 截到范围里，engineConfig 换成 Config.leverSpeed；协议 23 加了小红点的加速 stick_accel_pct（百分数 0–100、步长 5、默认 100，stickAccelPct）和最快速度 stick_max_speed（计数 / 秒 500–3000、步长 100、默认 1200，stickMaxSpeed），范围、步长、默认值都引用 TrackPoint 的常量（ACCEL_PCT_*、TOP_SPEED_*），engineConfig 换成 Config.stickAccel（TrackPoint.accelFraction(百分数)）/ stickMaxSpeed；engineConfig 接没接上这两项离线测不到（Prefs 离不开 Android）） |
+| `src/dev/douhua/Prefs.java` | 设置键名和默认值（2026-11-01 晚加了中键滑动的滚动速度 lever_speed_pct：百分数 25–200、步长 5、默认 100，leverSpeedPct 截到范围里，engineConfig 换成 Config.leverSpeed；协议 23 加了小红点的加速 stick_accel_pct（百分数 0–100、步长 5、默认 100，stickAccelPct）和最快速度 stick_max_speed（计数 / 秒 500–3000、步长 100、默认 1200，stickMaxSpeed），范围、步长、默认值都引用 TrackPoint 的常量（ACCEL_PCT_*、TOP_SPEED_*），engineConfig 换成 Config.stickAccel（TrackPoint.accelFraction(百分数)）/ stickMaxSpeed；engineConfig 接没接上这两项离线测不到（Prefs 离不开 Android））；声音（2026-11-02 第一批，设置 → 外观 → 声音）：sound_pack（SoundBank.PACK_IDS 的字，默认 off；setSoundPack）、sound_volume（0–100，默认 Sounds.DEFAULT_VOLUME）、sound_keys / sound_mouse / sound_scroll（默认开）、sound_gamepad（默认关），调试版 sound_cand_<套>_<槽>（每套各记各的，soundChoices(套) / setSoundChoice；第 ④ 步从 sound_cand_<槽> 改的，那一版没发出去过）、sound_offset_db、sound_random_pct、sound_haptic_delay_ms（0–40，默认 0，soundHapticDelay；范围在 SoundBench） |
 | `src/dev/douhua/MenuOrder.java` | ⋯ 菜单有哪几项、什么顺序、哪一屏显示哪几项（2026-11-01 晚，按使用频率排：设置第一、退出最后、手柄——手柄页上是返回触控板——倒数第二），纯 Java（离线测，MenuOrderTest）：编号（值照旧）、ORDER（三屏的顺序合成的一条）、onScreen / items / index；MainActivity 照它建项、开菜单时挑这一屏的 |
-| `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息；空闲 2 秒发保活（CMD_PING），连接超时 / 5 秒等不到 hello 报"服务没响应"；记下 hello 里服务的 APK 路径（serverApk）；回调全部经一个异步 Handler 到主线程（不排在界面重画的同步屏障后面）；协议 20：hidKey(key:i32, action)、unlatch（CMD_UNLATCH），读 MSG_CAPS（onCaps）；协议 21：读 MSG_MODIFIERS 四个字节（onModifiers(锁住, 按着, 快锁了, Fn)）；协议 22：focusOther(displayId)（CMD_FOCUS_OTHER）；协议 24：读 MSG_CONSUMER（onRelayConsumer(页, 码)，同一个异步 Handler，和键盘报文的先后照服务发的） |
+| `src/dev/douhua/Link.java` | App 端连接，断线每秒重连，收发消息；空闲 2 秒发保活（CMD_PING），连接超时 / 5 秒等不到 hello 报"服务没响应"；记下 hello 里服务的 APK 路径（serverApk）；回调全部经一个异步 Handler 到主线程（不排在界面重画的同步屏障后面）；协议 20：hidKey(key:i32, action)、unlatch（CMD_UNLATCH），读 MSG_CAPS（onCaps）；协议 21：读 MSG_MODIFIERS 四个字节（onModifiers(锁住, 按着, 快锁了, Fn)）；协议 22：focusOther(displayId)（CMD_FOCUS_OTHER）；协议 24：读 MSG_CONSUMER（onRelayConsumer(页, 码)，同一个异步 Handler，和键盘报文的先后照服务发的）；协议 25：MSG_HAPTIC 多一种 8（按住到点）、MSG_BUTTON 的 action 可能带被取消那一位，字节排布都没变、原样交给 onHaptic / onButton |
 | `src/dev/douhua/FocusHandoff.java` | App 什么时候请服务交焦点（协议 22），纯 Java（离线测，FocusHandoffTest）：eligible = 桌面模式 + 窗口没占满 + 没接外接屏 + 连着服务 + 贴字面板没开 + 在前台（再加窗口真拿着焦点）；decide：同一次拿到焦点（同一条连接上）只发一次，focusLost / reconnected 算新的一次，两次之间至少隔 MIN_GAP_MS（1 秒），隔不够返回还要等多久；App 分不出分屏和小窗，两种都发，小窗时服务不交（FocusPick） |
 | `src/dev/douhua/DexDisplay.java` | 找外接屏（按键注入目标；类名是改叫"桌面模式"之前起的） |
 | `src/dev/douhua/DisplayReceiver.java` | 服务叫醒它：接上外接屏弹通知（点开在手机屏上打开豆花），拔掉收回 |
@@ -139,7 +147,7 @@ fitText（先照旧缩到 7sp，一行还放不下 hard 的组合键在 "+" / �
 | `src/dev/douhua/server/UhidMouse.java` / `UhidKeyboard.java` | 虚拟 USB 鼠标 / 键盘，只管发报文（描述符在 Hid，按键状态在 TouchRouter）；鼠标记着内核设的竖滚轮倍率（WheelOut；描述符 MOUSE_DESC_HIRES_V，横向一直 ×1） |
 | `src/dev/douhua/server/UhidControls.java` | 虚拟键盘的第二个接口 "Douhua Keyboard Controls"（0x1209 / 0xD0A3，协议 24）：多媒体键（报告 3）+ 系统键那一组（报告 6），描述符 Hid.controlsDescriptor（字节同蓝牙那两段），照真 USB 键盘"打字接口 + 带报告编号的多媒体 / 系统键接口"分开、现有的虚拟键盘一个字节不动；和 UhidKeyboard 同建同关，关之前两个报告各写一帧 0；没有 Feature 报告、不要读线程；按着哪个码由 TouchRouter 的两个槽记，这里只发报文 |
 | `src/dev/douhua/server/PeerUid.java` | 查 /proc/net/tcp 确认连进来的是谁 |
-| `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放；`keys=<4 位>` 一起截音量键，打印实体键事件 / 状态；认得协议 21 的 MSG_MODIFIERS（四个字节，第四个是 Fn）、MSG_CAPS；`focus`（协议 22）不接管、只发一次 CMD_FOCUS_OTHER（App 连着时服务回"忙"，所以只能测"焦点不在豆花"那条路和反射通不通；只读看会交给谁用 Server tasks）；协议 24：认得 MSG_CONSUMER（蓝牙转发的多媒体 / 系统键）、MSG_MODIFIERS 第四个字节的 16（F 行翻转着） |
+| `src/dev/douhua/server/TestClient.java` | 服务自测：冒充 App 接管几秒后停发心跳，看会不会自动释放；`keys=<4 位>` 一起截音量键，打印实体键事件 / 状态；认得协议 21 的 MSG_MODIFIERS（四个字节，第四个是 Fn）、MSG_CAPS；`focus`（协议 22）不接管、只发一次 CMD_FOCUS_OTHER（App 连着时服务回"忙"，所以只能测"焦点不在豆花"那条路和反射通不通；只读看会交给谁用 Server tasks）；协议 24：认得 MSG_CONSUMER（蓝牙转发的多媒体 / 系统键）、MSG_MODIFIERS 第四个字节的 16（F 行翻转着）；协议 25：震动 8 打"（按住到点）"、按钮的松开带被取消时打"（被取消）" |
 | `src/dev/douhua/server/KeyDevices.java` | 跑 `getevent -i`（经 Shell，5 秒超时）解析输入设备，挑能单独独占的音量键设备（白名单，带电源键的绝不截）和只旁观的带电源键设备，解析部分纯 Java（离线测） |
 | `src/dev/douhua/server/HardKeyGate.java` | 音量键的判断：配了动作的交给 HardKeys、同设备上没配的透传注入；旁观到电源键 + 截住的音量键一起按（截屏）就按原时间补发后交还系统，纯 Java（离线测） |
 | `src/dev/douhua/server/KeyReader.java` | 独占并读音量键设备、不独占地读旁观设备（plain + grab 两个描述符，交还时读空 grabFd 再关），poll 100ms 检查是否该放开 |
@@ -418,6 +426,34 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - 桌面模式两路写同一个 uhid 手柄（服务分流、App 本地分流经 CMD_GAMEPAD）：写的是合并结果（GamepadMux：键按位或、方向键取不回中的那路、摇杆取远的、扳机取大的），
   服务开始接管时清掉 App 那路，谁先谁后都不会把对方刚按的松掉（ServerPartsTest 锁住）；设备晚建好时补写的那帧也记成"上次写的"
   （GamepadMux.deviceCreated，不然之后的松开被当成没变、电脑上一直按着）。CMD_GAMEPAD、CMD_GAMEPAD_CONFIG 不算心跳。
+- **声音不碰主线程、不碰别的**（2026-11-02 第一批的引擎）：按键时主线程只往 SoundQueue 写一个数（暂停着时再 LockSupport.unpark），不等、不分配
+  （一次点击的一对"咔哒"是两个数，"哒"由混音线程按帧数晚 45 ms 放，不靠主线程定时）；
+  建管道、算声音（第一次几十到几百毫秒）、写、查路由、关全在 douhua-sound 线程（心跳在主线程，卡 3 秒服务释放触摸屏）。套装"关"时不建线程、不建管道（Sounds.configure → stopEngine，算好的那份也扔）。
+  这个线程里出的任何错（含 Throwable）只让声音停掉，不让 App 闪退。只从手机喇叭出：实际路由不是手机喇叭就写静音。不请求音频焦点（不压低、不暂停 Moonlight）。
+  声音和震动在同一处发起时声音先交出去、不等，震动不为声音往后拖；震动现有的行为一点不变（声音关着时整个 App 和以前一样）。
+  按下一定出声（打得快只变轻、变短，SoundVary）；时间不随机（每块开头一律从第 0 帧放）。同时活着的最多 8 个声音（SoundMixer）。SoundTest 锁住。
+  管道只在拿到低延迟时压缓冲（拿不到时压小了会一截一截地断）；换套重算前先停住管道；混音线程里走 binder 的查路由只在 play 之前、路由变了、没声音的空当里做（2026-11-02 审查后）。
+  管道坏了不会一直哑到退后台：线程结束告诉主线程，还有页面开着就过 5 秒（连着坏翻倍、最多 60 秒）开新的。
+- **电平表说的是响度**（2026-11-02 审查后）：SoundBank.levelDb 那张表（鼠标比普通键轻约 2 dB、触控板再轻约 4 dB、松开轻 6–12、滚轮轻 10–14）在手机喇叭上成立——
+  Bank.gain 按每个声音算出来的响度（粗手机喇叭 800 Hz 高通、最响 50 ms 的能量）补齐，不按峰值。加新声音、新候选不用另调电平，但要过 SoundTest：
+  每个声音 500 Hz 以下的能量 ≤ 40%（手机喇叭放不出，大半能量在那里的声音补成"一样响"只会白占峰值、推破喇叭）、单个声音的峰值在软限幅拐点以下、
+  响度和电平表差 ≤ 0.6 dB（SoundTest.loudness 另写一份整段能量量）。
+- **协议 25 的"被取消"只加信息**（2026-11-02，声音第一批第 ③ 步）：MSG_BUTTON / TouchRouter.Output.button 的松开带 Proto.BUTTON_CANCELED 的，只有被取消的手指
+  （up 的 canceled：手掌、丢数据、TouchReader 收尾补报的；releaseAll；换参数 / setGamepadConfig 时手柄那一路）和 View 自己收的 ACTION_CANCEL（localTouch、mouseKeyTouch），按下从不带。
+  App 收到先去掉（MainActivity.onButton 开头 Proto.buttonAction），之后的处理和以前逐字一样（还在按钮里被取消的照旧是 TAP、照旧执行动作）；只有声音看它（被取消的松开不出声）。
+  "按住到点"（修饰键快锁了、Caps 只切显示、合并键出第二个字、Fn 快永久锁了、Fn+Esc 翻转 F 行）报 GestureEngine.HAPTIC_HOLD，Haptics 照点一下震；
+  分流来的 HAPTIC_CLICK 因此只剩"点了一下"（触控板轻点、红点轻点）。加新的收尾路径时报的松开也要带标记（TouchRouterTest.protocol25Flags、SoundEventsTest 锁住）。
+  同一个规矩的另外两处（审查后补的）：触控板上拖着的时候手指被取消、引擎 cancel 收尾（释放触摸屏、退后台、换参数）报 HAPTIC_DRAG_CANCEL（App 照拖动结束震、不出"哒"；
+  GestureEngineTest.dragCanceledKind、SoundEventsTest.routerLongPressDrag 锁住），空中鼠标收尾放掉的拖动同样；实体键的按住被收尾结束（HardKeys.reset / cancel、
+  服务的 releaseAll 和电源键组合）报 holdEnd(键, canceled = true) / Proto.HARD_HOLD_CANCEL，App 的收尾（onPause、断开、服务放开实体键）补的结束也当被取消（AirMouseTest、ServerPartsTest 锁住）。
+- **声音关着时 App 和以前逐字一样**（默认关）：SoundEvents 关着时什么都不放、haptic 一律返回"照旧震"；发给引擎 / 服务的参数（MainActivity.engineConfig）和
+  prefs.engineConfig() 一模一样；Sounds 不建线程、不建管道。声音开着也只多一件事：滚轮出声而"滚动咔嗒"震动关着时引擎照样发咔嗒（含惯性的放开 / 刹住），App 只出声不震
+  （SoundEventsTest.offIsSilentAndUnchanged / ticksForSoundOnly 锁住）。挂新的声音照"声音和震动在同一处发起、声音先交出去"，规则只加在 SoundEvents，不另起一条路。
+  调试版的"震动延后"（Haptics.setDelayMs）只在可调试包、套装不是"关"时才不是 0（MainActivity.applySound、SettingsActivity.syncBench 都这么配），正式包、声音关着时震动一点不变。
+- **试听台就是实际用的**（2026-11-02 声音第一批第 ④ 步）：设置 → 外观 → 声音的试听台和候选区用进程里同一个 Sounds（试听的声音、音量、选的候选就是主界面以后用的），
+  按键 / 触控板 / 三个鼠标键走自己的一份 SoundEvents（规则只有 SoundEvents 一处，不在设置页另写"什么时候出声"）和照 MainActivity 同样配的 Haptics（syncBench）；
+  候选区每个槽点一下放的是落在这个槽的声音（SoundBench.hit，SoundBenchTest 经 SoundVary 核对、真混音器上"指定候选试听"和"选了以后正常放"逐个采样一样）。
+  设置页开着时也 acquire 声音管道、onStop release（主界面 → 设置页 → 主界面管道不断）；onStop 撤掉没放完的那一小段、连打、诊断刷新，停掉试听台"左键"的持续轻震。
 - **触控板背景图只是画面**：只在 TrackpadView 里画（PadImage），区域上报、TouchRouter、服务、协议都不知道有它（上面那条"从触控板出发划出去照样动光标"不受影响）。
   拷贝、解码（大图一次几百毫秒）一律在后台线程，主线程只比文件名和设置（心跳在主线程，卡 3 秒服务释放触摸屏）。
 - **每套主题里（含纯黑）⋯ 都显眼、看得清**（2026-11-01，用户：⋯ 找不到）：键帽形状的 ⋯（menuKey）对页面、普通键帽、功能键都 ≥ 3:1、和功能键色差 ≥ 8，字对它 ≥ 4.5:1、对按下的底 ≥ 3:1；
@@ -516,10 +552,24 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   分屏 / 小窗时不切（2026-10-30）：分屏下重新接管很常见，切了会把焦点从用户刚点过的另一边应用抢走，焦点交给用户点哪边来定；
   不让豆花窗口收键——收了字就留在手机上，进不了外接屏。`Server focus <屏>` 可单独验证。
 - **同一种操作，反馈一样**（用户 2026-10-15 定的原则："用空鼠移动光标是移动，触摸屏上移动也是移动，反馈就该一样"）：
-  移动光标 = 颗粒（设置开关；触控板手指每划 10dp 一颗，空中指针手机每转 1.5° 一颗——慢速时光标走的距离两边差不多）；
-  拖动 / 按着左键 = 持续轻震、不发颗粒（触控板拖动、"左键"按钮、空中按住拖动、音量键按住左键都一样）；
-  滚动 = 咔嗒（双指和边缘一样，原来的"只在边缘"三选一改成开关，旧值不是"关"就当开）；点击 = 点一下。
-  加新的输入方式时照这张表给反馈，别另起一套。
+  加新的输入方式时照这张表给反馈（震动、声音两列都给），别另起一套。声音那一列 2026-11-02 起（声音第一批；方案 design-sound 2.3 的表，默认关、关着时什么都不放），
+  规则只在 SoundEvents 一处，三条触摸路径一样；原则：只给物理动作配声音，不给软件状态配。
+
+| 操作（不管哪条路径、哪种输入方式） | 震动 | 声音 |
+|---|---|---|
+| 移动光标 | 颗粒（设置开关；触控板手指每划 10dp 一颗，空中指针手机每转 1.5° 一颗——慢速时光标走的距离两边差不多） | 不出声 |
+| 拖动 / 按着左键（触控板长按拖动、轻点后拖、"左键"按钮、三个鼠标键的左键、空中按住拖动、音量键按住左键） | 按下"嗒"再持续轻震、不发颗粒，松开停震再"嗒" | 开始"咔"、松开"哒"（触控板上的长按拖动、轻点后拖是像 MacBook 触控板的按下 / 松开；别的是鼠标键的）；持续轻震那段不出声；收尾结束的（手掌、退后台、释放触摸屏、断开）不出"哒"、震动照旧 |
+| 滚动（双指和边缘一样、中键滚动、滚动杆、小红点滚、"滚轮向上 / 向下"动作） | 咔嗒（原来的"只在边缘"三选一改成开关，旧值不是"关"就当开） | 每格一声刻度，快了合并、变轻；"滚动咔嗒"震动关着、滚轮出声开着时只响不震 |
+| 惯性放开 / 刹住 | 放开 / 刹住（跟"滚动咔嗒"走） | 放开不出声（转着也不出声）；刹住很轻一声 |
+| 点击（触控板单指 / 双指轻点、双击的每一下、小红点轻点；点击类动作——按钮条 / 角上 / 空中鼠标页 / 音量键的"单击、右键"） | 点一下 | 一对"咔哒"（按下 + 45 ms 后松开）：轻点是像 MacBook 触控板的、比鼠标键轻；点击类动作是鼠标键的 |
+| 右键、中键（三个鼠标键） | 按下"嗒" | 按下"咔"、松开"哒"（右键高一点、中键闷一点） |
+| 键按下（豆花布局、实体键盘、数字键盘、快捷行；?123 / Fn / 🌐 / ⋯ / 快捷行的动作也算） | 能打断的"嗒" | 按下声（按键的类别挑：普通 / 大键 / 空格 / 回车，特殊键当功能键；行定音高） |
+| 键正常松开 | 不震 | 轻一声（木与枝不出声） |
+| 键被取消（手掌、收尾）、按住到点（修饰键快锁了、Caps 只切显示、合并键出第二个字、Fn 锁、Fn+Esc 翻转） | 不震 / 点一下 | 不出声 |
+| 三指四指手势 | 手势那两下 | 不出声 |
+| 手柄键、十字键换方向、摇杆推到边 | "嗒" / 咔嗒 | 默认不出声（设置里"手柄"开关） |
+| ⋯ / 菜单 / 调整栏 / 空中鼠标页的界面按钮、吸附、回正中 | 点一下 / 咔嗒 | 不出声（界面，不是键鼠） |
+
 - **贴边**：触摸由服务独占后，系统的边缘手势碰不到，不再给系统栏 / 刘海留边（只给贴字面板的输入法让位），
   窗口 layoutInDisplayCutoutMode = ALWAYS。
 - **动作清单统一**（用户要求"能选的类型都通用"）：键盘快捷键并入 Actions，新增 Kind.HID（虚拟键盘按组合键）；
@@ -1905,6 +1955,149 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   ④ CLAUDE.md 文件表两处没跟上：KeyboardPlan 那一行还写"笔记本 / 65% 的 ⋯ 槽在左下角 Ctrl 右边"（协议 24 起笔记本的在 F 行 Ins 那格）；FKeyFaces 那一行"多媒体 / 系统键那一组的 19 个"应是 26 个（加 PrtSc 共 27 个）。
   - 只跑了离线测试（FixedFKeysTest 91145 项——原来 91076，键帽上的字扫七百多万个；FKeysTest 128 项——原来 120；HidTest 257 项——原来 242）和编译；改坏跑过（折行关掉、省略关掉、折行不照 vroom 缩字号、
      翻转当场震、蓝牙描述符两段对调、键盘描述符改一个字节），都有测试报错。FixedKeyboardView 的折行 / 裁剪离线编不到，只编译过、逐行走过一遍；字到底多宽、折成几行要在真机上看。
+- **声音第一批：引擎 + 合成的声音**（2026-11-02；方案 design-sound 的"第一批"，以"八、用户拍板"为准：静音 / 振动 / 勿扰下不响、默认关、触控板轻点要轻并且有"最接近 MacBook 触控板"的候选；
+  第一批分三步，这一步只做 ① 引擎和 ② 合成的声音，③ 事件层（协议 24 → 25："按住到点"单独一种震动 kind、松开带"被取消"）和 ④ 设置 → 外观的"声音"一节 + 试听台是后面两步）。
+  只加了新文件（Sounds、SoundSynth、SoundBank、SoundVary、SoundQueue、SoundMixer、SoundTest）和 tools/test.sh 的一组，别的代码一行没动、协议没动（还是 24）；App 里还没有地方调 Sounds，装上和以前一样（第 ③ 步同一天接着做了，见下一条）。
+  - **为什么自己混音、自己合成**（方案 2.1 / 2.5，没实测）：纯 Java 最快的放声办法是一条低延迟流模式的 AudioTrack、自己往里送；SoundPool 从 Android 14 起不走快速通道（AOSP Stream.cpp）；
+    一组 STATIC 音轨会占快速通道（全机只有约 7 个，Moonlight 也占一个）。第一批的声音（轻、鼠标、触控板、滚轮、木块、树枝、竹筒）都合成，每一下能略有不同、不占安装包。
+  - **管道**（Sounds.Engine，douhua-sound 线程）：PERFORMANCE_MODE_LOW_LATENCY、MODE_STREAM、手机原生采样率（PROPERTY_OUTPUT_SAMPLE_RATE，快速通道要求一样）、单声道 16 位
+    （凭记忆：AudioFlinger 准许单声道的快速通道）；不设缓冲大小（凭记忆：流模式下 Builder 默认一帧、由系统定最小值），之后 setBufferSizeInFrames(2 × burst)，每秒看一次 getUnderrunCount，断流了加一个 burst（凭记忆是 Oboe 的做法）（审查后改了，见"声音第一批：审查后的修改"）。
+    用途 USAGE_ASSISTANCE_SONIFICATION（= STREAM_SYSTEM）：振动 / 静音模式下 AudioService 的 ringerModeAffectedStreams 静音它、勿扰下 ZenModeHelper 静音它（读了 AOSP 源码），音量跟"系统"那档；
+    不请求音频焦点。只从手机喇叭出：setPreferredDevice(TYPE_BUILTIN_SPEAKER)，再 getRoutedDevice 查实际路由（开管道时、路由变了的回调——回调只在主线程置一个标记——、还不知道时每 200 ms 最多十次），
+    不是手机喇叭（或 SPEAKER_SAFE）就写静音；还不知道时设上了偏好就先出。混音线程先要 THREAD_PRIORITY_URGENT_AUDIO，拿不到退成 AUDIO。
+    省电：10 秒没声音 pause + flush（再开时第一下不排在一堆静音后面）、线程 park，play 时 unpark（第一下可能慢一点，硬件要预热）；acquire / release 计数到 0 关掉整个管道（主界面 → 设置页时设置页先 acquire）。
+    写出错（音频服务重启之类）关掉重开，同一个管道 5 次就不再试；线程里任何 Throwable 只让声音停掉（声音是锦上添花，不该让 App 闪退）（审查后加了"过一会儿再开新的"，见"声音第一批：审查后的修改"）。
+  - **混音**（SoundMixer）：请求打包成一个 long（声音 id 4 位、候选 4 位、再轻多少 8 位、key 32 位），无锁多写一读队列 64 格、满了丢（记数）。每块开头取完请求、一律从这一块第 0 帧放（时间不随机）。
+    同一组（同一个键的按下和松开、同一个鼠标键、触控板）新声音开始时旧的 6 ms 线性淡掉（方案 5–10 ms）；活着的最多 8 个、超了淡最老的；在淡的也占位置，池子 16 个（方案没说池子多大：一毫秒来一个、6 ms 淡完时最多 6 个在淡，
+    16 个就用不着硬切；真满了硬切淡得只剩最少的那个——第一版会切到活着的，SoundTest 抓到了）。变调用线性插值；总输出软限幅（0.5 以下原样、以上 tanh，斜率连续、不超过 1）。
+    响度：普通键按下（音量 100%）峰值 0.35（−9 dBFS），几个叠起来也不太碰到限幅（审查后改成按响度补，见"声音第一批：审查后的修改"）；最后再乘手机"系统"那档音量。音量滑块 0–100 每格 0.4 dB（50 = −20 dB），默认 80（−8 dB，要用户用耳朵定）。
+  - **变化规则**（SoundVary，方案 2.6）：确定的那层只看键 id 里的用法码（组合键去掉自带修饰键、合并键取点一下的、Fn 层 / F 行键取底层），所以三条触摸路径、两块键盘一样：
+    类别定槽和轻重（空格、回车、大键 = 退格 / 两个 Shift / 小键盘 + 和 0 各自一个槽；修饰键轻 3 dB、功能键轻 1.5 dB；Shift 归大键、不另外轻——方案里它既是修饰键又是"带卫星轴的大键"，取了后者），
+    行定音高（F 行 +30、数字行 +20、QWERTY +10、ASDF 0、ZXCV −10、空格那一排 −20 音分，只看物理位置）；大键、空格、回车松开再低 100–150 音分。
+    每次的小随机：变体随机挑、不连着用同一个；按键 ±20 音分、鼠标 / 触控板 ±15、滚轮 ±10、±1.2 dB，乘调试版的"随机幅度"（审查后改了，见"声音第一批：审查后的修改"）。
+    打得快：最近四个按键间隔平均 < 125 ms 时轻 1.5–4 dB（60 ms 以下到 4）、换短尾巴（放到 60%、最短 30 ms，最后 8 ms 淡出）；至少两个间隔才算、停 1 秒重新数；按下永远出声。
+    滚轮：离上一个放出来的不到 40 ms（一秒 25 格）就合并（不放），放出来的那格轻 3 dB。手柄键用鼠标左键的声音、手柄咔嗒用滚轮的，各再轻 2 dB（设置里默认关，第 ④ 步）。
+  - **合成**（SoundSynth，模态合成，参考 Farnell《Designing Sound》和 STK ModalBar / Shakers 的思路，代码照公式自己写，没抄）：激励（锤头半个正弦，宽 w 时频谱第一个零点在 1.5 / w，
+    木头、竹筒靠它压掉 2.5 kHz 以上的分音；冲击；衰减的噪声）喂二阶共振器（按 T60 衰减的正弦）。统一收尾：4 阶巴特沃斯高通 300 Hz（150 Hz −24 dB）、3.7 kHz 宽凹 −9 dB（Q 0.75，压 2.5–5.5 kHz）、
+    剪开头静音（激励从第 0 个采样开始，基本剪不到）、按 −60 dB 剪尾巴补 3 ms 淡出、峰值归一。噪声幅度按 √(48000 / 采样率) 缩，44.1 / 48 / 96 kHz 听起来一样（不缩的话 96 kHz 时噪声相对冲击多 3 dB，频谱测试差点过不了）。
+    每个子声音预先算 4 个变体（种子只跟套 / 槽 / 候选 / 子声音 / 第几个有关，共振 ±1.2%（审查后改成 ±0.9%）、T60 ±5%、噪声不同）。全算（调试版）木与枝约 1.2 MB、轻约 0.7 MB（float），电脑上一套 70 ms 上下，手机上估计慢几倍（在混音线程里算，算好之前按的丢掉）；正式包只算默认的（轻约 280 KB、木与枝约 420 KB）。
+  - **候选**（SoundBank，每类 2–4 个，第 0 个默认；desc 只有数字和单位不用翻译）：
+    轻 = 普通键（闷嗒 850 Hz / 更闷 650 / 笔记本 1150）、大键、空格（最厚）、回车、松开（很轻一下 / 不出声）、鼠标按下 / 松开（闷嗒 / 收着的微动 / 闷的微动）、滚轮（细 / 闷 / 棘轮两下）、刹住；
+    木与枝 = 字母（木块 / 木鱼 / 硬木）、大键（低的木块 / 木鱼）、空格（细枝 / 粗一点 / 干枝）、回车（竹筒三种）、松开（不出声 / 很轻一下）、鼠标（小木"嗒" / 收着的微动 / 小木鱼）、滚轮、刹住；
+    触控板轻点两套共用四个"像 MacBook 触控板"的（TAPTIC：偏低的主共振 + 一小下机械的"咔"、整体低通 3 kHz：A 实 420 Hz、B 更低 340、C 更脆 560、D 双层——7 ms 后执行器回弹一下），按下 / 松开一对、松开高一点短一点（审查后改了，见"声音第一批：审查后的修改"）。
+    鼠标左右中不是三组候选，是同一个候选的三个兄弟（右键 ×1.04、中键 ×0.86 + 低通 ×0.7 + 衰减 ×1.15，"中键略闷"）。
+    电平（dB，相对普通键按下）：松开 −9、鼠标 −2（中键 −2.5）、鼠标松开 −8、触控板 −6（松开 −13，比鼠标键再轻 4 dB）、滚轮 −12、刹住 −14；"轻"那套整体再 −3、木与枝的树枝 −1。
+    实际长度（−60 dB 剪尾以后）：轻的按键 25–65 ms、木块约 76、木鱼约 125、竹筒 130–180、树枝 22–53、鼠标 9–35、触控板 12–32、滚轮 7–9 ms，都在方案的表里（SoundTest 按表锁住）。
+  - **和方案不一样**：① 方案第一批说可以拿 VCSL 的 CC0 木鱼录音当对照候选，这一步只合成、不下载东西（录音的素材流水线是第二批）；② "关"不是一套声音，是不建引擎；
+    ③ 触控板轻点两套用同一组像 MacBook 的（用户点名要像 MacBook），鼠标的左右中、触控板的按下 / 松开是子声音不是单独的候选；④ 池子 16 个（方案只说最多 8 个声音）；
+    ⑤ "2.5–5.5 kHz 不出尖峰"做成"那一段的最高处比 300–2500 Hz 的主峰低 ≥ 6 dB"（测试的口径），"去掉 300 Hz 以下"做成"150 Hz 以下比主峰低 ≥ 20 dB、200 Hz 以下能量 < 2%"
+    （200–300 Hz 是高通的过渡带，B 那个 340 Hz 的触控板有一点在这里）；⑥ 通话中不出声只留了接口（Sounds.setSuppressed），事件层那一步按 App 已有的通话状态接上；
+    ⑦ 调试版"震动延后 0–40 ms""这套配哪档震动"是事件层 / 设置页的事，这一步没有。
+  - **没验证的**（全是推断）：三星 Fold 8 上拿不拿得到低延迟（单声道 16 位、SONIFICATION 用途能不能进快速通道）、实际延迟、setPreferredDevice 认不认、getRoutedDevice 给不给得出、
+    静音 / 勿扰真不真静音它、10 秒暂停后第一下慢多少、手机上算一套要多久、URGENT_AUDIO 拿不拿得到；好不好听一个都没听过。
+- **声音第一批第 ③ 步：事件层 + 协议 25**（2026-11-02，接着上一条；方案 design-sound 2.2 / 2.3 / 2.7，以"八、用户拍板"为准）。改了 App 和服务（协议 24 → 25），
+  设置 → 外观的"声音"一节和试听台是下一步（同一天接着做了，见下一条"第 ④ 步"）；这一步时 Prefs 里套装默认"关"（还没有界面能打开），装上听不到，行为和以前一样（见不变量"声音关着时 App 和以前逐字一样"）。
+  - **为什么要升协议**（方案 2.2）：现在的震动按"怎么震"分，不按"发生了什么"分——同一个 HAPTIC_CLICK 可能是触控板轻点，也可能是修饰键按到 0.4 秒快锁了；
+    服务那边被取消的手指（手掌、释放触摸屏时补报的抬起、releaseAll）报的松开和正常松开一模一样。挂在震动上的话快锁了也出鼠标声、被取消的手指也出松开声。两处小改，都只加信息：
+    ① "按住到点"（KeyHolds.Host.holdReached：修饰键快锁了、Caps 只切显示、合并键出第二个字、Fn 快永久锁了、Fn+Esc 翻转 F 行）单独一种震动 GestureEngine.HAPTIC_HOLD = 8，
+    TouchRouter 替 KeyHolds 发，Haptics 照点一下震（样子不变）；② MSG_BUTTON / TouchRouter.Output.button 的松开或上 Proto.BUTTON_CANCELED（0x80）= 被取消的手指，
+    App 收到先去掉（Proto.buttonAction）再照旧处理，只有声音看它。消息的字节排布都没变（kind 本来就是 u8、action 本来就是 u8）。旧服务不发这两样，所以升号；
+    协议号变了 App 连上旧服务报"版本不一致"，靠"连不上 → 自动启动"（SelfStart.autoStart）重启服务，或者 deploy 脚本 / tools/start-server.sh。
+    上一个人做到一半（Proto、GestureEngine、TouchRouter 改了一部分）被中断了，这一步核过他的部分（都对，接着用），补完测试、App、文档。
+  - **事件层**（SoundEvents，纯 Java、离线测）："发生了什么" → 放哪个声音、震不震，规则只在这一处（见文件表和"同一种操作，反馈一样"那条的声音一列）。
+    MainActivity 在调震动的那几处调它，声音先交出去（Sounds.play 只往队列里写一个数）、再震；三条触摸路径一样：服务接管 / 蓝牙本地分流报来的按钮和震动（onButton、onHaptic），
+    面板 / 数字键盘 / 鼠标键 / 角上和按钮条的按钮自己收触摸（onKeyHaptic、onKeyRelease、数字键盘的触摸监听、localTouch / mouseKeyTouch → onButton）。
+    面板自己收触摸时特殊键（?123、🌐 这些）没点成的松开以前不回报，加了 Listener.onKeyRelease（只改 App，方案 2.2 说的那一处）。
+  - **一次点击压成一对"咔哒"**：分流在手指抬起、认出是轻点那一刻才报 HAPTIC_CLICK，按下、松开早就过去了，所以放"按下 + 45 ms 后松开"一对（方案：压在 40–60 ms 内）。
+    "哒"晚放交给混音线程按帧数数（SoundMixer.request 的 delayMs，确定的），主线程不定时；晚放的交的时候不淡掉同一组还在响的"咔"、等着的时候被同一组新来的淡掉就整个不放（连点时不堆）。
+    桌面模式下鼠标键真正按下 / 松开的时刻 App 看不到，照方案不去拿，声音跟着手指走（轻点 = 一对；长按拖动 = 开始"咔"、松手"哒"），蓝牙、桌面两种模式一样。
+  - **滚轮出声、滚轮不震**（方案 2.2 最后一条）：滚轮的咔嗒在引擎 / 服务里才发、"滚动咔嗒"震动关着时根本不发。声音开着且滚轮出声时 MainActivity.engineConfig 让引擎照样发
+    （scrollTicks = ALL，连惯性的放开 / 刹住、小红点 / 滚动杆滚动的咔嗒），SoundEvents.haptic 对它们只出声、返回不震。字段本来就有，不用升协议。声音关着时发给服务的参数一个字节都不动。
+  - **通话中不出声**：Sounds.setSuppressed(inCall())，和截不截音量键同一个判断（AudioManager 的模式不是 NORMAL）；模式一变（audioMode 监听）、每次读设置都更新。
+    振动 / 静音模式下来电时音频模式不变，那时系统本来就按 SONIFICATION 用途把它静音（推断，没核实三星）。
+  - **和方案不一样 / 方案没写的**：
+    ① 小红点轻点（默认关）和触控板轻点都是分流的 HAPTIC_CLICK、分不出来，一样放像 MacBook 触控板的那一对（表里写的是鼠标的一对）。
+    ② 触控板上的长按拖动、轻点后拖，开始 / 结束放触控板的按下 / 松开（不是鼠标键的）：同一块玻璃上的点和按该是同一种声音；"左键"按钮、三个鼠标键、音量键按住左键、空中按住拖动放鼠标键的。
+    ③ 点击类动作（按钮条 / 角上 / 空中鼠标页格子 / 音量键点一下的"单击、右键……"，只能点一下的地方的"左键"）放鼠标的一对；别的动作（组合键、键盘、设置……）是界面，不出声。
+    方案的表把"空中鼠标页按钮"列在不出声里，这里理解成界面按钮（回正中、退出、圆钮）；格子里放的鼠标键动作照鼠标键出声（"同一种操作，反馈一样"）。
+    ④ 键盘上的特殊键发声时当 Menu 键（0x65）的合并键（SoundEvents.specialKey：功能键、最下一排、每个一组），只给声音用、不发给服务；只给按过的松开出声
+    （分流对 fn🌐 单点只报 🌐 的 TAP、没有按下，那一下 fn🌐 键自己已经出过声）。快捷行里的"滚轮"按下不出按键声（同它按下不"嗒"），滚的那一格出刻度声。
+    ⑤ 被取消的拖动结束照样出"哒"：releaseAll 时 engine.cancel 报的 DRAG_END 和正常结束分不出（要再加一种 kind，没做）；同样，onPause 时音量键按住左键的收尾（hardKeys.reset）、
+    空中鼠标 releaseAll 的松开也出"哒"。这几种多半紧接着退后台、管道跟着关。（审查后做了：协议 25 里加了 HAPTIC_DRAG_CANCEL、HARD_HOLD_CANCEL，见"声音第一批：审查后的修改"。）
+    ⑥ 手柄的咔嗒（十字键换方向、摇杆推到边）和滚轮的都是 HAPTIC_TICK，App 按"现在是不是手柄页"分（SoundEvents.FROM_GAMEPAD）；手柄的声音设置里默认关，咔嗒发不发照旧看手柄自己的开关。
+    ⑦ 调试版"震动延后 0–40 ms""这套配哪档震动"是第 ④ 步候选区的事，这一步没做：现在震动不等声音、样子一点没变（第 ④ 步做了震动延后、默认 0；配哪档没做，见下一条）。
+  - **没验证的**：全要真机听（见"进行中"）；三星上 MSG_HAPTIC 多一种 8 的服务、App 一起换了才对得上（版本号挡着，混不了）。
+- **声音第一批第 ④ 步：设置 → 外观的"声音"一节、试听台、调试版候选区**（2026-11-02，接着上一条；方案 design-sound 2.8 / 第三节，以"八、用户拍板"为准）。
+  只改 App（SettingsActivity、新的纯 Java 类 SoundBench、Sounds / Haptics / Prefs / MouseKeys / MainActivity 几处小改、九个 strings.xml 各 32 条），不改服务、不改协议（还是 25）。
+  到这一步声音第一批（① 引擎、② 合成、③ 事件层 + 协议 25、④ 设置页）整批写完，默认"关"。
+  - **"声音"一节**（外观页最后，"震动"后面）：套装 关 / 轻 / 木与枝（以后加机械 / 打字机 / 钢琴，PACK_IDS 加字就行），点一项（选中的再点也算）就放一遍
+    SoundBench.DEMO（打一个词、空格、回车、触控板轻点一对、滚两格，不到 1.5 秒，只出声不震、不看四个开关——是"这一套听起来什么样"）。
+    第一次选要先在混音线程里算声音、开管道，算好之前交的会被丢，所以等 Sounds.ready（新加的：这一套算好、管道开着）再按时间一个个交，最多等 4 秒。
+    一句说明（静音 / 振动 / 勿扰 / 通话中不响、只从手机喇叭出、大小跟"系统"音量、听不到先看它）；套装不是"关"时下面才有：音量（0–100，写数字不写 %——
+    每格 0.4 dB、不是百分比；松手放一下按键声）、键盘 / 鼠标键（含触控板轻点）/ 滚轮（含惯性刹住）/ 手柄（默认关）四个开关、试听台。
+    套装、音量、调试版的候选和微调马上交给进程一份的 Sounds（主界面也用它）；四个开关、震动延后在主界面回去时 MainActivity.applySound 照新设置配（同别的设置"回到触控板时生效"）。
+  - **试听台**（正式版也有）：一排键 ⇧ a s d ⌫ Space ↵（键名不翻译，同豆花布局）、一小块触控板、三个鼠标键（MouseKeys，中键窄、2.2 : 1 : 2.2，红线和小点同主界面），
+    照选的主题画（同上面的预览，换主题、开关按键边框时跟着重画；MouseKeys 加了 setTheme，不看 Style 的当前主题——主界面还没换）。
+    按下去就是真的声音 + 真的震动：同一个 Sounds、自己的一份 SoundEvents（规则只有它一处）、照 MainActivity 一样配的 Haptics（syncBench：强度、咔嗒强度、持续轻震、调试版的惯性波形和震动延后；
+    每次按下都照当时的设置重配，别的页改了震动、"滚动咔嗒"也跟得上）。键：按下出声 → 能打断的"嗒" → 画按下；松开只出声；被取消（ACTION_CANCEL）的松开不出声。
+    三个鼠标键：同 MainActivity.mouseKeyButton（左键"嗒" + 持续轻震、松开停震再"嗒"；右键、中键按下"嗒"）。按下时 requestDisallowInterceptTouchEvent，划触控板时页面不跟着滚、按着的键不被 ScrollView 抢走。
+    这里没有服务：打开设置页时主界面已经暂停、触摸屏早还给系统，就是普通的 View 收触摸。设置页 onStart 也 acquire 声音管道（主界面 → 设置页时设置页先 acquire、主界面后 release，管道不断）、onStop release。
+  - **和方案不一样 / 方案没写的**：
+    ① 试听台那一小块触控板单指划就是滚动（主界面要双指或边缘带）：方案写的就是"划一下 = 滚轮几格"，试听台只为听刻度声；一格多远照设置的"滚动速度"，轻点的容差和时长照 GestureEngine.Config。
+    纯 Java 的 SoundBench.Pad 认，离线测。轻点在抬起时认（同分流），放像 MacBook 触控板的一对、点一下的震动。
+    ② "这套配哪档震动"（方案 2.7 / 第三节的"原样 / 轻一点 / 重一点"）没做：交代里只要音量偏移、随机幅度、震动延后三个；按套换震动的轻重会动震动现有的样子，等用户挑定声音再说。
+    ③ "震动延后"不只在试听台：调试版、声音开着时主界面也延后（Haptics.setDelayMs，MainActivity.applySound 配），这样用户能在实际打字时调到"合成一体"。
+    只延后有声音的那几种（按键的"嗒"、点一下、滚轮咔嗒、惯性刹住）；开始 / 结束拖动连着持续轻震的开关，晚了会和紧接着的下一次拖动打架（结束晚到会把新开始的嗡停掉），不延后。默认 0，正式包一律 0。
+    ④ 候选每套各记各的（Prefs 键从第 ①–③ 步的 sound_cand_<槽> 改成 sound_cand_<套>_<槽>；那一版没界面、没发出去，不迁移）：两套同一个槽的候选不一样，共用一个下标没意义。
+    ⑤ 候选区点一下就存下（同惯性波形那一节），点一下松开的槽只放松开（听得清），"连打"的每一下是完整的一下（按键按下 + 70 ms 松开、鼠标 + 45 ms，试的那一半用候选、另一半用选的），
+    按键轮着换三排上的几个字母（行的音高不一样，同一个键老响像机关枪）。候选区的试听不看四个开关（是直接试这个候选），震动照强度设置、滚轮 / 刹住还照"滚动咔嗒"开关。
+    ⑥ "打乱顺序"开着时按钮照旧写 A B C D、背后的候选随机换（每打开一次换一种排法），参数那一行藏起来；关掉就揭晓（选中的那个照真代号、带参数显示）。
+    ⑦ 诊断行每半秒刷新（只在调试版、这页开着时），不设成可选中（可选中就能拿焦点，改字时 ScrollView 会往它那儿跳）——要给开发者看就截图。
+    ⑧ 设置页也听音频模式（通话 / 来电响铃时 Sounds.setSuppressed），主界面 onStop 时摘了它自己那个监听。"恢复默认"后声音马上回到"关"（管道关掉）。
+  - **没验证的**：界面（SettingsActivity）离线编不到，只编译过（-Xlint:all 没有新警告）、逐行走过闪退路径；纯 Java 的 SoundBench 离线测了（见"测试"）；声音、震动、延后全要真机（见"进行中"）。
+- **声音第一批：审查后的修改**（2026-11-02，同一天；审查者的 14 条发现——其中三条说的是同一件事：换套重算时管道没停——逐条核实过，都是真的；13 条照改，samePathsSameKey 那条改成"文档写准 + 抽一层纯 Java"）。改了 App 和服务（协议还是 25：
+  加的两样——HAPTIC_DRAG_CANCEL、HARD_HOLD_CANCEL——趁 25 还没发出去一起算进 25；服务、App 照样要一起换，协议号变了靠"连不上 → 自动启动"，或者 deploy 脚本 / start-server.sh）。
+  - **管道**（Sounds，三条发现合在一起改）：
+    ① 拿不到低延迟时也把缓冲压到 2 × HAL burst：普通混音线程一个周期 ≥ 20 ms（AOSP Threads.cpp 的 kMinNormalSinkBufferSizeMs），缓冲 384 帧永远凑不够一个周期，
+    声音一截一截地断、有别的轨道时一直混不上，每秒才加一个 burst，十来秒才缓过来（审查者照 AOSP 的规则写模型算的，Fold 8 上拿不拿得到快速通道不知道）。
+    现在只有 getPerformanceMode() == LOW_LATENCY 时才压（快速通道的默认容量本来就是 2 个 HAL burst，压不压差不多）；拿不到就不动系统给的大小。断流每写一块查一次（读共享内存，不走 binder），
+    不再"每写满一秒的帧才查一次"。
+    ② 换套重算声音时管道照样 play、没人喂：算的几十到几百毫秒一定断流，被当成缓冲不够、每换一次缓冲永久多一个 burst，诊断的 xrun 也是换套次数、状态一直停在 building。
+    现在重算前 pause + flush、算完 play；play 之后的 GRACE_WRITES（4）块里的断流单独记（Diag.startUnderruns，诊断行写成"xrun N (+M start)"）、不加缓冲。闲着醒来、开管道、换路由同样。
+    ③ 查路由（getRoutedDevice 要走 binder 列一遍设备）原来在写循环里、开管道后 2 秒内每 200 ms 一次：缓冲只有两个 burst 的余量。现在开管道时在 play 之前查一次；
+    还不知道的只在没声音的空当里查（断一下也听不见，那几块不算）；路由变了马上查、并且重读低延迟 / 缓冲 / 容量（系统重建轨道后会变，以前诊断行一直是开管道那一刻的数），拿着低延迟时再压回去。
+    ④ 管道坏了（开不起来、一直写出错、线程里出错）以前线程退出、engine 却还指着它：只要还有页面开着，这一整段前台时间都没声音、设置页的试听悄悄不放。现在线程结束告诉主线程（engineEnded），
+    还有人用就过 RETRY_MS 5 秒开一个新的（连着坏翻倍、最多 60 秒，免得一直坏一直重开、刷日志）；退后台、换套装从头算；diag 照样给 failed 和原因（以前关掉以后一律写 off）。
+  - **电平按响度**（SoundBank）：以前每个声音峰值归一再乘电平表，可几十毫秒以内的声音听起来多响看总能量：木与枝的鼠标比字母轻 7 dB（表上 2）、触控板只比鼠标轻 0.4 dB（表上再轻 4）、
+    轻那套的滚轮轻 17.6 dB（表上 10–14）——审查者用离线小程序量的，我复现了。现在 build 时量每个子声音的响度（loudnessDb：过粗略的手机喇叭——SPEAKER_HZ 800 Hz 二阶高通，
+    方案 1.5"500–1000 Hz 以下衰减很快"取中间——取最响 50 ms 的能量，四个变体平均），补增益到 LOUDNESS_REF_DB + 电平表（Bank.gain，混音时乘它；SoundMixer.REF 删了）。
+    参考值 −41 dB 定在单个声音的峰值都在软限幅拐点 0.5 以下（最高是 96 kHz 的树枝 0.47），比以前整体轻约 3 dB（以前木块峰值 0.35，现在约 0.24），音量滑块的默认 80 要用户用耳朵再定。
+    候选区 A / B 一样响了，比的是音色不是响度。
+  - **手机喇叭放不出的低频**：三个"像 MacBook 触控板"的候选（420 / 340 / 420 Hz）87–89% 的能量在 500 Hz 以下、竹筒 A / C 是 37–94%，在手机上几乎听不见（按 800 Hz 高通算轻 9–15 dB）。
+    现在 ① 触控板：A 680 Hz、C 820、D 680 + 回弹，主共振放在 600 Hz 以上、靠阻尼短、低通 3 kHz 显得"实"；B（"更低"）换成新配方 TAPTIC_LOW：只放 340 Hz 的 2、3、4 倍泛音（680 / 1020 / 1360），
+    耳朵从整数倍的泛音里听出那个低音（残留音高，方案说"沉的声音在手机上只能用中频的肉模拟"的另一种做法；短促的"咔"里听不听得出那个低音没把握，要用户听）；
+    ② 竹筒 A 500 → 580、B 620 → 660、C 460 → 560 Hz；③ 轻那套的闷嗒（TAP）原来下面那个共振在 0.62 倍、噪声激励的裙边拖进 300–500 Hz（大键 A、空格 B、松开 A、刹住 A 是 36–63%）：
+    改成 0.66 倍、另压一道 450 Hz 二阶高通，大键 A 700 → 790 Hz、空格 B 500 → 560 Hz。代价：轻那套有几个键的峰值晚到 2–3 ms（去掉的正是手机喇叭本来就放不出的那段，手机上听到的起音没变；
+    开头 1 ms 内到峰值 5% 照旧）。SoundTest 锁住每个声音 500 Hz 以下的能量 ≤ 40%（现在最多 33%）。
+  - **树枝第一下最响**：后面的小裂（最响 0.85）打在还在响的纤维共振上会叠得比第一下还响，峰值晚到 5–7 ms、有的变体头 2 ms 只到峰值的 26–45%，起音软、像晚了。
+    现在第一下和后面的小裂分开过同一套共振（线性，分开算再加 = 一起算），后面的合起来最响压到第一下的 0.55（TWIG_REST_MAX）；三种采样率全部变体头 2 ms 就到峰值（SoundTest 锁 ≥ 80%）。
+  - **随机音高**：变体之间本来差 ±1.2%（±21 音分），混音时每一下再 ±20，合起来 ±40（方案 ±15–30）。改成变体 ±0.9%（±16）+ 每一下按键 ±12、鼠标 ±10、滚轮 ±8，合起来最多 ±28。
+    调试版"随机幅度"拖到 0 以前照样随机挑变体（变体之间差到 35 音分），现在一律第 0 个（同一个键连按每一下逐个采样一样，SoundTest 锁住）。
+  - **打得快的回差 + 连打改每秒 7 下**：连打每秒 8 下 = 间隔正好 125 ms，压在"打得快"的门槛上，按混音块对齐、Handler 抖几毫秒，一串里三成的下突然轻 1.5 dB、尾巴变短；
+    真打字在每秒 8 下附近也会这样跳。现在进出有回差（平均 < 125 ms 进、≥ 140 ms 才出，SoundVary.FAST_EXIT_MS），连打改每秒 7 下（间隔 142 ms，听正常打字的那一档；sound_try 九种语言跟着改成 7）。
+  - **收尾的松开不出声**（协议 25 两样新的，都只加信息、震动一点不变）：
+    ① 触控板上拖着的时候手指被取消（手掌、丢数据、收尾补报的抬起）、引擎 cancel（释放触摸屏、退后台、换参数）以前报 HAPTIC_DRAG_END，App 照样放"哒"；
+    现在报 HAPTIC_DRAG_CANCEL = 9（GestureEngine.finishGesture 看最后抬起的那根是不是被取消的），Haptics、MainActivity 照拖动结束震，SoundEvents 不出声。第二根手指来了结束的拖动照旧 DRAG_END（用户的动作）。
+    ② 空中鼠标收尾放掉的拖动（releaseAll / releaseFrom，holdDrag 带 canceled）同样报 HAPTIC_DRAG_CANCEL。
+    ③ 音量键按住左键：HardKeys.Output.holdEnd 加了 canceled（被系统取消的按键、reset 收尾是 true）；App 的 actionUp 带它（onPause / 键盘盖上空中鼠标页的 hardKeys.reset、
+    断开 / 服务放开实体键时的 endServerHolds、按钮报来的被取消）；服务的 HardKeyGate 收尾补的结束（releaseAll：停止拦截、通话、心跳超时；电源键组合交还系统）报新的 HARD_HOLD_CANCEL = 3，
+    App 照 HARD_HOLD_END 收尾、只是不出声（以前这几种也报 HARD_HOLD_END）。审查者只点了前两样和 App 那几处，第三样服务那边是我顺着同一个规矩补的（同一个"被取消"，不补的话电源键截屏组合时多一声"哒"）。
+  - **测试补的**：TouchRouterTest.protocol25Flags 加了 releaseAll 时"左键"按钮（REGION_HOLD_LEFT）报的松开带被取消（审查者把它改坏，所有测试照过）；SoundEventsTest 的宿主照 MainActivity.buttonAction 接上"左键"按钮。
+  - **面板那一路的映射**（审查者说 samePathsSameKey 按构造必过：routerButton 对键就是直接调 keyDown / keyUp）：MainActivity.onKeyHaptic / onKeyRelease 里"特殊键当特殊键、普通键当键、canceled 不出声"
+    抽成 SoundEvents.panelDown / panelUp（纯 Java，测了它们和分流那一路出的一样、特殊键只给按过的出松开声）；面板（KeyboardPanel / FixedKeyboardView）交出的 special、canceled = !tap
+    还是 Android 类、离线测不到，测试一节和测试本身的说明写准了这一点（以前写的"面板那一路和分流那一路出的一样"说多了）。
+  - 只跑了离线测试和编译；每条新检查都把代码改回去跑过（14 处变异，各自都有测试报错）。界面、管道（Sounds）离线编不到，只编译过、逐行走过闪退路径。
+
 ## 测试
 
 - **测试设备**：用 USB 连的测试机（序列号见 `.private/NOTES.md`），命令里显式 `adb -s`。用户的主力机禁止拿来测试。
@@ -2009,6 +2202,55 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   ServerPartsTest（GamepadMux，含设备晚建好补写之后松开写得出去；CMD_GAMEPAD / CMD_GAMEPAD_CONFIG 不算心跳、GamepadConfig 往返 / 长了跳过 / 短了用默认）。
   真机只读核对（手柄页进过一次以后）：`adb shell getevent -lp` 里 Douhua Gamepad 有 BTN_SOUTH…BTN_THUMBR、ABS_X / Y / Z / RZ / BRAKE / GAS / HAT0X / HAT0Y；
   `adb shell dumpsys input` 里它的 Classes 有 GAMEPAD | JOYSTICK、KeyLayoutFile 是 Generic.kl。
+- 声音第一批（2026-11-02，`tools/test.sh`）：SoundTest（10616 项，第 ③ 步加了晚放的以后 10624 项）——合成：两套 × 每个槽 × 每个候选 × 子声音 × 4 个变体（332 个声音）在 44.1 / 48 / 96 kHz 下各查一遍：峰值 1、没有 NaN、
+  第一个采样不是 0、1 ms 内到峰值的 5%（开头没有静音）、长度和主体（−20 dB 那一点）在方案的表里、结尾淡到 0、2.5–5.5 kHz 的最高处比 300–2500 Hz 的主峰低 ≥ 6 dB、150 Hz 以下低 ≥ 20 dB、
+  200 Hz 以下能量 < 2%（打出每个采样率下最差的那个）；同一个种子逐个一样、种子不同不一样、SplitMix64 钉了头两个值；收尾滤波本身（100 / 150 Hz 压多少、1 kHz 只动一点、3.7 kHz 的凹）。
+  清单：每类 2–4 个候选、代号 A–D、默认的出声、触控板是 TAPTIC 且两套共用、木与枝的木块 / 树枝 / 竹筒 / 松开不出声、存的字认得回来、子声音的配方（右键高、中键低闷、触控板松开高短）；
+  电平的先后（松开轻 6–12、鼠标轻约 2、触控板比鼠标再轻、滚轮轻 10–14、刹住更轻）；建一份：关是 null、只算默认 / 全算 / 只算选的、建两次逐个一样。
+  变化规则：类别（含组合键、合并键、Fn 层、F 行键、Fn 键）、行和音分、随机的范围（按键 / 鼠标 / 滚轮、随机幅度 0 / 2 / 封顶 3）、变体不连着重复且都用得到、打得快（间隔 300 … 0.02 ms：每下都出声，
+  ≥ 125 不变、中间轻 1.5–4、≤ 60 轻 4、短尾巴，越快越轻，第二下不算、停 2 秒重新数、松开不另外变）、滚轮合并（一秒 100 格放约 25 格、间隔 ≥ 40 ms、轻 3 dB，一秒 10 格一格不合并）、互斥的组。
+  混音：请求打包往返、下一块第 0 帧出声且等于软限幅(REF × 电平 × 变体)、同键 6 ms 淡完、不同键不打断、松开打断同键按下的尾巴、最多 8 个 / 池子 16 / 抢最老的 / 一毫秒一个用不着硬切 / 一块里 20 个硬切只切在淡的、
+  软限幅的形状、叠满不溢出、确定性、音量（0 / 50 / 100、减半输出减半）、指定 / 设置里选 / 没算退回默认的候选、再轻 6 dB 和音量偏移、不出声的候选不起声也不打断按下、短尾巴真短了、闲着的判断、换一份 / reset 清空。
+  队列：先进先出、满了放不进、绕 1000 圈、0 不能放；4 个线程各写 20000 个、一个线程读：放进去的恰好读到一次、每个线程的先后不乱。另打出混 5 秒（8 个一直响）多久、全算一套多久。
+  改坏跑过（去掉一节高通、去掉凹、开头留 2 ms 静音、不互斥、不抢占、变体可以重复、不短尾巴、滚轮不合并、不出声的也打断、队列写错、硬切切到活的、音量翻倍、行反了、再轻不生效），都有检查报错。
+  Sounds（AudioTrack 那层）离线编不到，只编译过（-Xlint:all 没有警告）、逐行走过一遍闪退路径。
+- 声音第一批第 ③ 步：事件层 + 协议 25（2026-11-02，`tools/test.sh`）：SoundEventsTest——声音关着（四个开关 × 震动开关 64 种）一个都不放、每种震动从哪来都照旧震、
+  wantTicks = 震动开关；方案 2.3 的表一条条（键、被取消、特殊键只配按过的 / 同一个按两次 / 收尾 reset / 记满了、鼠标键、点击类动作的一对、滚轮动作、手柄、
+  分流来的每种震动 × 从哪来）；四个开关各管各的；"滚轮出声不震"的 8 种组合 × 每种震动 × 从哪来；特殊键的发声 id（功能键、最下一排、各不相同、不和 Fn / F 行键撞）；
+  面板那一路和分流那一路同一个键出的一样（普通、组合、合并、Fn、Fn 层、F 行键；审查后改成经 panelDown / panelUp 比——以前比的是 keyDown / keyUp，routerButton 里就是调它们，按构造必过；
+  面板交出的 special、canceled = !tap 仍然测不到）；真 TouchRouter + GestureEngine 跑：单指轻点（抬起时一对、定时器松左键不再出声、声音关着时震动一模一样）、
+  双指轻点、双击（每下一对）、长按拖动、双指滚动（声音震动都开 / 只出声不震 / 都关引擎不发）、惯性（放开不出声、刹住一声、碰键静默停）、键（被取消、releaseAll、迟到的抬起）、
+  Shift 按住到点和合并键出句号不出声、三个鼠标键（被取消、releaseAll）、手柄页（开关开 / 关）。
+  TouchRouterTest.protocol25Flags：正常按下 / 抬起都不带标记、被取消的抬起都带（按钮还在里面照旧 TAP）、按下从来不带、换参数留着的键之后正常抬起不带、
+  手柄五种收法（正常 / 被取消 / releaseAll / setConfig / setGamepadConfig）和收完再按一下、按住到点报 HAPTIC_HOLD 而轻点报 HAPTIC_CLICK；原来锁"释放时报松开"的几条改成带标记的。
+  ServerPartsTest.protocol25：版本、HAPTIC_HOLD 和别的种类不撞、BUTTON_CANCELED 和 DOWN / UP / TAP 不撞且去得掉、MSG_BUTTON / MSG_HAPTIC 的字节排布照旧；真 OneShotTimer 那条改看 HAPTIC_HOLD。
+  KeyHoldsTest / FKeysTest 数的"按住到点那一下"改成 HAPTIC_HOLD（触控板轻点不再算进去，另查它报的是 HAPTIC_CLICK）。
+  SoundTest 加了晚放的那一个：延后写得进取得回（截到 0–255）、正好在第 delay × 采样率 / 1000 帧开始、一对的前 45 ms 和只放"咔"逐个一样、等着时算有声音、
+  被同一组新来的淡掉就不放、不同组的叠着、确定性。
+  改坏跑过 15 处（scratchpad 里一次性的脚本）：键的松开 / releaseAll 不带标记、手柄收尾不带标记、按住到点改回 HAPTIC_CLICK、被取消的也出松开声、轻点只放一声、
+  wantTicks 不看声音、只为出声发的咔嗒照样震、按住到点出声、特殊键松开不配对、声音关着照样放、晚放的也淡掉同组、等着的被淡掉照样放、不理延后、触控板开始拖动不出声，都有检查报错。
+  MainActivity / Sounds / 面板的挂点离线编不到，只编译过、逐行走过闪退路径。
+- 声音第一批第 ④ 步：设置页的"声音"一节（2026-11-02，`tools/test.sh`）：SoundBenchTest（4688 项）——试听台的一排键（类别：⇧ ⌫ 大键、空格、回车，主次键帽同 KeyRows.functionKey，经事件层按下 / 松开各一声、被取消不出声）；
+  候选区每个槽点一下 / 连打 16 下的每一下：正在试的那一半经 SoundVary 落在这个槽、配对的落在别的槽、第一个不延后、延后写得进请求；真 SoundMixer 上"指定候选试听"和"选了这个候选正常放"逐个采样一样
+  （两套 × 每个槽 × 每个候选 × 点一下 / 连打）、不出声的候选点了没声音、别的都有；连打每秒 8 下 2 秒（审查后改成 7 下）、字母在三排上不连着同一个、大键都落在大键那个槽；每个槽的震动同主界面；
+  打乱顺序（是排列、同一个种子一样、4 个候选 24 种排法都出现、第一个按钮背后是 A 的约三分之一；不打乱就是原来的顺序）；点一项放的那一小段（按时间排好、不到 1.5 秒、按下都配了松开，
+  两套在真混音器上每个按下开始那 2 毫秒就有声音）；那一小块触控板（轻点的容差 / 时长边界、挪出容差就是划、按路长每 step 一格、来回也算、被取消、第二次按下从头来、随机走 400 步格数一直是 路长 / step 取整）；
+  微调滑块的范围同 SoundMixer / SoundVary。改坏跑过 7 处（大键用普通键、不打乱、轻点不看容差、那一小段少一个松开、连打的候选标反、挪出容差那一刻不从按下点算、滚轮槽的震动写错），都有检查报错。
+  SettingsActivity、Haptics 的延后、Sounds.ready 离线编不到，只编译过、逐行走过闪退路径。
+- 声音第一批审查后（2026-11-02，`tools/test.sh`）：SoundTest 12196 项（原来 10624）——合成那一扫加了每个声音 500 Hz 以下的能量 ≤ 40%（三种采样率最多 33%）、
+  树枝头 2 ms 里到峰值的 80% 以上（现在全部 100%）；新的 loudness（44.1 / 48 / 96 kHz × 两套 × 每个候选 × 子声音）：拿算好的波形另写一份量法（Bank.gain × 采样、800 Hz 二阶高通、整段总能量、四个变体平均）——
+  和电平表差 ≤ 0.6 dB（现在 ≤ 0.1）、默认候选之间鼠标比普通键轻 1–3 dB、触控板比鼠标再轻 3–5、松开轻 6–12、鼠标 / 触控板松开轻 ≥ 4、滚轮轻 10–14、刹住比滚轮轻，
+  单个声音（音量 100%、不随机）的峰值在软限幅拐点 0.5 以下（现在最多 0.47）；随机音高的范围改了（按键 ±12、鼠标 ±10、滚轮 ±8，加上变体之间的 ±16 都 ≤ 30）、随机幅度 0 时变体一律第 0 个、
+  同一个键连按每一下逐个采样一样；打得快的回差（快了以后 130 ms 还算快、平均到 145 ms 恢复；每秒 8 下按块对齐、抖 0–8 ms 跑 200 串 × 16 下，快 / 不快最多变一次）；混音那几条改看 Bank.gain（REF 删了）。
+  SoundBenchTest 4502 项：连打每秒 7 下 2 秒 14 下、间隔减 8 ms 抖动还在打得快的门槛以上、200 串按块对齐抖着放一下都不算快。
+  SoundEventsTest 107 项（原来 91）：震动表加了 HAPTIC_DRAG_CANCEL（从哪来都不出声）；真 TouchRouter 跑长按拖动时手指被取消 / releaseAll / 换参数只有开始那一声、震动照旧开始 / 结束拖动；
+  "左键"按钮（REGION_HOLD_LEFT）松手一对、被取消 / releaseAll 只有按下声；面板那一路的映射 panelDown / panelUp 和分流那一路一样（普通键、特殊键，特殊键只给按过的出松开声）。
+  GestureEngineTest 206 项（原来 192）：dragCanceledKind（长按拖动、轻点后拖 × 松手 / 手指被取消 / cancel：报 DRAG_END / DRAG_CANCEL，左键照样松开；第二根手指来了照旧 DRAG_END；没在拖不报）。
+  TouchRouterTest 656 项：protocol25Flags 加了 releaseAll 时键、按钮、"左键"、鼠标键、红点报的松开都带被取消（"左键"是 b3:129）。
+  AirMouseTest（HardKeys 那几条）：正常松手的结束和被取消的（系统取消、reset）分开记。ServerPartsTest 320 项：HARD_HOLD_CANCEL = 3、HAPTIC_DRAG_CANCEL = 9 不撞；HardKeyGate 的 releaseAll、电源键组合补的结束是 HOLD_CANCEL。
+  改坏跑过 14 处（scratchpad 里一次性的脚本）："左键" releaseAll 不带标记、cancel 报 DRAG_END、被取消的抬起报 DRAG_END、增益照峰值算、触控板 A 换回 420 Hz、竹筒 C 换回 460 Hz、树枝不压后面的小裂、
+  随机幅度 0 照样挑变体、打得快不回差、连打改回 8 下、HardKeys.reset 报正常结束、DRAG_CANCEL 出声、随机音高改回 ±20、面板的特殊键被取消也出声，都有检查报错。
+  Sounds（管道那几处：只在低延迟时压缓冲、换套前停住、起步的断流单独记、查路由挪地方、坏了再开）离线编不到，只编译过、逐行走过闪退路径。
 - 服务安全链路（真机）：`adb shell CLASSPATH=<apk 路径> app_process / dev.douhua.server.TestClient 0 2`
   ——接管屏幕 0 两秒、停发心跳，服务应在 3 秒内报"App 没有响应，已把触摸屏还给系统"。**测试期间外屏摸不动约 5 秒。**
   第三个参数写 `relay` 按蓝牙模式接管，服务转发回来的鼠标 / 键盘报文会打印出来；不用真人摸，可以在接管后往触摸屏节点
@@ -2174,6 +2416,43 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   设置页的两个滑块、灰掉、说明文字（SettingsActivity）离线编不到，没在真机上看过。
 
 ## 进行中（交接；做完删掉这一节）
+
+- **声音第一批（① 引擎、② 合成的声音、③ 事件层 + 协议 25、④ 设置 → 外观的"声音"一节 + 试听台 + 调试版候选区；2026-11-02 写完，没提交，待真机验证；
+  协议 24 → 25，改了服务：装完要重启服务——App 连上旧服务报"版本不一致"，靠"连不上 → 自动启动"（SelfStart.autoStart）或者 deploy 脚本 / tools/start-server.sh 重起；
+  声音默认"关"，不打开时行为应该和以前一样）**：见决策记录"声音第一批：引擎 + 合成的声音""第 ③ 步""第 ④ 步"。只跑了离线测试和编译（各组项数见"测试"一节），
+  一个声音都没在手机上放过、一下震动延后都没摸过。先看（不打开声音）：
+  ① 装上、重启服务以后一切和以前一样：修饰键按住 0.4 秒那一下照旧震（协议 25 起是另一种震动，样子应该一模一样）、Fn+Esc 翻转那一下照旧震、
+  触控板轻点 / 滚动 / 惯性的震动、手柄的咔嗒都照旧；服务日志 / TestClient 里按钮松开偶尔带"（被取消）"（释放触摸屏、手掌）是正常的；
+  ② 按钮条 / 角上按钮 / 三个鼠标键按着时退后台、转屏、拉通知栏：按钮画回松开、持续轻震停，和以前一样（App 先去掉被取消的标记再处理）；
+  ③ 设置 → 外观最下面"声音"一节：九种语言放不放得下（套装三项的说明、那句长说明、四个开关；调试版候选区的槽名、"打乱顺序"那句）；选"关"时下面整块藏起来。
+  打开声音以后（选"轻"或"木与枝"；不戴耳机，用手机喇叭听）：
+  ④ 点一项就放一遍（一个词、空格、回车、轻点一对、滚两格）：第一次选要等声音算好，隔多久才响（调试版诊断行的毫秒，电脑上一套约 70 ms，手机上估计慢几倍）；
+  ⑤ 试听台：⇧ a s d ⌫ Space ↵ 按下一声、松开一声（木与枝松开不响），和震动像不像一个东西、觉不觉得声音晚；那一小块触控板轻点的一对"咔哒"像不像 MacBook、
+  两声之间 45 ms 合不合适（太近糊成一声 / 太远像双击），划一下每格一声；三个鼠标键"咔 / 哒"、左键按着时持续轻震；换主题、开关"按键边框"试听台跟着变；按着试听台划时页面不跟着滚；
+  ⑥ 调试版候选区：诊断行截个图给我（LL 拿没拿到低延迟、feature 系统声没声明低延迟音频、采样率、burst、缓冲 / 容量、dev 实际出声设备（2 = 手机喇叭）、speaker ✓、xrun 断流、err、drop、
+  算声音的毫秒和大小、prio（-19 = 紧急音频））；每类候选挑一个（轻的闷嗒三种、鼠标三种（左右中听不听得出差别）、像 MacBook 触控板的四个（实 / 更低 / 更脆 / 双层，哪个最像）、滚轮三种、
+  木块 / 木鱼 / 硬木、树枝三种（扎不扎耳）、竹筒三种）；"连打"累不累耳、打得快时变轻变短听不听得出；"打乱顺序"盲听、关掉揭晓；音量偏移、随机幅度合不合适；
+  "震动延后"调到哪一格最像一体（告诉我数；主界面实际打字时也照它延后，开始 / 结束拖动不延后）；
+  ⑦ 回到触控板实际用：打字每个键按下一声、松开一声，?123 / Fn / 🌐 / ⋯ 也有；手掌压到、退后台时不多出松开声；修饰键按住到 0.4 秒那一下、逗号键按住出句号那一下只震不响；
+  三条路都试（桌面模式服务接管、蓝牙模式服务接管 / 本地分流、桌面模式服务连着没接管——面板自己收触摸）；
+  ⑧ 触控板：双击是两对；长按拖动开始"咔"、松手"哒"；三个鼠标键、"左键"按钮、音量键按住左键的"咔 / 哒"；按钮条 / 角上配成"单击 / 右键"的轻点一对；
+  ⑨ 滚动每格一声，快了合并、不像机关枪；关掉"滚动咔嗒"震动、只留滚轮声：只响不震（引擎照样发咔嗒）；惯性放开不响、刹住轻一声；连打几秒 xrun 涨不涨；10 秒不按以后再按，第一下慢不慢；
+  ⑩ 静音、振动、勿扰模式下不响（系统按 SONIFICATION 用途静音，没核实三星）；通话中、来电响铃时不响；手机"系统"那档音量能调它的大小；
+  ⑪ 接着外接屏、连着蓝牙耳机、电脑连着手机的媒体音频时：只从手机喇叭出，或者干脆不出（诊断行 dev 不是 2、speaker ✗），不会跑到耳机 / 电脑上；
+  Moonlight 在放声音时两边都正常，Moonlight 不被压低、不被暂停；
+  ⑫ 手柄页（设置里打开"手柄"以后）键和十字键的声音；
+  ⑬ 音量滑块默认 80（−8 dB）合不合适、"轻"那套是不是真的轻；主界面 → 设置页 → 主界面来回走，声音不断（管道不重开）、回来后按键用的是候选区选的那个。
+  审查后又改了一轮（见决策记录"声音第一批：审查后的修改"；协议还是 25，加了 HAPTIC_DRAG_CANCEL / HARD_HOLD_CANCEL，服务、App 一起换，重启服务照上面），另要看 / 听：
+  ⑭ 诊断行：LL ✓ 时 buf 是 2 × burst 上下；LL ✗ 时 buf 是系统给的（比 2 × burst 大得多），声音照样完整、不一截一截；在设置页"轻""木与枝"来回点几次，xrun（括号外的数）不涨、buf 不变大，
+  括号里的 start 可以涨；状态在 running / paused 之间，不会一直停在 building；接 / 拔蓝牙耳机、外接屏以后诊断行的 dev、LL、buf 跟着变；
+  ⑮ 响度：电平按响度补以后，木与枝的鼠标键只比字母轻一点（约 2 dB）、触控板轻点再轻一点（约 4 dB）、滚轮刻度明显轻（10–14 dB）——在手机喇叭上听是不是这个先后；
+  候选区 A / B / C / D 现在一样响，挑的是音色；整体比以前轻约 3 dB，音量默认 80 要不要往上提；
+  ⑯ "像 MacBook 触控板"的四个候选都挪到 600 Hz 以上了（A 680、C 820、D 680 + 回弹），B 是只放 340 Hz 泛音的那种：在手机喇叭上听不听得见、哪个最像"偏低、很实"，
+  B 听不听得出低音（听不出就说，换回普通的）；竹筒（回车）也挪高了（560–660 Hz），还像不像竹筒；轻那套的大键 / 空格 B 挪高了一点；
+  ⑰ 空格（树枝）"啪"那一下在最前面、起音干脆；连打（现在每秒 7 下）一串里不再忽轻忽重；随机幅度拖到 0 时同一个键连按每一下完全一样；
+  ⑱ 拖着的时候（触控板长按拖动、空中鼠标按住拖动、音量键按住左键）退后台、拉通知栏、拔外接屏、断开蓝牙、手掌压屏：只有开始那一声、没有"哒"，震动照旧停嗡、"嗒"一下；
+  正常松手照样"哒"；音量键按住左键时按电源 + 音量下截屏（桌面模式），不多一声"哒"；
+  ⑲ 声音管道坏了能自己好：比如开着声音时让 Moonlight / 别的应用占满音频（不好造就不试），诊断行 failed 以后 5 秒左右再变回 running，不用退后台。
 
 - **实体键盘 F1–F12 的第二功能：审查后的修改（2026-11-02 写完，没提交，待真机验证；协议 24 和下面三条同一批（协议号没再变），装完要重启服务——协议号变了时 App 连上旧服务报"版本不一致"，
   靠"连不上 → 自动启动"（SelfStart.autoStart，要开着"自动启动服务"、配对过、不在退避中）或者 tools/start-server.sh / 设置页"启动服务"重起，用 .private/deploy-phone.sh 装包时脚本自己重启；

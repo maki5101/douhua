@@ -61,6 +61,17 @@ final class Haptics {
     private final Runnable humStart = this::vibrateHum;
     private final Runnable humWatchdog = this::stopHum;
 
+    // ── 调试版"震动延后"（声音第一批第 ④ 步，设置 → 外观 → 声音的候选区）：震动比声音晚多少，用户凭手感调到"合成一体" ──
+    /** 延后多少毫秒（0 = 不延后，正式包、声音关着时一律 0：和以前逐字一样）。 */
+    private int delayMs;
+    /** 延后的那几种排在这里（Message.what = 震动种类，按键的"嗒"是 {@link #WHAT_KEY}；sendEmptyMessageDelayed 用消息池，不分配）。 */
+    private static final int WHAT_KEY = 100;
+    private final Handler delayed = new Handler(Looper.getMainLooper(), msg -> {
+        if (msg.what == WHAT_KEY) playKeyNow();
+        else playNow(msg.what);
+        return true;
+    });
+
     Haptics(Context context) {
         vibrator = context.getSystemService(VibratorManager.class).getDefaultVibrator();
         primitives = vibrator.areAllPrimitivesSupported(
@@ -85,6 +96,18 @@ final class Haptics {
     void setSpinStyles(int start, int stop) {
         spinStartStyle = start;
         spinCatchStyle = stop;
+    }
+
+    /**
+     * 调试版"震动延后"（0–40 ms，SoundBench.DELAY_MAX_MS）：有声音的那几种震动（按键的"嗒"、点一下、滚轮咔嗒、惯性刹住）晚这么多再震，
+     * 用户凭手感调到声音和震动像一个东西为止。带着持续轻震的开始 / 结束拖动、颗粒、手势、惯性放开、按住到点不延后（开始 / 结束拖动连着嗡的开关，
+     * 晚了会和紧接着的下一次拖动打架；别的没有声音，延后没意义）。0 = 不延后（正式包、声音关着时一律 0，和以前逐字一样）。
+     */
+    void setDelayMs(int ms) {
+        int d = Math.max(0, ms);
+        if (d == delayMs) return;
+        delayMs = d;
+        if (d == 0) delayed.removeCallbacksAndMessages(null);   // 不延后了：还排着的就不震了（最多少震一下）
     }
 
     /** 调试版（可调试包）：设置里列"放开 / 刹住"的候选波形；正式包一律用默认。 */
@@ -189,8 +212,17 @@ final class Haptics {
      */
     void playKey() {
         if (level <= 0 || !vibrator.hasVibrator()) return;
+        if (delayMs > 0) {
+            delayed.sendEmptyMessageDelayed(WHAT_KEY, delayMs);
+            return;
+        }
+        playKeyNow();
+    }
+
+    private void playKeyNow() {
+        if (level <= 0 || !vibrator.hasVibrator()) return;
         vibrator.cancel();
-        play(GestureEngine.HAPTIC_CLICK);
+        playNow(GestureEngine.HAPTIC_CLICK);
     }
 
     /** 低幅度一直嗡；马达不能调幅度时退成一下一下的轻点。 */
@@ -207,8 +239,21 @@ final class Haptics {
      * 各档比 0.1.0 整体强一档（用户反馈太弱）：小 = 点击 × 0.65、中 = 点击开满、大 = 系统的"重击"
      * （"试手感"实测：拿在手里时它最强、也清脆；平放在桌上点，反而是点击开满最好）。
      * 两下一组的（开始拖动、三指四指手势）没法和"重击"拼在一起，大档仍用点击开满。
+     * "按住到点"（HAPTIC_HOLD，协议 25 起单独一种，给声音分"点了一下"和"快锁了"）震的和点一下一模一样；
+     * "拖动被取消着结束"（HAPTIC_DRAG_CANCEL，同样协议 25 起、给声音分"松了手"和"收尾"）震的和拖动结束一模一样。
+     * 调试版"震动延后"开着时（{@link #setDelayMs}）点一下、滚轮咔嗒、惯性刹住晚那么多再震。
      */
     void play(int kind) {
+        if (delayMs > 0 && (kind == GestureEngine.HAPTIC_CLICK || kind == GestureEngine.HAPTIC_TICK || kind == GestureEngine.HAPTIC_SPIN_CATCH)) {
+            delayed.sendEmptyMessageDelayed(kind, delayMs);
+            return;
+        }
+        playNow(kind);
+    }
+
+    private void playNow(int kind) {
+        if (kind == GestureEngine.HAPTIC_HOLD) kind = GestureEngine.HAPTIC_CLICK;
+        if (kind == GestureEngine.HAPTIC_DRAG_CANCEL) kind = GestureEngine.HAPTIC_DRAG_END;
         if (kind == GestureEngine.HAPTIC_DRAG_END) stopHum();   // 先停持续轻震，再"嗒"一下
         if (level <= 0 || !vibrator.hasVibrator()) return;
         if (kind == GestureEngine.HAPTIC_TEXTURE) {

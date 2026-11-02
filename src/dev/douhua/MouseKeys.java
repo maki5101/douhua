@@ -54,6 +54,16 @@ final class MouseKeys extends ViewGroup {
     }
 
     /**
+     * 照这一套主题画（不是 null 时），不看 Style 的当前主题：设置 → 外观 → 声音的试听台用（主题在设置页里换了、主界面还没换）。主界面不调，照旧现取 Style.theme()。
+     */
+    void setTheme(Theme t) {
+        for (Key k : keys) {
+            k.theme = t;
+            k.invalidate();
+        }
+    }
+
+    /**
      * 铺满（键盘里的空位，setMiddle 给的是中键那一格的左右边、view 之间不留缝，键帽各缩进 inset）还是一排三个键帽（三键条，view 之间隔 gap）。
      * 父 view 量尺寸时调（同 {@link #setMiddle}，forceLayout）。
      */
@@ -117,6 +127,8 @@ final class MouseKeys extends ViewGroup {
         private boolean pressed;
         /** 键帽四边各缩进多少画（铺满模式）。 */
         private int inset;
+        /** 照这一套画（{@link MouseKeys#setTheme}）；null = 画的时候现取 Style.theme()。 */
+        private Theme theme;
 
         Key(Context c, int mask) {
             super(c);
@@ -139,7 +151,7 @@ final class MouseKeys extends ViewGroup {
 
         @Override
         protected void onDraw(Canvas c) {
-            Theme t = Style.theme();   // 画的时候现取：换主题只要 invalidate
+            Theme t = theme != null ? theme : Style.theme();   // 画的时候现取：换主题只要 invalidate
             int save = c.save();
             c.translate(inset, inset);   // 铺满模式：键帽比 view 四边各小 inset，下面按键帽大小画
             drawCap(c, t, getWidth() - 2 * inset, getHeight() - 2 * inset);

@@ -110,7 +110,10 @@ final class KeyHolds {
         /** 鼠标键按着（左 / 右 / 中，含中键按着还没发出去的）。 */
         boolean mouseBusy();
 
-        /** 按住到点（修饰键 armed、Caps 只切显示、合并键出 hold 键），和 Fn+Esc 翻转 F 行（晚 {@link #FLIP_BUZZ_MS}）：震一下（同锁修饰键那一下）。 */
+        /**
+         * 按住到点（修饰键 armed、Caps 只切显示、合并键出 hold 键），和 Fn+Esc 翻转 F 行（晚 {@link #FLIP_BUZZ_MS}）：震一下（同锁修饰键那一下）。
+         * TouchRouter 报 GestureEngine.HAPTIC_HOLD（协议 25 起单独一种，震的样子同点一下；它是软件状态，App 据此不出声）。
+         */
         void holdReached();
 
         /** Caps 的显示该翻了；sent = 这次真的给主机发了 Caps Lock。 */

@@ -40,7 +40,8 @@ public final class AirMouseTest {
 
         @Override public void tap(int k) { log.add("t" + k); }
         @Override public void holdStart(int k) { log.add("h" + k); }
-        @Override public void holdEnd(int k) { log.add("e" + k); }
+        /** 正常松手的结束是 e，被取消的（系统取消、reset 收尾，协议 25：不出松开声）是 c。 */
+        @Override public void holdEnd(int k, boolean canceled) { log.add((canceled ? "c" : "e") + k); }
         @Override public void schedule(int k, long ms) { log.add("s" + k); }
         @Override public void cancelSchedule(int k) { log.add("x" + k); }
     }
@@ -90,7 +91,7 @@ public final class AirMouseTest {
         r.keys.onTimer(UP, 300);
         r.keys.cancel(UP);
         r.keys.key(UP, false, 400);
-        eq(r.log, list("s0", "h0", "e0"), "按住中被系统取消：结束按住，之后的松开不算");
+        eq(r.log, list("s0", "h0", "c0"), "按住中被系统取消：结束按住（报被取消），之后的松开不算");
         r.keys.key(UP, true, 500);
         r.keys.cancel(UP);
         eq(r.log.subList(3, r.log.size()), list("s0", "x0"), "还没按够就被取消：不算点一下");
@@ -102,7 +103,7 @@ public final class AirMouseTest {
         r.keys.onTimer(UP, 300);
         r.keys.reset();
         r.keys.key(UP, false, 900);
-        eq(r.log, list("s0", "h0", "e0"), "reset：按住中的先结束，还按着的键松开时不算");
+        eq(r.log, list("s0", "h0", "c0"), "reset：按住中的先结束（报被取消），还按着的键松开时不算");
         r.keys.key(UP, true, 1000);
         r.keys.key(UP, false, 1050);
         eq(r.log.get(r.log.size() - 1), "t0", "reset 后再按：照常算");
@@ -137,10 +138,10 @@ public final class AirMouseTest {
         h.keys.key(UP, true, 0);
         h.keys.onTimer(UP, 300);
         h.keys.reset();
-        eq(h.log, list("s0", "h0", "e0"), "按住中暂停：reset 先结束按住");
+        eq(h.log, list("s0", "h0", "c0"), "按住中暂停：reset 先结束按住（报被取消）");
         check(h.keys.isPressed(UP), "按住中暂停：还算按着");
         h.keys.cancel(UP);
-        eq(h.log, list("s0", "h0", "e0"), "之后的 cancel 不再结束一次");
+        eq(h.log, list("s0", "h0", "c0"), "之后的 cancel 不再结束一次");
         check(!h.keys.isPressed(UP), "cancel 后不再算按着");
     }
 

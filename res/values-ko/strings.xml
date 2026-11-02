@@ -619,4 +619,36 @@
     <string name="kbd_no_size_data">Apple 컴팩트는 Mac 모드의 ANSI / ISO 형태만 있어 키보드 화면에 더우화 배열을 표시합니다. 다른 크기, 모드나 배열을 고르세요.</string>
     <string name="sec_kbd_douhua">더우화 배열</string>
     <string name="licenses">오픈소스 라이선스</string>
+    <string name="sec_sound">소리</string>
+    <string name="sound_pack_off">끔(진동만)</string>
+    <string name="sound_pack_light">가볍게(아주 부드럽고 짧은 소리, 거의 안 들림)</string>
+    <string name="sound_pack_wood">나무와 잔가지(글자 키는 나무 블록, 스페이스는 가는 잔가지 부러지는 소리, Enter는 대나무 통)</string>
+    <string name="sound_note">무음·진동·방해 금지 모드와 통화 중에는 소리가 나지 않습니다. 휴대폰 자체 스피커로만 나옵니다(소리가 이어폰이나 외부 디스플레이로 가면 나지 않음). 크기는 휴대폰의 \'시스템\' 음량을 따르니, 안 들리면 먼저 그것을 확인하세요. 항목을 누르면 한 번 들려줍니다. 아래 스위치는 터치패드로 돌아가면 적용됩니다.</string>
+    <string name="sound_volume">음량</string>
+    <string name="sound_keys">키보드</string>
+    <string name="sound_mouse">마우스 버튼(터치패드 탭 포함)</string>
+    <string name="sound_scroll">스크롤 휠(관성 \'멈춤\' 포함)</string>
+    <string name="sound_gamepad">게임패드(기본 꺼짐: 스트리밍 중에는 휴대폰에서 게임 소리가 나는 경우가 많음)</string>
+    <string name="sound_bench">들어 보기</string>
+    <string name="sound_bench_hint">누르면 실제 소리와 실제 진동이 납니다.</string>
+    <string name="sound_bench_pad">탭 = 클릭 · 스와이프 = 스크롤</string>
+    <string name="sound_try">후보(디버그 빌드 전용): 누르면 한 번 소리 나고 진동하며, 선택한 것이 앞으로 쓰임. \'연타\'는 그 후보를 초당 7번, 2초 동안 들려줌. 릴리스 빌드는 항상 A.</string>
+    <string name="sound_shuffle">섞기(A / B / C / D 뒤의 후보를 무작위로 바꾸고 파라미터를 숨김. 끄면 공개)</string>
+    <string name="sound_burst">연타</string>
+    <string name="sound_slot_key">키 누름</string>
+    <string name="sound_slot_big">큰 키 누름(Backspace, Shift)</string>
+    <string name="sound_slot_space">스페이스</string>
+    <string name="sound_slot_enter">Enter</string>
+    <string name="sound_slot_key_up">키 뗌</string>
+    <string name="sound_slot_mouse_down">마우스 버튼 누름</string>
+    <string name="sound_slot_mouse_up">마우스 버튼 뗌</string>
+    <string name="sound_slot_pad">터치패드 탭(MacBook 트랙패드처럼)</string>
+    <string name="sound_slot_scroll">스크롤 한 칸</string>
+    <string name="sound_slot_catch">관성 \'멈춤\'</string>
+    <string name="sound_cand_silent">소리 없음</string>
+    <string name="sound_offset">음량 오프셋</string>
+    <string name="sound_random">무작위 정도</string>
+    <string name="sound_haptic_delay">진동 지연</string>
+    <string name="sound_haptic_delay_hint">진동이 소리보다 얼마나 늦게 오는지. 둘이 하나처럼 느껴질 때까지 조절. 소리가 켜져 있을 때만. 드래그 시작과 끝은 늦추지 않음.</string>
+    <string name="sound_diag">진단(개발자용)</string>
 </resources>

@@ -619,4 +619,36 @@
     <string name="kbd_no_size_data">لوحة Apple المدمجة متاحة فقط في وضع Mac بشكل ANSI / ISO، لذلك تعرض شاشة لوحة المفاتيح تخطيط دوهوا. اختر حجمًا أو وضعًا أو تخطيطًا آخر.</string>
     <string name="sec_kbd_douhua">تخطيط دوهوا</string>
     <string name="licenses">تراخيص المصادر المفتوحة</string>
+    <string name="sec_sound">الصوت</string>
+    <string name="sound_pack_off">إيقاف (اهتزاز فقط)</string>
+    <string name="sound_pack_light">خفيف (نقرة ناعمة وقصيرة جدًا، بالكاد تُسمع)</string>
+    <string name="sound_pack_wood">خشب وأغصان (الحروف قطع خشبية، والمسافة غصن رفيع ينكسر، وEnter أنبوب خيزران)</string>
+    <string name="sound_note">لا يصدر صوتًا في أوضاع الصامت والاهتزاز وعدم الإزعاج، ولا أثناء المكالمات. يخرج من سماعة الهاتف نفسه فقط (ولا يخرج إذا ذهب الصوت إلى سماعات الأذن أو شاشة خارجية). يتبع مستواه مستوى صوت «النظام» في الهاتف؛ إن لم تسمع شيئًا فتحقّق منه أولًا. المس خيارًا لتسمعه؛ تسري المفاتيح أدناه عند العودة إلى لوحة اللمس.</string>
+    <string name="sound_volume">مستوى الصوت</string>
+    <string name="sound_keys">لوحة المفاتيح</string>
+    <string name="sound_mouse">أزرار الفأرة (بما فيها النقر على لوحة اللمس)</string>
+    <string name="sound_scroll">عجلة التمرير (بما فيها إيقاف القصور الذاتي)</string>
+    <string name="sound_gamepad">ذراع التحكم (متوقف افتراضيًا: أثناء البث يشغّل الهاتف غالبًا صوت اللعبة)</string>
+    <string name="sound_bench">جرّبه</string>
+    <string name="sound_bench_hint">هنا الصوت الحقيقي والاهتزاز الحقيقي.</string>
+    <string name="sound_bench_pad">نقرة = نقر · سحب = تمرير</string>
+    <string name="sound_try">المرشّحات (في نسخة التصحيح فقط): المس واحدًا لتسمعه وتشعر بالاهتزاز؛ المحدّد هو ما سيُستخدم من الآن. «متتابع» يشغّله 7 مرات في الثانية لمدة ثانيتين. النسخة النهائية تستخدم A دائمًا.</string>
+    <string name="sound_shuffle">خلط (يُعاد توزيع A / B / C / D عشوائيًا وتُخفى المعاملات؛ أوقفه للكشف)</string>
+    <string name="sound_burst">متتابع</string>
+    <string name="sound_slot_key">ضغط مفتاح</string>
+    <string name="sound_slot_big">ضغط مفتاح كبير (Backspace، Shift)</string>
+    <string name="sound_slot_space">المسافة</string>
+    <string name="sound_slot_enter">Enter</string>
+    <string name="sound_slot_key_up">رفع مفتاح</string>
+    <string name="sound_slot_mouse_down">ضغط زر الفأرة</string>
+    <string name="sound_slot_mouse_up">رفع زر الفأرة</string>
+    <string name="sound_slot_pad">نقرة على لوحة اللمس (مثل لوحة تتبع MacBook)</string>
+    <string name="sound_slot_scroll">درجة تمرير واحدة</string>
+    <string name="sound_slot_catch">إيقاف القصور الذاتي</string>
+    <string name="sound_cand_silent">صامت</string>
+    <string name="sound_offset">إزاحة مستوى الصوت</string>
+    <string name="sound_random">العشوائية</string>
+    <string name="sound_haptic_delay">تأخير الاهتزاز</string>
+    <string name="sound_haptic_delay_hint">كم يتأخر الاهتزاز عن الصوت؛ اضبطه حتى يبدوان شيئًا واحدًا. فقط والصوت مفعّل؛ لا يتأخر بدء السحب ولا نهايته.</string>
+    <string name="sound_diag">التشخيص (للمطوّر)</string>
 </resources>

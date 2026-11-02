@@ -119,9 +119,12 @@ public final class TestClient {
                     case Proto.MSG_GRAB:
                         Server.log("自测收到 接管=" + in.readUnsignedByte() + " 原因=" + in.readUnsignedByte() + " " + in.readUTF());
                         break;
-                    case Proto.MSG_HAPTIC:
-                        Server.log("自测收到 震动 " + in.readUnsignedByte());
+                    case Proto.MSG_HAPTIC: {   // 协议 25 起 8 = 按住到点（GestureEngine.HAPTIC_HOLD）、9 = 拖动被取消着结束（HAPTIC_DRAG_CANCEL）
+                        int kind = in.readUnsignedByte();
+                        Server.log("自测收到 震动 " + kind + (kind == GestureEngine.HAPTIC_HOLD ? "（按住到点）"
+                                : kind == GestureEngine.HAPTIC_DRAG_CANCEL ? "（拖动被取消着结束）" : ""));
                         break;
+                    }
                     case Proto.MSG_GESTURE:
                         Server.log("自测收到 手势 " + in.readUnsignedByte() + "/" + in.readUnsignedByte());
                         break;
@@ -132,16 +135,19 @@ public final class TestClient {
                     case Proto.MSG_CAPS:
                         Server.log("自测收到 Caps 显示翻一下（" + (in.readUnsignedByte() == 1 ? "发了 Caps Lock" : "只切显示") + "）");
                         break;
-                    case Proto.MSG_BUTTON:
-                        Server.log("自测收到 按钮 " + in.readInt() + " " + in.readUnsignedByte());
+                    case Proto.MSG_BUTTON: {   // 协议 25 起松开可能带"被取消"（Proto.BUTTON_CANCELED）
+                        int id = in.readInt();
+                        int action = in.readUnsignedByte();
+                        Server.log("自测收到 按钮 " + id + " " + Proto.buttonAction(action) + (Proto.buttonCanceled(action) ? "（被取消）" : ""));
                         break;
+                    }
                     case Proto.MSG_MOUSE:
                         Server.log("自测收到 鼠标 键=" + in.readUnsignedByte() + " 位移=(" + in.readShort() + "," + in.readShort()
                                 + ") 滚轮=" + in.readShort() + " 横滚=" + in.readShort() + "（滚轮单位 1/120 格）");
                         break;
                     case Proto.MSG_HARD_KEY:
                         Server.log("自测收到 实体键 " + in.readUnsignedByte() + " 事件 " + in.readUnsignedByte()
-                                + "（键 0 音量+、1 音量−；事件 0 点一下、1 开始按住、2 结束按住）");
+                                + "（键 0 音量+、1 音量−；事件 0 点一下、1 开始按住、2 结束按住、3 收尾结束按住（协议 25））");
                         break;
                     case Proto.MSG_HARD_GRAB:
                         Server.log("自测收到 实体键 截住=" + in.readUnsignedByte() + " 截不了=" + in.readUnsignedByte()

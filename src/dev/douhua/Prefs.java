@@ -271,6 +271,82 @@ final class Prefs {
         putInt(start ? "spin_start_style" : "spin_catch_style", style);
     }
 
+    // ═══════════ 声音（2026-11-02 第一批；设置 → 外观的"声音"一节） ═══════════
+
+    /**
+     * 套装（SoundBank.PACK_IDS 里的字，默认"关"）、音量（0–100，默认 Sounds.DEFAULT_VOLUME）、哪些出声（键盘 / 鼠标键（含触控板轻点）/ 滚轮（含惯性刹住）
+     * 默认开，手柄默认关）。调试版候选区：每套每个槽选的候选（SOUND_CAND + 套 + "_" + SoundBank.SLOT_IDS[槽]）、音量偏移（dB，−20..+6）、
+     * 随机幅度（百分数，0–300，100 = 方案的数）、震动延后（毫秒，0–40，默认 0）。范围在 SoundBench。
+     */
+    static final String SOUND_PACK = "sound_pack", SOUND_VOLUME = "sound_volume",
+            SOUND_KEYS = "sound_keys", SOUND_MOUSE = "sound_mouse", SOUND_SCROLL = "sound_scroll", SOUND_GAMEPAD = "sound_gamepad",
+            SOUND_CAND = "sound_cand_", SOUND_OFFSET = "sound_offset_db", SOUND_RANDOM = "sound_random_pct",
+            SOUND_HAPTIC_DELAY = "sound_haptic_delay_ms";
+
+    /** 套装（SoundBank.PACK_*）；认不出的当"关"。 */
+    int soundPack() {
+        return SoundBank.packOf(sp.getString(SOUND_PACK, SoundBank.PACK_IDS[SoundBank.PACK_OFF]));
+    }
+
+    void setSoundPack(int pack) {
+        if (pack < 0 || pack >= SoundBank.PACKS) pack = SoundBank.PACK_OFF;
+        sp.edit().putString(SOUND_PACK, SoundBank.PACK_IDS[pack]).apply();
+    }
+
+    /** 音量滑块 0–100（存坏了截到范围里）。 */
+    int soundVolume() {
+        return Math.max(0, Math.min(100, getInt(SOUND_VOLUME, Sounds.DEFAULT_VOLUME)));
+    }
+
+    boolean soundKeys() {
+        return getBool(SOUND_KEYS, true);
+    }
+
+    boolean soundMouse() {
+        return getBool(SOUND_MOUSE, true);
+    }
+
+    boolean soundScroll() {
+        return getBool(SOUND_SCROLL, true);
+    }
+
+    boolean soundGamepad() {
+        return getBool(SOUND_GAMEPAD, false);
+    }
+
+    /** 某套某槽选的候选存在哪个键（每套各记各的：两套的候选不一样）。 */
+    private static String soundCandKey(int pack, int slot) {
+        return SOUND_CAND + SoundBank.PACK_IDS[pack] + "_" + SoundBank.SLOT_IDS[slot];
+    }
+
+    /** 调试版：这一套每个槽选的候选（SoundBank.candidates 的下标，没选过 0 = 默认；越界的混音器当默认）。正式包 Sounds.configure 忽略它。 */
+    int[] soundChoices(int pack) {
+        int[] c = new int[SoundBank.SLOTS];
+        if (pack <= SoundBank.PACK_OFF || pack >= SoundBank.PACKS) return c;
+        for (int i = 0; i < c.length; i++) c[i] = Math.max(0, getInt(soundCandKey(pack, i), 0));
+        return c;
+    }
+
+    void setSoundChoice(int pack, int slot, int cand) {
+        if (pack <= SoundBank.PACK_OFF || pack >= SoundBank.PACKS || slot < 0 || slot >= SoundBank.SLOTS) return;
+        putInt(soundCandKey(pack, slot), Math.max(0, cand));
+    }
+
+    /** 调试版"音量偏移"（dB）。 */
+    double soundOffsetDb() {
+        return Math.max(SoundBench.OFFSET_MIN_DB, Math.min(SoundBench.OFFSET_MAX_DB, getInt(SOUND_OFFSET, 0)));
+    }
+
+    /** 调试版"随机幅度"（1 = 方案的数）。 */
+    double soundRandomScale() {
+        return Math.max(0, Math.min(SoundBench.RANDOM_MAX_PCT, getInt(SOUND_RANDOM, 100))) / 100.0;
+    }
+
+    /** 调试版"震动延后"（毫秒，Haptics.setDelayMs；只在声音开着时用）。 */
+    int soundHapticDelay() {
+        return SoundBench.clampDelay(getInt(SOUND_HAPTIC_DELAY, 0));
+    }
+
     // ═══════════ 连接方式 ═══════════
 
     /** 连接方式：false = 本机（服务造虚拟鼠标键盘，控制这台手机和它接的屏幕），true = 蓝牙（手机当蓝牙键盘鼠标，连电脑、平板、电视）。 */

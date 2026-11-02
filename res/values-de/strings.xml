@@ -619,4 +619,36 @@
     <string name="kbd_no_size_data">Apple kompakt gibt es nur im Mac-Modus mit ANSI- / ISO-Form, deshalb zeigt die Tastaturseite das Douhua-Layout. Andere Größe, anderen Modus oder anderes Layout wählen.</string>
     <string name="sec_kbd_douhua">Douhua-Layout</string>
     <string name="licenses">Open-Source-Lizenzen</string>
+    <string name="sec_sound">Töne</string>
+    <string name="sound_pack_off">Aus (nur Vibration)</string>
+    <string name="sound_pack_light">Leise (ein sehr weiches, kurzes Tippen; kaum hörbar)</string>
+    <string name="sound_pack_wood">Holz und Zweige (Buchstaben sind Holzblöcke, die Leertaste bricht einen dünnen Zweig, Enter ist ein Bambusrohr)</string>
+    <string name="sound_note">Im Lautlos-, Vibrations- und Nicht-stören-Modus bleibt es still, ebenso während eines Anrufs. Es kommt nur aus dem eigenen Lautsprecher des Handys (still, wenn Kopfhörer oder ein externer Bildschirm den Ton übernehmen). Die Lautstärke folgt der „System\"-Lautstärke des Handys; wenn du nichts hörst, prüfe zuerst sie. Tippe eine Variante an, um sie zu hören; die Schalter darunter wirken, sobald du zum Touchpad zurückkehrst.</string>
+    <string name="sound_volume">Lautstärke</string>
+    <string name="sound_keys">Tastatur</string>
+    <string name="sound_mouse">Maustasten (auch Tippen auf das Touchpad)</string>
+    <string name="sound_scroll">Mausrad (auch das Stoppen des Nachlaufs)</string>
+    <string name="sound_gamepad">Gamepad (standardmäßig aus: beim Streamen spielt das Handy meist den Spielton ab)</string>
+    <string name="sound_bench">Ausprobieren</string>
+    <string name="sound_bench_hint">Hier gibt es den echten Ton und die echte Vibration.</string>
+    <string name="sound_bench_pad">Tippen = Klick · Wischen = Scrollen</string>
+    <string name="sound_try">Kandidaten (nur Debug-Version): antippen zum Hören und Fühlen; der ausgewählte wird ab jetzt verwendet. „Serie\" spielt ihn 2 Sekunden lang 7-mal pro Sekunde. Die Release-Version nimmt immer A.</string>
+    <string name="sound_shuffle">Mischen (A / B / C / D werden zufällig neu zugeordnet, Parameter ausgeblendet; ausschalten zum Auflösen)</string>
+    <string name="sound_burst">Serie</string>
+    <string name="sound_slot_key">Taste drücken</string>
+    <string name="sound_slot_big">Große Taste drücken (Backspace, Shift)</string>
+    <string name="sound_slot_space">Leertaste</string>
+    <string name="sound_slot_enter">Enter</string>
+    <string name="sound_slot_key_up">Taste loslassen</string>
+    <string name="sound_slot_mouse_down">Maustaste drücken</string>
+    <string name="sound_slot_mouse_up">Maustaste loslassen</string>
+    <string name="sound_slot_pad">Tippen auf das Touchpad (wie ein MacBook-Trackpad)</string>
+    <string name="sound_slot_scroll">Eine Mausrad-Raste</string>
+    <string name="sound_slot_catch">Nachlauf stoppen</string>
+    <string name="sound_cand_silent">stumm</string>
+    <string name="sound_offset">Lautstärke-Versatz</string>
+    <string name="sound_random">Zufälligkeit</string>
+    <string name="sound_haptic_delay">Vibration verzögern</string>
+    <string name="sound_haptic_delay_hint">Wie viel später die Vibration kommt als der Ton; so einstellen, bis beides wie eins wirkt. Nur bei eingeschaltetem Ton; Anfang und Ende des Ziehens werden nicht verzögert.</string>
+    <string name="sound_diag">Diagnose (für den Entwickler)</string>
 </resources>

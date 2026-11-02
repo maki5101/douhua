@@ -48,7 +48,14 @@ trap 'rm -rf "$OUT"' EXIT
 # 设置页那一节（FKeyChoicesTest）：选择列表的分组 / 去重 / Mac 模式不列的三个、存的 id 认回哪一项、自定义组合键存成什么、预设那一行、
 # 设置页选的每一项写进 Boards 再经真 TouchRouter / KeyHolds 按下去发的就是列表上写的码，九个 strings.xml 的名字齐全）、
 # 手柄页（GamepadTouch：单键 / 面键簇 / 十字键 / 摇杆 / N64 的 C 键的触摸模型、收尾回中立；GamepadPlan：15 个预设和自定义的自动排；
-# GamepadSpec：字样、轮换、自定义存成一行再读回来；GamepadConfig 编解码、手柄描述符和两路合并（HidTest、ServerPartsTest 的 GamepadMux））
+# GamepadSpec：字样、轮换、自定义存成一行再读回来；GamepadConfig 编解码、手柄描述符和两路合并（HidTest、ServerPartsTest 的 GamepadMux））、
+# 声音第一批（SoundTest：合成的声音在 44.1 / 48 / 96 kHz 下的时长、峰值、开头没有静音、2.5–5.5 kHz 不出尖峰、300 Hz 以下切掉、可复现；
+# 候选清单和电平；变化规则——类别、行、随机范围、变体不重复、打得快变轻变短但一定出声、滚轮合并；混音——下一块就出声、同键互斥、最多 8 个、
+# 软限幅、确定性、音量、候选、晚放的那一个（一对"咔哒"的"哒"）；无锁队列几个线程同时写）、
+# 声音的事件层（SoundEventsTest，协议 25：声音关着时什么都不放、震动和以前一样；方案 2.3 的表一条条、四个开关、"滚轮出声不震"；
+# 真 TouchRouter 跑轻点 / 双指轻点 / 双击 / 长按拖动 / 滚动 / 惯性 / 键 / 按住到点 / 合并键 / 三个鼠标键 / 被取消 / releaseAll / 手柄页）、
+# 设置 → 外观 → 声音的试听台和调试版候选区（SoundBenchTest：试听台的键、候选区点一下 / 连打放的落在哪个槽、真混音器上试听 = 选了以后放的、
+# 不出声的候选、打乱顺序、点一项套装放的那一小段、试听台那一小块触控板认轻点 / 划）
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \
     src/dev/douhua/Proto.java src/dev/douhua/GestureEngine.java \
     src/dev/douhua/ScrollInertia.java src/dev/douhua/ConfigCodec.java \
@@ -98,7 +105,11 @@ trap 'rm -rf "$OUT"' EXIT
     src/dev/douhua/GamepadSpec.java src/dev/douhua/GamepadPlan.java \
     src/dev/douhua/server/GamepadMux.java \
     test/dev/douhua/GamepadTouchTest.java test/dev/douhua/GamepadPlanTest.java \
-    test/dev/douhua/GamepadSpecTest.java
+    test/dev/douhua/GamepadSpecTest.java \
+    src/dev/douhua/SoundSynth.java src/dev/douhua/SoundBank.java src/dev/douhua/SoundVary.java \
+    src/dev/douhua/SoundQueue.java src/dev/douhua/SoundMixer.java test/dev/douhua/SoundTest.java \
+    src/dev/douhua/SoundEvents.java test/dev/douhua/SoundEventsTest.java \
+    src/dev/douhua/SoundBench.java test/dev/douhua/SoundBenchTest.java
 "$JDK/bin/java" -cp "$OUT" dev.douhua.GestureEngineTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.HidTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.server.ServerPartsTest
@@ -132,6 +143,9 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/java" -cp "$OUT" dev.douhua.GamepadTouchTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.GamepadPlanTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.GamepadSpecTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.SoundTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.SoundEventsTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.SoundBenchTest
 # 打字测试的分析（tools/typelog/analyze.py）：造一份小日志测对齐和分类，再用真正的 TouchRouter 重放它导出的触点
 python3 tools/typelog/analyze.py --selftest "$OUT/typelog"
 "$JDK/bin/java" -cp "$OUT" KeyReplay "$OUT/typelog/replay.txt" check

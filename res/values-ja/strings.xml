@@ -619,4 +619,36 @@
     <string name="kbd_no_size_data">Apple コンパクトは Mac モードの ANSI / ISO 形状だけなので、キーボード画面では豆花の配列を表示しています。別のサイズ、モード、配列を選んでください。</string>
     <string name="sec_kbd_douhua">豆花の配列</string>
     <string name="licenses">オープンソースライセンス</string>
+    <string name="sec_sound">サウンド</string>
+    <string name="sound_pack_off">オフ（振動のみ）</string>
+    <string name="sound_pack_light">ライト（ごく柔らかく短い音。ほとんど聞こえない）</string>
+    <string name="sound_pack_wood">木と小枝（文字は木のブロック、スペースは細い小枝が折れる音、Enter は竹筒）</string>
+    <string name="sound_note">サイレント・バイブ・おやすみモードと通話中は鳴りません。鳴るのはスマホ本体のスピーカーだけです（音がイヤホンや外部ディスプレイに出るときは鳴りません）。音量はスマホの「システム」音量に従います。聞こえないときはまずそれを確認してください。項目をタップすると一度鳴ります。下のスイッチはタッチパッドに戻ると反映されます。</string>
+    <string name="sound_volume">音量</string>
+    <string name="sound_keys">キーボード</string>
+    <string name="sound_mouse">マウスボタン（タッチパッドのタップを含む）</string>
+    <string name="sound_scroll">スクロールホイール（慣性の「止める」を含む）</string>
+    <string name="sound_gamepad">ゲームパッド（既定はオフ：ストリーミング中はスマホでゲームの音が鳴っていることが多いため）</string>
+    <string name="sound_bench">試してみる</string>
+    <string name="sound_bench_hint">押すと実際の音と実際の振動が出ます。</string>
+    <string name="sound_bench_pad">タップ = クリック · スワイプ = スクロール</string>
+    <string name="sound_try">候補（デバッグ版のみ）：タップすると一度鳴って振動し、選んだものがこれから使われる。「連打」はその候補を毎秒 7 回、2 秒間鳴らす。リリース版は常に A。</string>
+    <string name="sound_shuffle">シャッフル（A / B / C / D の中身をランダムに入れ替え、パラメータを隠す。オフにすると種明かし）</string>
+    <string name="sound_burst">連打</string>
+    <string name="sound_slot_key">キーを押す</string>
+    <string name="sound_slot_big">大きいキーを押す（Backspace、Shift）</string>
+    <string name="sound_slot_space">スペース</string>
+    <string name="sound_slot_enter">Enter</string>
+    <string name="sound_slot_key_up">キーを離す</string>
+    <string name="sound_slot_mouse_down">マウスボタンを押す</string>
+    <string name="sound_slot_mouse_up">マウスボタンを離す</string>
+    <string name="sound_slot_pad">タッチパッドのタップ（MacBook のトラックパッド風）</string>
+    <string name="sound_slot_scroll">スクロール 1 段</string>
+    <string name="sound_slot_catch">慣性の「止める」</string>
+    <string name="sound_cand_silent">鳴らない</string>
+    <string name="sound_offset">音量オフセット</string>
+    <string name="sound_random">ランダムさ</string>
+    <string name="sound_haptic_delay">振動の遅延</string>
+    <string name="sound_haptic_delay_hint">振動を音よりどれだけ遅らせるか。両方が一つに感じられるところまで動かす。サウンドがオンのときだけ。ドラッグの開始と終了は遅らせない。</string>
+    <string name="sound_diag">診断（開発者向け）</string>
 </resources>

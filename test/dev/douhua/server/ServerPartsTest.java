@@ -79,6 +79,7 @@ public final class ServerPartsTest {
         protocol22();
         protocol23();
         protocol24();
+        protocol25();
         staleKeyTimerDoesNothing();
 
         System.err.println("服务端部件：" + checks + " 项检查，" + failures + " 项失败");
@@ -597,7 +598,7 @@ public final class ServerPartsTest {
      * KEY_ID_BASE + id 是正数（最大的类型 4 到 0x44FFFFFF）；Esc 的翻转开关 id。
      */
     static void protocol24() {
-        check(Proto.VERSION == 24, "协议 24");
+        check(Proto.VERSION >= 24, "协议 24 起");
         check(Proto.MSG_CONSUMER == 0x8C && Proto.PAGE_CONSUMER == 0x0C && Proto.PAGE_GENERIC_DESKTOP == 0x01, "MSG_CONSUMER = 0x8C，页 0x0C / 0x01");
         int[] msgs = {Proto.MSG_HELLO, Proto.MSG_HAPTIC, Proto.MSG_GESTURE, Proto.MSG_BUTTON, Proto.MSG_GRAB, Proto.MSG_MODIFIERS,
                 Proto.MSG_MOUSE, Proto.MSG_KEYBOARD, Proto.MSG_HARD_KEY, Proto.MSG_HARD_GRAB, Proto.MSG_GAMEPAD, Proto.MSG_CAPS, Proto.MSG_CONSUMER};
@@ -634,6 +635,41 @@ public final class ServerPartsTest {
                 "Esc 的 F 行翻转开关：类型 4、底层 Esc");
         check(Proto.frowKey(Proto.FROW_FN_LOCK, 0xFF, 0xFFFF) + Proto.KEY_ID_BASE > 0, "最大的 F 行键 id 加 KEY_ID_BASE 不溢出");
         // KeyHolds 的内部码（多媒体 / 系统键 / 翻转）是负数、撞不上区域 id：KeyHolds 不对外，在 FKeysTest.ids 里查
+    }
+
+    /**
+     * 协议 25（声音第一批的事件层，2026-11-02）：版本号；"按住到点"单独一种震动 HAPTIC_HOLD = 8、"拖动被取消着结束" HAPTIC_DRAG_CANCEL = 9
+     * （和 0–7、彼此都不一样、一个字节放得下）；实体键"收尾补的结束按住" HARD_HOLD_CANCEL = 3（和点一下 / 开始 / 结束按住不一样）；
+     * MSG_BUTTON 的"被取消"标记 BUTTON_CANCELED = 0x80，和 DOWN / UP / TAP 不重叠、一个字节放得下，去掉它取得回原来的 action，按下从不带；
+     * 消息的字节排布没变（MSG_HAPTIC 两个字节、MSG_BUTTON 六个字节，Session 照旧原样写）。真 TouchRouter 报的标记在 TouchRouterTest、SoundEventsTest。
+     */
+    static void protocol25() {
+        check(Proto.VERSION == 25, "协议 25");
+        int[] kinds = {GestureEngine.HAPTIC_CLICK, GestureEngine.HAPTIC_DRAG_START, GestureEngine.HAPTIC_DRAG_END, GestureEngine.HAPTIC_GESTURE,
+                GestureEngine.HAPTIC_TICK, GestureEngine.HAPTIC_TEXTURE, GestureEngine.HAPTIC_SPIN_START, GestureEngine.HAPTIC_SPIN_CATCH};
+        boolean distinct = GestureEngine.HAPTIC_HOLD == 8 && GestureEngine.HAPTIC_DRAG_CANCEL == 9;
+        for (int k : kinds) distinct &= k != GestureEngine.HAPTIC_HOLD && k != GestureEngine.HAPTIC_DRAG_CANCEL && k >= 0 && k <= 0xFF;
+        check(distinct, "HAPTIC_HOLD = 8、HAPTIC_DRAG_CANCEL = 9，和别的震动种类不一样，一个字节放得下");
+        check(Proto.HARD_HOLD_CANCEL == 3 && Proto.HARD_HOLD_CANCEL != Proto.HARD_TAP && Proto.HARD_HOLD_CANCEL != Proto.HARD_HOLD_START
+                && Proto.HARD_HOLD_CANCEL != Proto.HARD_HOLD_END, "HARD_HOLD_CANCEL = 3，和点一下 / 开始 / 结束按住不一样");
+        int[] actions = {Proto.BUTTON_DOWN, Proto.BUTTON_UP, Proto.BUTTON_TAP};
+        boolean flag = Proto.BUTTON_CANCELED == 0x80;
+        for (int a : actions) {
+            int c = a | Proto.BUTTON_CANCELED;
+            flag &= (a & Proto.BUTTON_CANCELED) == 0 && c <= 0xFF && Proto.buttonAction(c) == a && Proto.buttonCanceled(c)
+                    && Proto.buttonAction(a) == a && !Proto.buttonCanceled(a);
+        }
+        check(flag, "BUTTON_CANCELED = 0x80：和 DOWN / UP / TAP 不重叠、一个字节放得下，buttonAction 去掉它取得回原来的、buttonCanceled 认得出");
+        // 字节排布：照 Session.button / haptic 的写法拼，照 Link 的读法读回来
+        int id = Proto.KEY_ID_BASE + Proto.dualKey(0x36, 0x37);
+        int action = Proto.BUTTON_UP | Proto.BUTTON_CANCELED;
+        byte[] b = {(byte) Proto.MSG_BUTTON, (byte) (id >> 24), (byte) (id >> 16), (byte) (id >> 8), (byte) id, (byte) action};
+        int readId = (b[1] & 0xFF) << 24 | (b[2] & 0xFF) << 16 | (b[3] & 0xFF) << 8 | (b[4] & 0xFF);
+        int readAction = b[5] & 0xFF;
+        check(readId == id && Proto.buttonAction(readAction) == Proto.BUTTON_UP && Proto.buttonCanceled(readAction),
+                "MSG_BUTTON 还是 id:i32 + action:u8，带标记的 action 读回来是 UP + 被取消");
+        byte hold = (byte) GestureEngine.HAPTIC_HOLD;
+        check((hold & 0xFF) == GestureEngine.HAPTIC_HOLD, "MSG_HAPTIC 还是 kind:u8，按住到点读回来是 8");
     }
 
     /**
@@ -1305,14 +1341,14 @@ public final class ServerPartsTest {
         go.system(VOLDOWN, UP, 300);
         eq(ro.log.subList(2, ro.log.size()), list("i114-/0/300"), "交还后：每个按下只配一个松开");
 
-        // 音量下在按住中按电源：先补 HOLD_END 再补发
+        // 音量下在按住中按电源：先补结束按住（协议 25 起报 HOLD_CANCEL：不是用户松了手，App 不出松开声）再补发
         GateRec r2 = new GateRec();
         HardKeyGate g2 = gate(r2);
         g2.config(false, false, false, true);
         g2.key(VOLDOWN, DOWN, 0);
         g2.pump(300);                  // 音量下进入按住
         g2.observe(POWER, DOWN, 350);
-        eq(r2.log, list("a1:1", "a1:2", "i114+/0/0", "HB"), "组合键：按住中补 HOLD_END 再补发");
+        eq(r2.log, list("a1:1", "a1:" + Proto.HARD_HOLD_CANCEL, "i114+/0/0", "HB"), "组合键：按住中补 HOLD_CANCEL 再补发");
 
         // 电源按一下松开后再按音量：不是组合键，照常点一下
         GateRec r3 = new GateRec();
@@ -1460,8 +1496,8 @@ public final class ServerPartsTest {
         g.key(VOLDOWN, DOWN, 50);     // 没配 → 透传按下
         g.pump(300);                  // 音量上进入按住
         g.releaseAll(400);
-        eq(r.log, list("i114+/50/50", "a0:1", "a0:2", "i114-/50/400"),
-                "releaseAll：透传的音量下补松开、音量上按住发 HOLD_END");
+        eq(r.log, list("i114+/50/50", "a0:1", "a0:" + Proto.HARD_HOLD_CANCEL, "i114-/50/400"),
+                "releaseAll：透传的音量下补松开、音量上按住发 HOLD_CANCEL（协议 25：收尾补的结束不是用户松了手）");
 
         GateRec r2 = new GateRec();
         HardKeyGate g2 = gate(r2);
@@ -1780,7 +1816,7 @@ public final class ServerPartsTest {
             public void gamepad(byte[] report) {}
         });
         TouchRouter t = router[0];
-        String hold = "h" + GestureEngine.HAPTIC_CLICK;
+        String hold = "h" + GestureEngine.HAPTIC_HOLD;   // 协议 25 起"按住到点"单独一种（以前和点一下同是 HAPTIC_CLICK）
         boolean blocked;
         synchronized (lock) {
             t.setConfig(new GestureEngine.Config(), 1);

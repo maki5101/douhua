@@ -151,7 +151,8 @@ final class TrackpadView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         Theme t = Style.theme();
-        outline.setStrokeWidth(t.borderDp * density);
+        // 有材质的主题：边框只是一道 1dp 的细线（触控板靠纹理和底色跟键盘分开，粗描边看着假，2026-11-04 用户）
+        outline.setStrokeWidth((t.material != null ? 1 : t.borderDp) * density);
         outline.setColor(t.padBorder);
         fill.setColor(t.padFill);
         edgeGuide.setColor(t.edge);

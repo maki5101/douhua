@@ -164,8 +164,8 @@ final class MouseKeys extends ViewGroup {
             box.set(sw / 2, sw / 2, width - sw / 2, height - sw / 2);
             float radius = Math.min(10 * density, Math.min(width, height) / 2f);
             if (t.material != null) {
-                // 有材质的主题：同键帽（渐变、高光、影子），Style.CutCap 不切口的用法
-                Style.CutCap cap = new Style.CutCap(radius, sw, t.border, Theme.over(pressed ? t.pressed : t.key, t.bg),
+                // 有材质的主题：同键帽（平的底色、不描轮廓、下沿淡影子），Style.CutCap 不切口的用法
+                Style.CutCap cap = new Style.CutCap(radius, 0, t.border, Theme.over(pressed ? t.pressed : t.key, t.bg),
                         0, 0, Style.CutCap.NO_CUT, t.material, pressed, density);
                 cap.setBounds(0, 0, width, height);
                 cap.draw(c);

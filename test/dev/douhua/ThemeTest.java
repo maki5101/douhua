@@ -183,10 +183,7 @@ public final class ThemeTest {
                 check(t.menuKey == t.accent, t.id + "：⋯ 键本来就够的不推");
             }
             // 字是页面色或正文色（或它们推出来的）：深色主题多半是深字、浅色主题是浅字
-            int[] mf = t.faces(t.menuKey);
-            double[] mr = new double[mf.length];
-            java.util.Arrays.fill(mr, 4.5);
-            check(t.menuKeyText == Theme.reachAll(t.bg, mf, mr) || t.menuKeyText == Theme.reachAll(t.text, mf, mr),
+            check(t.menuKeyText == Theme.reach(t.bg, t.menuKey, 4.5) || t.menuKeyText == Theme.reach(t.text, t.menuKey, 4.5),
                     t.id + "：⋯ 键的字从页面色 / 正文色里挑");
         }
         // 和原来的暗字（Style.bare 以前用的 dim）一眼分得开
@@ -369,24 +366,20 @@ public final class ThemeTest {
     }
 
     /**
-     * 有材质的主题（2026-11-04）：键帽上的字对渐变各处（上沿最亮、下沿最暗）都够，触控板上的字对纹理最亮 / 最暗处都够；
-     * 渐变、纹理、高光、影子都是淡的（不改主题的颜色，只给质感）。平面主题没有材质、faces 只有底色本身。
+     * 有材质的主题（2026-11-04）：键帽不描轮廓，只靠底色和下沿的淡影子跟页面分开——键帽、功能键和页面的色差要够（{@link #KEY_BG_DELTA_E}）；
+     * 触控板上的字对纹理最亮 / 最暗处都够；纹理、影子都是淡的。平面主题没有材质、触控板只有底色一个面。
      */
+    static final double KEY_BG_DELTA_E = 5;
+
     static void material(Theme t) {
         Theme.Material m = t.material;
         if (m == null) {
-            check(t.faces(t.keyFill()).length == 1 && t.padFaces(t.padFill).length == 1, t.id + "：平面主题只有底色");
+            check(t.padFaces(t.padFill).length == 1, t.id + "：平面主题的触控板只有底色");
             return;
         }
         int key = t.keyFill(), fn = t.fnFill();
-        for (int f : t.faces(key)) {
-            ratio(t, "键帽字 / 键帽渐变", t.text, f, 4.5);
-            ratio(t, "高亮字 / 键帽渐变", t.activeText, f, 4.5);
-            ratio(t, "浅一档的字 / 键帽渐变", t.softText, f, 2.8);
-        }
-        for (int f : t.faces(fn)) ratio(t, "功能键字 / 功能键渐变", t.fnText, f, 4.5);
-        for (int f : t.faces(t.pressed)) ratio(t, "键帽字 / 按下的渐变", t.text, f, 3);
-        for (int f : t.faces(t.menuKey)) ratio(t, "⋯ 键的字 / ⋯ 键渐变", t.menuKeyText, f, 4.5);
+        check(Theme.deltaE(key, t.bg) >= KEY_BG_DELTA_E, t.id + "：不描轮廓，键帽和页面分得开（色差 " + fmt(Theme.deltaE(key, t.bg)) + "）");
+        check(Theme.deltaE(fn, t.bg) >= KEY_BG_DELTA_E, t.id + "：不描轮廓，功能键和页面分得开（色差 " + fmt(Theme.deltaE(fn, t.bg)) + "）");
         int[] pad = t.padFaces(t.padFill);
         check(pad.length == (m.texture == PadTexture.NONE ? 1 : 3), t.id + "：触控板纹理的两头");
         for (int f : pad) {
@@ -396,10 +389,8 @@ public final class ThemeTest {
             ratio(t, "不带框的 ⋯ / 触控板纹理", t.menuDots, f, 4.5);
             ratio(t, "触控板边框 / 触控板纹理", t.padBorder, f, 2.6);
         }
-        check(m.light > 0 && m.light <= 0.08f && m.dark > 0 && m.dark <= 0.15f, t.id + "：渐变是淡的");
-        check(m.textureStrength > 0 && m.textureStrength <= 0.12f, t.id + "：纹理是淡的");
-        check(m.highlight > 0 && m.highlight <= 90 && m.shadow > 0 && m.shadow <= 160, t.id + "：高光、影子是淡的");
-        check(Theme.deltaE(m.top(key), m.bottom(key)) >= 2, t.id + "：渐变看得出来（色差 " + fmt(Theme.deltaE(m.top(key), m.bottom(key))) + "）");
+        check(m.textureStrength > 0 && m.textureStrength <= 0.08f, t.id + "：纹理是淡的");
+        check(m.shadow > 0 && m.shadow <= (t.light ? 48 : 120), t.id + "：影子是淡的（" + m.shadow + "）");
     }
 
     /** 纹理：同样的参数一模一样、平均 0、-1..1、有起伏、上下左右接得上（接缝处的跳变和里面相邻两点的一样大）、褶装下整数道。 */

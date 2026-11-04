@@ -279,21 +279,19 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         return p;
     }
 
-    // 有材质的主题（Theme.Material）：同 Style.CutCap 的画法——键帽竖着压扁让出下沿一条给影子（按着时整个沉半条、没影子、渐变倒过来），
-    // 上浅下深的渐变、上沿内侧的细高光。路径是任意形状（L 形回车、切成两段的空格），所以按路径的外框缩放，不重建路径
+    // 有材质的主题（Theme.Material）：同 Style.CutCap 的画法——键帽竖着压扁让出下沿一条给淡影子（按着时整个沉半条、没影子），平的底色、
+    // 不描轮廓（高亮的照旧画强调色的边）。路径是任意形状（L 形回车、切成两段的空格），所以按路径的外框缩放，不重建路径
     private final Path matPath = new Path(), matShadow = new Path();
-    private final Paint matFill = new Paint(Paint.ANTI_ALIAS_FLAG), matShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG),
-            matHighlight = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint matShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.Matrix matrix = new android.graphics.Matrix();
     private final android.graphics.RectF matBox = new android.graphics.RectF();
 
     private void drawMaterial(Canvas canvas, Path p, int fillColor, boolean edge, boolean down, Theme.Material m) {
-        float density = Style.density(getContext());
-        float sh = Math.max(1, Math.round(Theme.Material.SHADOW_DP * density));
+        float sh = Math.max(1, Math.round(Theme.Material.SHADOW_DP * Style.density(getContext())));
+        fill.setColor(fillColor);
         p.computeBounds(matBox, true);
         float h = matBox.height();
         if (h <= sh * 2) {
-            fill.setColor(fillColor);
             canvas.drawPath(p, fill);
             if (edge) canvas.drawPath(p, stroke);
             return;
@@ -302,26 +300,12 @@ final class FixedKeyboardView extends View implements KeyboardFace {
         matrix.setScale(1, (h - (down ? sh / 2 : sh)) / h, matBox.left, matBox.top);
         if (down) matrix.postTranslate(0, sh / 2);
         p.transform(matrix, matPath);
-        matPath.computeBounds(matBox, true);
-        int top = m.top(fillColor), bottom = m.bottom(fillColor);
         if (!down) {
             matPath.offset(0, sh, matShadow);
             matShadowPaint.setColor(m.shadowColor());
             canvas.drawPath(matShadow, matShadowPaint);
         }
-        matFill.setShader(new android.graphics.LinearGradient(0, matBox.top, 0, matBox.bottom, down ? bottom : top, down ? top : bottom,
-                android.graphics.Shader.TileMode.CLAMP));
-        canvas.drawPath(matPath, matFill);
-        if (!down) {
-            matHighlight.setStyle(Paint.Style.STROKE);
-            matHighlight.setStrokeWidth(2 * Math.max(1, Theme.Material.HIGHLIGHT_DP * density));
-            matHighlight.setShader(new android.graphics.LinearGradient(0, matBox.top, 0, matBox.top + matBox.height() * 0.35f,
-                    m.highlightColor(), m.highlightColor() & 0x00FFFFFF, android.graphics.Shader.TileMode.CLAMP));
-            canvas.save();
-            canvas.clipPath(matPath);
-            canvas.drawPath(matPath, matHighlight);
-            canvas.restore();
-        }
+        canvas.drawPath(matPath, fill);
         if (edge) canvas.drawPath(matPath, stroke);
     }
 
@@ -347,7 +331,7 @@ final class FixedKeyboardView extends View implements KeyboardFace {
             int fillColor = menu ? (down ? t.menuKeyPressed : t.menuKey)
                     : down ? (fn ? t.fnPressed : t.pressed) : (fn ? t.fnKey : t.key);
             int strokeColor = menu ? fillColor : active ? t.accent : t.border;
-            boolean edge = active || borders;
+            boolean edge = active || (borders && t.material == null);   // 有材质的主题不描轮廓，高亮的照旧画
             float[] cut = model.cut(i);
             if (cut != null && !k.lShape()) {
                 // 被小红点切掉一块：和豆花布局同一个画法（Style.CutCap：圆角矩形减去圆，边框沿圆弧走、外沿对齐键帽的边）

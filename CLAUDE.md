@@ -83,7 +83,7 @@
 - `src/dev/douhua/KeyboardScreen.java`：键盘界面，可调大小位置的键盘 + 小触控板占满整页
 - `src/dev/douhua/MenuLayer.java`：⋯ 菜单，主界面和键盘屏共用一份
 - `src/dev/douhua/Style.java`：共用样式
-- `src/dev/douhua/Theme.java`：主界面的二十六套配色，每套写几个底子、其余按规则推；有材质的八套带 Theme.Material（键帽渐变 / 高光 / 影子、触控板纹理）
+- `src/dev/douhua/Theme.java`：主界面的二十六套配色，每套写几个底子、其余按规则推；有材质的八套带 Theme.Material（键帽不描轮廓 + 下沿淡影子、触控板纹理 + 细边框）
 - `src/dev/douhua/PadTexture.java`：有材质的主题里触控板的纹理（拉丝铝、纸、褶、颗粒），程序生成、能无缝平铺
 - `src/dev/douhua/SettingsActivity.java`：设置页，顶上固定一排标签
 - `src/dev/douhua/ThemeGrid.java`：设置 → 外观的主题色块网格
@@ -491,7 +491,8 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
   候选区每个槽点一下放的是落在这个槽的声音（SoundBench.hit，SoundBenchTest 经 SoundVary 核对、真混音器上"指定候选试听"和"选了以后正常放"逐个采样一样）。
   设置页开着时也 acquire 声音管道、onStop release（主界面 → 设置页 → 主界面管道不断）；onStop 撤掉没放完的那一小段、连打、诊断刷新，停掉试听台"左键"的持续轻震。
 - **有材质的主题（Theme.Material，2026-11-04）只改画法、字照样看得清；平面主题一点不变**：material 是 null 的（原来十八套）画法和以前逐字一样（Style.look 照旧 GradientDrawable、CutCap 不带材质、TrackpadView 不叠纹理、FixedKeyboardView / MouseKeys 走原来那段）；
-  有材质的键帽上的字对渐变两头（Theme.faces：底色、上沿最亮、下沿最暗）、触控板上的字对纹理最亮 / 最暗（Theme.padFaces）都照原来的对比度要求（ThemeTest.material 锁住），推出来的字色（功能键、高亮、⋯ 的字、状态字、角上小字、不带框的 ⋯）按这几个面一起推。
+  有材质的键帽是平的纯色、不描轮廓（"按键边框"开关不管它，高亮的照旧画强调色的边），靠底色（键帽、功能键和页面色差 ≥ 5）和下沿一道淡影子跟页面分开；不加渐变、高光这类打光（用户试过："假，不要了"）。
+  触控板上的字对纹理最亮 / 最暗（Theme.padFaces）都照原来的对比度要求，推出来的状态字、角上小字、不带框的 ⋯ 按这几个面一起推（ThemeTest.material 锁住）；触控板边框只有 1dp。
   影子画在键帽自己的范围里（键帽竖着让出一条，不画到别的键上），区域、按得到的范围一点不变。纹理是程序生成的（PadTexture，同样参数一模一样、平均 0、无缝平铺），只生成一次缓存；画法只在绘制时用，不进分流、服务、协议。
 - **触控板背景图只是画面**：只在 TrackpadView 里画（PadImage），区域上报、TouchRouter、服务、协议都不知道有它（上面那条"从触控板出发划出去照样动光标"不受影响）。
   拷贝、解码（大图一次几百毫秒）一律在后台线程，主线程只比文件名和设置（心跳在主线程，卡 3 秒服务释放触摸屏）。

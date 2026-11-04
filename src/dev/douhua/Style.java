@@ -4,13 +4,11 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
@@ -132,7 +130,7 @@ final class Style {
         look(v, theme, keyBorders, fn, active, pressed);
         if (cut == null) return;
         boolean f = fn && !active;
-        float stroke = active || keyBorders ? theme.borderDp : 0;
+        float stroke = active || (keyBorders && theme.material == null) ? theme.borderDp : 0;
         int fill = pressed ? (f ? theme.fnPressed : theme.pressed) : (f ? theme.fnKey : theme.key);
         float density = density(v.getContext());
         v.setBackground(new CutCap(dp(v.getContext(), 10), stroke > 0 ? Math.max(1, Math.round(stroke * density)) : 0,
@@ -150,12 +148,13 @@ final class Style {
      */
     static void look(View v, Theme t, boolean borders, boolean fn, boolean active, boolean pressed) {
         boolean f = fn && !active;
-        float stroke = active || borders ? t.borderDp : 0;
+        // 有材质的主题不描轮廓（键和页面靠底色和下沿的影子分开），高亮的照旧画强调色的边
+        float stroke = active || (borders && t.material == null) ? t.borderDp : 0;
         int fill = pressed ? (f ? t.fnPressed : t.pressed) : (f ? t.fnKey : t.key);
         if (t.material == null) {
             v.setBackground(border(v.getContext(), stroke, active ? t.accent : t.border, fill));
         } else {
-            // 有材质的主题：渐变、高光、影子（CutCap 不切口的用法），圆角、边框和平面的一样
+            // 有材质的主题：平的底色 + 下沿的淡影子（CutCap 不切口的用法），圆角和平面的一样
             float density = density(v.getContext());
             v.setBackground(new CutCap(dp(v.getContext(), 10), stroke > 0 ? Math.max(1, Math.round(stroke * density)) : 0,
                     active ? t.accent : t.border, fill, 0, 0, CutCap.NO_CUT, t.material, pressed, density));
@@ -258,11 +257,11 @@ final class Style {
         private final float corner, strokeW, cx, cy, cr;
         private final int fillColor, strokeColor;
         private int alpha = 255;
-        /** 材质（null = 平面，和以前一模一样）、按着没有、影子 / 高光多少像素。 */
+        /** 材质（null = 平面，和以前一模一样）、按着没有、影子多少像素。 */
         private final Theme.Material material;
         private final boolean down;
-        private final float shadowPx, highlightPx;
-        private final Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG), highlight = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float shadowPx;
+        private final Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path shadowPath = new Path();
 
         CutCap(float corner, float strokeW, int strokeColor, int fillColor, float cx, float cy, float cr) {
@@ -270,9 +269,8 @@ final class Style {
         }
 
         /**
-         * 有材质的键帽（2026-11-04，Theme.Material）：光从上面来——底色上浅下深的竖向渐变，上沿内侧一道白的细高光（往下渐隐），
-         * 下面一道往下挪的影子（键帽本身让出这条，影子在键帽自己的范围里，不画到别的键上）。按着：没有影子、渐变倒过来（凹进去）、
-         * 整个往下沉半条影子。material 是 null 时完全是原来的画法。
+         * 有材质的键帽（2026-11-04，Theme.Material）：平的底色，下面一道往下挪的淡影子（键帽本身让出这条，影子在键帽自己的范围里，
+         * 不画到别的键上）。按着：没有影子、整个往下沉半条。material 是 null 时完全是原来的画法。
          */
         CutCap(float corner, float strokeW, int strokeColor, int fillColor, float cx, float cy, float cr,
                Theme.Material material, boolean down, float density) {
@@ -286,11 +284,8 @@ final class Style {
             this.material = material;
             this.down = down;
             this.shadowPx = material == null ? 0 : Math.max(1, Math.round(Theme.Material.SHADOW_DP * density));
-            this.highlightPx = material == null ? 0 : Math.max(1, Theme.Material.HIGHLIGHT_DP * density);
             stroke.setStyle(Paint.Style.STROKE);
             stroke.setStrokeWidth(strokeW);
-            highlight.setStyle(Paint.Style.STROKE);
-            highlight.setStrokeWidth(2 * highlightPx);
             applyAlpha();
         }
 
@@ -299,8 +294,6 @@ final class Style {
             fill.setColor(withAlpha(fillColor));
             stroke.setColor(withAlpha(strokeColor));
             if (material != null) shadow.setColor(withAlpha(material.shadowColor()));
-            fill.setAlpha(Color.alpha(withAlpha(fillColor)));
-            highlight.setAlpha(alpha);
         }
 
         private int withAlpha(int c) {
@@ -327,27 +320,12 @@ final class Style {
             if (material != null) {
                 shadowPath.reset();
                 path.offset(0, shadowPx, shadowPath);
-                int top = material.top(Theme.over(fillColor, 0xFF000000)), bottom = material.bottom(Theme.over(fillColor, 0xFF000000));
-                fill.setShader(new LinearGradient(0, box.top, 0, box.bottom, down ? bottom : top, down ? top : bottom, Shader.TileMode.CLAMP));
-                highlight.setShader(new LinearGradient(0, box.top, 0, box.top + box.height() * 0.35f,
-                        material.highlightColor(), material.highlightColor() & 0x00FFFFFF, Shader.TileMode.CLAMP));
             }
         }
 
         @Override
         public void draw(Canvas c) {
-            if (material != null) {
-                if (!down) c.drawPath(shadowPath, shadow);
-                c.drawPath(path, fill);
-                if (!down) {   // 高光只在键帽里面：沿边描一道两倍粗的，裁掉外面那一半
-                    c.save();
-                    c.clipPath(path);
-                    c.drawPath(path, highlight);
-                    c.restore();
-                }
-                if (strokeW > 0) c.drawPath(path, stroke);
-                return;
-            }
+            if (material != null && !down) c.drawPath(shadowPath, shadow);
             if (Color.alpha(fill.getColor()) != 0) c.drawPath(path, fill);
             if (strokeW > 0) c.drawPath(path, stroke);
         }

@@ -25,6 +25,7 @@ import dev.douhua.ConfigCodec;
 import dev.douhua.GamepadConfig;
 import dev.douhua.GestureEngine;
 import dev.douhua.Hid;
+import dev.douhua.MinHold;
 import dev.douhua.Proto;
 import dev.douhua.TouchRouter;
 
@@ -205,6 +206,12 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
      */
     private final OneShotTimer keyTimer = new OneShotTimer(timer, lock, () -> router.onKeyTimer(SystemClock.uptimeMillis()));
     /**
+     * 写 uhid 之前的最后一道：每个键 / 鼠标键至少按住 {@link MinHold#MIN_MS}（2026-11-04；双指右键这类按下松开连着发的，Moonlight 会漏）。
+     * 只管桌面模式写虚拟设备那一路；蓝牙模式转回 App 的由 BtHid 自己那份管。调用方持有 lock，到点的回调也在 lock 里（OneShotTimer）。
+     */
+    private final MinHold hold = new MinHold(new UhidSink());
+    private final OneShotTimer holdTimer = new OneShotTimer(timer, lock, () -> hold.onTimer(SystemClock.uptimeMillis()));
+    /**
      * 小红点的节拍：单独一个线程，不和定时器线程挤（那边切键盘焦点要等 binder，系统服务卡住时红点会跟着停）。
      * 桌面模式 8ms 一拍，蓝牙模式（转发）12ms（电脑约 11.25ms 收一次报文，发得更密会挤在一起、被对方当成加速）。
      */
@@ -314,6 +321,8 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
         }
         synchronized (lock) {
             router.releaseAll();
+            hold.flushNow();   // 留着没按够的松开现在发（定时器马上要停、设备马上要关）
+            holdTimer.cancel();
         }
         pass.close(EXIT_CANCEL_WAIT_MS);   // 正常情况下释放独占时已经取消过，这里兜底，并等排着的事件发完
         timer.shutdownNow();
@@ -1158,11 +1167,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
                     (byte) (w >> 8), (byte) w, (byte) (h >> 8), (byte) h});
             return;
         }
-        try {
-            mouse.send(buttons, dx, dy, wheel, pan);
-        } catch (IOException e) {
-            Server.log("写虚拟鼠标失败：" + e.getMessage());
-        }
+        hold.mouse(buttons, dx, dy, wheel, pan, SystemClock.uptimeMillis());
     }
 
     private static short clamp16(int v) {
@@ -1186,11 +1191,7 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
             send(packet);
             return;
         }
-        try {
-            keyboard.send(report);
-        } catch (IOException e) {
-            Server.log("写虚拟键盘失败：" + e.getMessage());
-        }
+        hold.keyboard(report, SystemClock.uptimeMillis());
     }
 
     /**
@@ -1213,13 +1214,54 @@ final class Session implements TouchRouter.Output, TouchReader.Listener {
             send(new byte[]{(byte) Proto.MSG_CONSUMER, (byte) page, (byte) (usage >> 8), (byte) usage});
             return;
         }
-        UhidControls c = controls;
-        if (c == null) return;   // 没建成（会话开头记过日志）
-        try {
-            if (page == Proto.PAGE_CONSUMER) c.sendConsumer(usage);
-            else c.sendSystem(usage);
-        } catch (IOException e) {
-            Server.log("写虚拟键盘的多媒体键接口失败：" + e.getMessage());
+        if (page == Proto.PAGE_CONSUMER) hold.consumer(usage, SystemClock.uptimeMillis());
+        else hold.system(usage, SystemClock.uptimeMillis());
+    }
+
+    /** {@link #hold} 放行的报文写进虚拟设备（调用方持有 lock）。 */
+    private final class UhidSink implements MinHold.Sink {
+        @Override
+        public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
+            try {
+                Session.this.mouse.send(buttons, dx, dy, wheel, pan);
+            } catch (IOException e) {
+                Server.log("写虚拟鼠标失败：" + e.getMessage());
+            }
+        }
+
+        @Override
+        public void keyboard(byte[] report) {
+            try {
+                Session.this.keyboard.send(report);
+            } catch (IOException e) {
+                Server.log("写虚拟键盘失败：" + e.getMessage());
+            }
+        }
+
+        @Override
+        public void consumer(int usage) {
+            controls(Proto.PAGE_CONSUMER, usage);
+        }
+
+        @Override
+        public void system(int usage) {
+            controls(Proto.PAGE_GENERIC_DESKTOP, usage);
+        }
+
+        private void controls(int page, int usage) {
+            UhidControls c = controls;
+            if (c == null) return;   // 没建成（会话开头记过日志）
+            try {
+                if (page == Proto.PAGE_CONSUMER) c.sendConsumer(usage);
+                else c.sendSystem(usage);
+            } catch (IOException e) {
+                Server.log("写虚拟键盘的多媒体键接口失败：" + e.getMessage());
+            }
+        }
+
+        @Override
+        public void schedule(long delayMs) {
+            holdTimer.schedule(delayMs);
         }
     }
 

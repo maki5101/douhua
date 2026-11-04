@@ -59,7 +59,8 @@ trap 'rm -rf "$OUT"' EXIT
 # 贴字面板的"打出来"（TypeOutTest：死键组合文件的读法；34 个布局 × 有数据的模式里每个能打的字反查出的键正着打一遍就是它、
 # 先后（普通 > Shift > 第三层 > 第三层 + Shift、0x64 / 0x87 放后面）、死键照主机的组合表不照 Unicode 分解；一段字的换行 / Tab / \r、打不出的数法；
 # 发送节拍（假时钟：速度、配对、随时停、等焦点、不续发、只卡一次不补发、给宿主的通知约定、随机序列）；接真 TouchRouter / KeyHolds 看主机收到的报文；
-# 照 MainActivity.java 源码核对接线：蓝牙模式下贴字面板打得开、藏"发送"、换提示字、和空中鼠标页互斥）
+# 照 MainActivity.java 源码核对接线：蓝牙模式下贴字面板打得开、藏"发送"、换提示字、和空中鼠标页互斥）、
+# 每个键 / 鼠标键至少按住 40 毫秒（MinHoldTest：按得短的松开晚到、按得长的照旧、留着的松开不和后面的输入叠在一起、真 GestureEngine 的双指轻点和点击动作、随机序列）
 "$JDK/bin/javac" -encoding UTF-8 -d "$OUT" \
     src/dev/douhua/Proto.java src/dev/douhua/GestureEngine.java \
     src/dev/douhua/ScrollInertia.java src/dev/douhua/ConfigCodec.java \
@@ -114,7 +115,8 @@ trap 'rm -rf "$OUT"' EXIT
     src/dev/douhua/SoundQueue.java src/dev/douhua/SoundMixer.java test/dev/douhua/SoundTest.java \
     src/dev/douhua/SoundEvents.java test/dev/douhua/SoundEventsTest.java \
     src/dev/douhua/SoundBench.java test/dev/douhua/SoundBenchTest.java \
-    src/dev/douhua/TypeOut.java src/dev/douhua/TypeOutSender.java test/dev/douhua/TypeOutTest.java
+    src/dev/douhua/TypeOut.java src/dev/douhua/TypeOutSender.java test/dev/douhua/TypeOutTest.java \
+    src/dev/douhua/MinHold.java test/dev/douhua/MinHoldTest.java
 "$JDK/bin/java" -cp "$OUT" dev.douhua.GestureEngineTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.HidTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.server.ServerPartsTest
@@ -152,6 +154,7 @@ trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/java" -cp "$OUT" dev.douhua.SoundEventsTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.SoundBenchTest
 "$JDK/bin/java" -cp "$OUT" dev.douhua.TypeOutTest
+"$JDK/bin/java" -cp "$OUT" dev.douhua.MinHoldTest
 # 打字测试的分析（tools/typelog/analyze.py）：造一份小日志测对齐和分类，再用真正的 TouchRouter 重放它导出的触点
 python3 tools/typelog/analyze.py --selftest "$OUT/typelog"
 "$JDK/bin/java" -cp "$OUT" KeyReplay "$OUT/typelog/replay.txt" check

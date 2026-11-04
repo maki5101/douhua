@@ -88,6 +88,12 @@ final class BtHid {
     private final Runnable reregisterFallback = this::onReregisterTimeout;
     /** 滚轮单位 → 计数，记着连着的主机设的倍率。 */
     private final Hid.WheelOut wheelOut = new Hid.WheelOut();
+    /**
+     * 发出去之前的最后一道：每个键 / 鼠标键至少按住 {@link MinHold#MIN_MS}（2026-11-04；服务转发回来的、本地分流的、App 直接发的——
+     * 点击类动作、空中鼠标、媒体键动作——都经它）。主线程用，定时器是主线程 Handler；换了主机 / 断开就忘掉。
+     */
+    private final MinHold hold = new MinHold(new HoldSink());
+    private final Runnable holdTimer = () -> hold.onTimer(SystemClock.uptimeMillis());
     /** 上次 registerApp 用的描述符带不带滚轮倍率（和设置对不上就重新注册）。 */
     private boolean regHires;
     /** 正在为换描述符注销：注销完（onAppStatusChanged(false)）马上重新注册。 */
@@ -380,6 +386,8 @@ final class BtHid {
             if (s == BluetoothProfile.STATE_CONNECTED) {
                 main.removeCallbacks(connectTimeout);
                 mouseButtons = 0;   // 新连上的主机那边什么键都没按着
+                hold.reset();
+                main.removeCallbacks(holdTimer);
                 wheelOut.reset();   // 滚轮倍率先当 ×1，等主机重新来设
                 connected = device;
                 connecting = null;
@@ -605,8 +613,7 @@ final class BtHid {
     /** 鼠标一帧：wheel / pan 是 1/120 格（Hid.WHEEL_UNIT），按主机设的倍率换算成计数、超了拆帧。 */
     void sendMouse(int buttons, int dx, int dy, int wheel, int pan) {
         if (!isConnected()) return;
-        mouseButtons = buttons;
-        wheelOut.mouse(mouseReport, buttons, dx, dy, wheel, pan, SystemClock.uptimeMillis(), r -> send(Hid.REPORT_MOUSE, r));
+        hold.mouse(buttons, dx, dy, wheel, pan, SystemClock.uptimeMillis());
     }
 
     /** 连着的主机设的竖滚轮倍率（×1 = 照旧一格一格，RES_MULT = 平滑滚动开了）；没连着时没意义。 */
@@ -637,7 +644,7 @@ final class BtHid {
     }
 
     void sendKeyboard(byte[] report) {
-        if (isConnected()) send(Hid.REPORT_KEYBOARD, report);
+        if (isConnected()) hold.keyboard(report, SystemClock.uptimeMillis());
     }
 
     /** 按一下媒体键（Consumer 用法码）：按下、松开（按钮条 / 角上按钮的媒体动作，协议 24 起和 F 行的第二功能共用报告 3）。 */
@@ -651,12 +658,43 @@ final class BtHid {
      * 和按钮动作的"按一下"共用这一个报告：按着 F 行的音量时点一下角上的"播放"，音量会被提前松开（不会卡键，只是提前松）。
      */
     void sendConsumer(int usage) {
-        if (isConnected()) send(Hid.REPORT_CONSUMER, Hid.usageReport(usage));
+        if (isConnected()) hold.consumer(usage, SystemClock.uptimeMillis());
     }
 
     /** 系统键那一组现在按着的码（报告 6，协议 24；0 = 松开）。对方没重新配对过就不认报告 6，丢掉不管。 */
     void sendSystem(int usage) {
-        if (isConnected()) send(Hid.REPORT_SYSTEM, Hid.usageReport(usage));
+        if (isConnected()) hold.system(usage, SystemClock.uptimeMillis());
+    }
+
+    /** {@link #hold} 放行的报文真正发出去（主线程）。 */
+    private final class HoldSink implements MinHold.Sink {
+        @Override
+        public void mouse(int buttons, int dx, int dy, int wheel, int pan) {
+            if (!isConnected()) return;
+            mouseButtons = buttons;
+            wheelOut.mouse(mouseReport, buttons, dx, dy, wheel, pan, SystemClock.uptimeMillis(), r -> send(Hid.REPORT_MOUSE, r));
+        }
+
+        @Override
+        public void keyboard(byte[] report) {
+            if (isConnected()) send(Hid.REPORT_KEYBOARD, report);
+        }
+
+        @Override
+        public void consumer(int usage) {
+            if (isConnected()) send(Hid.REPORT_CONSUMER, Hid.usageReport(usage));
+        }
+
+        @Override
+        public void system(int usage) {
+            if (isConnected()) send(Hid.REPORT_SYSTEM, Hid.usageReport(usage));
+        }
+
+        @Override
+        public void schedule(long delayMs) {
+            main.removeCallbacks(holdTimer);
+            main.postDelayed(holdTimer, delayMs);
+        }
     }
 
     private void send(int id, byte[] report) {

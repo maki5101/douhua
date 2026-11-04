@@ -63,6 +63,7 @@
 - `src/dev/douhua/SoundBench.java`：设置 → 外观 → 声音那一节的纯 Java 部分（试听台、候选区）
 - `src/dev/douhua/TypeOut.java`：贴字面板"打出来"的反查：字 → 键（按实体键盘的语言 + 模式的字表和死键组合）
 - `src/dev/douhua/TypeOutSender.java`：贴字面板"打出来"的发送节拍：匀速、随时能停、等焦点交出去
+- `src/dev/douhua/MinHold.java`：发报文前的最后一道：每个键 / 鼠标键至少按住 40 毫秒（服务写 uhid 前、BtHid 发前各一份）
 - `src/dev/douhua/MainActivity.java`：界面、按钮事件、贴字面板（发送——只桌面模式 / 打出来——两种模式）、数字键盘、旋转、动作执行
 - `src/dev/douhua/FixedSizing.java`：实体键盘逐级缩的状态
 - `src/dev/douhua/KeyboardFace.java`：键盘页上两块面板对外的共同方法
@@ -255,6 +256,12 @@ SDK 在 `.sdk/`（gitignored），调试签名在 `.private/debug.keystore`。
 - **桌面模式"打出来"只在焦点交给了别的窗口以后发键**：键经服务的虚拟键盘发给拿着焦点的窗口，点按钮那一下焦点在豆花（贴字面板开着）。先请服务交给分屏的另一半
   （CMD_FOCUS_OTHER），豆花丢了焦点才开始（TypeOutSender 的 gated），1.5 秒没交出去就停、一个键都不发；打的时候窗口不拿焦点（MainActivity.typingOut），
   焦点回到豆花、自己虚拟键盘的键落进豆花就停（并吞掉，不进贴字面板的输入框）。全屏、接着外接屏时不让打（交不出去：键会落到豆花自己 / 手机屏）。
+- **豆花发出去的每个键 / 鼠标键至少按住 MinHold.MIN_MS（40 毫秒）**（2026-11-04，用户："设一个最小时长，可以是人类能点的最短的时长"；起因是双指轻点的右键按下松开只隔 0.06–2 毫秒，Moonlight 时有时无地漏掉）：
+  规则只在 MinHold 一处，放在发报文的最后一步——桌面模式 Session 写 uhid（鼠标、键盘、多媒体 / 系统键）之前、蓝牙模式 BtHid 发之前（服务转发回来的、本地分流的、App 直接发的点击动作 / 空中鼠标 / 媒体键都经它）。
+  松开离按下不到 40 毫秒就留着、到点再发（Session 的 holdTimer、BtHid 的主线程 Runnable）；**留着的松开绝不和后面的输入叠在一起**：新按下任何键 / 鼠标键、换了多媒体 / 系统键的码、滚轮都先把所有留着的松开发掉，
+  光标移动先把留着的鼠标键发掉（不然快打 "@a" 成 "@A"、Ctrl 点一下马上点鼠标成 Ctrl+点击、右键留着时一挪成右键拖动）；只拉长不丢，每个按下照旧配一个松开；会话收尾先 flushNow 再关设备，蓝牙换了主机 reset（MinHoldTest 锁住，含随机序列）。
+  加新的发报文的出口照这条：经 MinHold 发，不直接写设备 / 蓝牙。没管的：注入的安卓按键（Injector，CMD_KEY）、手柄（游戏要原样的时长）。
+  "打出来"每个键按住也至少 40 毫秒（TypeOutSender.holdMs），最快 20 键 / 秒。
 - **独占实体键的条件**：和触摸屏同一个 Session.wanted（active、参数到了、心跳 < 3 秒），再加 App 发过 CMD_HARD_KEYS 且至少截一个键、
   按键注入可用（不可用绝不独占，不然同设备上没配的音量键补发不出去；截着时补发失败一次也算不可用，等配置变了或 App 回前台再试）、
   没在来电响铃 / 通话中（服务问 Telecom，CallState；查不到不拦）；不依赖触摸屏接管成功。不满足 100ms 内放开，断开立刻放开

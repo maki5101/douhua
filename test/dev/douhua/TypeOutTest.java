@@ -489,11 +489,17 @@ public final class TypeOutTest {
 
     static void senderTiming() {
         // 文档（CLAUDE.md、docs/files.md、README、设置页说明）写死的数：默认 15 键 / 秒、等焦点最多 1.5 秒、交出去以后再等 150 毫秒；改了要连文档一起改
-        check(TypeOutSender.RATE_DEFAULT == 15 && TypeOutSender.RATE_MIN == 5 && TypeOutSender.RATE_MAX == 40 && TypeOutSender.RATE_STEP == 1,
-                "速度：5–40 键/秒、步长 1、默认 15（和文档一致）");
+        check(TypeOutSender.RATE_DEFAULT == 15 && TypeOutSender.RATE_MIN == 5 && TypeOutSender.RATE_MAX == 20 && TypeOutSender.RATE_STEP == 1,
+                "速度：5–20 键/秒、步长 1、默认 15（和文档一致）");
         check(TypeOutSender.GATE_TIMEOUT_MS == 1500 && TypeOutSender.GATE_SETTLE_MS == 150, "等焦点 1.5 秒、交出去以后 150 毫秒（和文档一致）");
-        check(TypeOutSender.clampRate(0) == 5 && TypeOutSender.clampRate(100) == 40 && TypeOutSender.clampRate(15) == 15, "速度截到 5–40");
-        check(Math.abs(TypeOutSender.halfMs(15) - 33.333) < 0.01 && TypeOutSender.halfMs(40) == 12.5 && TypeOutSender.halfMs(5) == 100, "半个键的时长");
+        check(TypeOutSender.clampRate(0) == 5 && TypeOutSender.clampRate(100) == 20 && TypeOutSender.clampRate(15) == 15, "速度截到 5–20");
+        check(TypeOutSender.holdMs(15) == 40 && Math.abs(TypeOutSender.gapMs(15) - 26.667) < 0.01 && TypeOutSender.holdMs(20) == 40
+                && TypeOutSender.gapMs(20) == 10 && TypeOutSender.holdMs(5) == 100 && TypeOutSender.gapMs(5) == 100
+                && Math.abs(TypeOutSender.holdMs(12) - 41.667) < 0.01, "按住 = 半个键、至少 40 毫秒，隔开的是剩下的");
+        for (int rate = TypeOutSender.RATE_MIN; rate <= TypeOutSender.RATE_MAX; rate++) {
+            check(TypeOutSender.holdMs(rate) >= MinHold.MIN_MS && TypeOutSender.gapMs(rate) >= 10
+                    && Math.abs(TypeOutSender.holdMs(rate) + TypeOutSender.gapMs(rate) - 1000.0 / rate) < 1e-9, rate + " 键/秒：按住 ≥ 40、隔开 ≥ 10、加起来一个键");
+        }
         TypeOut.Keys k = keys("de", FixedLayout.WIN);
         for (int rate = TypeOutSender.RATE_MIN; rate <= TypeOutSender.RATE_MAX; rate++) {
             TypeOut.Plan p = TypeOut.plan("Hallo Welt, é@€\n" + "abcdefghijklmnopqrstuvwxyz0123456789".substring(0, rate % 30), k);
@@ -507,31 +513,36 @@ public final class TypeOutTest {
                 check(h.events.get(2 * i)[1] == p.keys[i] && h.events.get(2 * i)[2] == Proto.KEY_DOWN
                         && h.events.get(2 * i + 1)[1] == p.keys[i] && h.events.get(2 * i + 1)[2] == Proto.KEY_UP, rate + "：第 " + i + " 个键按下松开");
             }
-            double half = 500.0 / rate;
-            long minGap = Long.MAX_VALUE, maxGap = 0;
+            double hold = TypeOutSender.holdMs(rate), gap = TypeOutSender.gapMs(rate);
+            boolean intervals = true;
             for (int i = 1; i < h.events.size(); i++) {
                 long g = h.events.get(i)[0] - h.events.get(i - 1)[0];
-                minGap = Math.min(minGap, g);
-                maxGap = Math.max(maxGap, g);
+                double t = h.events.get(i - 1)[2] == Proto.KEY_DOWN ? hold : gap;
+                if (g < (long) t || g > (long) Math.ceil(t)) intervals = false;
             }
-            check(minGap >= (long) half && maxGap <= (long) Math.ceil(half), rate + " 键/秒：每一下隔 " + minGap + "–" + maxGap + " 毫秒（半个键 " + half + "）");
+            check(intervals, rate + " 键/秒：按下到松开 " + hold + "、松开到下一个按下 " + gap + " 毫秒");
             long last = h.events.get(h.events.size() - 1)[0];
-            double want = (h.events.size() - 1) * half;
+            double want = p.keys.length * hold + (p.keys.length - 1) * gap;
             check(Math.abs(last - want) < 1.01, rate + " 键/秒：总时长 " + last + "，应为 " + want);
             changedContract(h, p, rate + " 键/秒");
         }
         // 定时器每次到点都晚 50 毫秒：每一下照样至少隔半个键（晚了不把下一下提前）
         TypeOut.Plan p = TypeOut.plan("abcdefghij", k);
         FakeHost h = host();
-        h.s.start(p, 40, false, 0);
+        h.s.start(p, TypeOutSender.RATE_MAX, false, 0);
         h.run(50);
-        long minGap = Long.MAX_VALUE;
-        for (int i = 1; i < h.events.size(); i++) minGap = Math.min(minGap, h.events.get(i)[0] - h.events.get(i - 1)[0]);
-        check(minGap >= 12 && h.s.end() == TypeOutSender.END_DONE, "定时器每次晚到：两下之间至少还是半个键（" + minGap + "）");
+        long minHold = Long.MAX_VALUE, minGap = Long.MAX_VALUE;
+        for (int i = 1; i < h.events.size(); i++) {
+            long g = h.events.get(i)[0] - h.events.get(i - 1)[0];
+            if (h.events.get(i - 1)[2] == Proto.KEY_DOWN) minHold = Math.min(minHold, g);
+            else minGap = Math.min(minGap, g);
+        }
+        check(minHold >= MinHold.MIN_MS && minGap >= 10 && h.s.end() == TypeOutSender.END_DONE,
+                "定时器每次晚到：按住还是至少 40、隔开至少 10（" + minHold + " / " + minGap + "）");
         // 主线程只卡一次（第 at 次到点晚 500 毫秒）：之后照常一下一下来，不补发一串（下一下从这一下真正发生的时刻起算）；总时长正好多出卡的那 500 毫秒
         int stalls = 0;
         for (int rate : new int[]{TypeOutSender.RATE_MIN, 15, TypeOutSender.RATE_MAX}) {
-            double half = 500.0 / rate;
+            double hold = TypeOutSender.holdMs(rate), gap = TypeOutSender.gapMs(rate);
             for (int at = 0; at < 2 * p.keys.length - 1; at++) {
                 h = host();
                 h.s.start(p, rate, false, 0);
@@ -542,17 +553,16 @@ public final class TypeOutTest {
                     h.s.onTimer(h.now);
                 }
                 check(h.s.end() == TypeOutSender.END_DONE && h.events.size() == 2 * p.keys.length, rate + " 键/秒，第 " + at + " 次卡：打完了");
-                minGap = Long.MAX_VALUE;
+                boolean intervals = true;
                 int zero = 0;
                 for (int i = 1; i < h.events.size(); i++) {
                     long g = h.events.get(i)[0] - h.events.get(i - 1)[0];
-                    minGap = Math.min(minGap, g);
+                    if (g < (long) (h.events.get(i - 1)[2] == Proto.KEY_DOWN ? hold : gap)) intervals = false;
                     if (g == 0) zero++;
                 }
-                check(minGap >= (long) half && zero == 0, rate + " 键/秒，第 " + at + " 次到点卡 500 毫秒：之后每一下还是至少隔半个键（最短 " + minGap
-                        + "，挤在一起的 " + zero + " 个）");
+                check(intervals && zero == 0, rate + " 键/秒，第 " + at + " 次到点卡 500 毫秒：之后每一下还是至少隔该隔的（挤在一起的 " + zero + " 个）");
                 long last = h.events.get(h.events.size() - 1)[0];
-                double want = (h.events.size() - 1) * half + 500;
+                double want = p.keys.length * hold + (p.keys.length - 1) * gap + 500;
                 check(Math.abs(last - want) < 1.01, rate + " 键/秒，第 " + at + " 次卡：只变慢（总时长 " + last + "，应为 " + want + "）");
                 stalls++;
             }

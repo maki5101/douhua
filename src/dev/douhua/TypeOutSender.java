@@ -4,7 +4,8 @@ package dev.douhua;
  * 贴字面板"打出来"的发送节拍（2026-11-02，方案 design-typeout §5–§7）：照 {@link TypeOut.Plan} 一个键一个键按下、松开。纯 Java（离线测，TypeOutTest，假时钟）。
  *
  * 速度：固定、可调（设置 → 键盘最下面"打出来"那一节的滑块，{@link #RATE_MIN}–{@link #RATE_MAX} 键 / 秒，默认 {@link #RATE_DEFAULT}）。
- * 一个键占 1 / 速度 秒，按下到松开、松开到下一个按下各占一半（{@link #halfMs}，小数的毫秒攒着，平均下来正好）。
+ * 一个键占 1 / 速度 秒：按下到松开 {@link #holdMs}（一半，但至少 {@link MinHold#MIN_MS}——人能点出来的最短，2026-11-04），剩下的是松开到下一个按下
+ * {@link #gapMs}；小数的毫秒攒着，平均下来正好。最快 {@link #RATE_MAX} 键 / 秒（按住 40 毫秒 + 隔 10 毫秒）。
  * 下一下从这一下真正发生的时刻起算：主线程卡一下只会变慢、不会补发一串（BIOS、KVM、远程控制台、输入法遇到太快的输入会丢字、乱序，要实测）。
  * 不做随机节奏、不模仿人手（方案第七节：那是渗透工具的做法）。
  *
@@ -34,7 +35,7 @@ final class TypeOutSender {
     }
 
     /** 速度（键 / 秒）的范围、步长、默认值：设置页的滑块和 Prefs 都照它。 */
-    static final int RATE_MIN = 5, RATE_MAX = 40, RATE_STEP = 1, RATE_DEFAULT = 15;
+    static final int RATE_MIN = 5, RATE_MAX = 20, RATE_STEP = 1, RATE_DEFAULT = 15;
     /** 桌面模式等焦点交出去最多等多久；交出去以后再等多久才按第一个键（让系统把焦点窗口换好）。 */
     static final long GATE_TIMEOUT_MS = 1500, GATE_SETTLE_MS = 150;
 
@@ -46,7 +47,7 @@ final class TypeOutSender {
     private final Host host;
     private int state = IDLE;
     private TypeOut.Plan plan;
-    private double half;
+    private double hold, gap;
     private double carry;
     /** 已经按下并松开的键数；down 时 keys[released] 正按着。 */
     private int released;
@@ -65,9 +66,14 @@ final class TypeOutSender {
         return Math.max(RATE_MIN, Math.min(RATE_MAX, rate));
     }
 
-    /** 按下到松开（也是松开到下一个按下）多少毫秒：500 / 速度。 */
-    static double halfMs(int rate) {
-        return 500.0 / clampRate(rate);
+    /** 按下到松开多少毫秒：半个键（500 / 速度），至少 {@link MinHold#MIN_MS}。 */
+    static double holdMs(int rate) {
+        return Math.max(MinHold.MIN_MS, 500.0 / clampRate(rate));
+    }
+
+    /** 松开到下一个按下多少毫秒：一个键的时长减去按住的。 */
+    static double gapMs(int rate) {
+        return 1000.0 / clampRate(rate) - holdMs(rate);
     }
 
     /**
@@ -77,7 +83,8 @@ final class TypeOutSender {
     boolean start(TypeOut.Plan p, int rate, boolean gated, long now) {
         if (state != IDLE || p == null) return false;
         plan = p;
-        half = halfMs(rate);
+        hold = holdMs(rate);
+        gap = gapMs(rate);
         carry = 0;
         released = 0;
         down = false;
@@ -145,9 +152,9 @@ final class TypeOutSender {
         host.schedule(d);
     }
 
-    /** 下一下隔多少毫秒：半个键的时长，小数攒着（15 键 / 秒 = 33、33、34、33……）。 */
+    /** 下一下隔多少毫秒：刚按下的等 hold、刚松开的等 gap，小数攒着（12 键 / 秒 = 41、42、41、42……）。 */
     private long nextDelay() {
-        carry += half;
+        carry += down ? hold : gap;
         long d = (long) carry;
         carry -= d;
         return Math.max(1, d);

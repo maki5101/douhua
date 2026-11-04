@@ -412,6 +412,14 @@
     <string name="theme_ocean">Oceano</string>
     <string name="theme_sakura">Ciliegio</string>
     <string name="theme_mint">Menta</string>
+    <string name="theme_graphite">Grafite</string>
+    <string name="theme_pleats">Plissé</string>
+    <string name="theme_brass">Ottone opaco</string>
+    <string name="theme_nightblue">Blu notte</string>
+    <string name="theme_silver">Argento</string>
+    <string name="theme_signal">Arancio segnale</string>
+    <string name="theme_kraft">Grezzo</string>
+    <string name="theme_dial">Quadrante</string>
     <string name="theme_group_dark">Temi scuri</string>
     <string name="theme_group_light">Temi chiari</string>
     <string name="key_borders">Bordi dei tasti</string>

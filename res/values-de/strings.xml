@@ -412,6 +412,14 @@
     <string name="theme_ocean">Ozean</string>
     <string name="theme_sakura">Kirschblüte</string>
     <string name="theme_mint">Minze</string>
+    <string name="theme_graphite">Graphit</string>
+    <string name="theme_pleats">Plissee</string>
+    <string name="theme_brass">Mattes Messing</string>
+    <string name="theme_nightblue">Nachtblau</string>
+    <string name="theme_silver">Silber</string>
+    <string name="theme_signal">Signalorange</string>
+    <string name="theme_kraft">Naturweiß</string>
+    <string name="theme_dial">Zifferblatt</string>
     <string name="theme_group_dark">Dunkle Designs</string>
     <string name="theme_group_light">Helle Designs</string>
     <string name="key_borders">Tastenränder</string>

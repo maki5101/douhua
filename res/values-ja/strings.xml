@@ -412,6 +412,14 @@
     <string name="theme_ocean">オーシャン</string>
     <string name="theme_sakura">桜</string>
     <string name="theme_mint">ミント</string>
+    <string name="theme_graphite">グラファイト</string>
+    <string name="theme_pleats">プリーツ</string>
+    <string name="theme_brass">マットブラス</string>
+    <string name="theme_nightblue">ナイトブルー</string>
+    <string name="theme_silver">シルバー</string>
+    <string name="theme_signal">シグナルオレンジ</string>
+    <string name="theme_kraft">生成り</string>
+    <string name="theme_dial">ダイヤル</string>
     <string name="theme_group_dark">ダーク系</string>
     <string name="theme_group_light">ライト系</string>
     <string name="key_borders">キーの枠線</string>

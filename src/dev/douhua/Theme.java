@@ -85,6 +85,11 @@ final class Theme {
     final float borderDp;
     /** 调整键盘时压在键盘上的那层（{@link #shade()}）。 */
     private final int shade;
+    /**
+     * 材质（2026-11-04，用户："有质感的主题，接近实物"）：键帽的上下渐变、上沿高光、下沿阴影，触控板的纹理。
+     * null = 平面（原来的十八套，画法和以前一模一样）。规则见 {@link Material}。
+     */
+    final Material material;
 
     private Theme(Spec s) {
         id = s.id;
@@ -105,20 +110,23 @@ final class Theme {
         fnKey = or(s.fnKey, fnTint(keyFill, accent, bg));
         int fnFill = over(fnKey, bg);
         fnPressed = or(s.fnPressed, blend(fnFill, text, 0.15f));
-        fnText = or(s.fnText, reach(reach(accent, fnFill, TEXT_RATIO), fnPressed, 3));
+        material = s.material;
+        fnText = or(s.fnText, reachFaces(accent, fnFill, fnPressed, TEXT_RATIO));
         // 高亮的键（锁住的 Shift）被按着时也得看清：对按下的底色再保证 3:1。
         // 高亮的功能键（锁住的修饰键、换层键）照旧画在普通键帽的底色上（见 Style.look），不在功能键的底色上
-        activeText = or(s.activeText, reach(reach(accent, keyFill, TEXT_RATIO), pressed, 3));
+        activeText = or(s.activeText, reachFaces(accent, keyFill, pressed, TEXT_RATIO));
         strong = or(s.strong, text);
-        status = or(s.status, dimmest(padFill, text, TEXT_RATIO, padFill));
-        statusBad = or(s.statusBad, reach(s.bad, padFill, TEXT_RATIO));
+        // 有纹理的触控板：字对纹理最亮、最暗的地方也够（Material.padLight / padDark）
+        int[] pad = padFaces(padFill);
+        status = or(s.status, dimmest(padFill, text, TEXT_RATIO, pad));
+        statusBad = or(s.statusBad, reachAll(s.bad, pad, ratios(pad.length, TEXT_RATIO)));
         previewFill = or(s.previewFill, blend(keyFill, text, 0.12f));
         previewBorder = or(s.previewBorder, accent);
         // 放大提示的字：亮文字不够 4.5:1 就再推亮 / 推暗（Solarized Dark、Everforest 的正文本来就不亮，盖在掺了字色的提示底上不够）
         previewText = or(s.previewText, reach(strong, previewFill, TEXT_RATIO));
         focus = or(s.focus, reach(accent, bg, TEXT_RATIO));
         ring = or(s.ring, reach(blend(keyFill, text, 0.45f), keyFill, 3));
-        dim = or(s.dim, dimmest(padFill, text, TEXT_RATIO, padFill, bg));
+        dim = or(s.dim, dimmest(padFill, text, TEXT_RATIO, concat(pad, bg)));
         dimBorder = or(s.dimBorder, blend(padFill, padBorder, 0.45f));
         hint = or(s.hint, dim);
         softText = soft(keyFill, text, pressed);
@@ -127,12 +135,108 @@ final class Theme {
         // ⋯ 用强调色（见字段注释）：键帽形状的底先定，字跟着底挑
         menuKey = or(s.menuKey, reachAll(accent, new int[]{bg, keyFill, fnFill}, new double[]{3, 3, 3}));
         int pick = contrast(bg, menuKey) >= contrast(text, menuKey) ? bg : text;
-        menuKeyText = or(s.menuKeyText, reach(pick, menuKey, TEXT_RATIO));
+        int[] menuF = faces(menuKey);
+        menuKeyText = or(s.menuKeyText, reachAll(pick, menuF, ratios(menuF.length, TEXT_RATIO)));
         menuKeyPressed = or(s.menuKeyPressed, blend(menuKey, menuKeyText, 0.15f));
-        menuDots = or(s.menuDots, reachAll(accent, new int[]{padFill, bg, pressed}, new double[]{TEXT_RATIO, TEXT_RATIO, 3}));
+        int[] dotsOn = concat(concat(pad, bg), pressed);
+        double[] dotsR = ratios(dotsOn.length, TEXT_RATIO);
+        dotsR[dotsR.length - 1] = 3;
+        menuDots = or(s.menuDots, reachAll(accent, dotsOn, dotsR));
         stick = stickRed(bg, padFill);
         borderDp = s.borderDp;
         shade = shadeFor(bg, keyFill, text, fnFill, fnText, strong);
+    }
+
+    /** 一块键帽实际出现的颜色：平面主题就是底色；有材质的还有渐变最亮（上沿）、最暗（下沿）的两头。 */
+    int[] faces(int fill) {
+        return material == null ? new int[]{fill} : new int[]{fill, material.top(fill), material.bottom(fill)};
+    }
+
+    /** 触控板实际出现的颜色：有纹理的还有纹理最亮、最暗的地方。 */
+    int[] padFaces(int padFill) {
+        return material == null || material.texture == Material.FLAT ? new int[]{padFill}
+                : new int[]{padFill, material.padLight(padFill), material.padDark(padFill)};
+    }
+
+    /**
+     * 键帽上的字：对键帽各处（渐变两头）够 ratio、对按下的底各处够 3:1。平面主题就是原来的 reach(reach(c, fill, ratio), pressed, 3)，一个值都不变。
+     */
+    private int reachFaces(int c, int fill, int pressedFill, double ratio) {
+        if (material == null) return reach(reach(c, fill, ratio), pressedFill, 3);
+        int[] a = faces(fill), b = faces(pressedFill);
+        double[] r = new double[a.length + b.length];
+        for (int i = 0; i < r.length; i++) r[i] = i < a.length ? ratio : 3;
+        return reachAll(c, concat(a, b), r);
+    }
+
+    private static int[] concat(int[] a, int... b) {
+        int[] r = java.util.Arrays.copyOf(a, a.length + b.length);
+        System.arraycopy(b, 0, r, a.length, b.length);
+        return r;
+    }
+
+    private static double[] ratios(int n, double ratio) {
+        double[] r = new double[n];
+        java.util.Arrays.fill(r, ratio);
+        return r;
+    }
+
+    /**
+     * 材质（2026-11-04）：照实物的键帽和面板。纯 Java，规则和数值离线测（ThemeTest.material）。
+     * <ul>
+     * <li>键帽：上沿往白掺 {@link #light}、下沿往黑掺 {@link #dark} 的竖向渐变（光从上面来），上沿内侧一道白色的细高光（{@link #highlight}，
+     *     往下两成高度渐隐），下面一道往下挪 {@link #SHADOW_DP} 的影子（{@link #shadow}）。按下：影子没了、渐变倒过来（凹进去）、整个往下沉一点。
+     *     键帽上的字对渐变两头都要够对比度（{@link Theme#faces}）。</li>
+     * <li>触控板：底色上叠一层程序生成、能无缝平铺的纹理（{@link PadTexture}，白 / 黑带透明度），最亮 / 最暗处是 {@link #padLight} / {@link #padDark}，
+     *     状态字、角上小字、⋯ 对它们也都要够。</li>
+     * </ul>
+     */
+    static final class Material {
+        static final int FLAT = PadTexture.NONE;
+        /** 影子往下挪多少（dp）。 */
+        static final float SHADOW_DP = 1.5f;
+        /** 高光线多粗（dp）。 */
+        static final float HIGHLIGHT_DP = 1f;
+
+        final int texture;
+        /** 纹理最浓处的透明度（0–1）。 */
+        final float textureStrength;
+        final float light, dark;
+        /** 高光、影子的透明度（0–255）。 */
+        final int highlight, shadow;
+
+        Material(int texture, float textureStrength, float light, float dark, int highlight, int shadow) {
+            this.texture = texture;
+            this.textureStrength = textureStrength;
+            this.light = light;
+            this.dark = dark;
+            this.highlight = highlight;
+            this.shadow = shadow;
+        }
+
+        int top(int fill) {
+            return blend(fill, 0xFFFFFFFF, light);
+        }
+
+        int bottom(int fill) {
+            return blend(fill, 0xFF000000, dark);
+        }
+
+        int padLight(int padFill) {
+            return blend(padFill, 0xFFFFFFFF, textureStrength);
+        }
+
+        int padDark(int padFill) {
+            return blend(padFill, 0xFF000000, textureStrength);
+        }
+
+        int highlightColor() {
+            return highlight << 24 | 0xFFFFFF;
+        }
+
+        int shadowColor() {
+            return shadow << 24;
+        }
     }
 
     /** ThinkPad 小红点的红（凭记忆的近似值，不是官方色号）。 */
@@ -210,6 +314,20 @@ final class Theme {
             new Spec("contrast", null).base(0xFF000000, 0xFF000000, 0xFFFFD600, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF)
                     .border(0xFFFFD600).pressed(0xFF4D4000).status(0xFFFFD600, 0xFFFF8A80).dim(0xFFFFD600, 0xFF737373)
                     .hint(0xFFFFD600).ring(0xFFFFD600).borderDp(2.5f).build(),
+            // ── 有材质的（2026-11-04，用户："有质感的主题，接近实物"，设计参考苹果、博朗、无印良品、三宅一生、巴慕达、Nomos；
+            // 名字按材料起、不用品牌名）。底子是照实物挑的近似色（凭印象，不是哪家的官方色号），别的照规则推；material 见 Theme.Material ──
+            // ⑲ 石墨铝（深色的铝机身 + 近黑键帽，照笔记本的深色款）：拉丝铝的触控板
+            new Spec("graphite", null).base(0xFF2F3134, 0xFF1C1C1E, 0xFFE6E6EA, 0xFF6CB6FF, 0xFF3A3C40, 0xFF8E939B)
+                    .bad(0xFFFF6961).material(PadTexture.BRUSHED, 0.06f, 0.06f, 0.10f, 26, 120).build(),
+            // ⑳ 褶（三宅一生：炭黑的布 + 细竖褶）：触控板是一道道褶，强调色是沙色
+            new Spec("pleats", null).base(0xFF1E1E20, 0xFF2B2B2E, 0xFFE9E6E0, 0xFFC9B79C, 0xFF26262A, 0xFF8C867D)
+                    .bad(0xFFE57373).material(PadTexture.PLEAT, 0.06f, 0.05f, 0.10f, 22, 130).build(),
+            // ㉑ 哑黑 · 黄铜（巴慕达：哑光黑的粉末涂层 + 香槟铜）
+            new Spec("brass", null).base(0xFF151515, 0xFF232323, 0xFFE8E3D8, 0xFFC9A86A, 0xFF1C1C1C, 0xFF9C8455)
+                    .bad(0xFFE07A5F).material(PadTexture.GRAIN, 0.05f, 0.05f, 0.12f, 20, 150).build(),
+            // ㉒ 夜蓝（Nomos 深蓝表盘 + 橙红的秒针）
+            new Spec("nightblue", null).base(0xFF13213B, 0xFF1D2E50, 0xFFE8EEF7, 0xFFFF7A4D, 0xFF182844, 0xFFFF7A4D)
+                    .bad(0xFFFF8A80).material(PadTexture.GRAIN, 0.04f, 0.06f, 0.10f, 24, 130).build(),
             // ── 浅色 ──
             // ⑭ 浅色（Gboard 浅色）；触控板边框比 Google 蓝 500 #4285F4 暗一点（原值对页面 #E8EAED 只有 2.96:1）
             new Spec("glight", null).base(0xFFE8EAED, 0xFFFFFFFF, 0xFF202124, 0xFF1A73E8, 0xFFF1F3F4, 0xFF4182EF)
@@ -227,6 +345,19 @@ final class Theme {
             // ⑱ 薄荷
             new Spec("mint", null).base(0xFFDDF1EA, 0xFFFFFFFF, 0xFF17372D, 0xFF00796B, 0xFFCBE9DE, 0xFF00897B)
                     .bad(0xFFC62828).build(),
+            // ㉓ 银铝（浅色的铝机身 + 白键帽，照妙控键盘）：拉丝铝的触控板
+            new Spec("silver", null).base(0xFFD6D8DB, 0xFFF7F7F8, 0xFF1D1D1F, 0xFF0066CC, 0xFFE2E3E5, 0xFF6B6F75)
+                    .bad(0xFFC4001A).material(PadTexture.BRUSHED, 0.06f, 0.04f, 0.06f, 70, 60).build(),
+            // ㉔ 白 · 信号橙（博朗：暖白的机身、浅灰键、灰一档的功能键、橙色的信号；功能键原想用深灰，⋯ 的橙色在浅页面和深灰键之间两头都够不上 3:1）
+            new Spec("signal", null).base(0xFFE8E5DE, 0xFFF6F4EF, 0xFF2A2A2A, 0xFFD9481C, 0xFFDDD9D0, 0xFFB43C14)
+                    .fn(0xFFC6C2BA, 0xFF2A2A2A, 0xFFB5B1A9).bad(0xFFC62828)
+                    .material(PadTexture.GRAIN, 0.04f, 0.04f, 0.07f, 70, 55).build(),
+            // ㉕ 生成色（无印良品：没漂白的纸、牛皮纸、暗红）
+            new Spec("kraft", null).base(0xFFE4D9C4, 0xFFF3EDE1, 0xFF3D3833, 0xFF8A1C2B, 0xFFDACDB4, 0xFF7A6A52)
+                    .bad(0xFFB3261E).material(PadTexture.PAPER, 0.06f, 0.04f, 0.07f, 60, 55).build(),
+            // ㉖ 表盘（Nomos 镀银的米白表盘、烤蓝的针）
+            new Spec("dial", null).base(0xFFECEAE4, 0xFFF9F8F5, 0xFF1D2740, 0xFF1F4E9E, 0xFFE3E0D8, 0xFF1F4E9E)
+                    .bad(0xFFC8102E).material(PadTexture.GRAIN, 0.035f, 0.04f, 0.06f, 70, 50).build(),
     };
 
     static final Theme DEFAULT = ALL[0];
@@ -433,6 +564,7 @@ final class Theme {
         int bg, key, text, accent, padFill, padBorder;
         int bad = 0xFFE07A5F;
         float borderDp = 1.5f;
+        Material material;
         Integer border, pressed, fnKey, fnText, fnPressed, activeText, strong, status, statusBad, previewFill, previewBorder, previewText,
                 focus, ring, dim, dimBorder, hint, edge, menuFill, menuKey, menuKeyText, menuKeyPressed, menuDots;
 
@@ -540,6 +672,12 @@ final class Theme {
 
         Spec borderDp(float dp) {
             borderDp = dp;
+            return this;
+        }
+
+        /** 材质：触控板纹理（PadTexture.*）和浓淡、键帽渐变的上下、高光和影子的透明度。 */
+        Spec material(int texture, float strength, float light, float dark, int highlight, int shadow) {
+            material = new Material(texture, strength, light, dark, highlight, shadow);
             return this;
         }
 

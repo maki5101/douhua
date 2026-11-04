@@ -23,7 +23,9 @@ public final class ThemeTest {
             stickRed(t);
             menu(t);
             soft(t);
+            material(t);
         }
+        textures();
         helpers();
         if (args.length > 0 && args[0].equals("print")) print();
         System.err.println("主题：" + checks + " 项检查，" + failures + " 项失败");
@@ -32,19 +34,25 @@ public final class ThemeTest {
 
     /** 设置页的顺序：先深色组、后浅色组（组里照这个顺序）。 */
     static final String[] ORDER = {"black", "dark", "nord", "dracula", "catppuccin", "tokyo", "gruvbox", "everforest",
-            "solarized_dark", "rosepine", "monokai", "ocean", "contrast", "glight", "light", "latte", "sakura", "mint"};
+            "solarized_dark", "rosepine", "monokai", "ocean", "contrast", "graphite", "pleats", "brass", "nightblue",
+            "glight", "light", "latte", "sakura", "mint", "silver", "signal", "kraft", "dial"};
+    /** 有材质的（2026-11-04）：深色四套、浅色四套。 */
+    static final Set<String> MATERIAL = new HashSet<>(java.util.Arrays.asList(
+            "graphite", "pleats", "brass", "nightblue", "silver", "signal", "kraft", "dial"));
     /** 要翻译的（strings.xml 里有）：纯黑、深色、海蓝、高对比、浅色、樱花、薄荷；其余用配色方案自己的名字。 */
     static final Set<String> TRANSLATED = new HashSet<>(java.util.Arrays.asList(
-            "black", "dark", "ocean", "contrast", "glight", "sakura", "mint"));
+            "black", "dark", "ocean", "contrast", "glight", "sakura", "mint",
+            "graphite", "pleats", "brass", "nightblue", "silver", "signal", "kraft", "dial"));
 
     static void list() {
-        check(Theme.ALL.length == 18, "十八套");
+        check(Theme.ALL.length == 26, "二十六套");
         check(Theme.DEFAULT.id.equals("black"), "默认是纯黑");
         Set<String> ids = new HashSet<>();
         for (Theme t : Theme.ALL) check(ids.add(t.id), "名字不重复：" + t.id);
         for (int i = 0; i < ORDER.length && i < Theme.ALL.length; i++) {
             check(Theme.ALL[i].id.equals(ORDER[i]), "第 " + (i + 1) + " 套是 " + ORDER[i] + "（实际 " + Theme.ALL[i].id + "）");
-            check(Theme.ALL[i].light == (i >= 13), ORDER[i] + "：前十三套是深色、后五套是浅色");
+            check(Theme.ALL[i].light == (i >= 17), ORDER[i] + "：前十七套是深色、后九套是浅色");
+            check((Theme.ALL[i].material != null) == MATERIAL.contains(ORDER[i]), ORDER[i] + "：有没有材质");
         }
         check(Theme.byId("nord").id.equals("nord"), "按名字找得到");
         check(Theme.byId("没有这套") == Theme.DEFAULT && Theme.byId("") == Theme.DEFAULT, "找不到的退回纯黑");
@@ -175,7 +183,10 @@ public final class ThemeTest {
                 check(t.menuKey == t.accent, t.id + "：⋯ 键本来就够的不推");
             }
             // 字是页面色或正文色（或它们推出来的）：深色主题多半是深字、浅色主题是浅字
-            check(t.menuKeyText == Theme.reach(t.bg, t.menuKey, 4.5) || t.menuKeyText == Theme.reach(t.text, t.menuKey, 4.5),
+            int[] mf = t.faces(t.menuKey);
+            double[] mr = new double[mf.length];
+            java.util.Arrays.fill(mr, 4.5);
+            check(t.menuKeyText == Theme.reachAll(t.bg, mf, mr) || t.menuKeyText == Theme.reachAll(t.text, mf, mr),
                     t.id + "：⋯ 键的字从页面色 / 正文色里挑");
         }
         // 和原来的暗字（Style.bare 以前用的 dim）一眼分得开
@@ -355,6 +366,83 @@ public final class ThemeTest {
         int[] out = java.util.Arrays.copyOf(s, s.length + 1);
         out[s.length] = t.shade();
         return out;
+    }
+
+    /**
+     * 有材质的主题（2026-11-04）：键帽上的字对渐变各处（上沿最亮、下沿最暗）都够，触控板上的字对纹理最亮 / 最暗处都够；
+     * 渐变、纹理、高光、影子都是淡的（不改主题的颜色，只给质感）。平面主题没有材质、faces 只有底色本身。
+     */
+    static void material(Theme t) {
+        Theme.Material m = t.material;
+        if (m == null) {
+            check(t.faces(t.keyFill()).length == 1 && t.padFaces(t.padFill).length == 1, t.id + "：平面主题只有底色");
+            return;
+        }
+        int key = t.keyFill(), fn = t.fnFill();
+        for (int f : t.faces(key)) {
+            ratio(t, "键帽字 / 键帽渐变", t.text, f, 4.5);
+            ratio(t, "高亮字 / 键帽渐变", t.activeText, f, 4.5);
+            ratio(t, "浅一档的字 / 键帽渐变", t.softText, f, 2.8);
+        }
+        for (int f : t.faces(fn)) ratio(t, "功能键字 / 功能键渐变", t.fnText, f, 4.5);
+        for (int f : t.faces(t.pressed)) ratio(t, "键帽字 / 按下的渐变", t.text, f, 3);
+        for (int f : t.faces(t.menuKey)) ratio(t, "⋯ 键的字 / ⋯ 键渐变", t.menuKeyText, f, 4.5);
+        int[] pad = t.padFaces(t.padFill);
+        check(pad.length == (m.texture == PadTexture.NONE ? 1 : 3), t.id + "：触控板纹理的两头");
+        for (int f : pad) {
+            ratio(t, "状态字 / 触控板纹理", t.status, f, 4.5);
+            ratio(t, "出问题的状态字 / 触控板纹理", t.statusBad, f, 4.5);
+            ratio(t, "角上小字 / 触控板纹理", t.dim, f, 4.5);
+            ratio(t, "不带框的 ⋯ / 触控板纹理", t.menuDots, f, 4.5);
+            ratio(t, "触控板边框 / 触控板纹理", t.padBorder, f, 2.6);
+        }
+        check(m.light > 0 && m.light <= 0.08f && m.dark > 0 && m.dark <= 0.15f, t.id + "：渐变是淡的");
+        check(m.textureStrength > 0 && m.textureStrength <= 0.12f, t.id + "：纹理是淡的");
+        check(m.highlight > 0 && m.highlight <= 90 && m.shadow > 0 && m.shadow <= 160, t.id + "：高光、影子是淡的");
+        check(Theme.deltaE(m.top(key), m.bottom(key)) >= 2, t.id + "：渐变看得出来（色差 " + fmt(Theme.deltaE(m.top(key), m.bottom(key))) + "）");
+    }
+
+    /** 纹理：同样的参数一模一样、平均 0、-1..1、有起伏、上下左右接得上（接缝处的跳变和里面相邻两点的一样大）、褶装下整数道。 */
+    static void textures() {
+        for (int kind : new int[]{PadTexture.BRUSHED, PadTexture.PAPER, PadTexture.PLEAT, PadTexture.GRAIN}) {
+            for (float d : new float[]{1f, 2.625f, 3f}) {
+                float[] a = PadTexture.field(kind, d), b = PadTexture.field(kind, d);
+                int n = PadTexture.tileSize(kind, d);
+                String w = "纹理 " + kind + " @" + d;
+                check(a.length == n * n && java.util.Arrays.equals(a, b), w + "：确定");
+                double mean = 0, var = 0, max = 0;
+                for (float v : a) {
+                    mean += v;
+                    max = Math.max(max, Math.abs(v));
+                }
+                mean /= a.length;
+                for (float v : a) var += (v - mean) * (v - mean);
+                double sd = Math.sqrt(var / a.length);
+                check(Math.abs(mean) < 0.01 && max <= 1 && sd > 0.2 && sd < 0.8, w + "：平均 " + fmt(mean) + "、最大 " + fmt(max) + "、标准差 " + fmt(sd));
+                // 接缝：最右一列和最左一列、最下一行和最上一行
+                double inX = 0, seamX = 0, inY = 0, seamY = 0;
+                for (int y = 0; y < n; y++) {
+                    for (int x = 0; x + 1 < n; x++) inX += Math.abs(a[y * n + x + 1] - a[y * n + x]);
+                    seamX += Math.abs(a[y * n] - a[y * n + n - 1]);
+                }
+                for (int x = 0; x < n; x++) {
+                    for (int y = 0; y + 1 < n; y++) inY += Math.abs(a[(y + 1) * n + x] - a[y * n + x]);
+                    seamY += Math.abs(a[x] - a[(n - 1) * n + x]);
+                }
+                inX /= (double) n * (n - 1);
+                inY /= (double) n * (n - 1);
+                seamX /= n;
+                seamY /= n;
+                check(seamX <= inX * 1.5 + 0.02 && seamY <= inY * 1.5 + 0.02, w + "：接缝看不出（横 " + fmt(seamX) + " / 里面 " + fmt(inX)
+                        + "，竖 " + fmt(seamY) + " / " + fmt(inY) + "）");
+                if (kind == PadTexture.PLEAT) check(n % PadTexture.pleatPx(d) == 0, w + "：装下整数道褶");
+                int[] px = PadTexture.pixels(kind, d, 0.1f);
+                int maxA = 0;
+                for (int p : px) maxA = Math.max(maxA, p >>> 24);
+                check(maxA <= Math.round(0.1f * 255) && maxA >= 20, w + "：像素的透明度最大是浓淡 × 255（" + maxA + "）");
+            }
+        }
+        check(PadTexture.field(PadTexture.NONE, 3f).length > 0, "没有纹理：全 0");
     }
 
     private static void ratio(Theme t, String what, int fg, int bg, double min) {

@@ -163,11 +163,19 @@ final class MouseKeys extends ViewGroup {
             float sw = Math.max(1, Math.round(t.borderDp * density));
             box.set(sw / 2, sw / 2, width - sw / 2, height - sw / 2);
             float radius = Math.min(10 * density, Math.min(width, height) / 2f);
-            fill.setColor(Theme.over(pressed ? t.pressed : t.key, t.bg));
-            c.drawRoundRect(box, radius, radius, fill);
-            stroke.setStrokeWidth(sw);
-            stroke.setColor(t.border);
-            c.drawRoundRect(box, radius, radius, stroke);
+            if (t.material != null) {
+                // 有材质的主题：同键帽（渐变、高光、影子），Style.CutCap 不切口的用法
+                Style.CutCap cap = new Style.CutCap(radius, sw, t.border, Theme.over(pressed ? t.pressed : t.key, t.bg),
+                        0, 0, Style.CutCap.NO_CUT, t.material, pressed, density);
+                cap.setBounds(0, 0, width, height);
+                cap.draw(c);
+            } else {
+                fill.setColor(Theme.over(pressed ? t.pressed : t.key, t.bg));
+                c.drawRoundRect(box, radius, radius, fill);
+                stroke.setStrokeWidth(sw);
+                stroke.setColor(t.border);
+                c.drawRoundRect(box, radius, radius, stroke);
+            }
             if (mask == Proto.BUTTON_MIDDLE) {
                 // 中键：上沿附近一排 7 个小点（真机在靠键盘那一侧）；点距最多 5dp，键窄时（三个一样宽）收紧，整排不进两头的圆角
                 mark.setColor(t.text);

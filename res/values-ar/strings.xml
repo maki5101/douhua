@@ -412,6 +412,14 @@
     <string name="theme_ocean">المحيط</string>
     <string name="theme_sakura">زهر الكرز</string>
     <string name="theme_mint">النعناع</string>
+    <string name="theme_graphite">جرافيت</string>
+    <string name="theme_pleats">بليسيه</string>
+    <string name="theme_brass">نحاس مطفأ</string>
+    <string name="theme_nightblue">أزرق ليلي</string>
+    <string name="theme_silver">فضي</string>
+    <string name="theme_signal">برتقالي إشارة</string>
+    <string name="theme_kraft">غير مبيّض</string>
+    <string name="theme_dial">ميناء الساعة</string>
     <string name="theme_group_dark">سمات داكنة</string>
     <string name="theme_group_light">سمات فاتحة</string>
     <string name="key_borders">حدود المفاتيح</string>

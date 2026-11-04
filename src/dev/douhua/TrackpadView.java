@@ -39,6 +39,11 @@ final class TrackpadView extends View {
     private final Paint under = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF inner = new RectF();
     private final RectF chip = new RectF();
+    /** 有材质的主题的触控板纹理（Theme.Material、PadTexture）：BitmapShader 平铺，叠在底色上、背景图下面。 */
+    private final Paint grain = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** 纹理那一块只生成一次（进程里按 种类 × 密度 × 浓淡 缓存；生成一块 256 × 256 的要几毫秒）。 */
+    private static android.graphics.Shader textureShader;
+    private static String textureKey;
     /** 触控板顶上的 ⋯ 的中心（本 View 坐标，键盘页 KeyboardScreen、主界面 PadStack 摆的），NaN = 这块触控板上没有 ⋯。 */
     private float menuX = Float.NaN, menuY = Float.NaN;
     /** 状态字两边各让出多宽（像素）：默认圆角那么宽（18dp）；主界面下面两个角有小按钮时让过按钮（{@link #setStatusSide}）。 */
@@ -130,6 +135,19 @@ final class TrackpadView extends View {
         return getHeight() - 14 * density;
     }
 
+    /** 这一套主题的纹理（同样的种类、密度、浓淡复用同一张小图）。 */
+    private static android.graphics.Shader textureShader(Theme.Material m, float density) {
+        String key = m.texture + "@" + density + "x" + m.textureStrength;
+        if (!key.equals(textureKey)) {
+            int n = PadTexture.tileSize(m.texture, density);
+            android.graphics.Bitmap tile = android.graphics.Bitmap.createBitmap(PadTexture.pixels(m.texture, density, m.textureStrength), n, n,
+                    android.graphics.Bitmap.Config.ARGB_8888);
+            textureShader = new android.graphics.BitmapShader(tile, android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT);
+            textureKey = key;
+        }
+        return textureShader;
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         Theme t = Style.theme();
@@ -143,6 +161,10 @@ final class TrackpadView extends View {
         box.set(inset, inset, getWidth() - inset, getHeight() - inset);
         float r = 18 * density;
         canvas.drawRoundRect(box, r, r, fill);
+        if (t.material != null && t.material.texture != PadTexture.NONE) {
+            grain.setShader(textureShader(t.material, density));
+            canvas.drawRoundRect(box, r, r, grain);
+        }
         // 背景图：和底色同一个圆角形状，按边框以内的内框摆（边框最后画，盖住图的边）
         inner.set(stroke, stroke, getWidth() - stroke, getHeight() - stroke);
         boolean onImage = image != null && image.draw(canvas, box, r, inner, brush);

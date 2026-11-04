@@ -1291,7 +1291,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         list.addView(text(getString(R.string.edge_margin_note), 13, 0xFF9A9A9A));
     }
 
-    /** 主题的名字：配色方案自己的名字（Nord……）各语言都不翻译，纯黑 / 深色 / 海蓝 / 高对比 / 浅色 / 樱花 / 薄荷翻译。 */
+    /** 主题的名字：配色方案自己的名字（Nord……）各语言都不翻译，纯黑 / 深色 / 海蓝 / 高对比 / 浅色 / 樱花 / 薄荷和有材质的八套（2026-11-04）翻译。 */
     private String themeName(Theme t) {
         if (t.fixedName != null) return t.fixedName;
         switch (t.id) {
@@ -1307,6 +1307,22 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 return getString(R.string.theme_sakura);
             case "mint":
                 return getString(R.string.theme_mint);
+            case "graphite":
+                return getString(R.string.theme_graphite);
+            case "pleats":
+                return getString(R.string.theme_pleats);
+            case "brass":
+                return getString(R.string.theme_brass);
+            case "nightblue":
+                return getString(R.string.theme_nightblue);
+            case "silver":
+                return getString(R.string.theme_silver);
+            case "signal":
+                return getString(R.string.theme_signal);
+            case "kraft":
+                return getString(R.string.theme_kraft);
+            case "dial":
+                return getString(R.string.theme_dial);
             default:
                 return getString(R.string.theme_black);
         }

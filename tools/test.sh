@@ -103,7 +103,7 @@ trap 'rm -rf "$OUT"' EXIT
     test/dev/douhua/adb/AdbProtocolTest.java \
     src/dev/douhua/ServerCommands.java test/dev/douhua/ServerCommandsTest.java \
     src/dev/douhua/AutoStartBackoff.java test/dev/douhua/AutoStartBackoffTest.java \
-    src/dev/douhua/Theme.java test/dev/douhua/ThemeTest.java \
+    src/dev/douhua/Theme.java src/dev/douhua/PadTexture.java test/dev/douhua/ThemeTest.java \
     src/dev/douhua/PadFit.java test/dev/douhua/PadFitTest.java \
     src/dev/douhua/KeyScan.java test/dev/douhua/KeyScanTest.java \
     src/dev/douhua/GamepadTouch.java src/dev/douhua/GamepadConfig.java \

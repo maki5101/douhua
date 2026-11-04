@@ -412,6 +412,14 @@
     <string name="theme_ocean">Ocean</string>
     <string name="theme_sakura">Sakura</string>
     <string name="theme_mint">Mint</string>
+    <string name="theme_graphite">Graphite</string>
+    <string name="theme_pleats">Pleats</string>
+    <string name="theme_brass">Matte Brass</string>
+    <string name="theme_nightblue">Night Blue</string>
+    <string name="theme_silver">Silver</string>
+    <string name="theme_signal">Signal Orange</string>
+    <string name="theme_kraft">Unbleached</string>
+    <string name="theme_dial">Dial</string>
     <string name="theme_group_dark">Dark themes</string>
     <string name="theme_group_light">Light themes</string>
     <string name="key_borders">Key borders</string>

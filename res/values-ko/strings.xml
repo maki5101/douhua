@@ -412,6 +412,14 @@
     <string name="theme_ocean">오션</string>
     <string name="theme_sakura">벚꽃</string>
     <string name="theme_mint">민트</string>
+    <string name="theme_graphite">그래파이트</string>
+    <string name="theme_pleats">플리츠</string>
+    <string name="theme_brass">매트 브라스</string>
+    <string name="theme_nightblue">나이트 블루</string>
+    <string name="theme_silver">실버</string>
+    <string name="theme_signal">시그널 오렌지</string>
+    <string name="theme_kraft">무표백</string>
+    <string name="theme_dial">다이얼</string>
     <string name="theme_group_dark">어두운 계열</string>
     <string name="theme_group_light">밝은 계열</string>
     <string name="key_borders">키 테두리</string>

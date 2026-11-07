@@ -137,10 +137,10 @@ final class TrackpadView extends View {
 
     /** 这一套主题的纹理（同样的种类、密度、浓淡复用同一张小图）。 */
     private static android.graphics.Shader textureShader(Theme.Material m, float density) {
-        String key = m.texture + "@" + density + "x" + m.textureStrength;
+        String key = m.texture + "@" + density + "x" + m.textureStrength + "/" + m.tint + (m.invert ? "i" : "");
         if (!key.equals(textureKey)) {
             int n = PadTexture.tileSize(m.texture, density);
-            android.graphics.Bitmap tile = android.graphics.Bitmap.createBitmap(PadTexture.pixels(m.texture, density, m.textureStrength), n, n,
+            android.graphics.Bitmap tile = android.graphics.Bitmap.createBitmap(PadTexture.pixels(m.texture, density, m.textureStrength, m.tint, m.invert), n, n,
                     android.graphics.Bitmap.Config.ARGB_8888);
             textureShader = new android.graphics.BitmapShader(tile, android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT);
             textureKey = key;

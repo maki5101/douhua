@@ -1291,7 +1291,7 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
         list.addView(text(getString(R.string.edge_margin_note), 13, 0xFF9A9A9A));
     }
 
-    /** 主题的名字：配色方案自己的名字（Nord……）各语言都不翻译，纯黑 / 深色 / 海蓝 / 高对比 / 浅色 / 樱花 / 薄荷和有材质的八套（2026-11-04）翻译。 */
+    /** 主题的名字：配色方案自己的名字（Nord……）各语言都不翻译，纯黑 / 深色 / 海蓝 / 高对比 / 浅色 / 樱花 / 薄荷、有材质的八套（2026-11-04）、涌现时钟的二十二套（2026-11-07）翻译。 */
     private String themeName(Theme t) {
         if (t.fixedName != null) return t.fixedName;
         switch (t.id) {
@@ -1323,6 +1323,50 @@ public final class SettingsActivity extends Activity implements BtHid.Listener {
                 return getString(R.string.theme_kraft);
             case "dial":
                 return getString(R.string.theme_dial);
+            case "sujian":
+                return getString(R.string.theme_sujian);
+            case "yinshuang":
+                return getString(R.string.theme_yinshuang);
+            case "songyan":
+                return getString(R.string.theme_songyan);
+            case "ziye":
+                return getString(R.string.theme_ziye);
+            case "hutao":
+                return getString(R.string.theme_hutao);
+            case "wanxia":
+                return getString(R.string.theme_wanxia);
+            case "maitian":
+                return getString(R.string.theme_maitian);
+            case "yanyu":
+                return getString(R.string.theme_yanyu);
+            case "zhusha":
+                return getString(R.string.theme_zhusha);
+            case "taihen":
+                return getString(R.string.theme_taihen);
+            case "shenlin":
+                return getString(R.string.theme_shenlin);
+            case "qingci":
+                return getString(R.string.theme_qingci);
+            case "wujin":
+                return getString(R.string.theme_wujin);
+            case "yunshi":
+                return getString(R.string.theme_yunshi);
+            case "shenhai":
+                return getString(R.string.theme_shenhai);
+            case "ziteng":
+                return getString(R.string.theme_ziteng);
+            case "kongque":
+                return getString(R.string.theme_kongque);
+            case "huguang":
+                return getString(R.string.theme_huguang);
+            case "qinghua":
+                return getString(R.string.theme_qinghua);
+            case "xinya":
+                return getString(R.string.theme_xinya);
+            case "xiangzhang":
+                return getString(R.string.theme_xiangzhang);
+            case "dingxiang":
+                return getString(R.string.theme_dingxiang);
             default:
                 return getString(R.string.theme_black);
         }

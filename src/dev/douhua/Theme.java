@@ -100,7 +100,8 @@ final class Theme {
         accent = s.accent;
         padFill = s.padFill;
         padBorder = s.padBorder;
-        light = luminance(bg) > 0.4;
+        // 浅色 = 页面比字亮（深字浅底）。原来按页面亮度 > 0.4 分，原有二十六套两种分法结果一样；涌现时钟那几套中间调的（晚霞、麦田、烟雨……）是深字，归浅色
+        light = luminance(text) < luminance(bg);
         int keyFill = over(key, bg);
         // 键帽边框：离键帽底色最近、对键帽和页面都够 3:1 的那个（非文字的界线，WCAG 1.4.11）。
         // 原来固定往文字色混两成，浅色主题只有 1.3–1.5:1、和用户嫌"难以分辨"的纯黑一样淡
@@ -184,11 +185,20 @@ final class Theme {
         final float textureStrength;
         /** 影子的透明度（0–255）。 */
         final int shadow;
+        /** 纹理深的那头用什么颜色（平常是黑；大理石的纹路色、青花的钴蓝）；invert = 纹路是深的（白底上的灰纹：PadTexture.pixels 正负对调）。 */
+        final int tint;
+        final boolean invert;
 
         Material(int texture, float textureStrength, int shadow) {
+            this(texture, textureStrength, shadow, 0xFF000000, false);
+        }
+
+        Material(int texture, float textureStrength, int shadow, int tint, boolean invert) {
             this.texture = texture;
             this.textureStrength = textureStrength;
             this.shadow = shadow;
+            this.tint = tint;
+            this.invert = invert;
         }
 
         int padLight(int padFill) {
@@ -196,7 +206,7 @@ final class Theme {
         }
 
         int padDark(int padFill) {
-            return blend(padFill, 0xFF000000, textureStrength);
+            return blend(padFill, tint, textureStrength);
         }
 
         int shadowColor() {
@@ -210,11 +220,13 @@ final class Theme {
     /** 小红点的红：ThinkPad 红往远离页面底色的方向（暗底往白、亮底往黑）推，推到对 bg、padFill 都 ≥ 3:1 为止。 */
     static int stickRed(int bg, int padFill) {
         int far = luminance(bg) > 0.4 ? 0xFF000000 : 0xFFFFFFFF;
-        for (int i = 0; i <= 50; i++) {
-            int d = blend(THINKPAD_RED, far, i / 50f);
-            if (contrast(d, bg) >= 3 && contrast(d, padFill) >= 3) return d;
+        for (int pass = 0; pass < 2; pass++, far ^= 0x00FFFFFF) {   // 这个方向推到头不够，换另一头（同 reachAll）
+            for (int i = 0; i <= 50; i++) {
+                int d = blend(THINKPAD_RED, far, i / 50f);
+                if (contrast(d, bg) >= 3 && contrast(d, padFill) >= 3) return d;
+            }
         }
-        return far;
+        return luminance(bg) > 0.4 ? 0xFF000000 : 0xFFFFFFFF;
     }
 
     /** 正文对比度的目标（WCAG AA）。 */
@@ -293,6 +305,31 @@ final class Theme {
             // ㉒ 夜蓝（Nomos 深蓝表盘 + 橙红的秒针）
             new Spec("nightblue", null).base(0xFF13213B, 0xFF1D2E50, 0xFFE8EEF7, 0xFFFF7A4D, 0xFF182844, 0xFFFF7A4D)
                     .bad(0xFFFF8A80).material(PadTexture.GRAIN, 0.04f, 100).build(),
+            // ── 涌现时钟的主题（2026-11-07，用户："你可以看看我另一个项目的，叫涌现时钟，里面有很多主题的设计"……"直接加上去"）。
+            // 名字、配色、表面处理照时钟（两个字的意象、不用品牌名；每套的表面明暗 + 色相各占一个位置，强调色和表面拉开）：
+            // 页面 = 墙面，键帽和触控板 = 表面，强调色 = 指针，键帽字 = 控件文字。深色的几套 ──
+            // 松烟
+            new Spec("songyan", null).base(0xFF161617, 0xFF222223, 0xFFD8D6D0, 0xFFE8E5DE, 0xFF222223, 0xFFE8E5DE).material(PadTexture.GRAIN, 0.048f, 100).build(),
+            // 子夜
+            new Spec("ziye", null).base(0xFF111821, 0xFF1B2430, 0xFFD3D8DE, 0xFFE6C4AD, 0xFF1B2430, 0xFFE6C4AD).material(PadTexture.GRAIN, 0.04f, 100).build(),
+            // 胡桃
+            new Spec("hutao", null).base(0xFF33261C, 0xFF4A3626, 0xFFE3DCCD, 0xFFEFE6D2, 0xFF4A3626, 0xFFEFE6D2).material(PadTexture.GRAIN, 0.03f, 100).build(),
+            // 朱砂（朱红压暗一档：时钟那个朱红上米白字 4.2:1）
+            new Spec("zhusha", null).base(0xFFA02C1A, 0xFFB8341F, 0xFFFBEEE4, 0xFFF4EDE1, 0xFFB8341F, 0xFFF4EDE1).material(PadTexture.GRAIN, 0.04f, 100).build(),
+            // 深林
+            new Spec("shenlin", null).base(0xFF0C2C1F, 0xFF123D2B, 0xFFE9E3C8, 0xFFF6C200, 0xFF123D2B, 0xFFF6C200).material(PadTexture.CARBON, 0.08f, 100).build(),
+            // 乌金（表面提亮一点：和墙面分不开，键帽不描边时看不出键）
+            new Spec("wujin", null).base(0xFF121110, 0xFF23211F, 0xFFE6DFCF, 0xFFC9A24A, 0xFF1C1B1A, 0xFFC9A24A).material(PadTexture.MARBLE, 0.22f, 100).build(),
+            // 深海
+            new Spec("shenhai", null).base(0xFF223A72, 0xFF2C4A8E, 0xFFE6E9F2, 0xFFFF7A1A, 0xFF2C4A8E, 0xFFFF7A1A).material(PadTexture.LEATHER, 0.08f, 100).build(),
+            // 紫藤
+            new Spec("ziteng", null).base(0xFF2E1631, 0xFF3D1F42, 0xFFE9DCEA, 0xFFA6D86B, 0xFF3D1F42, 0xFFA6D86B).material(PadTexture.GRAIN, 0.04f, 100).build(),
+            // 孔雀
+            new Spec("kongque", null).base(0xFF134542, 0xFF1B5A58, 0xFFDCECE9, 0xFFC9A0E6, 0xFF1B5A58, 0xFFC9A0E6).material(PadTexture.SAND, 0.064f, 100).build(),
+            // 湖光（湖蓝压暗一档：时钟那个湖蓝上白字只有 3.8:1、珊瑚针 1.8:1）
+            new Spec("huguang", null).base(0xFF224C61, 0xFF2A5A72, 0xFFE6F0F4, 0xFFFF8466, 0xFF2A5A72, 0xFFFF8466).material(PadTexture.GRAIN, 0.04f, 100).build(),
+            // 香樟（红铜针提亮一点：原色在深橄榄绿上 2.2:1）
+            new Spec("xiangzhang", null).base(0xFF314A20, 0xFF3E5A2A, 0xFFE3E8D6, 0xFFEB9A5E, 0xFF3E5A2A, 0xFFEB9A5E).material(PadTexture.NONE, 0f, 100).build(),
             // ── 浅色 ──
             // ⑭ 浅色（Gboard 浅色）；触控板边框比 Google 蓝 500 #4285F4 暗一点（原值对页面 #E8EAED 只有 2.96:1）
             new Spec("glight", null).base(0xFFE8EAED, 0xFFFFFFFF, 0xFF202124, 0xFF1A73E8, 0xFFF1F3F4, 0xFF4182EF)
@@ -323,6 +360,29 @@ final class Theme {
             // ㉖ 表盘（Nomos 镀银的米白表盘、烤蓝的针）
             new Spec("dial", null).base(0xFFECEAE4, 0xFFF9F8F5, 0xFF1D2740, 0xFF1F4E9E, 0xFFE3E0D8, 0xFF1F4E9E)
                     .bad(0xFFC8102E).material(PadTexture.GRAIN, 0.035f, 34).build(),
+            // ── 涌现时钟的主题：浅色的几套 ──
+            // 素笺
+            new Spec("sujian", null).base(0xFFE4E1DA, 0xFFF1EFEA, 0xFF2A2A2A, 0xFF1D1D1D, 0xFFF1EFEA, 0xFF1D1D1D).material(PadTexture.GRAIN, 0.04f, 38).build(),
+            // 银霜（橙针压暗一点：原色在银色上 2.7:1）
+            new Spec("yinshuang", null).base(0xFFC9CBCC, 0xFFD9DBDC, 0xFF2A2A2A, 0xFFC4471B, 0xFFD9DBDC, 0xFFC4471B).material(PadTexture.BRUSHED, 0.056f, 38).build(),
+            // 晚霞
+            new Spec("wanxia", null).base(0xFFD29A80, 0xFFE6AA8E, 0xFF3A2620, 0xFF1F3D8C, 0xFFE6AA8E, 0xFF1F3D8C).material(PadTexture.GRAIN, 0.032f, 38).build(),
+            // 麦田
+            new Spec("maitian", null).base(0xFFB9A582, 0xFFCDB995, 0xFF3B3128, 0xFF4A3E34, 0xFFCDB995, 0xFF4A3E34).material(PadTexture.GRAIN, 0.08f, 38).build(),
+            // 烟雨（墙面、表面比时钟里亮一档：时钟那个中灰上深字只有 3.7:1）
+            new Spec("yanyu", null).base(0xFF928E87, 0xFFA29E98, 0xFF161514, 0xFF1D1C1B, 0xFFA29E98, 0xFF1D1C1B).material(PadTexture.GRAIN, 0.032f, 38).build(),
+            // 苔痕（砖红针压暗一点：原色在灰绿上只有 2.5:1）
+            new Spec("taihen", null).base(0xFF92A385, 0xFFA2B394, 0xFF263024, 0xFF8A3322, 0xFFA2B394, 0xFF8A3322).material(PadTexture.SAND, 0.056f, 38).build(),
+            // 青瓷（玫红针压暗一点：原色在青瓷上 2.9:1）
+            new Spec("qingci", null).base(0xFFA3C7BA, 0xFFB2D6C9, 0xFF2C4540, 0xFFB8285C, 0xFFB2D6C9, 0xFFB8285C).material(PadTexture.NONE, 0f, 38).build(),
+            // 云石
+            new Spec("yunshi", null).base(0xFFDCDAD5, 0xFFECEBE7, 0xFF2A2A2A, 0xFF1D1D1D, 0xFFECEBE7, 0xFF1D1D1D).material(PadTexture.MARBLE, 0.35f, 38, 0xFF8F8E8A, true).build(),
+            // 青花（字用深藏青，和钴蓝针分开：时钟里两个同色）
+            new Spec("qinghua", null).base(0xFFDCE3EA, 0xFFEEF2F5, 0xFF1E2A44, 0xFF1C3F94, 0xFFEEF2F5, 0xFF1C3F94).material(PadTexture.QINGHUA, 0.28f, 38, 0xFF2A51A6, false).build(),
+            // 新芽
+            new Spec("xinya", null).base(0xFFBCCF7C, 0xFFCFE08F, 0xFF3A4520, 0xFF6B4A2F, 0xFFCFE08F, 0xFF6B4A2F).material(PadTexture.GRAIN, 0.04f, 38).build(),
+            // 丁香
+            new Spec("dingxiang", null).base(0xFFAE9FBD, 0xFFBDAECB, 0xFF33293A, 0xFF4B2142, 0xFFBDAECB, 0xFF4B2142).material(PadTexture.WASHI, 0.072f, 38).build(),
     };
 
     static final Theme DEFAULT = ALL[0];
@@ -423,10 +483,13 @@ final class Theme {
             top = blend(fnText, 0xFFFFFFFF, i / 50f);
             if (contrast(blend(f, top, 0.5f), f) >= 3) break;
         }
+        // 推到白还不够（功能键底是中间调的：涌现时钟的朱砂、孔雀、湖光、香樟），黑那头也往亮提（整个地球变成亮的剪影），提到中灰够 3:1。原来的二十六套第一步就够，不变
+        int bottom = f;
+        for (int i = 0; i <= 50 && contrast(blend(bottom, top, 0.5f), f) < 3; i++) bottom = blend(f, 0xFFFFFFFF, i / 50f);
         r = (top >> 16) & 0xFF;
         g = (top >> 8) & 0xFF;
         b = top & 0xFF;
-        int fr = (f >> 16) & 0xFF, fg = (f >> 8) & 0xFF, fb = f & 0xFF;
+        int fr = (bottom >> 16) & 0xFF, fg = (bottom >> 8) & 0xFF, fb = bottom & 0xFF;
         return new float[]{(r - fr) / 255f, (g - fg) / 255f, (b - fb) / 255f, fr, fg, fb};
     }
 
@@ -484,12 +547,7 @@ final class Theme {
 
     /** c 对 against 的对比度不够 ratio 就往远离 against 的方向（暗底往白、亮底往黑）推，推到够为止。 */
     static int reach(int c, int against, double ratio) {
-        int far = luminance(against) > 0.4 ? 0xFF000000 : 0xFFFFFFFF;
-        for (int i = 0; i <= 50; i++) {
-            int d = blend(c, far, i / 50f);
-            if (contrast(d, against) >= ratio) return d;
-        }
-        return far;
+        return reachAll(c, new int[]{against}, new double[]{ratio});
     }
 
     /**
@@ -498,13 +556,17 @@ final class Theme {
      */
     static int reachAll(int c, int[] against, double[] ratios) {
         int far = luminance(against[0]) > 0.4 ? 0xFF000000 : 0xFFFFFFFF;
-        for (int i = 0; i <= 50; i++) {
-            int d = blend(c, far, i / 50f);
-            boolean ok = true;
-            for (int j = 0; j < against.length; j++) ok &= contrast(d, against[j]) >= ratios[j];
-            if (ok) return d;
+        // 这个方向推到头还不够（中间调的底：涌现时钟的晚霞、麦田这种，亮度不到 0.4、字却是深的），换另一头再推一遍。
+        // 原来的二十六套第一遍都推得到，结果和以前一样
+        for (int pass = 0; pass < 2; pass++, far ^= 0x00FFFFFF) {
+            for (int i = 0; i <= 50; i++) {
+                int d = blend(c, far, i / 50f);
+                boolean ok = true;
+                for (int j = 0; j < against.length; j++) ok &= contrast(d, against[j]) >= ratios[j];
+                if (ok) return d;
+            }
         }
-        return far;
+        return luminance(against[0]) > 0.4 ? 0xFF000000 : 0xFFFFFFFF;
     }
 
     /** from 到 to 之间最靠近 from、对 against 里每个颜色的对比度都够 ratio 的那个（灰色说明字：够看清就行，别比正文还亮）。 */
@@ -643,6 +705,12 @@ final class Theme {
         /** 材质：触控板纹理（PadTexture.*）和浓淡、键帽影子的透明度。 */
         Spec material(int texture, float strength, int shadow) {
             material = new Material(texture, strength, shadow);
+            return this;
+        }
+
+        /** 带纹路色的（大理石、青花）：tint = 纹深的那头的颜色，invert = 纹路比底深。 */
+        Spec material(int texture, float strength, int shadow, int tint, boolean invert) {
+            material = new Material(texture, strength, shadow, tint, invert);
             return this;
         }
 

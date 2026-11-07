@@ -35,23 +35,38 @@ public final class ThemeTest {
     /** 设置页的顺序：先深色组、后浅色组（组里照这个顺序）。 */
     static final String[] ORDER = {"black", "dark", "nord", "dracula", "catppuccin", "tokyo", "gruvbox", "everforest",
             "solarized_dark", "rosepine", "monokai", "ocean", "contrast", "graphite", "pleats", "brass", "nightblue",
-            "glight", "light", "latte", "sakura", "mint", "silver", "signal", "kraft", "dial"};
+            "songyan", "ziye", "hutao", "zhusha", "shenlin", "wujin",
+            "shenhai", "ziteng", "kongque", "huguang", "xiangzhang",
+            "glight", "light", "latte", "sakura", "mint", "silver", "signal", "kraft", "dial",
+            "sujian", "yinshuang", "wanxia", "maitian", "yanyu", "taihen",
+            "qingci", "yunshi", "qinghua", "xinya", "dingxiang"};
+    /** 涌现时钟的（2026-11-07）：深色、浅色各十一套。 */
+    static final Set<String> CLOCK = new HashSet<>(java.util.Arrays.asList(
+            "songyan", "ziye", "hutao", "zhusha", "shenlin", "wujin", "shenhai", "ziteng", "kongque", "huguang", "xiangzhang",
+            "sujian", "yinshuang", "wanxia", "maitian", "yanyu", "taihen", "qingci", "yunshi", "qinghua", "xinya", "dingxiang"));
     /** 有材质的（2026-11-04）：深色四套、浅色四套。 */
     static final Set<String> MATERIAL = new HashSet<>(java.util.Arrays.asList(
             "graphite", "pleats", "brass", "nightblue", "silver", "signal", "kraft", "dial"));
+    static {
+        MATERIAL.addAll(CLOCK);
+    }
     /** 要翻译的（strings.xml 里有）：纯黑、深色、海蓝、高对比、浅色、樱花、薄荷；其余用配色方案自己的名字。 */
     static final Set<String> TRANSLATED = new HashSet<>(java.util.Arrays.asList(
             "black", "dark", "ocean", "contrast", "glight", "sakura", "mint",
             "graphite", "pleats", "brass", "nightblue", "silver", "signal", "kraft", "dial"));
 
+    static {
+        TRANSLATED.addAll(CLOCK);
+    }
+
     static void list() {
-        check(Theme.ALL.length == 26, "二十六套");
+        check(Theme.ALL.length == 48, "四十八套");
         check(Theme.DEFAULT.id.equals("black"), "默认是纯黑");
         Set<String> ids = new HashSet<>();
         for (Theme t : Theme.ALL) check(ids.add(t.id), "名字不重复：" + t.id);
         for (int i = 0; i < ORDER.length && i < Theme.ALL.length; i++) {
             check(Theme.ALL[i].id.equals(ORDER[i]), "第 " + (i + 1) + " 套是 " + ORDER[i] + "（实际 " + Theme.ALL[i].id + "）");
-            check(Theme.ALL[i].light == (i >= 17), ORDER[i] + "：前十七套是深色、后九套是浅色");
+            check(Theme.ALL[i].light == (i >= 28), ORDER[i] + "：前二十八套是深色、后二十套是浅色");
             check((Theme.ALL[i].material != null) == MATERIAL.contains(ORDER[i]), ORDER[i] + "：有没有材质");
         }
         check(Theme.byId("nord").id.equals("nord"), "按名字找得到");
@@ -175,7 +190,7 @@ public final class ThemeTest {
         ratio(t, "不带框的 ⋯ / 页面（手柄页）", t.menuDots, t.bg, 4.5);
         ratio(t, "不带框的 ⋯ / 按着时的底", t.menuDots, t.pressed, 3);
         if (t != Theme.DEFAULT) {
-            if (t.accent != 0xFFFFFFFF) {
+            if (t.accent != 0xFFFFFFFF && !lowChroma(t.accent)) {   // 黑针、白针、米白针（素笺、云石、烟雨、朱砂、高对比）本来就没什么色相
                 check(!grey(t.menuKey) && !grey(t.menuDots), t.id + "：⋯ 还带着强调色 " + hex(t.menuKey) + " / " + hex(t.menuDots));
             }
             // 本来就够的不推（强调色原样）
@@ -187,8 +202,15 @@ public final class ThemeTest {
                     t.id + "：⋯ 键的字从页面色 / 正文色里挑");
         }
         // 和原来的暗字（Style.bare 以前用的 dim）一眼分得开
-        check(Theme.deltaE(t.menuDots, t.dim) >= Theme.FN_DELTA_E || t.id.equals("contrast"),
+        // 针色本来就和字差不多的（涌现时钟的麦田、烟雨：深褐 / 炭黑针配深字）不要求
+        check(Theme.deltaE(t.menuDots, t.dim) >= Theme.FN_DELTA_E || t.id.equals("contrast") || Theme.deltaE(t.accent, t.text) < 15,
                 t.id + "：不带框的 ⋯ 和原来的暗字分得开（色差 " + fmt(Theme.deltaE(t.menuDots, t.dim)) + "）");
+    }
+
+    /** 几乎没色相（三个通道差不到 24：米白、炭黑）。 */
+    private static boolean lowChroma(int c) {
+        int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+        return Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b)) < 24;
     }
 
     /** 灰的（三个通道差不到 16）。 */
@@ -389,13 +411,16 @@ public final class ThemeTest {
             ratio(t, "不带框的 ⋯ / 触控板纹理", t.menuDots, f, 4.5);
             ratio(t, "触控板边框 / 触控板纹理", t.padBorder, f, 2.6);
         }
-        check(m.textureStrength > 0 && m.textureStrength <= 0.08f, t.id + "：纹理是淡的");
+        boolean veined = m.texture == PadTexture.MARBLE || m.texture == PadTexture.QINGHUA;   // 纹路有颜色的两种浓一点
+        check(m.texture == PadTexture.NONE ? m.textureStrength == 0
+                : m.textureStrength > 0 && m.textureStrength <= (veined ? 0.35f : 0.08f), t.id + "：纹理是淡的");
         check(m.shadow > 0 && m.shadow <= (t.light ? 48 : 120), t.id + "：影子是淡的（" + m.shadow + "）");
     }
 
     /** 纹理：同样的参数一模一样、平均 0、-1..1、有起伏、上下左右接得上（接缝处的跳变和里面相邻两点的一样大）、褶装下整数道。 */
     static void textures() {
-        for (int kind : new int[]{PadTexture.BRUSHED, PadTexture.PAPER, PadTexture.PLEAT, PadTexture.GRAIN}) {
+        for (int kind : new int[]{PadTexture.BRUSHED, PadTexture.PAPER, PadTexture.PLEAT, PadTexture.GRAIN, PadTexture.SAND,
+                PadTexture.WASHI, PadTexture.LEATHER, PadTexture.CARBON, PadTexture.MARBLE, PadTexture.QINGHUA}) {
             for (float d : new float[]{1f, 2.625f, 3f}) {
                 float[] a = PadTexture.field(kind, d), b = PadTexture.field(kind, d);
                 int n = PadTexture.tileSize(kind, d);
@@ -427,6 +452,7 @@ public final class ThemeTest {
                 check(seamX <= inX * 1.5 + 0.02 && seamY <= inY * 1.5 + 0.02, w + "：接缝看不出（横 " + fmt(seamX) + " / 里面 " + fmt(inX)
                         + "，竖 " + fmt(seamY) + " / " + fmt(inY) + "）");
                 if (kind == PadTexture.PLEAT) check(n % PadTexture.pleatPx(d) == 0, w + "：装下整数道褶");
+                if (kind == PadTexture.CARBON) check(n % (4 * PadTexture.towPx(d)) == 0, w + "：装下整数个斜纹循环");
                 int[] px = PadTexture.pixels(kind, d, 0.1f);
                 int maxA = 0;
                 for (int p : px) maxA = Math.max(maxA, p >>> 24);
